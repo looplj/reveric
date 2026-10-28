@@ -597,6 +597,44 @@ void main() {
       expect(invalidDay.backupDayOfMonth, 1);
     },
   );
+
+  test(
+    'ui text scale persists to the appearance aggregate and reloads',
+    () async {
+      final database = AppDatabase.forTest(NativeDatabase.memory());
+      final container = _createContainer(database);
+      addTearDown(() async {
+        container.dispose();
+        await database.close();
+      });
+      final loaded = await container.read(appSettingsProvider.future);
+      expect(loaded.uiTextScale, 1.0);
+
+      await container.read(appSettingsProvider.notifier).setUiTextScale(1.3);
+      expect(container.read(appSettingsProvider).requireValue.uiTextScale, 1.3);
+      final saved = await database.appSettingsDao.get(
+        AppearanceSettingsData.appSettingsKey,
+      );
+      expect(AppearanceSettingsData.decode(saved!).uiTextScale, 1.3);
+
+      container.invalidate(appSettingsProvider);
+      final reloaded = await container.read(appSettingsProvider.future);
+      expect(reloaded.uiTextScale, 1.3);
+    },
+  );
+
+  test('normalizes out-of-range ui text scale values', () {
+    expect(
+      AppearanceSettingsData.fromJson(const {'uiTextScale': 99}).uiTextScale,
+      2.0,
+    );
+    expect(
+      AppearanceSettingsData.fromJson(const {
+        'uiTextScale': 'not-a-number',
+      }).uiTextScale,
+      AppearanceSettingsData.defaults.uiTextScale,
+    );
+  });
 }
 
 ProviderContainer _createContainer(AppDatabase database) {

@@ -4507,6 +4507,14 @@ abstract final class LocaleKeys {
   static const settingsThemeModeLight = 'settings.theme_mode_light';
   static const settingsThemeModeSection = 'settings.theme_mode_section';
   static const settingsThemeModeSystem = 'settings.theme_mode_system';
+  static const settingsUiTextScaleDescription =
+      'settings.ui_text_scale_description';
+  static const settingsUiTextScaleExtraLarge =
+      'settings.ui_text_scale_extra_large';
+  static const settingsUiTextScaleLarge = 'settings.ui_text_scale_large';
+  static const settingsUiTextScaleSection = 'settings.ui_text_scale_section';
+  static const settingsUiTextScaleSmall = 'settings.ui_text_scale_small';
+  static const settingsUiTextScaleStandard = 'settings.ui_text_scale_standard';
   static const settingsCustomThemes = 'settings.custom_themes';
   static const settingsCustomThemesLoadError =
       'settings.custom_themes_load_error';

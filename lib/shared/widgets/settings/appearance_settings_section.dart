@@ -22,6 +22,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../components/dialog_feedback.dart';
+import '../../components/reveric_segmented_control.dart';
 import '../../components/reveric_select.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
@@ -86,6 +87,25 @@ class AppearanceSettingsSection extends HookConsumerWidget {
     (AppThemeMode.system, LocaleKeys.settingsThemeModeSystem),
   ];
 
+  /// 界面文字缩放档位；值同时是持久化值，改动需同步分段控件展示。
+  static const _uiTextScalePresets = <(double, String)>[
+    (0.9, LocaleKeys.settingsUiTextScaleSmall),
+    (1.0, LocaleKeys.settingsUiTextScaleStandard),
+    (1.15, LocaleKeys.settingsUiTextScaleLarge),
+    (1.3, LocaleKeys.settingsUiTextScaleExtraLarge),
+  ];
+
+  /// 手改数据库等途径可能产生档位外的值，回吸到最近档位保证控件选中态有效。
+  static double _nearestUiTextScalePreset(double scale) {
+    var nearest = _uiTextScalePresets.first.$1;
+    for (final (value, _) in _uiTextScalePresets) {
+      if ((scale - value).abs() < (scale - nearest).abs()) {
+        nearest = value;
+      }
+    }
+    return nearest;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentTheme = ref.watch(currentThemeTypeProvider);
@@ -95,6 +115,7 @@ class AppearanceSettingsSection extends HookConsumerWidget {
       ),
     );
     final currentThemeMode = ref.watch(currentThemeModeProvider);
+    final uiTextScale = ref.watch(uiTextScaleProvider);
     final backgroundImagePath = ref.watch(appBackgroundImagePathProvider);
     final backgroundFit = ref.watch(appBackgroundFitProvider);
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
@@ -121,6 +142,24 @@ class AppearanceSettingsSection extends HookConsumerWidget {
             ),
             const SizedBox(height: RevericSpacing.md),
           ],
+          const SizedBox(height: RevericSpacing.xl),
+          _buildSectionHeader(
+            context: context,
+            titleKey: LocaleKeys.settingsUiTextScaleSection,
+            descriptionKey: LocaleKeys.settingsUiTextScaleDescription,
+          ),
+          const SizedBox(height: RevericSpacing.md),
+          RevericSegmentedControl<double>(
+            segments: [
+              for (final (scale, labelKey) in _uiTextScalePresets)
+                RevericSegment<double>(
+                  value: scale,
+                  label: context.t(labelKey),
+                ),
+            ],
+            selected: _nearestUiTextScalePreset(uiTextScale),
+            onChanged: (scale) => settingsNotifier.setUiTextScale(scale),
+          ),
           const SizedBox(height: RevericSpacing.xl),
           const CustomThemesSection(),
           _buildSectionHeader(

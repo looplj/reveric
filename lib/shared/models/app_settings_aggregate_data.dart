@@ -142,6 +142,7 @@ class AppearanceSettingsData {
     required this.backgroundImagePath,
     required this.backgroundFit,
     required this.backgroundTheme,
+    this.uiTextScale = 1.0,
   });
 
   static const appSettingsKey = 'appearance_settings';
@@ -153,6 +154,9 @@ class AppearanceSettingsData {
   final String backgroundImagePath;
   final String backgroundFit;
   final String? backgroundTheme;
+
+  /// 界面文字全局缩放倍率，1.0 表示不缩放。
+  final double uiTextScale;
 
   static const defaults = AppearanceSettingsData(
     theme: 'classic',
@@ -202,6 +206,10 @@ class AppearanceSettingsData {
         _themeValues,
         fallback.backgroundTheme,
       ),
+      uiTextScale: _double(
+        json['uiTextScale'],
+        fallback.uiTextScale,
+      ).clamp(0.5, 2.0).toDouble(),
     );
   }
 
@@ -213,6 +221,7 @@ class AppearanceSettingsData {
     'backgroundImagePath': backgroundImagePath,
     'backgroundFit': backgroundFit,
     'backgroundTheme': backgroundTheme,
+    'uiTextScale': uiTextScale,
   };
 
   String encode() => jsonEncode(toJson());

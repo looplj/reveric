@@ -383,6 +383,9 @@ class AppSettings {
   /// 全局纯色背景来源主题，null 表示不启用纯色背景。
   final AppTheme? appBackgroundTheme;
 
+  /// 界面文字全局缩放倍率，1.0 表示不缩放。
+  final double uiTextScale;
+
   // ---- User Profile ----
 
   /// 用户显示名称
@@ -498,6 +501,7 @@ class AppSettings {
     this.appBackgroundImagePath = '',
     this.appBackgroundFit = AppBackgroundFit.cover,
     this.appBackgroundTheme,
+    this.uiTextScale = 1.0,
     this.username = '',
     this.avatarPath = '',
     this.networkProxy = const NetworkProxy(),
@@ -571,6 +575,7 @@ class AppSettings {
     String? appBackgroundImagePath,
     AppBackgroundFit? appBackgroundFit,
     Object? appBackgroundTheme = _unset,
+    double? uiTextScale,
     String? username,
     String? avatarPath,
   }) {
@@ -662,6 +667,7 @@ class AppSettings {
       appBackgroundTheme: appBackgroundTheme == _unset
           ? this.appBackgroundTheme
           : appBackgroundTheme as AppTheme?,
+      uiTextScale: uiTextScale ?? this.uiTextScale,
       username: username ?? this.username,
       avatarPath: avatarPath ?? this.avatarPath,
     );
@@ -780,6 +786,7 @@ AppearanceSettingsData _appearanceSettingsDataFromAppSettings(
     backgroundTheme: settings.appBackgroundTheme == null
         ? null
         : themeToString(settings.appBackgroundTheme!),
+    uiTextScale: settings.uiTextScale,
   );
 }
 
@@ -1164,6 +1171,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
               appearanceSettings.customThemeId!,
             ),
       themeMode: _parseThemeMode(appearanceSettings.themeMode),
+      uiTextScale: appearanceSettings.uiTextScale,
       language: resolvedLanguage,
       aiSettings: aiSettings,
       searchEngine: _parseSearchEngine(searchEngineString),
@@ -1798,6 +1806,20 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
           );
         }
       });
+
+  Future<void> setUiTextScale(double scale) async {
+    final currentState = await _requireCurrentState('SET_UI_TEXT_SCALE');
+    final nextScale = scale.clamp(0.5, 2.0).toDouble();
+    if (currentState.uiTextScale == nextScale) {
+      return;
+    }
+
+    final nextState = currentState.copyWith(uiTextScale: nextScale);
+    await _persistPartial(appearanceSettings: nextState);
+    if (ref.mounted) {
+      state = AsyncValue.data(nextState);
+    }
+  }
 
   Future<void> setLanguage(String language) async {
     final currentState = await _requireCurrentState('SET_LANGUAGE');
@@ -3036,6 +3058,16 @@ AppThemeMode currentThemeMode(Ref ref) {
     data: (settings) => settings.themeMode,
     loading: () => AppThemeMode.light,
     error: (_, _) => AppThemeMode.light,
+  );
+}
+
+@riverpod
+double uiTextScale(Ref ref) {
+  final settingsAsync = ref.watch(appSettingsNotifierProvider);
+  return settingsAsync.when(
+    data: (settings) => settings.uiTextScale,
+    loading: () => 1.0,
+    error: (_, _) => 1.0,
   );
 }
 

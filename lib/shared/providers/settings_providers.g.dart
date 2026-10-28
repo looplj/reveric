@@ -218,7 +218,7 @@ final class AppSettingsNotifierProvider
 }
 
 String _$appSettingsNotifierHash() =>
-    r'ad7c12e52163ddba6bdfd4ceecd1b55693d55f39';
+    r'88422c1ed6ec9d66b180b7cd165bbc299b8ee278';
 
 abstract class _$AppSettingsNotifier extends $AsyncNotifier<AppSettings> {
   FutureOr<AppSettings> build();
@@ -449,6 +449,47 @@ final class CurrentThemeModeProvider
 }
 
 String _$currentThemeModeHash() => r'72022c9bcba670ea3c861c727c93e01604026402';
+
+@ProviderFor(uiTextScale)
+final uiTextScaleProvider = UiTextScaleProvider._();
+
+final class UiTextScaleProvider
+    extends $FunctionalProvider<double, double, double>
+    with $Provider<double> {
+  UiTextScaleProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'uiTextScaleProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$uiTextScaleHash();
+
+  @$internal
+  @override
+  $ProviderElement<double> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  double create(Ref ref) {
+    return uiTextScale(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(double value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<double>(value),
+    );
+  }
+}
+
+String _$uiTextScaleHash() => r'35f472e0e3acd5a4d6d65fd7caea019ca9b33e4d';
 
 @ProviderFor(aiSettings)
 final aiSettingsProvider = AiSettingsProvider._();

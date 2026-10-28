@@ -444,6 +444,7 @@ class MyApp extends ConsumerWidget {
     final themeMode = ref.watch(currentThemeModeProvider);
     final settingsAsync = ref.watch(appSettingsNotifierProvider);
     final onboardingAsync = ref.watch(onboardingCompletedProvider);
+    final uiTextScale = settingsAsync.value?.uiTextScale ?? 1.0;
 
     // Keep cleanup scheduler alive for the app lifetime.
     ref.watch(storageCleanupSchedulerProvider);
@@ -472,6 +473,7 @@ class MyApp extends ConsumerWidget {
       themeMode: themeMode,
       settingsAsync: settingsAsync,
       onboardingAsync: onboardingAsync,
+      uiTextScale: uiTextScale,
     );
   }
 
@@ -481,6 +483,7 @@ class MyApp extends ConsumerWidget {
     required AppThemeMode themeMode,
     required AsyncValue<AppSettings> settingsAsync,
     required AsyncValue<bool> onboardingAsync,
+    required double uiTextScale,
   }) {
     return settingsAsync.when(
       loading: () {
@@ -491,6 +494,7 @@ class MyApp extends ConsumerWidget {
           themeData: RevericThemeData.classic,
           darkThemeData: RevericThemeData.classicDark,
           home: const _LoadingScreen(),
+          uiTextScale: uiTextScale,
         );
       },
       error: (error, stack) {
@@ -501,6 +505,7 @@ class MyApp extends ConsumerWidget {
           themeData: RevericThemeData.classic,
           darkThemeData: RevericThemeData.classicDark,
           home: const _LoadingScreen(),
+          uiTextScale: uiTextScale,
         );
       },
       data: (settings) {
@@ -560,6 +565,7 @@ class MyApp extends ConsumerWidget {
           themeData: lightTheme,
           darkThemeData: darkTheme,
           home: home,
+          uiTextScale: uiTextScale,
         );
       },
     );
@@ -571,6 +577,7 @@ class MyApp extends ConsumerWidget {
     required RevericThemeData themeData,
     required RevericThemeData darkThemeData,
     required Widget home,
+    required double uiTextScale,
   }) {
     final flutterThemeMode = switch (themeMode) {
       AppThemeMode.light => ThemeMode.light,
@@ -599,43 +606,47 @@ class MyApp extends ConsumerWidget {
         final activeData = brightness == Brightness.dark
             ? effectiveDarkThemeData
             : effectiveThemeData;
-        return RevericTheme(
-          data: activeData,
-          child: AnnotatedRegion<SystemUiOverlayStyle>(
-            value: activeData.systemUiOverlayStyle,
-            child: HookFormScope(
-              messages: const I18nFormErrorMessages(),
-              child: Actions(
-                actions: <Type, Action<Intent>>{
-                  DismissIntent: CallbackAction<DismissIntent>(
-                    onInvoke: (_) => null,
+        final mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(textScaler: TextScaler.linear(uiTextScale)),
+          child: RevericTheme(
+            data: activeData,
+            child: AnnotatedRegion<SystemUiOverlayStyle>(
+              value: activeData.systemUiOverlayStyle,
+              child: HookFormScope(
+                messages: const I18nFormErrorMessages(),
+                child: Actions(
+                  actions: <Type, Action<Intent>>{
+                    DismissIntent: CallbackAction<DismissIntent>(
+                      onInvoke: (_) => null,
+                    ),
+                  },
+                  child: Stack(
+                    children: [
+                      ?child,
+                      const AppLifecycleWatcher(),
+                      if (_isDesktopPlatform) const GlobalFloatingChat(),
+                      if (home is MobileApp || home is NovelHomePage)
+                        UpdateReminder(
+                          mobile: _isMobilePlatform,
+                          onViewUpdate: () {
+                            final navigatorContext = SystemTrayService()
+                                .navigatorKey
+                                .currentState!
+                                .context;
+                            if (_isMobilePlatform) {
+                              showMobileAboutPage(navigatorContext);
+                            } else {
+                              showDialog<void>(
+                                context: navigatorContext,
+                                builder: (_) =>
+                                    const SettingsDialog(initialNavId: 'about'),
+                              );
+                            }
+                          },
+                        ),
+                    ],
                   ),
-                },
-                child: Stack(
-                  children: [
-                    ?child,
-                    const AppLifecycleWatcher(),
-                    if (_isDesktopPlatform) const GlobalFloatingChat(),
-                    if (home is MobileApp || home is NovelHomePage)
-                      UpdateReminder(
-                        mobile: _isMobilePlatform,
-                        onViewUpdate: () {
-                          final navigatorContext = SystemTrayService()
-                              .navigatorKey
-                              .currentState!
-                              .context;
-                          if (_isMobilePlatform) {
-                            showMobileAboutPage(navigatorContext);
-                          } else {
-                            showDialog<void>(
-                              context: navigatorContext,
-                              builder: (_) =>
-                                  const SettingsDialog(initialNavId: 'about'),
-                            );
-                          }
-                        },
-                      ),
-                  ],
                 ),
               ),
             ),
