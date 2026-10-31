@@ -82,6 +82,9 @@ class AnthropicClient implements ProviderClient {
   final anthropic.AnthropicClient _client;
   final String? model;
   final String? _cacheKeyUserId;
+
+  /// 顶层自动缓存：服务端把断点放在最后一个可缓存块上，随对话增长前移。
+  static const _automaticCache = anthropic.CacheControlEphemeral();
   bool _cancelled = false;
   Completer<void>? _abortCompleter;
 
@@ -309,6 +312,7 @@ class AnthropicClient implements ProviderClient {
       metadata: _cacheKeyUserId != null
           ? anthropic.Metadata(userId: _cacheKeyUserId)
           : null,
+      cacheControl: _automaticCache,
     );
 
     final response = await _client.messages.create(request);
@@ -417,6 +421,7 @@ class AnthropicClient implements ProviderClient {
       metadata: _cacheKeyUserId != null
           ? anthropic.Metadata(userId: _cacheKeyUserId)
           : null,
+      cacheControl: _automaticCache,
     );
 
     final stream = _client.messages.createStream(

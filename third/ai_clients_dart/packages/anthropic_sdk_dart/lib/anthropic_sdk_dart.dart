@@ -16,6 +16,7 @@ export 'src/models/messages/message.dart';
 export 'src/models/messages/message_create_request.dart';
 export 'src/models/messages/message_role.dart';
 export 'src/models/messages/thinking_config.dart';
+export 'src/models/metadata/cache_control.dart';
 export 'src/models/metadata/metadata.dart';
 export 'src/models/metadata/stop_reason.dart';
 export 'src/models/metadata/usage.dart';
