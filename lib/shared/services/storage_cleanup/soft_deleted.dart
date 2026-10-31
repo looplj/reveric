@@ -11,7 +11,6 @@ part of '../storage_cleanup_service.dart';
 // 不自动枚举所有含 deleted_at 的表：新增表不等于获得硬删除授权。
 // 作品登记、图片资产/批次不在名单中；会话及历史沿用原有专用清理策略。
 const _softDeletedMainTables = <String, String?>{
-  'memories': 'novel_id',
   'agents': 'novel_id',
   'ai_shortcut_actions': null,
   'ai_providers': null,

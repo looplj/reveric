@@ -164,7 +164,6 @@ void main() {
       final summarize = buildDefaultContextSummarizer(
         agentId: 'orchestrator',
         systemPrompt: 'Main system prompt',
-        memoryBlock: 'Stable memory',
         allowedTools: const ['Read'],
         client: client,
         config: const AgentConfig(),
@@ -204,7 +203,7 @@ void main() {
       expect(request.tools?.map((tool) => tool.name), ['Read']);
       expect(
         request.messages.first.content,
-        'Main system prompt\n\n---\n\nStable memory',
+        'Main system prompt',
       );
       expect(request.messages[1].id, 'ctx_summary');
       expect(request.messages[1].content, contains('earlier summary'));

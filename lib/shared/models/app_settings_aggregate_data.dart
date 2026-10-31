@@ -227,55 +227,6 @@ class AppearanceSettingsData {
   String encode() => jsonEncode(toJson());
 }
 
-class MemorySettingsData {
-  const MemorySettingsData({
-    required this.autoExtract,
-    required this.extractionIntervalMinutes,
-  });
-
-  static const appSettingsKey = 'memory_settings';
-  static const currentVersion = 1;
-
-  final bool autoExtract;
-  final int extractionIntervalMinutes;
-
-  static const defaults = MemorySettingsData(
-    autoExtract: true,
-    extractionIntervalMinutes: 60,
-  );
-
-  factory MemorySettingsData.decode(
-    String raw, {
-    MemorySettingsData fallback = defaults,
-  }) {
-    return MemorySettingsData.fromJson(
-      _decodeObject(raw, appSettingsKey),
-      fallback: fallback,
-    );
-  }
-
-  factory MemorySettingsData.fromJson(
-    Map<String, dynamic> json, {
-    MemorySettingsData fallback = defaults,
-  }) {
-    return MemorySettingsData(
-      autoExtract: _boolean(json['autoExtract'], fallback.autoExtract),
-      extractionIntervalMinutes: _integer(
-        json['extractionIntervalMinutes'],
-        fallback.extractionIntervalMinutes,
-      ),
-    );
-  }
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    'version': currentVersion,
-    'autoExtract': autoExtract,
-    'extractionIntervalMinutes': extractionIntervalMinutes,
-  };
-
-  String encode() => jsonEncode(toJson());
-}
-
 class AiAgentSettingsData {
   const AiAgentSettingsData({
     required this.identity,

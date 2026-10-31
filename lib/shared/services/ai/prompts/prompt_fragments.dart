@@ -9,7 +9,6 @@ import '../../../models/ai_chat_models.dart';
 import '../../../models/subagent.dart';
 import '../../../models/content_kind.dart';
 import '../../../models/novel_type.dart';
-import '../memory_service.dart';
 import '../tools.dart' show pathSchema, pathSchemaFieldNotes;
 import 'prompt_composer.dart';
 import '../prompt_template.dart';
@@ -177,10 +176,6 @@ abstract final class PromptFragments {
         content: rules,
       ),
     ]);
-  }
-
-  static String memory(List<Memory> memories) {
-    return MemoryService.buildMemoryPromptBlock(memories);
   }
 
   static String availableSkills(List<AgentSkillSummary> skills) {

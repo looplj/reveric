@@ -4,7 +4,7 @@
 
 ## 注册
 
-插件在 `apply` 中调用 `context.tools.register` 注册工具，字段见 [`ToolRegistration`](architecture.md#插件上下文-api)。Host 在激活时校验：
+插件在 `apply` 中调用 `setup.tools.register` 注册工具，字段见 [`plugins/sdk/index.d.ts`](../../../plugins/sdk/index.d.ts) 的 `ToolRegistration`。处理函数签名为 `handler(input, context: ToolContext)`，上下文内容见[插件上下文 API](architecture.md#插件上下文-api)。Host 在激活时校验：
 
 - 工具名匹配 `^[A-Za-z][A-Za-z0-9_]{0,63}$`。
 - `description` 非空。
@@ -38,12 +38,12 @@
 Agent 的 `allowedTools` 在创建 Agent 时计算一次，之后不随插件开关变化，所以插件工具不进入 `allowedTools`，改用与 MCP 相同的请求级调度器接入：
 
 - 新增 `PluginAgentToolDispatcher`，实现 `AgentToolDispatcher` 和 `AgentRequestToolDispatcher`，包在现有调度器（包括 `McpAgentToolDispatcher`）外层。
-- `prepareRequest`：先调用内层的 `prepareRequest`（内层也是请求级调度器时），再从注册表取当前生效的插件工具快照。Agent 每次模型请求前都会调用它。
+- `prepareRequest`：先调用内层的 `prepareRequest`（内层也是请求级调度器时），再从注册表取当前生效的插件工具快照；M3 同时准备当前请求 scope 下的 Prompt 片段。Agent 每次模型请求尝试前调用它，准备期间停用的插件必须在提交请求前被排除。
 - `allToolNames`：内层工具名加插件工具快照中的名称。`Agent.fork` 等在没有 `allowedTools` 时会用到它。
 - `toolDefsForNames`：先从传入名称中去掉插件工具名，交给内层筛出 Host 工具，再追加一次插件工具快照，避免重复。`allowedTools` 因此只约束 Host 工具，与禁用名单的语义一致。
 - `executeTool`：插件工具名交给 `tool_bridge` 执行，先检查可用性；其他工具名交给内层。
 - `callMetadata`：插件工具返回 `tool_source = plugin`、插件 ID、名称和 `display`；其他工具交给内层。`isExternalCall` 对插件工具返回 false，取消等行为按 Host 工具处理。
-- `requestSystemPrompt` 交给内层，插件不追加系统提示词。
+- M1 的 `requestSystemPrompt` 透传内层；M3 在保留内层提示的基础上加入请求级插件 Prompt 快照，见[请求级 Prompt 提供方](prompts-and-tasks.md#请求级-prompt-提供方)。不改变工具的静态 description 或 Schema。
 
 所有创建对话 Agent 的位置都用它包装调度器：主聊天（`chat_turn_runner.dart`）、无界面会话（`headless_session_turn.dart`）、子 Agent（`spawn_agent_handler.dart`）、council（`agent_council_orchestrator.dart`）、monologue、theater、roleplay 三个 orchestrator。上下文压缩用的摘要 Agent 不需要插件工具，不包装。
 
@@ -58,13 +58,13 @@ Agent 的 `allowedTools` 在创建 Agent 时计算一次，之后不随插件开
 | 阶段 | 卡片内容 |
 | --- | --- |
 | M1 | 通用插件卡片：按插件注册时声明的 `display` 渲染标题、参数摘要和结果 |
-| M3 | 插件可以用界面描述自定义卡片内容，复用 [View](views.md) 的组件目录；未提供时仍用通用卡片 |
+| M3 | `display.view: {protocol: "reveric-ui-v1", source: "views/result.json"}` 指向只读 A2UI 描述，复用既有 A2UI 组件目录；不为卡片创建 TSX 运行时，见[自定义工具卡片](views.md#自定义工具卡片)；未提供时仍用通用卡片 |
 
 M1 的通用卡片沿用现有 Web 工具卡片的布局，不借插件化改变 UI：
 
-- 标题行：`display.title`，省略时显示工具名；`display.summaryArg` 对应的参数值跟在标题后。
+- 标题行：`display.title`（`PluginText`，按界面语言选择），省略时显示工具名；`display.summaryArg` 对应的参数值跟在标题后。
 - 参数标签：显示 `display.summaryArg` 对应的参数值，与现有卡片显示查询词或 URL 的方式一致。
-- 预览块：由 `display.result` 决定，取 `display.resultPath` 指向的字段，最多 8 行：
+- 预览块：由 `display.result` 决定，取结果对象顶层中名为 `display.resultPath` 的字段（只是字段名，不是嵌套路径），最多 8 行：
   - `items`：数组，取前 4 项，每项显示 `title`（缺失时用 `url`）和可选的 `snippet`，与现有 WebSearch 预览一致。
   - `text`：字符串，显示开头部分，与现有 WebFetch 预览一致。
   - `json`：格式化后的整个结果，默认值。
@@ -110,7 +110,7 @@ M1 的通用卡片沿用现有 Web 工具卡片的布局，不借插件化改变
 - 创建 Agent 时用 `PluginAgentToolDispatcher` 包装调度器；`allowedTools` 继续只列 Host 工具，由禁用名单计算。
 
 #### NEW: `lib/shared/services/plugins/tool_bridge.dart`
-- 把一次插件工具调用转换为 `PluginRuntime` 执行：传入输入和取消信号，按[结果与错误](architecture.md#结果与错误)约定生成工具结果。卡片元数据由 `PluginAgentToolDispatcher.callMetadata` 提供，这里不重复写。
+- 把一次插件工具调用转换为 `PluginRuntime` 执行：传入输入和 `ToolContext` 所需的请求信息，取消时关闭运行时，按[结果与错误](architecture.md#结果与错误)约定生成工具结果。卡片元数据由 `PluginAgentToolDispatcher.callMetadata` 提供，这里不重复写。
 
 #### `lib/shared/widgets/ai/tools/tool_card_descriptor.dart`
 - 删除 `WebSearch`、`WebFetch` 的专属分支，改为按 `tool_source = plugin` 的元数据渲染标题和摘要；保留这两个工具名的历史记录兼容展示。

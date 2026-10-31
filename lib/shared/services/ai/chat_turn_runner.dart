@@ -75,7 +75,6 @@ import 'pending_ask_user.dart';
 import '../../providers/canvas_providers.dart' show canvasAiActivityProvider;
 import '../../providers/map_agent_providers.dart';
 import '../../providers/maps_providers.dart';
-import '../../providers/memory_providers.dart';
 import '../../providers/novel_agent_skill_providers.dart';
 import '../../providers/novel_providers.dart';
 import '../../providers/settings_providers.dart';
@@ -1512,9 +1511,6 @@ class ChatTurnRunner {
     // ChatSessionController 的发送入口检查，本轮内压缩后不保证重新补齐。
     ctxMgr.contextSupplementProvider = loadTodoContextSupplement;
     final mode = session.sessionMode;
-    final memories = await container
-        .read(memoryServiceProvider)
-        .getMemoriesForPrompt(novelId: databasePath);
     final appSettings = await container.read(appSettingsProvider.future);
 
     // Load agent skills: progressive disclosure — only summaries in prompt,
@@ -1543,7 +1539,6 @@ class ChatTurnRunner {
         context: promptContext,
         mode: mode,
         codemodeAvailable: mode == AiSessionMode.chat,
-        memories: memories,
         systemInstruction: aiPromptService.chatPanel.orchestratorInstruction(),
         availableSubAgents: availableSubAgents,
         availableSkills: skillContext.summaries,

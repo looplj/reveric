@@ -3,7 +3,7 @@
 //   lib/shared/services/ai/prompts/prompt_id.dart
 //   lib/shared/services/ai/prompts/prompt_registry.dart
 
-enum PromptKind { system, agent, task, title, memory, utility }
+enum PromptKind { system, agent, task, title, utility }
 
 class PromptDefinition {
   const PromptDefinition({

@@ -39,8 +39,6 @@
   "heuristic.feature.items_desc": "记录重要物件、遗器和装备。",
   "heuristic.feature.skills": "技能",
   "heuristic.feature.skills_desc": "定义能力、力量和特殊技巧。",
-  "heuristic.feature.memory": "记忆",
-  "heuristic.feature.memory_desc": "保存 AI 应记住的关键事实和决策。",
   "heuristic.feature.entity_graph": "实体关系图",
   "heuristic.feature.entity_graph_desc": "可视化角色、势力和地点之间的关联。",
   "heuristic.feature.ai_chat": "AI 聊天",

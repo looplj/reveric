@@ -47,7 +47,6 @@ class MergingAssetLoader extends AssetLoader {
     'location',
     'map',
     'map_editor',
-    'memory',
     'mobile',
     'monologue',
     'name_assistant',

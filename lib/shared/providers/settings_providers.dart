@@ -253,14 +253,6 @@ class AppSettings {
   /// 可选的 WebDAV 远程备份配置。密码单独保存在系统安全存储中。
   final WebDavBackupConfig webDavBackupConfig;
 
-  // ---- Memory ----
-
-  /// 是否启用自动从对话中提取记忆。
-  final bool memoryAutoExtract;
-
-  /// 记忆提取间隔（分钟），默认 60。
-  final int memoryExtractionIntervalMinutes;
-
   /// AI 助手身份设定。
   final String aiAgentIdentity;
 
@@ -461,8 +453,6 @@ class AppSettings {
     this.backupMinute = 0,
     this.lastBackupTime,
     this.webDavBackupConfig = const WebDavBackupConfig(),
-    this.memoryAutoExtract = true,
-    this.memoryExtractionIntervalMinutes = 60,
     this.aiAgentIdentity = defaultAiAgentIdentity,
     this.aiAgentSoul = defaultAiAgentSoul,
     this.aiAgentAvatarPath = '',
@@ -535,8 +525,6 @@ class AppSettings {
     int? backupMinute,
     DateTime? lastBackupTime,
     WebDavBackupConfig? webDavBackupConfig,
-    bool? memoryAutoExtract,
-    int? memoryExtractionIntervalMinutes,
     String? aiAgentIdentity,
     String? aiAgentSoul,
     String? aiAgentAvatarPath,
@@ -608,10 +596,6 @@ class AppSettings {
       backupMinute: backupMinute ?? this.backupMinute,
       lastBackupTime: lastBackupTime ?? this.lastBackupTime,
       webDavBackupConfig: webDavBackupConfig ?? this.webDavBackupConfig,
-      memoryAutoExtract: memoryAutoExtract ?? this.memoryAutoExtract,
-      memoryExtractionIntervalMinutes:
-          memoryExtractionIntervalMinutes ??
-          this.memoryExtractionIntervalMinutes,
       aiAgentIdentity: aiAgentIdentity ?? this.aiAgentIdentity,
       aiAgentSoul: aiAgentSoul ?? this.aiAgentSoul,
       aiAgentAvatarPath: aiAgentAvatarPath ?? this.aiAgentAvatarPath,
@@ -788,13 +772,6 @@ AppearanceSettingsData _appearanceSettingsDataFromAppSettings(
         ? null
         : themeToString(settings.appBackgroundTheme!),
     uiTextScale: settings.uiTextScale,
-  );
-}
-
-MemorySettingsData _memorySettingsDataFromAppSettings(AppSettings settings) {
-  return MemorySettingsData(
-    autoExtract: settings.memoryAutoExtract,
-    extractionIntervalMinutes: settings.memoryExtractionIntervalMinutes,
   );
 }
 
@@ -1006,7 +983,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
   static const _lastBackupTimeKey = 'last_backup_time';
   static const _readingSettingsKey = ReadingSettingsData.appSettingsKey;
   static const _appearanceSettingsKey = AppearanceSettingsData.appSettingsKey;
-  static const _memorySettingsKey = MemorySettingsData.appSettingsKey;
   static const _aiAgentSettingsKey = AiAgentSettingsData.appSettingsKey;
   static const _storageSettingsKey = StorageSettingsData.appSettingsKey;
   static const _localProfileKey = LocalProfileSettingsData.appSettingsKey;
@@ -1059,7 +1035,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
 
     final readingSettingsRaw = allSettings[_readingSettingsKey];
     final appearanceSettingsRaw = allSettings[_appearanceSettingsKey];
-    final memorySettingsRaw = allSettings[_memorySettingsKey];
     final aiAgentSettingsRaw = allSettings[_aiAgentSettingsKey];
     final storageSettingsRaw = allSettings[_storageSettingsKey];
     final localProfileRaw = allSettings[_localProfileKey];
@@ -1121,12 +1096,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       raw: appearanceSettingsRaw,
       decode: AppearanceSettingsData.decode,
       defaults: AppearanceSettingsData.defaults,
-    );
-    final memorySettings = _loadAggregate(
-      key: _memorySettingsKey,
-      raw: memorySettingsRaw,
-      decode: MemorySettingsData.decode,
-      defaults: MemorySettingsData.defaults,
     );
     final aiAgentSettings = _loadAggregate(
       key: _aiAgentSettingsKey,
@@ -1191,8 +1160,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
         password: storageSettings.webDavPassword,
         remoteDirectory: storageSettings.webDavRemoteDirectory,
       ).normalized(),
-      memoryAutoExtract: memorySettings.autoExtract,
-      memoryExtractionIntervalMinutes: memorySettings.extractionIntervalMinutes,
       aiAgentIdentity: aiAgentSettings.identity,
       aiAgentSoul: aiAgentSettings.soul,
       aiAgentAvatarPath: aiAgentSettings.avatarPath,
@@ -1277,11 +1244,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       database,
       key: _storageSettingsKey,
       value: _storageSettingsDataFromAppSettings(settings).encode(),
-    );
-    await _persistSettingsAggregate(
-      database,
-      key: _memorySettingsKey,
-      value: _memorySettingsDataFromAppSettings(settings).encode(),
     );
     await _persistSettingsAggregate(
       database,
@@ -1377,7 +1339,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     AppSettings? appearanceSettings,
     AppSettings? storageSettings,
     DateTime? lastBackupTime,
-    AppSettings? memorySettings,
     AppSettings? aiAgentSettings,
     AppSettings? editorSettings,
     bool? chapterSortDescending,
@@ -1403,13 +1364,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
         database,
         key: _storageSettingsKey,
         value: _storageSettingsDataFromAppSettings(storageSettings).encode(),
-      );
-    }
-    if (memorySettings != null) {
-      await _persistSettingsAggregate(
-        database,
-        key: _memorySettingsKey,
-        value: _memorySettingsDataFromAppSettings(memorySettings).encode(),
       );
     }
     if (aiAgentSettings != null) {
@@ -2077,28 +2031,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     final nextState = currentState.copyWith(lastBackupTime: time);
     state = AsyncValue.data(nextState);
     await _persistPartial(lastBackupTime: time);
-  }
-
-  // ---- Memory setters ----
-
-  Future<void> setMemoryAutoExtract(bool value) async {
-    final currentState = await _requireCurrentState('SET_MEMORY_AUTO_EXTRACT');
-    if (currentState.memoryAutoExtract == value) return;
-    final nextState = currentState.copyWith(memoryAutoExtract: value);
-    state = AsyncValue.data(nextState);
-    await _persistPartial(memorySettings: nextState);
-  }
-
-  Future<void> setMemoryExtractionIntervalMinutes(int value) async {
-    final currentState = await _requireCurrentState(
-      'SET_MEMORY_EXTRACT_INTERVAL',
-    );
-    if (currentState.memoryExtractionIntervalMinutes == value) return;
-    final nextState = currentState.copyWith(
-      memoryExtractionIntervalMinutes: value,
-    );
-    state = AsyncValue.data(nextState);
-    await _persistPartial(memorySettings: nextState);
   }
 
   Future<void> setAiAgentIdentity(String value) async {
@@ -3210,26 +3142,6 @@ SearchEngine currentSearchEngine(Ref ref) {
 }
 
 final appSettingsNotifierProvider = appSettingsProvider;
-
-// ---- Memory convenience providers ----
-
-@riverpod
-bool memoryAutoExtract(Ref ref) {
-  final settingsAsync = ref.watch(appSettingsNotifierProvider);
-  return settingsAsync.maybeWhen(
-    data: (s) => s.memoryAutoExtract,
-    orElse: () => true,
-  );
-}
-
-@riverpod
-int memoryExtractionIntervalMinutes(Ref ref) {
-  final settingsAsync = ref.watch(appSettingsNotifierProvider);
-  return settingsAsync.maybeWhen(
-    data: (s) => s.memoryExtractionIntervalMinutes,
-    orElse: () => 60,
-  );
-}
 
 final appDebugModeProvider = Provider<bool>((ref) {
   final settingsAsync = ref.watch(appSettingsNotifierProvider);

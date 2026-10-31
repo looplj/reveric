@@ -195,21 +195,23 @@ void main() {
       () async {
         final f = await _sessionFixture();
         for (final (id, owner) in [
-          ('global', null),
-          ('empty', ''),
+          ('global', ''),
           ('orphan', 'missing-novel'),
         ]) {
           await _seedCleanupRow(
             f.app,
-            'memories',
+            'agents',
             id,
-            values: {'novel_id': owner},
+            values: {
+              'novel_id': owner,
+              'scope': owner.isEmpty ? 'global' : 'novel',
+            },
           );
         }
         final result = await f.service.runNow();
         expect(result.failedSoftDeleteBatches, 0);
-        expect(result.deletedSoftRows['memories'], 3);
-        expect(await f.app.select(f.app.memories).get(), isEmpty);
+        expect(result.deletedSoftRows['agents'], 2);
+        expect(await f.app.select(f.app.agents).get(), isEmpty);
       },
     );
 
@@ -218,10 +220,10 @@ void main() {
       () async {
         final barrier = _SqlBarrier();
         final f = await _sessionFixture(barrier: barrier);
-        await _seedCleanupRow(f.app, 'memories', 'deleted-memory');
+        await _seedCleanupRow(f.app, 'agents', 'deleted-agent');
         var opened = false;
         barrier.afterSelect = (sql) async {
-          if (sql.startsWith('SELECT id AS id FROM memories')) {
+          if (sql.startsWith('SELECT id AS id FROM agents')) {
             barrier.afterSelect = null;
             opened = true;
             final lease = f.coordinator.open('novel');
@@ -231,8 +233,8 @@ void main() {
         final result = await f.service.runNow();
         expect(opened, isTrue);
         expect(result.failedSoftDeleteBatches, 0);
-        expect(result.deletedSoftRows.containsKey('memories'), isFalse);
-        expect(await f.app.select(f.app.memories).get(), hasLength(1));
+        expect(result.deletedSoftRows.containsKey('agents'), isFalse);
+        expect(await f.app.select(f.app.agents).get(), hasLength(1));
       },
     );
 
@@ -250,12 +252,7 @@ void main() {
                 .subtract(const Duration(days: 1))
                 .millisecondsSinceEpoch ~/
             1000;
-        const main = [
-          'memories',
-          'agents',
-          'ai_shortcut_actions',
-          'ai_providers',
-        ];
+        const main = ['agents', 'ai_shortcut_actions', 'ai_providers'];
         const content = [
           'character_profiles',
           'items',
@@ -336,7 +333,7 @@ void main() {
         () async {
           final f = await _sessionFixture();
           await _seedCleanupRow(f.content, 'documents', 'deleted-document');
-          await _seedCleanupRow(f.app, 'memories', 'deleted-memory');
+          await _seedCleanupRow(f.app, 'agents', 'deleted-agent');
           await _seedCleanupRow(f.app, 'ai_providers', 'deleted-provider');
           switch (protection) {
             case 'open':
@@ -352,7 +349,7 @@ void main() {
             await f.content.select(f.content.documents).get(),
             hasLength(1),
           );
-          expect(await f.app.select(f.app.memories).get(), hasLength(1));
+          expect(await f.app.select(f.app.agents).get(), hasLength(1));
           expect(await f.app.select(f.app.aiProviders).get(), hasLength(1));
         },
       );
@@ -374,14 +371,14 @@ void main() {
               ),
           ]);
         });
-        await _seedCleanupRow(f.app, 'memories', 'deleted-memory');
+        await _seedCleanupRow(f.app, 'agents', 'deleted-agent');
         await f.app.customStatement(
-          "CREATE TRIGGER fail_memory BEFORE DELETE ON memories BEGIN SELECT RAISE(ABORT, 'injected'); END",
+          "CREATE TRIGGER fail_agent BEFORE DELETE ON agents BEGIN SELECT RAISE(ABORT, 'injected'); END",
         );
         final result = await f.service.runNow();
         expect(result.deletedSoftRows['documents'], 405);
         expect(result.failedSoftDeleteBatches, 1);
-        expect(await f.app.select(f.app.memories).get(), hasLength(1));
+        expect(await f.app.select(f.app.agents).get(), hasLength(1));
         expect(await f.content.select(f.content.documents).get(), isEmpty);
       },
     );

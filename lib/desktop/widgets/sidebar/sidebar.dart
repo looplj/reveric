@@ -318,7 +318,7 @@ void _noopVoidCallback() {}
 class _LeftSidebarState extends ConsumerState<LeftSidebar> {
   _PanelMode _panelMode = _PanelMode.content;
 
-  /// 上一次访问的「内容型」section，用于在 overview/memory/search 等
+  /// 上一次访问的「内容型」section，用于在 overview/search 等
   /// 无列表 section 激活时，panel 仍能展示一份用户最近看的内容列表。
   /// 初值按作品类型给：剧本作品落到剧本，否则中栏一进来就是章节列表。
   late NovelWorkspaceSection _lastContentSection;
@@ -383,8 +383,7 @@ class _LeftSidebarState extends ConsumerState<LeftSidebar> {
       // 不再展开中栏。
       case NovelWorkspaceSection.maps:
       case NovelWorkspaceSection.overview:
-      case NovelWorkspaceSection.memory:
-      // 当前进展没有二级列表，和 overview / memory 同类。
+      // 当前进展没有二级列表，和 overview 同类。
       case NovelWorkspaceSection.story_progress:
         return false;
     }

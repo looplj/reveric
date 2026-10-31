@@ -39,8 +39,6 @@
   "heuristic.feature.items_desc": "Log important objects, artifacts, and equipment.",
   "heuristic.feature.skills": "Skills",
   "heuristic.feature.skills_desc": "Define abilities, powers, and special techniques.",
-  "heuristic.feature.memory": "Memory",
-  "heuristic.feature.memory_desc": "Save key facts and decisions the AI should remember about your story.",
   "heuristic.feature.entity_graph": "Entity Graph",
   "heuristic.feature.entity_graph_desc": "Visualize how characters, factions, and locations connect.",
   "heuristic.feature.ai_chat": "AI Chat",

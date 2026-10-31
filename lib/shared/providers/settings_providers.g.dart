@@ -218,7 +218,7 @@ final class AppSettingsNotifierProvider
 }
 
 String _$appSettingsNotifierHash() =>
-    r'88422c1ed6ec9d66b180b7cd165bbc299b8ee278';
+    r'ebc452f6d65a673239c76bb8e4f47327c27c630f';
 
 abstract class _$AppSettingsNotifier extends $AsyncNotifier<AppSettings> {
   FutureOr<AppSettings> build();
@@ -1369,90 +1369,6 @@ final class CurrentSearchEngineProvider
 
 String _$currentSearchEngineHash() =>
     r'60f79627830c3ff21229f802a6f3fcbf2e836db2';
-
-@ProviderFor(memoryAutoExtract)
-final memoryAutoExtractProvider = MemoryAutoExtractProvider._();
-
-final class MemoryAutoExtractProvider
-    extends $FunctionalProvider<bool, bool, bool>
-    with $Provider<bool> {
-  MemoryAutoExtractProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'memoryAutoExtractProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$memoryAutoExtractHash();
-
-  @$internal
-  @override
-  $ProviderElement<bool> $createElement($ProviderPointer pointer) =>
-      $ProviderElement(pointer);
-
-  @override
-  bool create(Ref ref) {
-    return memoryAutoExtract(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(bool value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<bool>(value),
-    );
-  }
-}
-
-String _$memoryAutoExtractHash() => r'c07312e32dc4c2c97e7349b92ed1c6dfc1c458e7';
-
-@ProviderFor(memoryExtractionIntervalMinutes)
-final memoryExtractionIntervalMinutesProvider =
-    MemoryExtractionIntervalMinutesProvider._();
-
-final class MemoryExtractionIntervalMinutesProvider
-    extends $FunctionalProvider<int, int, int>
-    with $Provider<int> {
-  MemoryExtractionIntervalMinutesProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'memoryExtractionIntervalMinutesProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$memoryExtractionIntervalMinutesHash();
-
-  @$internal
-  @override
-  $ProviderElement<int> $createElement($ProviderPointer pointer) =>
-      $ProviderElement(pointer);
-
-  @override
-  int create(Ref ref) {
-    return memoryExtractionIntervalMinutes(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(int value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<int>(value),
-    );
-  }
-}
-
-String _$memoryExtractionIntervalMinutesHash() =>
-    r'be59cea21c288bb7dcfc344cc2203bdc74e1a01b';
 
 @ProviderFor(changeRecordRetentionDays)
 final changeRecordRetentionDaysProvider = ChangeRecordRetentionDaysProvider._();

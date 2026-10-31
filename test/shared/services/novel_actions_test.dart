@@ -967,17 +967,6 @@ END;
           title: 'Keep session',
         );
 
-        await appDb.memoryDao.create(
-          id: 'memory_delete',
-          category: memoryCategoryFact,
-          content: 'delete',
-          novelId: 'novel_delete_resources',
-        );
-        await appDb.memoryDao.create(
-          id: 'memory_global',
-          category: memoryCategoryFact,
-          content: 'global',
-        );
         await appDb.globalAgentDao.upsert(
           GlobalAgent(
             id: 'agent_delete',
@@ -1112,8 +1101,6 @@ END;
           isNull,
         );
         expect(await appDb.aiChatSessionDao.getById('session_keep'), isNotNull);
-        expect(await appDb.memoryDao.get('memory_delete'), isNull);
-        expect(await appDb.memoryDao.get('memory_global'), isNotNull);
         expect(await appDb.globalAgentDao.getByScope(agentScopeNovel), isEmpty);
         expect(
           await appDb.globalAgentDao.getByScope(agentScopeGlobal),

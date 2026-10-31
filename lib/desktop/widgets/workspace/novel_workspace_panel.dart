@@ -75,7 +75,6 @@ import '../../../shared/widgets/confirm_dialog.dart';
 import '../../../shared/widgets/foreshadowing/position_links.dart';
 import '../../../shared/widgets/format_all_progress_dialog.dart';
 import '../../../shared/widgets/frame_safe_text_editing_value_builder.dart';
-import '../ai/memory/novel_memory_panel.dart';
 import 'chapter_editor.dart';
 import 'chapter_outline_window.dart';
 import '../../features/reading/reading_window.dart';
@@ -531,8 +530,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
         return _buildMapsPanel(context);
       case NovelWorkspaceSection.novel_description:
         return _buildNovelDescriptionEditor(context);
-      case NovelWorkspaceSection.memory:
-        return NovelMemoryPanel(novelId: novel.id);
       case NovelWorkspaceSection.story_progress:
         return StoryProgressPanel(
           databasePath: databasePath,
@@ -1131,7 +1128,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
             : AiShortcutActionLocation.foreshadowing;
       case NovelWorkspaceSection.overview:
       case NovelWorkspaceSection.maps:
-      case NovelWorkspaceSection.memory:
       case NovelWorkspaceSection.entity_graph:
       case NovelWorkspaceSection.story_progress:
       case NovelWorkspaceSection.canvas:
@@ -1198,7 +1194,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
       case NovelWorkspaceSection.creatures:
       case NovelWorkspaceSection.foreshadowings:
         return true;
-      case NovelWorkspaceSection.memory:
       case NovelWorkspaceSection.entity_graph:
       case NovelWorkspaceSection.story_progress:
       case NovelWorkspaceSection.screenplay_script:
@@ -1332,8 +1327,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
 
   List<dynamic> _currentEntries() {
     switch (selection.section) {
-      case NovelWorkspaceSection.memory:
-        return const <dynamic>[];
       case NovelWorkspaceSection.novel_description:
         return const <dynamic>[];
       case NovelWorkspaceSection.entity_graph:
@@ -1482,8 +1475,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
             context.t(LocaleKeys.workspaceForeshadowings);
       case NovelWorkspaceSection.overview:
         return context.t(LocaleKeys.workspaceOverview);
-      case NovelWorkspaceSection.memory:
-        return context.t(LocaleKeys.memoryTitle);
       case NovelWorkspaceSection.story_progress:
         return context.t(LocaleKeys.workspaceStoryProgress);
       case NovelWorkspaceSection.canvas:

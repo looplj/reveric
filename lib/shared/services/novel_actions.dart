@@ -312,9 +312,6 @@ WHERE session_id IN (
     await (_database.delete(
       _database.agents,
     )..where((table) => table.novelId.equals(novelId))).go();
-    await (_database.delete(
-      _database.memories,
-    )..where((table) => table.novelId.equals(novelId))).go();
   }
 
   Future<void> updateNovel({

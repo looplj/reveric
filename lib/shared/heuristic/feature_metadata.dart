@@ -66,10 +66,6 @@ final Map<FeatureId, FeatureMetadata> featureMetadata = {
     nameKey: LocaleKeys.heuristicFeatureSkills,
     descriptionKey: LocaleKeys.heuristicFeatureSkillsDesc,
   ),
-  FeatureId.memory: const FeatureMetadata(
-    nameKey: LocaleKeys.heuristicFeatureMemory,
-    descriptionKey: LocaleKeys.heuristicFeatureMemoryDesc,
-  ),
   FeatureId.entity_graph: const FeatureMetadata(
     nameKey: LocaleKeys.heuristicFeatureEntityGraph,
     descriptionKey: LocaleKeys.heuristicFeatureEntityGraphDesc,

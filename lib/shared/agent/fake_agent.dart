@@ -340,7 +340,6 @@ class FakeAgent {
     List<String>? allowedTools,
     AgentContextManager? contextManager,
     List<AgentMessage>? initialMessages,
-    String? memoryBlock,
     List<AgentHook> hooks = const [],
     bool emitToolEvents = true,
   }) {
@@ -355,7 +354,6 @@ class FakeAgent {
       allowedTools: allowedTools,
       contextManager: contextManager,
       initialMessages: initialMessages,
-      memoryBlock: memoryBlock,
       hooks: hooks,
       emitToolEvents: emitToolEvents,
     );

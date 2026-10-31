@@ -26,7 +26,6 @@ enum FeatureId {
   creatures,
   items,
   skills,
-  memory,
   entity_graph,
   ai_chat,
   ai_council,
@@ -67,7 +66,6 @@ extension NovelWorkspaceSectionFeatureIdX on NovelWorkspaceSection {
     NovelWorkspaceSection.creatures => FeatureId.creatures,
     NovelWorkspaceSection.items => FeatureId.items,
     NovelWorkspaceSection.skills => FeatureId.skills,
-    NovelWorkspaceSection.memory => FeatureId.memory,
     NovelWorkspaceSection.entity_graph => FeatureId.entity_graph,
     // 当前进展是快照的只读视图，不单独做 feature 追踪与发现推荐。
     NovelWorkspaceSection.story_progress => null,

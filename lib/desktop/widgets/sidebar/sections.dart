@@ -179,7 +179,6 @@ extension _LeftSidebarSections on _LeftSidebarState {
       case NovelWorkspaceSection.novel_description:
       case NovelWorkspaceSection.overview:
       case NovelWorkspaceSection.maps:
-      case NovelWorkspaceSection.memory:
       // 当前进展是整块只读视图，没有二级列表。
       case NovelWorkspaceSection.story_progress:
         return const SizedBox.shrink();

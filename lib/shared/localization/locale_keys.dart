@@ -2880,8 +2880,6 @@ abstract final class LocaleKeys {
   static const heuristicFeatureItemsDesc = 'heuristic.feature.items_desc';
   static const heuristicFeatureSkills = 'heuristic.feature.skills';
   static const heuristicFeatureSkillsDesc = 'heuristic.feature.skills_desc';
-  static const heuristicFeatureMemory = 'heuristic.feature.memory';
-  static const heuristicFeatureMemoryDesc = 'heuristic.feature.memory_desc';
   static const heuristicFeatureEntityGraph = 'heuristic.feature.entity_graph';
   static const heuristicFeatureEntityGraphDesc =
       'heuristic.feature.entity_graph_desc';
@@ -3525,37 +3523,6 @@ abstract final class LocaleKeys {
   static const mapEditorWorldNameHint = 'map_editor.world_name_hint';
   static const mapEditorZoomIn = 'map_editor.zoom_in';
   static const mapEditorZoomOut = 'map_editor.zoom_out';
-  // ── memory ────────────────────────────────────────
-  static const memoryAutoExtract = 'memory.auto_extract';
-  static const memoryAutoExtractDescription = 'memory.auto_extract_description';
-  static const memoryCategory = 'memory.category';
-  static const memoryCategoryCharacter = 'memory.category_character';
-  static const memoryCategoryDecision = 'memory.category_decision';
-  static const memoryCategoryFact = 'memory.category_fact';
-  static const memoryCategoryPreference = 'memory.category_preference';
-  static const memoryCategoryStyle = 'memory.category_style';
-  static const memoryCategoryWorldview = 'memory.category_worldview';
-  static const memoryContent = 'memory.content';
-  static const memoryContentHint = 'memory.content_hint';
-  static const memoryContentRequired = 'memory.content_required';
-  static const memoryDeleteConfirm = 'memory.delete_confirm';
-  static const memoryDescription = 'memory.description';
-  static const memoryDisabled = 'memory.disabled';
-  static const memoryDreamNow = 'memory.dream_now';
-  static const memoryEmpty = 'memory.empty';
-  static const memoryEnabled = 'memory.enabled';
-  static const memoryExtractNow = 'memory.extract_now';
-  static const memoryExtracting = 'memory.extracting';
-  static const memoryExtractionComplete = 'memory.extraction_complete';
-  static const memoryExtractionInterval = 'memory.extraction_interval';
-  static const memoryExtractionIntervalHint = 'memory.extraction_interval_hint';
-  static const memoryGlobal = 'memory.global';
-  static const memoryNovel = 'memory.novel';
-  static const memoryPriority = 'memory.priority';
-  static const memoryPriorityContext = 'memory.priority_context';
-  static const memoryPriorityCore = 'memory.priority_core';
-  static const memorySourceAuto = 'memory.source_auto';
-  static const memoryTitle = 'memory.title';
   // ── mobile ────────────────────────────────────────
   static const mobileAssistantDesc = 'mobile.assistant_desc';
   static const mobileAssistantTitle = 'mobile.assistant_title';

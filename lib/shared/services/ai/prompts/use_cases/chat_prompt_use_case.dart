@@ -9,7 +9,7 @@
 //   lib/shared/database/novel_content_daos/novel_state_snapshot_dao.dart
 //   lib/shared/database/app_database.dart
 
-import '../../../../database/app_database.dart' show Memory, Novel;
+import '../../../../database/app_database.dart' show Novel;
 import '../../../../models/agent_skill.dart';
 import '../../../../models/ai_chat_models.dart' show AiSessionContext;
 import '../../../../models/ai_session_mode.dart';
@@ -28,7 +28,6 @@ class ChatPanelPromptInput {
     required this.systemInstruction,
     this.mode = AiSessionMode.chat,
     this.codemodeAvailable = false,
-    this.memories = const [],
     this.availableSubAgents = const [],
     this.availableSkills = const [],
     this.skillContent = const {},
@@ -52,7 +51,6 @@ class ChatPanelPromptInput {
 
   /// 由接入 Codemode 调度器的执行入口声明，普通 chat completion 不启用。
   final bool codemodeAvailable;
-  final List<Memory> memories;
   final String systemInstruction;
   final List<SubAgent> availableSubAgents;
   final List<AgentSkillSummary> availableSkills;
@@ -118,18 +116,6 @@ class ChatPromptUseCase {
         ].join('\n\n'),
       ),
     );
-
-    // 3. Memory / 长期记忆
-    if (input.memories.isNotEmpty) {
-      sections.add(
-        PromptSection(
-          key: 'memory',
-          title: '长期记忆',
-          description: '以下是你和用户之间的重要记忆，包括偏好、决策和关键事实。请始终遵守记忆中的约束和偏好。',
-          content: PromptFragments.memory(input.memories),
-        ),
-      );
-    }
 
     // 4. Behavior guide / 行为指南
     sections.add(

@@ -65,7 +65,6 @@ AgentSummarizer buildDefaultContextSummarizer({
   String? providerId,
   required AgentConfig config,
   required AgentToolDispatcher toolManager,
-  String? memoryBlock,
   Future<List<AgentMessage>> Function()? contextSupplement,
   List<AgentHook> hooks = const [],
 }) {
@@ -81,7 +80,6 @@ AgentSummarizer buildDefaultContextSummarizer({
       config: config,
       toolManager: toolManager,
       allowedTools: allowedTools,
-      memoryBlock: memoryBlock,
       initialMessages: [
         if (previousSummary != null && previousSummary.isNotEmpty)
           AgentMessage.user(

@@ -5,12 +5,6 @@
 //   lib/shared/services/ai/prompts/use_cases/chat_prompt_use_case.dart
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:reveric/shared/database/app_database.dart'
-    show
-        Memory,
-        memoryCategoryPreference,
-        memoryPriorityCore,
-        memorySourceManual;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/agent_skill.dart';
 import 'package:reveric/shared/models/content_kind.dart';
@@ -125,7 +119,6 @@ void main() {
 
   group('ChatPromptUseCase.system', () {
     test('保持 chat system prompt 的基础 section 顺序与附加区块分隔', () {
-      final now = DateTime(2026);
       final prompt = const ChatPromptUseCase().system(
         ChatPanelPromptInput(
           context: const AiSessionContext(
@@ -138,37 +131,21 @@ void main() {
           ),
 
           mode: AiSessionMode.chat,
-          memories: [
-            Memory(
-              id: 'mem_1',
-              category: memoryCategoryPreference,
-              priority: memoryPriorityCore,
-              content: '用户喜欢紧凑叙事',
-              source: memorySourceManual,
-              enabled: true,
-              sortOrder: 0,
-              createdAt: now,
-              updatedAt: now,
-              deletedAt: DateTime.fromMillisecondsSinceEpoch(0),
-            ),
-          ],
           availableSubAgents: const [],
         ),
       );
 
-      final memoryIndex = prompt.indexOf('# 长期记忆');
       final behaviorIndex = prompt.indexOf('# 行为指南');
       final pathSchemaIndex = prompt.indexOf('# 工作区资源路径规则');
       final rulesIndex = prompt.indexOf('# 用户自定义规则');
-      expect(memoryIndex, greaterThan(-1));
-      expect(behaviorIndex, greaterThan(memoryIndex));
+      expect(behaviorIndex, greaterThan(-1));
       expect(pathSchemaIndex, greaterThan(behaviorIndex));
       expect(rulesIndex, greaterThan(pathSchemaIndex));
       expect(prompt, contains('\n\n# 用户自定义规则'));
       expect(prompt, isNot(contains('# 当前环境')));
       expect(prompt, isNot(contains('<environment_context>')));
       expect(prompt, isNot(contains('<current_date>')));
-      expect(prompt, contains('用户喜欢紧凑叙事'));
+      expect(prompt, isNot(contains('# 长期记忆')));
       expect(prompt, contains('规则一'));
       expect(prompt, contains('测试小说'));
       expect(prompt, contains('current_workspace_context'));
@@ -184,7 +161,6 @@ void main() {
           ),
 
           mode: AiSessionMode.chat,
-          memories: const [],
           availableSubAgents: const [],
           availableSkills: const [
             AgentSkillSummary(
@@ -215,7 +191,6 @@ void main() {
           ),
 
           mode: AiSessionMode.chat,
-          memories: const [],
           availableSubAgents: const [],
         ),
       );
@@ -236,7 +211,6 @@ void main() {
           ),
 
           mode: AiSessionMode.chat,
-          memories: const [],
           availableSubAgents: const [
             SubAgent(
               id: 'builtin-writer',

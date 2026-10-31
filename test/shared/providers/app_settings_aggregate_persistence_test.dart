@@ -439,7 +439,6 @@ void main() {
     await notifier.setReadingFontSize(24);
     await notifier.setTheme(AppTheme.classic);
     await notifier.setAppBackgroundFit(AppBackgroundFit.contain);
-    await notifier.setMemoryAutoExtract(false);
     await notifier.setAiAgentIdentity('Custom identity');
     await notifier.setBackupDirectory('/tmp/backups');
     await notifier.setBackupFrequency(BackupFrequency.weekly);
@@ -474,11 +473,6 @@ void main() {
     );
     expect(appearance.theme, 'classic');
     expect(appearance.backgroundFit, 'contain');
-
-    final memory = MemorySettingsData.decode(
-      (await database.appSettingsDao.get(MemorySettingsData.appSettingsKey))!,
-    );
-    expect(memory.autoExtract, isFalse);
 
     final aiAgent = AiAgentSettingsData.decode(
       (await database.appSettingsDao.get(AiAgentSettingsData.appSettingsKey))!,

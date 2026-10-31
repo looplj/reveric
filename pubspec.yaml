@@ -179,6 +179,10 @@ flutter:
 
   assets:
     - assets/plugin_preview/
+    - assets/plugins/reveric.memory/
+    - assets/plugins/reveric.memory/dist/
+    - assets/plugins/reveric.memory/dist/views/
+    - assets/plugins/reveric.memory/migrations/
     - assets/plugins/reveric.web/
     - assets/plugins/reveric.web/dist/
     - assets/plugins/reveric.deepseek/

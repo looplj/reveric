@@ -8,7 +8,7 @@ import 'package:reveric/shared/database/app_database.dart';
 
 void main() {
   test(
-    'published fixture upgrades while preserving retained tables including legacy memory',
+    'published fixture upgrades while preserving retained tables and removing legacy memory',
     () async {
       final original = <String, String>{};
       final counts = <String, int>{};
@@ -61,7 +61,7 @@ void main() {
               "SELECT name FROM sqlite_master WHERE name = 'memories'",
             )
             .get(),
-        hasLength(1),
+        isEmpty,
       );
       for (final entry in original.entries.where(
         (entry) => entry.key != 'memories',

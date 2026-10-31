@@ -868,7 +868,6 @@ class NovelEditorPage extends HookConsumerWidget {
             ];
           case NovelWorkspaceSection.overview:
           case NovelWorkspaceSection.novel_description:
-          case NovelWorkspaceSection.memory:
           case NovelWorkspaceSection.entity_graph:
           case NovelWorkspaceSection.story_progress:
           case NovelWorkspaceSection.canvas:
@@ -1315,7 +1314,6 @@ class NovelEditorPage extends HookConsumerWidget {
         case NovelWorkspaceSection.overview:
         case NovelWorkspaceSection.maps:
         case NovelWorkspaceSection.novel_description:
-        case NovelWorkspaceSection.memory:
         case NovelWorkspaceSection.entity_graph:
         case NovelWorkspaceSection.story_progress:
         case NovelWorkspaceSection.canvas:
@@ -2879,7 +2877,6 @@ class NovelEditorPage extends HookConsumerWidget {
           );
         case NovelWorkspaceSection.overview:
         case NovelWorkspaceSection.maps:
-        case NovelWorkspaceSection.memory:
         case NovelWorkspaceSection.entity_graph:
         case NovelWorkspaceSection.story_progress:
         case NovelWorkspaceSection.canvas:

@@ -11,7 +11,6 @@ export 'document.dart';
 export 'foreshadowing.dart';
 export 'item.dart';
 export 'location.dart';
-export 'memory.dart';
 export 'novel.dart';
 export 'novel_state.dart';
 export 'outline.dart';

@@ -162,7 +162,6 @@ class Agent {
     AgentContextManager? contextManager,
     List<AgentMessage>? initialMessages,
     int initialRoundIndex = 0,
-    this.memoryBlock,
     this.providerId,
     this.hooks = const [],
     this.streamInactivityTimeout = defaultAgentStreamInactivityTimeout,
@@ -183,7 +182,6 @@ class Agent {
   String systemPrompt;
   List<String>? allowedTools;
 
-  String? memoryBlock;
   final String? providerId;
   final List<AgentHook> hooks;
 
@@ -240,7 +238,6 @@ class Agent {
     List<String>? allowedTools,
     AgentContextManager? contextManager,
     List<AgentMessage>? initialMessages,
-    String? memoryBlock,
     String? providerId,
     List<AgentHook> hooks = const [],
     Duration streamInactivityTimeout = defaultAgentStreamInactivityTimeout,
@@ -256,7 +253,6 @@ class Agent {
       toolManager: toolManager,
       contextManager: contextManager,
       initialMessages: initialMessages,
-      memoryBlock: memoryBlock,
       providerId: providerId,
       hooks: hooks,
       streamInactivityTimeout: streamInactivityTimeout,
@@ -364,7 +360,6 @@ class Agent {
       config: _config,
       toolManager: _toolManager,
       contextManager: forkContextManager,
-      memoryBlock: memoryBlock,
       providerId: providerId,
       hooks: hooks,
       streamInactivityTimeout: streamInactivityTimeout,
@@ -382,11 +377,6 @@ class Agent {
     systemPrompt = next;
   }
 
-  /// 更新 memory block（记忆变化时更新，不影响正在跑的 round）。
-  void updateMemoryBlock(String? next) {
-    memoryBlock = next;
-  }
-
   // ---------------------------------------------------------------------------
   // message building
   // ---------------------------------------------------------------------------
@@ -401,13 +391,6 @@ class Agent {
     if (requestTools != null && requestTools.requestSystemPrompt.isNotEmpty) {
       systemContent.writeln();
       systemContent.write(requestTools.requestSystemPrompt);
-    }
-    if (memoryBlock != null && memoryBlock!.isNotEmpty) {
-      systemContent.writeln();
-      systemContent.writeln();
-      systemContent.writeln('---');
-      systemContent.writeln();
-      systemContent.write(memoryBlock);
     }
     return [
       AgentMessage.system(id: 'sys_$id', content: systemContent.toString()),
@@ -632,7 +615,7 @@ class Agent {
                 : _toolManager.allToolDefs();
             final systemPromptTokens = estimateTextTokens(
               '${requestTools?.systemPromptOverride ?? systemPrompt}\n'
-              '${requestTools?.requestSystemPrompt ?? ''}\n${memoryBlock ?? ''}',
+              '${requestTools?.requestSystemPrompt ?? ''}',
             );
             late List<AgentMessage> msgs;
             var hookTools = tools;

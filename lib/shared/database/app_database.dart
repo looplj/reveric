@@ -46,7 +46,6 @@ import 'daos/app_settings_dao.dart';
 import 'daos/plugin_dao.dart';
 import 'daos/plugin_task_dao.dart';
 import 'daos/app_state_dao.dart';
-import 'daos/memory_dao.dart';
 import 'daos/novel_dao.dart';
 import 'daos/novel_collection_dao.dart';
 import 'daos/reading_progress_dao.dart';
@@ -805,52 +804,6 @@ class AppStates extends Table {
   Set<Column<Object>> get primaryKey => {key};
 }
 
-const String memoryPriorityCore = 'core';
-const String memoryPriorityContext = 'context';
-const String memoryCategoryPreference = 'preference';
-const String memoryCategoryFact = 'fact';
-const String memoryCategoryDecision = 'decision';
-const String memoryCategoryStyle = 'style';
-const String memoryCategoryWorldview = 'worldview';
-const String memoryCategoryCharacter = 'character';
-const String memorySourceManual = 'manual';
-const String memorySourceAutoExtracted = 'auto_extracted';
-const String memorySourceConversation = 'conversation';
-
-class Memories extends Table {
-  TextColumn get id => text()();
-
-  TextColumn get novelId => text().nullable()();
-
-  TextColumn get category => text()();
-
-  TextColumn get priority =>
-      text().withDefault(const Constant(memoryPriorityContext))();
-
-  TextColumn get content => text()();
-
-  TextColumn get source =>
-      text().withDefault(const Constant(memorySourceManual))();
-
-  TextColumn get sourceSessionId => text().nullable()();
-
-  BoolColumn get enabled => boolean().withDefault(const Constant(true))();
-
-  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
-
-  DateTimeColumn get createdAt =>
-      dateTime().clientDefault(() => DateTime.now())();
-
-  DateTimeColumn get updatedAt =>
-      dateTime().clientDefault(() => DateTime.now())();
-
-  DateTimeColumn get deletedAt =>
-      dateTime().customConstraint('NOT NULL DEFAULT 0')();
-
-  @override
-  Set<Column<Object>> get primaryKey => {id};
-}
-
 // 应用级全局可执行 AgentSkill。Setup 引导状态复用 NovelContentDatabase 的
 // NovelStates（key='agent_skill_setup'），不再独立建表。
 
@@ -1249,7 +1202,6 @@ final _log = AppLogger.forModule('Database');
     AssistantMessages,
     AssistantInbox,
     Todos,
-    Memories,
     FeatureUsages,
     ReadingProgress,
     AnonymousOutboxEvents,
@@ -1283,7 +1235,6 @@ final _log = AppLogger.forModule('Database');
     AssistantSessionDao,
     AssistantInboxDao,
     AppStateDao,
-    MemoryDao,
     TodoDao,
     ReadingProgressDao,
     AnonymousOutboxDao,
@@ -1345,9 +1296,10 @@ class AppDatabase extends _$AppDatabase {
           if (from >= 2) {
             await migrator.addColumn(pluginStorage, pluginStorage.deletedAt);
           }
+          await customStatement('DROP TABLE IF EXISTS memories');
         } catch (error, stackTrace) {
           _log.error(
-            '[DB] CREATE plugin_permissions/plugin_tasks / ALTER plugin_storage schema=3',
+            '[DB] CREATE plugin_permissions/plugin_tasks / ALTER plugin_storage / DROP memories schema=3',
             error: error,
             stackTrace: stackTrace,
           );
