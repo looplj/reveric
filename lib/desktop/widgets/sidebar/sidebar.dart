@@ -7,6 +7,8 @@
 //   lib/shared/entity_graph/entity_list_section.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+import '../../../shared/widgets/plugin_view/navigation.dart';
+import '../../../shared/widgets/plugin_view/page.dart';
 import 'dart:async';
 import 'dart:io';
 

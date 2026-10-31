@@ -23,6 +23,8 @@ class RevericPopover extends StatefulWidget {
     this.up = false,
     this.alignEnd = false,
     this.initiallyOpen = false,
+    this.open,
+    this.onOpenChanged,
   });
 
   final Widget Function(BuildContext context, bool open, VoidCallback toggle)
@@ -38,6 +40,10 @@ class RevericPopover extends StatefulWidget {
   /// 挂载后直接展开（从别处跳过来查看这个面板）。
   final bool initiallyOpen;
 
+  /// Optional external open state; omitted callers retain local control.
+  final bool? open;
+  final ValueChanged<bool>? onOpenChanged;
+
   @override
   State<RevericPopover> createState() => _RevericPopoverState();
 }
@@ -48,7 +54,7 @@ class _RevericPopoverState extends State<RevericPopover> {
   @override
   void initState() {
     super.initState();
-    if (widget.initiallyOpen) {
+    if (widget.open ?? widget.initiallyOpen) {
       // 等触发器完成布局，面板才有可跟随的锚点。
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_controller.isShowing) {
@@ -58,17 +64,35 @@ class _RevericPopoverState extends State<RevericPopover> {
     }
   }
 
-  void _toggle() {
-    if (_controller.isShowing) {
-      _close();
-    } else {
-      setState(_controller.show);
+  @override
+  void didUpdateWidget(covariant RevericPopover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.open != null && widget.open != oldWidget.open) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _setOpen(widget.open!);
+        }
+      });
     }
   }
 
+  void _setOpen(bool open) {
+    if (!mounted || _controller.isShowing == open) {
+      return;
+    }
+    setState(open ? _controller.show : _controller.hide);
+  }
+
+  void _toggle() {
+    final next = !_controller.isShowing;
+    _setOpen(next);
+    widget.onOpenChanged?.call(next);
+  }
+
   void _close() {
-    if (mounted && _controller.isShowing) {
-      setState(_controller.hide);
+    if (_controller.isShowing) {
+      _setOpen(false);
+      widget.onOpenChanged?.call(false);
     }
   }
 

@@ -243,6 +243,11 @@ void main() {
       await api.fetch({'url': origin});
     }
     await fails(api.fetch({'url': origin}), 'rate_limited');
+    final pageApi = PluginHttpApi(requestLimit: null);
+    addTearDown(pageApi.cancel);
+    for (var i = 0; i < 51; i++) {
+      await pageApi.fetch({'url': origin});
+    }
     final cancelled = PluginHttpApi();
     final pending = cancelled.fetch({'url': '$origin/hang'});
     Timer(const Duration(milliseconds: 20), cancelled.cancel);

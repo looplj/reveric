@@ -379,6 +379,36 @@ extension _LeftSidebarRail on _LeftSidebarState {
       }
     }
 
+    navChildren.add(
+      PluginPageNavigation(
+        builder: (context, views) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (groups.isNotEmpty) _buildRailDivider(context),
+            if (showLabels)
+              _buildRailGroupHeader(
+                context,
+                context.t(LocaleKeys.settingsPlugins),
+              ),
+            for (final view in views)
+              _buildRailIcon(
+                context,
+                iconAsset: pluginPageIcon,
+                tooltip: view.title.resolve(Localizations.localeOf(context)),
+                label: showLabels
+                    ? view.title.resolve(Localizations.localeOf(context))
+                    : null,
+                selected: false,
+                onTap: () => openPluginPage(
+                  context,
+                  view,
+                  workId: widget.currentNovelId,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
     return SizedBox(
       width: railWidth,
       child: Column(

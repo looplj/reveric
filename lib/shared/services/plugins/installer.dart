@@ -52,6 +52,7 @@ class PluginInstallOrchestrator {
                 Version.parse(existing.version))) {
       throw StateError('Plugin update must have a newer local package version');
     }
+    await host.closePluginPages(manifest.id);
     final support = await host.supportDirectory();
     final relative = 'plugins/${manifest.id}/${manifest.version}';
     final destination = Directory(

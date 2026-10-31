@@ -107,6 +107,7 @@ class A2uiSurfaceSession {
     required this.limits,
     required A2uiCatalog catalog,
     required this._onAction,
+    required this._onMessages,
     required this._onActionError,
   }) : _catalog = catalog,
        _processor = MessageProcessor<A2uiComponent>(
@@ -125,6 +126,7 @@ class A2uiSurfaceSession {
     required String surfaceId,
     required Object? messages,
     A2uiActionHandler? onAction,
+    Future<List<dynamic>> Function(A2uiActionEvent event)? onMessages,
     void Function(A2uiActionEvent event, Object error)? onActionError,
     A2uiCatalog? catalog,
     A2uiLimits limits = const A2uiLimits(),
@@ -134,6 +136,7 @@ class A2uiSurfaceSession {
       limits: limits,
       catalog: catalog ?? revericA2uiCatalog,
       onAction: onAction,
+      onMessages: onMessages,
       onActionError: onActionError,
     );
     try {
@@ -148,6 +151,8 @@ class A2uiSurfaceSession {
   final A2uiLimits limits;
   final A2uiCatalog _catalog;
   final A2uiActionHandler? _onAction;
+  final Future<List<dynamic>> Function(A2uiActionEvent event)? _onMessages;
+  int _dataVersion = 0;
   final void Function(A2uiActionEvent event, Object error)? _onActionError;
   final MessageProcessor<A2uiComponent> _processor;
   final Set<String> _componentIds = {};
@@ -156,6 +161,11 @@ class A2uiSurfaceSession {
   final ValueNotifier<List<String>> _pendingSources = ValueNotifier(const []);
   Future<void> _actionQueue = Future.value();
   bool _disposed = false;
+  bool _actionsClosed = false;
+
+  void cancelActions() {
+    _actionsClosed = true;
+  }
 
   /// 加载成功后的界面；失败或已删除时为 null。
   SurfaceModel<A2uiComponent>? get surface =>
@@ -197,6 +207,11 @@ class A2uiSurfaceSession {
       );
     }
     _subscriptions
+      ..add(
+        surface.dataModel.subscribe<Object?>('/', (_) {
+          _dataVersion++;
+        }),
+      )
       ..add(surface.onAction.subscribe(_enqueueAction))
       ..add(
         surface.onError.subscribe(
@@ -416,6 +431,20 @@ class A2uiSurfaceSession {
   }
 
   void _enqueueAction(A2uiRendererAction action) {
+    if (_disposed || _actionsClosed) {
+      return;
+    }
+    if (_onMessages != null) {
+      dispatchAction(
+        A2uiActionEvent(
+          name: action.name,
+          sourceComponentId: action.sourceComponentId,
+          context: Map.unmodifiable(action.context),
+          data: dataSnapshot(),
+        ),
+      );
+      return;
+    }
     final handler = _onAction;
     if (handler == null || _disposed) {
       _log.info('surface=$surfaceId action ${action.name} ignored: no handler');
@@ -429,11 +458,65 @@ class A2uiSurfaceSession {
     _actionQueue = _actionQueue.then((_) => _runAction(action, handler));
   }
 
+  /// Dispatch an onMount or user action with its immutable data snapshot.
+  void dispatchAction(A2uiActionEvent event) {
+    _ensureReady();
+    if (_onMessages == null) {
+      throw StateError('No message action handler');
+    }
+    final version = _dataVersion;
+    _pendingSources.value = [..._pendingSources.value, event.sourceComponentId];
+    _actionQueue = _actionQueue.then((_) async {
+      if (_disposed || _actionsClosed) {
+        return;
+      }
+      try {
+        final messages = await _onMessages(event);
+        if (_disposed || _actionsClosed) {
+          return;
+        }
+        if (version != _dataVersion) {
+          throw const A2uiSessionException(
+            'STALE_ACTION_RESULT',
+            'Page data changed while action was pending; refresh before retrying',
+          );
+        }
+        final envelopes = _envelopesOf(messages);
+        if (envelopes.any(
+          (m) => !const {
+            _updateComponents,
+            _updateDataModel,
+          }.contains(_messageTypeOf(m)),
+        )) {
+          throw const A2uiSessionException(
+            'MESSAGE_NOT_ALLOWED',
+            'Actions may only update this surface',
+          );
+        }
+        applyMessages(envelopes);
+      } catch (error, stack) {
+        if (!_disposed) {
+          _log.error(
+            'surface=$surfaceId action ${event.name} failed',
+            error: error,
+            stackTrace: stack,
+          );
+          _onActionError?.call(event, error);
+        }
+      } finally {
+        if (!_disposed) {
+          _pendingSources.value = [..._pendingSources.value]
+            ..remove(event.sourceComponentId);
+        }
+      }
+    });
+  }
+
   Future<void> _runAction(
     A2uiRendererAction action,
     A2uiActionHandler handler,
   ) async {
-    if (_disposed) {
+    if (_disposed || _actionsClosed) {
       return;
     }
     final event = A2uiActionEvent(
@@ -444,12 +527,12 @@ class A2uiSurfaceSession {
     );
     try {
       final updates = await handler(event);
-      if (_disposed) {
+      if (_disposed || _actionsClosed) {
         return;
       }
       applyDataUpdates(updates);
     } on Object catch (error, stackTrace) {
-      if (_disposed) {
+      if (_disposed || _actionsClosed) {
         return;
       }
       _log.error(

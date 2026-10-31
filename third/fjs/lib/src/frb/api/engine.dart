@@ -516,6 +516,10 @@ abstract class JsEngine implements RustOpaqueInterface {
   /// has been called successfully.
   bool get running;
 
+  /// Limits one continuous runnable JavaScript turn, including microtasks.
+  /// Host I/O waiting does not consume this budget. None disables the limit.
+  Future<void> setExecutionTimeLimit({int? limitMillis});
+
   /// Sets the garbage collection threshold on the engine-owned runtime.
   Future<void> setGcThreshold({required BigInt threshold});
 

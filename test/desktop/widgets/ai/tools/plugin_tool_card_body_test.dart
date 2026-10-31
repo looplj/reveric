@@ -5,8 +5,15 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
+import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:drift/native.dart';
+import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
+import 'package:reveric/shared/services/plugins/host.dart';
+import 'package:reveric/shared/services/plugins/registry.dart';
+import 'package:reveric/shared/providers/plugin_providers.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
@@ -16,6 +23,48 @@ import 'package:reveric/shared/widgets/ai/tools/tool_detail_body.dart';
 import 'package:reveric/shared/widgets/ai/tools/tool_card_descriptor.dart';
 import 'package:reveric/shared/widgets/ai/tools/plugin_tool_card_body.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _CardHost extends PluginHostService {
+  _CardHost(AppDatabase db)
+    : super(
+        dao: db.pluginDao,
+        registry: PluginRegistry(hostToolNames: {}),
+      );
+  bool available = true;
+  final events = StreamController<List<PluginStatus>>.broadcast();
+  @override
+  Stream<List<PluginStatus>> get changes => events.stream;
+  @override
+  Future<void> dispose() async {
+    await events.close();
+    await super.dispose();
+  }
+
+  @override
+  List<PluginStatus> get statuses => [
+    PluginStatus(
+      id: 'example.search',
+      path: 'test',
+      state: available ? 'available' : 'disabled',
+    ),
+  ];
+  @override
+  Future<Object?> readToolCard(String pluginId, String toolName) async => [
+    {
+      'version': 'v1.0',
+      'createSurface': {
+        'surfaceId': 'plugin',
+        'components': [
+          {
+            'id': 'root',
+            'component': 'Text',
+            'text': {'@path': '/text'},
+          },
+        ],
+      },
+    },
+  ];
+}
 
 void main() {
   setUpAll(() async {
@@ -73,6 +122,50 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+  testWidgets('A2UI cards render bound results without enabling interaction', (
+    tester,
+  ) async {
+    final database = AppDatabase.forTest(NativeDatabase.memory());
+    final host = _CardHost(database);
+    addTearDown(() async {
+      await host.dispose();
+      await database.close();
+    });
+    const block = AiToolCallBlock(
+      id: 'card',
+      callId: 'call',
+      toolName: 'SearchCustom',
+      arguments: {},
+      result: {'text': 'Custom result'},
+      metadata: {
+        'tool_source': 'plugin',
+        'plugin_id': 'example.search',
+        'plugin_display': {
+          'view': {'protocol': 'reveric-ui-v1', 'source': 'card.json'},
+          'result': 'json',
+        },
+      },
+    );
+    await tester.pumpWidget(
+      _wrap(
+        ProviderScope(
+          overrides: [pluginHostServiceProvider.overrideWithValue(host)],
+          child: const PluginToolCardBody(block: block),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Custom result'), findsOneWidget);
+    expect(find.byType(AbsorbPointer), findsWidgets);
+    expect(find.byType(ExcludeFocus), findsWidgets);
+    host.available = false;
+    host.events.add(host.statuses);
+    await tester.pumpAndSettle();
+    expect(find.text('Custom result'), findsNothing);
+    expect(find.textContaining('Custom result'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
   testWidgets('legacy Web history keeps item and text previews', (
     tester,
   ) async {

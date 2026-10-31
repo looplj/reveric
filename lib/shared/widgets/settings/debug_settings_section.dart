@@ -36,6 +36,8 @@ import '../../services/app_initialization.dart';
 import '../../services/debug/sqlite_schema_repair_orchestrator.dart';
 import '../../theme/theme.dart';
 import '../a2ui/preview/preview_panel.dart';
+import '../plugin_view/preview.dart';
+import '../../components/reveric_button.dart';
 
 final _log = AppLogger.forModule('Settings Debug');
 
@@ -288,6 +290,19 @@ class DebugSettingsSection extends HookConsumerWidget {
               onPressed: () => showA2uiPreview(context),
               colors: colors,
               typo: typo,
+            ),
+            colors: colors,
+            typo: typo,
+          ),
+          const SizedBox(height: RevericSpacing.xl),
+          _DebugActionCard(
+            title: context.t(LocaleKeys.settingsPluginsPreviewTitle),
+            description: context.t(
+              LocaleKeys.settingsPluginsPreviewDescription,
+            ),
+            action: RevericButton.secondary(
+              label: context.t(LocaleKeys.commonOpen),
+              onPressed: () => showPluginUiPreview(context),
             ),
             colors: colors,
             typo: typo,

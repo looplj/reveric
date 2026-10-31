@@ -81,22 +81,23 @@ Future<void> showRevericContextMenu({
   double minWidth = 180,
   double maxWidth = 300,
   Alignment anchor = Alignment.topLeft,
+  ValueChanged<Route<void>>? onRouteCreated,
 }) {
   final colors = RevericTheme.colorsOf(context);
   final typo = RevericTheme.typographyOf(context);
   final navigator = Navigator.of(context, rootNavigator: true);
 
-  return navigator.push(
-    _RevericContextMenuRoute(
-      position: position,
-      entries: entries,
-      colors: colors,
-      typo: typo,
-      minWidth: minWidth,
-      maxWidth: maxWidth,
-      anchor: anchor,
-    ),
+  final route = _RevericContextMenuRoute(
+    position: position,
+    entries: entries,
+    colors: colors,
+    typo: typo,
+    minWidth: minWidth,
+    maxWidth: maxWidth,
+    anchor: anchor,
   );
+  onRouteCreated?.call(route);
+  return navigator.push(route);
 }
 
 class _RevericContextMenuRoute extends PopupRoute<void> {

@@ -10,11 +10,13 @@
     "skipLibCheck": true,
     "types": [
       "node"
-    ]
+    ],
+    "jsx": "preserve"
   },
   "include": [
     "sdk/**/*.d.ts",
     "*/src/**/*.ts",
-    "*/test/**/*.ts"
+    "*/test/**/*.ts",
+    "*/src/**/*.tsx"
   ]
 }

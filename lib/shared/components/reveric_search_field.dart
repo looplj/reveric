@@ -111,6 +111,9 @@ class RevericSearchField extends StatelessWidget {
     this.radius = RevericRadius.large,
     this.fillColor,
     this.onChanged,
+    this.onSubmitted,
+    this.focusNode,
+    this.enabled = true,
     this.highlightWhenFilled = false,
     this.outlined = true,
   });
@@ -128,6 +131,9 @@ class RevericSearchField extends StatelessWidget {
   /// 每次按键都会触发，给「输入即切页」这类即时副作用用。
   /// 参与结果计算的 query 必须走 debounce，不要接在这里。
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final FocusNode? focusNode;
+  final bool enabled;
 
   /// 有内容时边框换成强调色，提示列表正被搜索收窄。
   final bool highlightWhenFilled;
@@ -145,6 +151,9 @@ class RevericSearchField extends StatelessWidget {
           final hasText = controller.text.isNotEmpty;
           return TextField(
             controller: controller,
+            focusNode: focusNode,
+            enabled: enabled,
+            onSubmitted: onSubmitted,
             autofocus: autofocus,
             onChanged: onChanged,
             textAlignVertical: TextAlignVertical.center,
@@ -178,7 +187,7 @@ class RevericSearchField extends StatelessWidget {
                   ? null
                   : InkWell(
                       borderRadius: BorderRadius.circular(radius),
-                      onTap: controller.clear,
+                      onTap: enabled ? controller.clear : null,
                       child: Center(
                         child: RevericIcon(
                           RevericIcons.close,

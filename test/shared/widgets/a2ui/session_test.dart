@@ -297,6 +297,62 @@ void main() {
     });
   });
 
+  test(
+    'message actions reject edited snapshots and update component structure',
+    () async {
+      final gates = <Completer<List<dynamic>>>[];
+      final errors = <Object>[];
+      final session = A2uiSurfaceSession.load(
+        surfaceId: 'host-message',
+        messages: [
+          _create(_twoButtons(), dataModel: {'value': 'start'}),
+        ],
+        onMessages: (event) {
+          expect(event.data, {'value': gates.isEmpty ? 'start' : 'edited'});
+          final gate = Completer<List<dynamic>>();
+          gates.add(gate);
+          return gate.future;
+        },
+        onActionError: (_, error) => errors.add(error),
+      );
+      addTearDown(session.dispose);
+      await _actionOf(session, 'first')();
+      await pumpEventQueue();
+      session.surface!.dataModel.set('/value', 'edited');
+      gates[0].complete([
+        {
+          'version': 'v1.0',
+          'updateDataModel': {'path': '/value', 'value': 'stale'},
+        },
+      ]);
+      await pumpEventQueue();
+      expect(session.dataSnapshot(), {'value': 'edited'});
+      expect(
+        (errors.single as A2uiSessionException).code,
+        'STALE_ACTION_RESULT',
+      );
+      await _actionOf(session, 'first')();
+      await pumpEventQueue();
+      gates[1].complete([
+        {
+          'version': 'v1.0',
+          'updateComponents': {
+            'components': [
+              {'id': 'extra', 'component': 'Text', 'text': 'Added'},
+            ],
+          },
+        },
+        {
+          'version': 'v1.0',
+          'updateDataModel': {'path': '/value', 'value': 'fresh'},
+        },
+      ]);
+      await pumpEventQueue();
+      expect(session.dataSnapshot(), {'value': 'fresh'});
+      expect(errors, hasLength(1));
+    },
+  );
+
   group('actions', () {
     test('run one at a time in trigger order with a data snapshot', () async {
       final started = <String>[];

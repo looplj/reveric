@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -52,6 +53,49 @@ def verify(key):
     return record['key'] == key and record['archive_sha256'] == digest(ARCHIVE) == checksum
 
 
+def binary_uuids(binary):
+    return {tuple(line.split()[1:3]) for line in run('dwarfdump', '--uuid', str(binary)).splitlines()}
+
+
+def prepare_swiftpm(reference):
+    """Invalidate only stale FJS generated outputs, never copy binaries into apps."""
+    artifact = ROOT / 'build/macos/SourcePackages/artifacts/fjs'
+    cached = artifact / 'FjsBinary/fjs.xcframework/macos-arm64/fjs.framework/Versions/A/fjs'
+    products = ROOT / 'build/macos/Build/Products'
+    if artifact.exists() and (not cached.is_file() or binary_uuids(cached) != reference):
+        if artifact.is_symlink():
+            raise SystemExit('Refusing to remove symlinked SwiftPM artifact')
+        shutil.rmtree(artifact)
+        for configuration in ('Debug', 'Profile', 'Release'):
+            framework = products / configuration / 'fjs.framework'
+            if framework.is_symlink():
+                raise SystemExit('Refusing to remove symlinked generated FJS framework')
+            if framework.exists():
+                shutil.rmtree(framework)
+        print('Invalidated stale generated SwiftPM FJS artifact and framework products')
+    # Xcode Copy's directory signature can miss replaced contents whose zip
+    # timestamps stay fixed. Missing declared outputs reliably rerun that task.
+    for configuration in ('Debug', 'Profile', 'Release'):
+        for embedded in (products / configuration).glob('*.app/Contents/Frameworks/fjs.framework/fjs'):
+            if binary_uuids(embedded) != reference:
+                framework = embedded.parent
+                if framework.is_symlink():
+                    raise SystemExit('Refusing to remove symlinked embedded FJS framework')
+                shutil.rmtree(framework)
+                print('Invalidated stale generated embedded FJS: ' + str(framework))
+
+
+def archive_uuids():
+    with tempfile.TemporaryDirectory(prefix='fjs-artifact-reference-') as temporary:
+        with zipfile.ZipFile(ARCHIVE) as archive:
+            member = next(n for n in archive.namelist() if n.endswith('macos-arm64/fjs.framework/Versions/A/fjs'))
+            reference = archive.extract(member, temporary)
+        result = binary_uuids(reference)
+        if not result:
+            raise SystemExit('FJS archive contains no macOS UUID')
+        return result
+
+
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else 'key'
     key, value = identity()
@@ -61,6 +105,10 @@ def main():
         if not verify(key):
             raise SystemExit('FJS archive missing or source/toolchain/checksum mismatch')
         print('Verified patched archive: ' + digest(ARCHIVE))
+    elif command == 'prepare-swiftpm':
+        if not verify(key):
+            raise SystemExit('Verify/build archive before preparing SwiftPM')
+        prepare_swiftpm(archive_uuids())
     elif command == 'record':
         if len(sys.argv) != 3 or sys.argv[2] != 'fjs-' + key:
             raise SystemExit('Source/toolchain changed during native build; rebuild before recording')

@@ -13,6 +13,7 @@ import '../../../localization/locale_keys.dart';
 import '../../../models/ai_message_block.dart';
 import '../../../theme/theme.dart';
 import 'plugin_tool_display.dart';
+import 'plugin_result_card.dart';
 import 'tool_card_common.dart';
 
 class PluginToolCardBody extends StatelessWidget {
@@ -21,8 +22,8 @@ class PluginToolCardBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final preview = _preview();
-    final source = block.metadata?['plugin_name']?.toString();
-    return Column(
+    final source = pluginToolSource(context, block);
+    final fallback = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AiToolInfoChips(
@@ -41,6 +42,10 @@ class PluginToolCardBody extends StatelessWidget {
         ],
       ],
     );
+    return block.metadata?['plugin_id'] is String &&
+            pluginToolDisplay(block)['view'] is Map
+        ? PluginResultCard(block: block, fallback: fallback)
+        : fallback;
   }
 
   String? _preview() {

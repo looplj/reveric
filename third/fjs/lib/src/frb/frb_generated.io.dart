@@ -8,6 +8,7 @@ import 'api/engine.dart';
 import 'api/error.dart';
 import 'api/runtime.dart';
 import 'api/source.dart';
+import 'api/ui.dart';
 import 'api/value.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -46,6 +47,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   CrossPlatformFinalizerArg
       get rust_arc_decrement_strong_count_MemoryUsagePtr => wire
           ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsagePtr;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_UiSessionPtr =>
+      wire._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSessionPtr;
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
@@ -86,6 +90,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           dynamic raw);
 
   @protected
+  UiSession
+      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          dynamic raw);
+
+  @protected
   JsAsyncContext
       dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsAsyncContext(
           dynamic raw);
@@ -116,6 +125,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           dynamic raw);
 
   @protected
+  UiSession
+      dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          dynamic raw);
+
+  @protected
   FutureOr<JsResult> Function(JsValue)
       dco_decode_DartFn_Inputs_js_value_Output_js_result_AnyhowException(
           dynamic raw);
@@ -125,6 +139,12 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   Map<String, JsValue> dco_decode_Map_String_js_value_None(dynamic raw);
+
+  @protected
+  Map<String, BigInt> dco_decode_Map_String_u_64_None(dynamic raw);
+
+  @protected
+  Map<String, UiValue> dco_decode_Map_String_ui_value_None(dynamic raw);
 
   @protected
   JsAsyncContext
@@ -160,6 +180,14 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   MemoryUsage
       dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
           dynamic raw);
+
+  @protected
+  UiSession
+      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          dynamic raw);
+
+  @protected
+  RustStreamSink<UiOutput> dco_decode_StreamSink_ui_output_Sse(dynamic raw);
 
   @protected
   String dco_decode_String(dynamic raw);
@@ -216,6 +244,18 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  UiBatch dco_decode_box_autoadd_ui_batch(dynamic raw);
+
+  @protected
+  UiEvent dco_decode_box_autoadd_ui_event(dynamic raw);
+
+  @protected
+  UiValue dco_decode_box_autoadd_ui_value(dynamic raw);
 
   @protected
   BigInt dco_decode_box_autoadd_usize(dynamic raw);
@@ -296,6 +336,18 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   List<(String, JsValue)> dco_decode_list_record_string_js_value(dynamic raw);
 
   @protected
+  List<(String, BigInt)> dco_decode_list_record_string_u_64(dynamic raw);
+
+  @protected
+  List<(String, UiValue)> dco_decode_list_record_string_ui_value(dynamic raw);
+
+  @protected
+  List<UiOp> dco_decode_list_ui_op(dynamic raw);
+
+  @protected
+  List<UiValue> dco_decode_list_ui_value(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
@@ -327,6 +379,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+
+  @protected
   BigInt? dco_decode_opt_box_autoadd_usize(dynamic raw);
 
   @protected
@@ -339,6 +394,12 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   (String, JsValue) dco_decode_record_string_js_value(dynamic raw);
 
   @protected
+  (String, BigInt) dco_decode_record_string_u_64(dynamic raw);
+
+  @protected
+  (String, UiValue) dco_decode_record_string_ui_value(dynamic raw);
+
+  @protected
   int dco_decode_u_32(dynamic raw);
 
   @protected
@@ -346,6 +407,21 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   int dco_decode_u_8(dynamic raw);
+
+  @protected
+  UiBatch dco_decode_ui_batch(dynamic raw);
+
+  @protected
+  UiEvent dco_decode_ui_event(dynamic raw);
+
+  @protected
+  UiOp dco_decode_ui_op(dynamic raw);
+
+  @protected
+  UiOutput dco_decode_ui_output(dynamic raw);
+
+  @protected
+  UiValue dco_decode_ui_value(dynamic raw);
 
   @protected
   void dco_decode_unit(dynamic raw);
@@ -392,6 +468,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           SseDeserializer deserializer);
 
   @protected
+  UiSession
+      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          SseDeserializer deserializer);
+
+  @protected
   JsAsyncContext
       sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsAsyncContext(
           SseDeserializer deserializer);
@@ -422,10 +503,23 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           SseDeserializer deserializer);
 
   @protected
+  UiSession
+      sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          SseDeserializer deserializer);
+
+  @protected
   Object sse_decode_DartOpaque(SseDeserializer deserializer);
 
   @protected
   Map<String, JsValue> sse_decode_Map_String_js_value_None(
+      SseDeserializer deserializer);
+
+  @protected
+  Map<String, BigInt> sse_decode_Map_String_u_64_None(
+      SseDeserializer deserializer);
+
+  @protected
+  Map<String, UiValue> sse_decode_Map_String_ui_value_None(
       SseDeserializer deserializer);
 
   @protected
@@ -462,6 +556,15 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   MemoryUsage
       sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
           SseDeserializer deserializer);
+
+  @protected
+  UiSession
+      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<UiOutput> sse_decode_StreamSink_ui_output_Sse(
+      SseDeserializer deserializer);
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
@@ -522,6 +625,18 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  UiBatch sse_decode_box_autoadd_ui_batch(SseDeserializer deserializer);
+
+  @protected
+  UiEvent sse_decode_box_autoadd_ui_event(SseDeserializer deserializer);
+
+  @protected
+  UiValue sse_decode_box_autoadd_ui_value(SseDeserializer deserializer);
 
   @protected
   BigInt sse_decode_box_autoadd_usize(SseDeserializer deserializer);
@@ -609,6 +724,20 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       SseDeserializer deserializer);
 
   @protected
+  List<(String, BigInt)> sse_decode_list_record_string_u_64(
+      SseDeserializer deserializer);
+
+  @protected
+  List<(String, UiValue)> sse_decode_list_record_string_ui_value(
+      SseDeserializer deserializer);
+
+  @protected
+  List<UiOp> sse_decode_list_ui_op(SseDeserializer deserializer);
+
+  @protected
+  List<UiValue> sse_decode_list_ui_value(SseDeserializer deserializer);
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
@@ -644,6 +773,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
   BigInt? sse_decode_opt_box_autoadd_usize(SseDeserializer deserializer);
 
   @protected
@@ -657,6 +789,13 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       SseDeserializer deserializer);
 
   @protected
+  (String, BigInt) sse_decode_record_string_u_64(SseDeserializer deserializer);
+
+  @protected
+  (String, UiValue) sse_decode_record_string_ui_value(
+      SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
@@ -664,6 +803,21 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
+
+  @protected
+  UiBatch sse_decode_ui_batch(SseDeserializer deserializer);
+
+  @protected
+  UiEvent sse_decode_ui_event(SseDeserializer deserializer);
+
+  @protected
+  UiOp sse_decode_ui_op(SseDeserializer deserializer);
+
+  @protected
+  UiOutput sse_decode_ui_output(SseDeserializer deserializer);
+
+  @protected
+  UiValue sse_decode_ui_value(SseDeserializer deserializer);
 
   @protected
   void sse_decode_unit(SseDeserializer deserializer);
@@ -712,6 +866,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void
+      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          UiSession self, SseSerializer serializer);
+
+  @protected
+  void
       sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsAsyncContext(
           JsAsyncContext self, SseSerializer serializer);
 
@@ -741,6 +900,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           MemoryUsage self, SseSerializer serializer);
 
   @protected
+  void
+      sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          UiSession self, SseSerializer serializer);
+
+  @protected
   void sse_encode_DartFn_Inputs_js_value_Output_js_result_AnyhowException(
       FutureOr<JsResult> Function(JsValue) self, SseSerializer serializer);
 
@@ -750,6 +914,14 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   void sse_encode_Map_String_js_value_None(
       Map<String, JsValue> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_Map_String_u_64_None(
+      Map<String, BigInt> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_Map_String_ui_value_None(
+      Map<String, UiValue> self, SseSerializer serializer);
 
   @protected
   void
@@ -785,6 +957,15 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   void
       sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
           MemoryUsage self, SseSerializer serializer);
+
+  @protected
+  void
+      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+          UiSession self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_StreamSink_ui_output_Sse(
+      RustStreamSink<UiOutput> self, SseSerializer serializer);
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
@@ -846,6 +1027,18 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_ui_batch(UiBatch self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_ui_event(UiEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_ui_value(UiValue self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_usize(BigInt self, SseSerializer serializer);
@@ -937,6 +1130,20 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       List<(String, JsValue)> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_record_string_u_64(
+      List<(String, BigInt)> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_record_string_ui_value(
+      List<(String, UiValue)> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_ui_op(List<UiOp> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_ui_value(List<UiValue> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
@@ -970,6 +1177,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_usize(BigInt? self, SseSerializer serializer);
 
   @protected
@@ -985,6 +1195,14 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       (String, JsValue) self, SseSerializer serializer);
 
   @protected
+  void sse_encode_record_string_u_64(
+      (String, BigInt) self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_record_string_ui_value(
+      (String, UiValue) self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
 
   @protected
@@ -992,6 +1210,21 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_batch(UiBatch self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_event(UiEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_op(UiOp self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_output(UiOutput self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_value(UiValue self, SseSerializer serializer);
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
@@ -1236,5 +1469,37 @@ class LibFjsWire implements BaseWire {
           'frbgen_fjs_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage');
   late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage =
       _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsagePtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+      rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSessionPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+          'frbgen_fjs_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession');
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession =
+      _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSessionPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+      rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSessionPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+          'frbgen_fjs_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession');
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSession =
+      _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerUiSessionPtr
           .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 }

@@ -21,6 +21,7 @@ pub mod error;
 pub mod module;
 pub mod runtime;
 pub mod source;
+pub mod ui;
 pub mod value;
 
 // Re-export main types for convenience

@@ -535,6 +535,9 @@ class PluginRuntime implements PluginExecutor {
           return JsResult.ok(JsValue.string(jsonEncode(reply)));
         },
       );
+      if (taskId != null) {
+        await engine.setExecutionTimeLimit(limitMillis: 2000);
+      }
       await engine.eval(
         source: JsCode.code(
           '${pluginPrelude(manifest.id, manifest.version)}\n$code\n${taskId != null

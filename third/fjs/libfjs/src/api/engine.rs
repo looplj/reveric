@@ -473,6 +473,20 @@ impl JsEngine {
         Ok(())
     }
 
+    /// Limits one continuous runnable JavaScript turn, including microtasks.
+    /// Host I/O waiting does not consume this budget. None disables the limit.
+    pub async fn set_execution_time_limit(&self, limit_millis: Option<u32>) -> Result<(), JsError> {
+        if limit_millis == Some(0) {
+            return Err(JsError::runtime("Execution time limit must be positive"));
+        }
+        let resources = self.ensure_runtime_accessible()?;
+        resources
+            .runtime
+            .driver
+            .set_execution_time_limit(limit_millis);
+        Ok(())
+    }
+
     /// Sets the memory limit on the engine-owned runtime.
     pub async fn set_memory_limit(&self, limit: usize) -> Result<(), JsError> {
         let resources = self.ensure_runtime_accessible()?;

@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { tsxPlugin } from "./sdk/tsx_transform.mjs";
 import {
   readdir,
   readFile,
@@ -26,6 +27,7 @@ function run(args) {
       `Command failed: node ${args.join(" ")} (exit ${result.status})`,
     );
 }
+run(["sdk/generate_sqlite.mjs"]);
 run(["node_modules/typescript/bin/tsc", "--noEmit"]);
 const plugins = [];
 for (const entry of await readdir(root, { withFileTypes: true })) {
@@ -57,7 +59,7 @@ if (process.argv.includes("--test")) {
         tests.push(output);
       }
     }
-    run(["--test", ...tests]);
+    run(["--test", ...tests, "sdk/tsx_transform.test.mjs", "sdk/sqlite_runtime.test.mjs"]);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
@@ -92,6 +94,27 @@ if (process.argv.includes("--test")) {
     const output = resolve(root, "../assets/plugins", manifest.id);
     await mkdir(join(output, "dist"), { recursive: true });
     await writeFile(join(output, manifest.main), bundle);
+    const buildConfigPath=join(root,plugin,'build.json');
+    let config={};
+    try {config=JSON.parse(await readFile(buildConfigPath,'utf8'));}
+    catch(error) {if(error.code!=='ENOENT') throw error;}
+    for(const [name,entry] of Object.entries(config.views??{})) {
+      if(!/^[a-z][a-z0-9-]*$/.test(name)||typeof entry!=='string'||!entry.startsWith('src/views/')||!entry.endsWith('.tsx')||entry.split('/').includes('..')||entry.includes('\\')) throw new Error('Invalid view build entry');
+      await mkdir(join(output,'dist/views'),{recursive:true});
+      const view=await build({entryPoints:[join(root,plugin,entry)],bundle:true,format:'iife',globalName:'__revericView',
+        platform:'neutral',target:'es2020',charset:'utf8',sourcemap:true,sourcesContent:true,write:false,
+        outfile:join(output,'dist/views',name+'.js'),plugins:[tsxPlugin()]});
+      for(const file of view.outputFiles) {
+        if(file.path.endsWith('.js')&&file.contents.byteLength>2*1024*1024) throw new Error('View exceeds 2 MB');
+        await writeFile(file.path,file.contents);
+      }
+    }
+    for (const migration of manifest.database?.migrations ?? []) {
+      const source = migration.source;
+      if (typeof source !== 'string' || !source.endsWith('.sql') || source.startsWith('/') || source.includes('\\') || source.includes(':') || source.split('/').some(part => !part || part === '..' || part === '.')) throw new Error('Invalid migration source');
+      await mkdir(dirname(join(output, source)), {recursive:true});
+      await copyFile(join(root,plugin,source),join(output,source));
+    }
     await copyFile(manifestPath, join(output, "plugin.json"));
     console.log(`${manifest.id}: ${bundle.byteLength} bytes`);
   }

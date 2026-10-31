@@ -893,9 +893,13 @@ impl JsAsyncRuntime {
         futures::executor::block_on(Self::install_error_tracker(&runtime, driver.clone()));
         let shutdown = RuntimeShutdown::default();
         let interrupt_shutdown = shutdown.clone();
-        futures::executor::block_on(
-            runtime.set_interrupt_handler(Some(Box::new(move || interrupt_shutdown.requested()))),
-        );
+        let interrupt_driver = driver.clone();
+        futures::executor::block_on(runtime.set_interrupt_handler(Some(Box::new(move || {
+            if !interrupt_shutdown.requested() && interrupt_driver.execution_interrupted() {
+                interrupt_shutdown.request_timeout(interrupt_driver.execution_timeout_millis());
+            }
+            interrupt_shutdown.requested()
+        }))));
         install_default_async_loaders(&runtime);
         let runtime = Self {
             rt: runtime,
@@ -945,8 +949,14 @@ impl JsAsyncRuntime {
         Self::install_error_tracker(&runtime, driver.clone()).await;
         let shutdown = RuntimeShutdown::default();
         let interrupt_shutdown = shutdown.clone();
+        let interrupt_driver = driver.clone();
         runtime
-            .set_interrupt_handler(Some(Box::new(move || interrupt_shutdown.requested())))
+            .set_interrupt_handler(Some(Box::new(move || {
+                if !interrupt_shutdown.requested() && interrupt_driver.execution_interrupted() {
+                    interrupt_shutdown.request_timeout(interrupt_driver.execution_timeout_millis());
+                }
+                interrupt_shutdown.requested()
+            })))
             .await;
         let (
             module_resolver,
@@ -1351,8 +1361,11 @@ impl JsAsyncContext {
             .as_ref()
             .expect("JavaScript async context was already dropped")
             .clone();
-        let result =
-            crate::runtime::executor::run_js(async move { context.async_with(f).await }).await;
+        let driver = self.driver.clone();
+        let result = crate::runtime::executor::run_js(async move {
+            driver.with_execution_budget(context.async_with(f)).await
+        })
+        .await;
         // Foreground work may have scheduled timers, detached promises, or
         // spawned futures; wake the driver so it picks them up immediately.
         self.driver.notify_work();

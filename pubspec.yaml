@@ -67,6 +67,7 @@ dependencies:
   flutter_local_notifications: ^22.3.0
   shared_preferences: ^2.5.3
   sqlite3: ^3.7.0
+  sqlparser: 0.45.0
   http: ^1.2.0
   crypto: ^3.0.6
   html: ^0.15.6
@@ -177,6 +178,7 @@ flutter:
     enable-windowing: true
 
   assets:
+    - assets/plugin_preview/
     - assets/plugins/reveric.web/
     - assets/plugins/reveric.web/dist/
     - assets/plugins/reveric.deepseek/

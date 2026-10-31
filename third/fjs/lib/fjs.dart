@@ -83,6 +83,9 @@ library;
 export 'src/frb/api/bytecode.dart';
 export 'src/frb/api/engine.dart';
 
+// Dedicated native plugin UI sessions and typed tree protocol.
+export 'src/frb/api/ui.dart';
+
 // Error handling
 export 'src/frb/api/error.dart';
 

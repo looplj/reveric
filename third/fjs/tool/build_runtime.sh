@@ -29,6 +29,7 @@ if [[ "$(uname -s)" != Darwin ]]; then
   exit 0
 fi
 if python3 third/fjs/tool/artifact.py verify; then
+  python3 third/fjs/tool/artifact.py prepare-swiftpm
   exit 0
 fi
 CODEMODE_KEY="$(python3 third/fjs/tool/artifact.py key)"
@@ -41,6 +42,7 @@ if [[ -f "$CACHE_DIR/reveric-build.json" ]]; then
   mkdir -p "$BINARIES"
   for name in "${ARTIFACTS[@]}"; do cp "$CACHE_DIR/$name" "$BINARIES/$name"; done
   if python3 third/fjs/tool/artifact.py verify; then
+    python3 third/fjs/tool/artifact.py prepare-swiftpm
     exit 0
   fi
   echo 'Cached FJS archive failed verification; rebuilding from source.' >&2
@@ -56,3 +58,5 @@ if [[ ! -e "$CACHE_DIR" ]]; then
   mv "$CACHE_TEMP" "$CACHE_DIR" 2>/dev/null || true
 fi
 rm -rf "$CACHE_TEMP"
+
+python3 third/fjs/tool/artifact.py prepare-swiftpm

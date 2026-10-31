@@ -30,6 +30,9 @@
 //   lib/shared/widgets/unsaved_changes_dialog.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+import '../../shared/widgets/plugin_view/navigation.dart';
+import '../../shared/widgets/plugin_view/page.dart';
+import '../../shared/models/plugin/view.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -140,6 +143,12 @@ final class _HomeShortcutActionSelection extends _HomeContentSelection {
 
 final class _HomeShortcutActionListSelection extends _HomeContentSelection {
   const _HomeShortcutActionListSelection();
+}
+
+final class _HomePluginPageSelection extends _HomeContentSelection {
+  const _HomePluginPageSelection(this.view);
+
+  final PluginView view;
 }
 
 Widget _buildGlobalSkillEditor({
@@ -254,6 +263,7 @@ class NovelHomePage extends HookConsumerWidget {
     final activeAgentPanelSave = useRef<Future<bool> Function()?>(null);
     final activeAgentPanelHasChanges = useRef<bool Function()?>(null);
     final activeAgentPanelIsBlankCreateDraft = useRef<bool Function()?>(null);
+    final pluginPageHasChanges = useRef<bool Function()?>(null);
     final sessionsExpanded = _homeSessionsExpanded;
     useListenable(sessionsExpanded);
     Future<bool> createNovel({
@@ -720,6 +730,12 @@ class NovelHomePage extends HookConsumerWidget {
           _HomeShortcutActionListSelection(),
         ) =>
           true,
+        (
+          _HomePluginPageSelection(view: final currentView),
+          _HomePluginPageSelection(view: final nextView),
+        ) =>
+          currentView.pluginId == nextView.pluginId &&
+              currentView.id == nextView.id,
         _ => false,
       };
     }
@@ -731,6 +747,8 @@ class NovelHomePage extends HookConsumerWidget {
         _HomeGlobalSkillSelection() =>
           activeAgentPanelHasChanges.value?.call() ?? skillHasChanges.value,
         _HomeShortcutActionSelection() => shortcutActionHasChanges.value,
+        _HomePluginPageSelection() =>
+          pluginPageHasChanges.value?.call() ?? false,
         _ => false,
       };
     }
@@ -762,6 +780,8 @@ class NovelHomePage extends HookConsumerWidget {
         context: context,
         titleKey: LocaleKeys.editorUnsavedChangesTitle,
         messageKey: LocaleKeys.editorUnsavedChangesMessage,
+        // 插件页面的草稿由插件自己保存，宿主只能放弃或留下。
+        showSave: selection.value is! _HomePluginPageSelection,
       );
     }
 
@@ -994,6 +1014,19 @@ class NovelHomePage extends HookConsumerWidget {
         },
         onRegisterSave: (save) => activeAgentPanelSave.value = save,
       ),
+      _HomePluginPageSelection(:final view) => PluginPageRegion(
+        key: ValueKey('plugin-page:${view.pluginId}/${view.id}'),
+        view: view,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+        onOpenView: (target) {
+          selectContent(_HomePluginPageSelection(target));
+        },
+        onUnavailable: () {
+          selection.value = const _HomeLibrarySelection();
+        },
+        onRegisterHasChanges: (hasChanges) =>
+            pluginPageHasChanges.value = hasChanges,
+      ),
       _HomeLibrarySelection() => buildLibraryPanel(),
     };
 
@@ -1188,6 +1221,34 @@ class NovelHomePage extends HookConsumerWidget {
                     ),
                   ],
                 ],
+                // 插件页面：放在 AI 分区（含最近对话）之后，避免最近对话被归入插件。
+                PluginPageNavigation(
+                  builder: (context, views) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: RevericSpacing.md),
+                      _buildSectionGroupHeader(
+                        context,
+                        title: context.t(LocaleKeys.settingsPlugins),
+                      ),
+                      for (final view in views)
+                        _buildLeafNavItem(
+                          context,
+                          icon: pluginPageIcon,
+                          title: view.title.resolve(
+                            Localizations.localeOf(context),
+                          ),
+                          isSelected:
+                              selection is _HomePluginPageSelection &&
+                              selection.view.pluginId == view.pluginId &&
+                              selection.view.id == view.id,
+                          onTap: () {
+                            onContentSelected(_HomePluginPageSelection(view));
+                          },
+                        ),
+                    ],
+                  ),
+                ),
                 // Section 4: 设置
                 const SizedBox(height: RevericSpacing.md),
                 _buildSectionGroupHeader(

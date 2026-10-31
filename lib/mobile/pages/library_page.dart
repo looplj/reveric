@@ -24,6 +24,7 @@
 //   assets/translations/zh-CN/reading.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+import '../widgets/plugin_pages.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -485,6 +486,15 @@ class MobileLibraryPage extends HookConsumerWidget {
                                   onContinue: continueWriting,
                                 ),
                               ),
+                            const SliverToBoxAdapter(
+                              child: MobilePluginPageShelf(),
+                            ),
+                            if (showTop)
+                              SliverToBoxAdapter(
+                                child: _SectionLabel(
+                                  text: context.t(LocaleKeys.homeNavWorks),
+                                ),
+                              ),
                             SliverToBoxAdapter(
                               key: const ValueKey('library-filters'),
                               child: Column(
@@ -662,7 +672,6 @@ class _LibraryTop extends StatelessWidget {
           ),
           const SizedBox(height: RevericSpacing.x3l),
         ],
-        _SectionLabel(text: context.t(LocaleKeys.homeNavWorks)),
       ],
     );
   }

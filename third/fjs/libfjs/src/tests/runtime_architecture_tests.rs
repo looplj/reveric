@@ -1776,3 +1776,72 @@ async fn codemode_close_interrupts_two_busy_engines() {
     .await
     .expect("saturated executor must not block closing either engine");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn task_execution_budget_interrupts_cpu_and_microtasks() {
+    for source in ["while(true){}", "while(true){await Promise.resolve();}"] {
+        let engine = JsEngine::create(None, None, None).await.unwrap();
+        engine.init_without_bridge().await.unwrap();
+        engine.set_execution_time_limit(Some(50)).await.unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            engine.eval(JsCode::Code(source.into()), None),
+        )
+        .await
+        .expect("native budget must interrupt");
+        assert!(result.is_err());
+        engine.close().await.unwrap();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn task_execution_budget_excludes_host_wait_but_not_detached_cpu() {
+    let engine = JsEngine::create(None, None, None).await.unwrap();
+    engine
+        .init(|_| {
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_millis(120)).await;
+                JsResult::Ok(JsValue::Integer(7))
+            })
+        })
+        .await
+        .unwrap();
+    engine.set_execution_time_limit(Some(40)).await.unwrap();
+    let result = engine
+        .eval(
+            JsCode::Code("await fjs.bridge_call('wait'); 9".into()),
+            None,
+        )
+        .await;
+    assert_eq!(result.unwrap(), JsValue::Integer(9));
+    engine.close().await.unwrap();
+
+    let engine = JsEngine::create(None, None, None).await.unwrap();
+    engine
+        .init(|_| {
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_millis(120)).await;
+                JsResult::Ok(JsValue::Integer(7))
+            })
+        })
+        .await
+        .unwrap();
+    engine.set_execution_time_limit(Some(40)).await.unwrap();
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        engine.eval(
+            JsCode::Code("void fjs.bridge_call('wait'); while(true){}".into()),
+            None,
+        ),
+    )
+    .await
+    .expect("pending Host I/O cannot hide runnable CPU");
+    assert!(result.is_err());
+    if let Err(error) = engine.close().await {
+        assert!(
+            error.to_string().contains("continuous JavaScript"),
+            "{error}"
+        );
+    }
+    assert!(engine.closed());
+}

@@ -14,6 +14,7 @@ import '../../database/daos/plugin_dao.dart';
 import '../../logger/app_logger.dart';
 import '../../models/plugin/action.dart';
 import '../../models/plugin/manifest.dart';
+import '../../models/plugin/view.dart';
 import '../../models/plugin/setting_field.dart';
 import 'config.dart';
 import 'data.dart';
@@ -21,6 +22,11 @@ import 'http.dart';
 import 'registry.dart';
 import 'runtime.dart';
 import '../../models/plugin/request.dart';
+import 'ui_session.dart';
+import 'a2ui_session.dart';
+import 'page_session.dart';
+import '../../widgets/a2ui/session.dart';
+import '../../models/plugin/ui_tree.dart';
 import 'package:uuid/uuid.dart';
 
 final _log = AppLogger.forModule('Plugin');
@@ -78,6 +84,323 @@ class PluginHostService {
   final PluginExecutorFactory executorFactory;
   final String platform;
   final _changes = StreamController<List<PluginStatus>>.broadcast();
+  final _pages =
+      <
+        String,
+        ({
+          String pluginId,
+          PluginPageSession session,
+          Future<bool> Function() confirmDiscard,
+        })
+      >{};
+  final _openingPages = <String, int>{};
+
+  Future<PluginUiSession> openTsxView(
+    PluginView view, {
+    required String? workId,
+    required Future<bool> Function() confirmDiscard,
+    Set<String> iconNames = const {},
+    PluginHostCall? uiCall,
+    void Function()? onClose,
+  }) => mutate(
+    view.pluginId,
+    () => _openTsxView(
+      view,
+      workId: workId,
+      confirmDiscard: confirmDiscard,
+      iconNames: iconNames,
+      uiCall: uiCall,
+      onClose: onClose,
+    ),
+  );
+
+  Future<PluginUiSession> _openTsxView(
+    PluginView view, {
+    required String? workId,
+    required Future<bool> Function() confirmDiscard,
+    required Set<String> iconNames,
+    PluginHostCall? uiCall,
+    void Function()? onClose,
+  }) async {
+    final id = view.pluginId;
+    final package = _packages[id];
+    if (_disposed ||
+        package == null ||
+        _statuses[id]?.state != 'available' ||
+        !view.isTsx ||
+        !(_views[id]?.contains(view) ?? false)) {
+      throw PluginHostError('unavailable', 'View is not available');
+    }
+    final count =
+        _pages.values.where((p) => p.pluginId == id).length +
+        (_openingPages[id] ?? 0);
+    if (count >= 2 ||
+        _pages.length + _openingPages.values.fold(0, (a, b) => a + b) >= 4) {
+      throw PluginHostError('plugin_ui_limit', 'Too many open plugin pages');
+    }
+    _openingPages[id] = (_openingPages[id] ?? 0) + 1;
+    final instance = const Uuid().v4();
+    final http = PluginHttpApi(requestLimit: null);
+    final cancellation = AgentCancellationController();
+    PluginUiSession? session;
+    try {
+      final source = await readPackageText(
+        package,
+        view.source,
+        maxBytes: 2 * 1024 * 1024,
+      );
+      final secrets = await dao.secretValues(id);
+      if (_disposed ||
+          _packages[id] != package ||
+          _statuses[id]?.state != 'available') {
+        throw PluginHostError('unavailable', 'View changed while opening');
+      }
+      final api = _hostApi(
+        id,
+        package,
+        http,
+        secrets,
+        workId: workId,
+        cancellation: cancellation.token,
+      );
+      session = PluginUiSession(
+        tree: PluginUiTree(
+          surface: instance,
+          generation: 1,
+          iconNames: iconNames,
+        ),
+        hostCall: (method, args) async {
+          if (_disposed ||
+              _packages[id] != package ||
+              _statuses[id]?.state != 'available' ||
+              !_pages.containsKey(instance)) {
+            throw PluginHostError(
+              'unavailable',
+              'Page is closed or plugin changed',
+            );
+          }
+          if (method.startsWith('ui.') && uiCall != null) {
+            return uiCall(method, args);
+          }
+          return api(method, args);
+        },
+        onClosing: () {
+          http.cancel();
+          cancellation.cancel();
+          onClose?.call();
+        },
+        onClose: () {
+          _pages.remove(instance);
+        },
+        readSourceMap: () => readPackageText(
+          package,
+          '${view.source}.map',
+          maxBytes: 8 * 1024 * 1024,
+        ),
+      );
+      _pages[instance] = (
+        pluginId: id,
+        session: session,
+        confirmDiscard: confirmDiscard,
+      );
+      await session.start(
+        source: source,
+        scope: {
+          'plugin': {'id': id, 'version': package.manifest.version},
+          'page': {'viewId': view.id, 'instanceId': instance, 'workId': workId},
+        },
+        environment: {},
+      );
+      return session;
+    } catch (_) {
+      http.cancel();
+      await session?.close();
+      rethrow;
+    } finally {
+      _openingPages[id] = _openingPages[id]! - 1;
+    }
+  }
+
+  Future<PluginA2uiSession> openA2uiView(
+    PluginView view, {
+    required String? workId,
+    required Future<bool> Function() confirmDiscard,
+    PluginHostCall? uiCall,
+    void Function()? onClose,
+  }) => mutate(view.pluginId, () async {
+    final id = view.pluginId;
+    final package = _packages[id];
+    if (_disposed ||
+        package == null ||
+        _statuses[id]?.state != 'available' ||
+        view.isTsx ||
+        !(_views[id]?.contains(view) ?? false)) {
+      throw PluginHostError('unavailable', 'View is not available');
+    }
+    if (_pages.values.where((p) => p.pluginId == id).length +
+                (_openingPages[id] ?? 0) >=
+            2 ||
+        _pages.length + _openingPages.values.fold(0, (a, b) => a + b) >= 4) {
+      throw PluginHostError('plugin_ui_limit', 'Too many open plugin pages');
+    }
+    _openingPages[id] = (_openingPages[id] ?? 0) + 1;
+    final instance = const Uuid().v4();
+    final cancellation = AgentCancellationController();
+    PluginA2uiSession? page;
+    try {
+      final messages = jsonDecode(
+        await readPackageText(package, view.source, maxBytes: 1024 * 1024),
+      );
+      if (_disposed ||
+          _packages[id] != package ||
+          _statuses[id]?.state != 'available') {
+        throw PluginHostError('unavailable', 'View changed while opening');
+      }
+      final session = PluginA2uiSession(
+        onClose: () {
+          cancellation.cancel();
+          onClose?.call();
+          _pages.remove(instance);
+        },
+      );
+      page = session;
+      session.surface = A2uiSurfaceSession.load(
+        surfaceId: instance,
+        messages: messages,
+        onMessages: (event) async {
+          if (session.closed ||
+              !view.actionNames.contains(event.name) ||
+              _packages[id] != package ||
+              _statuses[id]?.state != 'available') {
+            throw PluginHostError('unavailable', 'View action unavailable');
+          }
+          if (!await _acquire(id, cancellation: cancellation.token)) {
+            throw PluginHostError('cancelled', 'View action cancelled');
+          }
+          final http = PluginHttpApi();
+          final sqlCancellation = AgentCancellationController();
+          final unlinkSql = cancellation.token.onCancel(sqlCancellation.cancel);
+          try {
+            final secrets = await dao.secretValues(id);
+            final api = _hostApi(
+              id,
+              package,
+              http,
+              secrets,
+              workId: workId,
+              cancellation: sqlCancellation.token,
+            );
+            final runtime = executorFactory(
+              (method, args) async {
+                if (session.closed ||
+                    _packages[id] != package ||
+                    _statuses[id]?.state != 'available') {
+                  throw PluginHostError(
+                    'unavailable',
+                    'Page closed or plugin changed',
+                  );
+                }
+                if (method == 'view.setDirty') {
+                  if (args['value'] is! bool) {
+                    throw PluginHostError(
+                      'invalid_argument',
+                      'Dirty value must be boolean',
+                    );
+                  }
+                  session.dirty.value = args['value'] as bool;
+                  return null;
+                }
+                if (method.startsWith('ui.') && uiCall != null) {
+                  return uiCall(method, args);
+                }
+                return api(method, args);
+              },
+              () {
+                http.cancel();
+                sqlCancellation.cancel();
+              },
+            );
+            return await runtime.runViewAction(
+              package.manifest,
+              package.code,
+              _registrations[id]!,
+              view.id,
+              event.name,
+              {
+                'data': event.data,
+                'event': {
+                  'name': event.name,
+                  'sourceComponentId': event.sourceComponentId,
+                  'context': event.context,
+                },
+                'page': {
+                  'viewId': view.id,
+                  'instanceId': instance,
+                  'workId': workId,
+                },
+              },
+              const Uuid().v4(),
+              cancellation.token,
+            );
+          } finally {
+            unlinkSql();
+            sqlCancellation.cancel();
+            http.cancel();
+            _releaseQueue(id);
+          }
+        },
+        onActionError: (_, error) {
+          if (!session.closed) {
+            session.actionError.value = error;
+          }
+        },
+      );
+      if (session.surface.error.value != null) {
+        throw session.surface.error.value!;
+      }
+      _pages[instance] = (
+        pluginId: id,
+        session: session,
+        confirmDiscard: confirmDiscard,
+      );
+      final mount = view.definition['onMount'];
+      if (mount is String) {
+        session.surface.dispatchAction(
+          A2uiActionEvent(
+            name: mount,
+            sourceComponentId: '',
+            context: const {},
+            data: session.surface.dataSnapshot(),
+          ),
+        );
+      }
+      return session;
+    } catch (_) {
+      page?.dispose();
+      rethrow;
+    } finally {
+      _openingPages[id] = _openingPages[id]! - 1;
+    }
+  });
+
+  /// Confirm every affected draft before closing any page or changing a package.
+  Future<void> closePluginPages(String id) async {
+    final pages = _pages.values.where((p) => p.pluginId == id).toList();
+    for (final page in pages) {
+      if (!page.session.closed &&
+          page.session.dirty.value &&
+          !await page.confirmDiscard()) {
+        throw PluginHostError(
+          'cancelled',
+          'Plugin change cancelled to preserve drafts',
+        );
+      }
+    }
+    for (final page in pages) {
+      await page.session.close();
+    }
+  }
+
   Future<PluginRequestContext> requestContext({
     required String? sessionId,
     required String agentId,
@@ -122,6 +445,9 @@ class PluginHostService {
   }
 
   final _registrations = <String, List<Map<String, dynamic>>>{};
+  final _views = <String, List<PluginView>>{};
+  List<PluginView> get views =>
+      List.unmodifiable(_views.values.expand((v) => v));
   final _packages = <String, PluginPackage>{};
   final _statuses = <String, PluginStatus>{};
   final _serial = <String, Future<void>>{};
@@ -136,6 +462,13 @@ class PluginHostService {
       () {},
     ).activate(package.manifest, package.code);
     final tools = <PluginTool>[];
+    for (final view in package.manifest.pages) {
+      await readPackageText(
+        package,
+        view.source,
+        maxBytes: view.isTsx ? 2 * 1024 * 1024 : 1024 * 1024,
+      );
+    }
     for (final definition in definitions) {
       if (definition['kind'] == null) {
         tools.add(
@@ -195,6 +528,35 @@ class PluginHostService {
       );
     }
     return file.readAsString();
+  }
+
+  Future<Object?> readToolCard(String pluginId, String toolName) async {
+    final package = _packages[pluginId];
+    if (package == null || _statuses[pluginId]?.state != 'available') {
+      return null;
+    }
+    final tools = registry
+        .toolsFor(pluginId)
+        .where((tool) => tool.name == toolName);
+    if (tools.isEmpty) {
+      return null;
+    }
+    final view = tools.single.display?['view'];
+    if (view is! Map || view['protocol'] != 'reveric-ui-v1') {
+      return null;
+    }
+    final messages = jsonDecode(
+      await readPackageText(
+        package,
+        view['source'] as String,
+        maxBytes: 1024 * 1024,
+      ),
+    );
+    if (_packages[pluginId] != package ||
+        _statuses[pluginId]?.state != 'available') {
+      return null;
+    }
+    return messages;
   }
 
   Future<void> start() => _starting ??= _start();
@@ -334,6 +696,7 @@ class PluginHostService {
     final status = _statuses[pluginId]!;
     registry.remove(pluginId);
     _registrations.remove(pluginId);
+    _views.remove(pluginId);
     status.error = null;
     status.state = 'activating';
     if (!status.enabled) {
@@ -377,6 +740,14 @@ class PluginHostService {
       if (_disposed) {
         return;
       }
+      final views = package.manifest.pages;
+      for (final view in views) {
+        await readPackageText(
+          package,
+          view.source,
+          maxBytes: view.isTsx ? 2 * 1024 * 1024 : 1024 * 1024,
+        );
+      }
       registry.register(pluginId, [
         for (final definition in definitions)
           if (definition['kind'] == null)
@@ -388,6 +759,7 @@ class PluginHostService {
             ),
       ]);
       _registrations[pluginId] = List.unmodifiable(definitions);
+      _views[pluginId] = List.unmodifiable(views);
       status.state = 'available';
     } catch (error, stack) {
       status.state = 'failed';
@@ -441,6 +813,7 @@ class PluginHostService {
   });
 
   Future<void> revokePermissions(String id) => mutate(id, () async {
+    await closePluginPages(id);
     for (final permission in _manifest(id).permissions) {
       await dao.revokePermission(id, permission);
     }
@@ -448,9 +821,11 @@ class PluginHostService {
   });
 
   Future<void> uninstall(String id) => mutate(id, () async {
+    await closePluginPages(id);
     await dao.uninstall(id);
     registry.remove(id);
     _registrations.remove(id);
+    _views.remove(id);
     _packages.remove(id);
     _statuses.remove(id);
     _emit();
@@ -470,6 +845,7 @@ class PluginHostService {
           throw StateError('Required plugin configuration: $missing');
         }
       }
+      await closePluginPages(pluginId);
       await dao.setEnabled(pluginId, enabled);
       _statuses[pluginId]!.enabled = enabled;
       await _activate(pluginId);
@@ -945,9 +1321,13 @@ class PluginHostService {
       return;
     }
     _disposed = true;
+    for (final page in _pages.values.toList()) {
+      await page.session.close();
+    }
     for (final id in _packages.keys) {
       registry.remove(id);
       _registrations.remove(id);
+      _views.remove(id);
     }
     for (final queue in _queues.values) {
       for (final waiter in queue) {

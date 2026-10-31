@@ -2,10 +2,10 @@ use crate::runtime::executor;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
 const MAX_ERRORS: usize = 32;
@@ -21,6 +21,10 @@ pub(crate) struct DriverController {
 
 #[derive(Default)]
 struct DriverState {
+    execution_limit_us: AtomicU64,
+    execution_started_us: AtomicU64,
+    execution_expired: AtomicBool,
+    clock: OnceLock<Instant>,
     next_task_id: AtomicU64,
     next_error_id: AtomicU64,
     lifecycle: Mutex<DriverLifecycle>,
@@ -81,6 +85,69 @@ enum DriverLifecycle {
 }
 
 impl DriverController {
+    pub(crate) fn set_execution_time_limit(&self, limit_millis: Option<u32>) {
+        self.inner.execution_started_us.store(0, Ordering::Release);
+        self.inner.execution_expired.store(false, Ordering::Release);
+        self.inner.execution_limit_us.store(
+            u64::from(limit_millis.unwrap_or(0)) * 1000,
+            Ordering::Release,
+        );
+    }
+    fn clock_us(&self) -> u64 {
+        self.inner
+            .clock
+            .get_or_init(Instant::now)
+            .elapsed()
+            .as_micros() as u64
+            + 1
+    }
+    fn arm_execution(&self) {
+        if self.inner.execution_limit_us.load(Ordering::Acquire) != 0 {
+            let _ = self.inner.execution_started_us.compare_exchange(
+                0,
+                self.clock_us(),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+        }
+    }
+    fn idle_execution(&self) {
+        self.inner.execution_started_us.store(0, Ordering::Release);
+    }
+    pub(crate) fn execution_interrupted(&self) -> bool {
+        let limit = self.inner.execution_limit_us.load(Ordering::Acquire);
+        if limit == 0 {
+            return false;
+        }
+        if self.inner.execution_expired.load(Ordering::Acquire) {
+            return true;
+        }
+        let started = self.inner.execution_started_us.load(Ordering::Acquire);
+        if started != 0 && self.clock_us().saturating_sub(started) >= limit {
+            self.inner.execution_expired.store(true, Ordering::Release);
+            return true;
+        }
+        false
+    }
+    pub(crate) fn execution_timeout_millis(&self) -> u64 {
+        self.inner.execution_limit_us.load(Ordering::Acquire) / 1000
+    }
+    pub(crate) async fn with_execution_budget<F: Future>(&self, future: F) -> F::Output {
+        if self.inner.execution_limit_us.load(Ordering::Acquire) == 0 {
+            return future.await;
+        }
+        let mut future = Box::pin(future);
+        std::future::poll_fn(|cx| {
+            self.arm_execution();
+            let result = future.as_mut().poll(cx);
+            if result.is_pending() {
+                self.notify_work();
+            }
+            result
+        })
+        .await
+    }
+
     pub(crate) fn start(&self, runtime: rquickjs::AsyncRuntime) {
         let driver = self.clone();
         self.start_task(async move {
@@ -274,9 +341,11 @@ impl Future for WokenAgain {
 
 async fn drive_runtime(runtime: rquickjs::AsyncRuntime, driver: DriverController) {
     loop {
+        driver.arm_execution();
         match runtime.execute_pending_job().await {
             Ok(true) => continue,
             Ok(false) => {
+                driver.idle_execution();
                 // Nothing runnable right now. Park until something can change
                 // that: an explicit work notification from a foreground call,
                 // a schedular wake forwarded from a timer/IO/spawned future,

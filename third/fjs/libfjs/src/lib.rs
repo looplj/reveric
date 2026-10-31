@@ -50,6 +50,7 @@ mod bytecode_support;
 )]
 mod frb_generated;
 mod runtime;
+mod ui;
 
 #[cfg(test)]
 mod tests;
