@@ -80,6 +80,9 @@ const STATE_CLOSED: u8 = 3;
 ///
 /// `JsEngine` provides a high-level API for executing JavaScript code,
 /// managing modules, and communicating with Dart through a bridge callback.
+/// Engines created by `JsEngineGroup` own an isolated context in a shared
+/// runtime; their close only revokes that context. Runtime limits apply to
+/// every context in the group.
 ///
 /// ## Lifecycle
 ///
@@ -108,6 +111,51 @@ pub struct JsEngine {
 struct JsEngineResources {
     context: JsAsyncContext,
     runtime: JsAsyncRuntime,
+}
+
+/// One runtime and scheduler with independently closable JavaScript realms.
+/// Each child engine has its own intrinsics, module registry and native bridge.
+/// Runtime memory limits and continuous-execution interrupts remain shared.
+#[frb(opaque)]
+pub struct JsEngineGroup {
+    owner: JsEngine,
+}
+
+impl JsEngineGroup {
+    /// Creates a restricted runtime without ambient filesystem, network or timer builtins.
+    pub async fn create(runtime_options: Option<JsEngineRuntimeOptions>) -> Result<Self, JsError> {
+        Ok(Self {
+            owner: JsEngine::create(Some(JsBuiltinOptions::none()), None, runtime_options).await?,
+        })
+    }
+
+    /// Creates an isolated realm. Initialize its bridge before evaluating plugin code.
+    pub async fn create_engine(&self) -> Result<JsEngine, JsError> {
+        let resources = self.owner.ensure_runtime_accessible()?;
+        let context = JsAsyncContext::from_shared(&resources.runtime).await?;
+        let engine = JsEngine {
+            resources: RwLock::new(Some(Arc::new(JsEngineResources {
+                runtime: resources.runtime.clone(),
+                context,
+            }))),
+            state: AtomicU8::new(STATE_CREATED),
+        };
+        if self.owner.closed() || resources.runtime.shutdown().requested() {
+            engine.close().await?;
+            return Err(resources.runtime.shutdown().error());
+        }
+        Ok(engine)
+    }
+
+    /// Applies the continuous JavaScript budget to the entire group.
+    pub async fn set_execution_time_limit(&self, limit_millis: Option<u32>) -> Result<(), JsError> {
+        self.owner.set_execution_time_limit(limit_millis).await
+    }
+
+    /// Cancels every realm and closes the shared runtime.
+    pub async fn close(&self) -> Result<(), JsError> {
+        self.owner.close().await
+    }
 }
 
 impl JsEngine {
@@ -160,6 +208,11 @@ impl JsEngine {
     }
 
     #[cfg(test)]
+    pub(crate) fn context_for_test(&self) -> JsAsyncContext {
+        self.resources_for_test().context.clone()
+    }
+
+    #[cfg(test)]
     fn resources_for_test(&self) -> Arc<JsEngineResources> {
         self.resources
             .read()
@@ -208,7 +261,7 @@ impl JsEngine {
         match self.state.load(Ordering::Acquire) {
             STATE_CREATED => Ok(resources),
             STATE_RUNNING => {
-                self.ensure_no_unhandled_job_errors(&resources.runtime)?;
+                self.ensure_no_unhandled_job_errors(&resources.context)?;
                 Ok(resources)
             }
             STATE_CLOSED => Err(JsError::engine("Engine is closed")),
@@ -222,7 +275,7 @@ impl JsEngine {
         let resources = self.resources()?;
         match self.state.load(Ordering::Acquire) {
             STATE_RUNNING => {
-                self.ensure_no_unhandled_job_errors(&resources.runtime)?;
+                self.ensure_no_unhandled_job_errors(&resources.context)?;
                 Ok(resources)
             }
             STATE_CLOSED => Err(JsError::engine("Engine is closed")),
@@ -239,8 +292,17 @@ impl JsEngine {
         )
     }
 
-    fn ensure_no_unhandled_job_errors(&self, runtime: &JsAsyncRuntime) -> Result<(), JsError> {
-        let errors = runtime.take_unhandled_job_errors();
+    fn ensure_no_unhandled_job_errors(&self, context: &JsAsyncContext) -> Result<(), JsError> {
+        let shutdown = context.execution_shutdown();
+        if shutdown.requested() {
+            return Err(shutdown.error());
+        }
+        // A resident group context outlives individual calls: a detached failure
+        // from one call must not fail the next. Hosts drain these explicitly.
+        if context.context_shutdown.is_some() {
+            return Ok(());
+        }
+        let errors = context.driver.drain_errors();
         if errors.is_empty() {
             Ok(())
         } else {
@@ -308,7 +370,8 @@ impl JsEngine {
                     )
                 });
             }
-            let Some(storage) = ctx.userdata::<DynamicModuleStorage>() else {
+            let Some(storage) = crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx)
+            else {
                 return JsResult::Err(JsError::storage("Module storage not initialized"));
             };
             storage
@@ -329,14 +392,15 @@ impl JsEngine {
     ) -> Result<JsValue, JsError> {
         let resources = self.ensure_running()?;
         let driver = resources.runtime.driver.clone();
-        let shutdown = resources.runtime.shutdown();
+        let shutdown = resources.context.execution_shutdown();
         resources
             .context
             .with_foreground_js_result(async move |ctx, checkpoint| {
                 if is_dynamic_module_loaded(&ctx, &module_name) {
                     return JsResult::Err(Self::already_loaded_error(module_name));
                 }
-                let Some(storage) = ctx.userdata::<DynamicModuleStorage>() else {
+                let Some(storage) = crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx)
+                else {
                     return JsResult::Err(JsError::storage("Module storage not initialized"));
                 };
 
@@ -582,7 +646,7 @@ impl JsEngine {
         };
         let bridge = Arc::new(bridge);
         let attachment = resources.context.global_attachment.clone();
-        let shutdown = resources.runtime.shutdown();
+        let shutdown = resources.context.execution_shutdown();
 
         let init_result = resources
             .context
@@ -614,11 +678,15 @@ impl JsEngine {
             // context; undo our setup so the closed engine does not keep the
             // bridge object (and any captured Dart closure) alive.
             if self.closed() {
-                crate::runtime::teardown::cleanup_async_engine_immediately(
-                    &resources.context,
-                    &resources.runtime,
-                )
-                .await;
+                if resources.context.context_shutdown.is_some() {
+                    Self::close_shared_context(&resources).await;
+                } else {
+                    crate::runtime::teardown::cleanup_async_engine_immediately(
+                        &resources.context,
+                        &resources.runtime,
+                    )
+                    .await;
+                }
             }
             return Err(error);
         }
@@ -675,15 +743,31 @@ impl JsEngine {
             // context; undo our setup so the closed engine does not keep the
             // bridge object (and any captured Dart closure) alive.
             if self.closed() {
-                crate::runtime::teardown::cleanup_async_engine_immediately(
-                    &resources.context,
-                    &resources.runtime,
-                )
-                .await;
+                if resources.context.context_shutdown.is_some() {
+                    Self::close_shared_context(&resources).await;
+                } else {
+                    crate::runtime::teardown::cleanup_async_engine_immediately(
+                        &resources.context,
+                        &resources.runtime,
+                    )
+                    .await;
+                }
             }
             return Err(error);
         }
         Ok(())
+    }
+
+    async fn close_shared_context(resources: &JsEngineResources) {
+        resources.context.execution_shutdown().request();
+        resources
+            .context
+            .with_js(async |ctx| {
+                // Revocation is native: saved copies of bridge_call observe the same shutdown.
+                let _ = ctx.globals().remove("fjs");
+                crate::runtime::context_data::clear(&ctx);
+            })
+            .await;
     }
 
     async fn close_with_mode(&self, graceful: bool) -> Result<(), JsError> {
@@ -694,9 +778,21 @@ impl JsEngine {
             self.take_resources()
         };
 
+        if let Some(resources) = &resources {
+            if resources.context.context_shutdown.is_some() {
+                Self::close_shared_context(resources).await;
+                let errors = resources.context.driver.drain_errors();
+                return if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(JsError::runtime(Self::format_unhandled_job_errors(&errors)))
+                };
+            }
+        }
+
         let mut unhandled_errors = resources
             .as_ref()
-            .map(|resources| resources.runtime.take_unhandled_job_errors())
+            .map(|resources| resources.context.driver.drain_errors())
             .unwrap_or_default();
 
         if let Some(resources) = resources {
@@ -730,6 +826,9 @@ impl JsEngine {
 
     /// Closes the engine immediately and releases its owned resources.
     ///
+    /// For an engine created by `JsEngineGroup`, this revokes only its context
+    /// and bridge. The shared runtime driver and sibling contexts remain live.
+    ///
     /// After close, the engine wrapper cannot be used anymore. This method
     /// marks the engine closed, requests runtime cancellation, stops the
     /// background driver, detaches the `fjs` bridge object, skips the full
@@ -756,6 +855,9 @@ impl JsEngine {
     }
 
     /// Closes the engine after draining pending runtime work.
+    ///
+    /// Group child engines close their context immediately: they never drain
+    /// or stop work belonging to sibling contexts.
     ///
     /// This preserves the pre-3.2 graceful teardown behavior: the engine stops
     /// accepting new work, detaches the bridge, runs pending timers, Promise
@@ -828,7 +930,7 @@ impl JsEngine {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
-            .map(|resources| resources.runtime.take_unhandled_job_errors())
+            .map(|resources| resources.context.driver.drain_errors())
             .unwrap_or_default()
     }
 
@@ -873,7 +975,7 @@ impl JsEngine {
         let source_code = get_raw_source_code(source).await?;
 
         let driver = resources.runtime.driver.clone();
-        let shutdown = resources.runtime.shutdown();
+        let shutdown = resources.context.execution_shutdown();
         resources
             .context
             .with_foreground_js_result(async move |ctx, checkpoint| {
@@ -1214,7 +1316,7 @@ impl JsEngine {
         let script_name = script.name;
         let bytecode = script.bytes;
         let driver = resources.runtime.driver.clone();
-        let shutdown = resources.runtime.shutdown();
+        let shutdown = resources.context.execution_shutdown();
         resources
             .context
             .with_foreground_js_result(async move |ctx, checkpoint| {
@@ -1248,7 +1350,9 @@ impl JsEngine {
 
         let result = self
             .with_foreground_js_result(async |ctx, _checkpoint| {
-                if let Some(storage) = ctx.userdata::<DynamicModuleStorage>() {
+                if let Some(storage) =
+                    crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx)
+                {
                     let loaded: HashSet<_> =
                         get_loaded_dynamic_module_names(&ctx).into_iter().collect();
                     storage
@@ -1287,7 +1391,9 @@ impl JsEngine {
         resources
             .context
             .with_js(async |ctx| {
-                if let Some(storage) = ctx.userdata::<DynamicModuleStorage>() {
+                if let Some(storage) =
+                    crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx)
+                {
                     let mut modules: Vec<_> = storage
                         .read()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1349,7 +1455,9 @@ impl JsEngine {
         resources
             .context
             .with_js(async move |ctx| {
-                if let Some(storage) = ctx.userdata::<DynamicModuleStorage>() {
+                if let Some(storage) =
+                    crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx)
+                {
                     Ok(storage
                         .read()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1434,7 +1542,7 @@ impl JsEngine {
 
         let params = params.unwrap_or_default();
         let driver = resources.runtime.driver.clone();
-        let shutdown = resources.runtime.shutdown();
+        let shutdown = resources.context.execution_shutdown();
         resources
             .context
             .with_foreground_js_result(async move |ctx, checkpoint| {
@@ -1505,27 +1613,33 @@ fn new_bridge_call<'js>(
                 given: 0,
             })?;
 
+            if shutdown.requested() {
+                return Err(rquickjs::Error::new_from_js_message(
+                    "bridge",
+                    "JsValue",
+                    shutdown.error().to_string(),
+                ));
+            }
             let js_value = JsValue::from_js(&call_ctx, arg.clone())?;
             let bridge_ref = bridge.clone();
             let shutdown = shutdown.clone();
 
             Promise::wrap_future(&call_ctx, async move {
                 tokio::select! {
-                    result = bridge_ref(js_value) => {
+                    biased;
+                    _ = shutdown.cancelled() => Err(rquickjs::Error::new_from_js_message(
+                        "bridge", "JsValue", shutdown.error().to_string(),
+                    )),
+                    // Keep dispatch inside the future: constructing a Dart callback
+                    // future may already send a host request, before select polls it.
+                    result = async { bridge_ref(js_value).await } => {
                         match result {
                             JsResult::Ok(value) => Ok::<JsValue, rquickjs::Error>(value),
                             JsResult::Err(err) => Err(rquickjs::Error::new_from_js_message(
-                                "bridge",
-                                "JsValue",
-                                err.to_string(),
+                                "bridge", "JsValue", err.to_string(),
                             )),
                         }
                     }
-                    _ = shutdown.cancelled() => Err(rquickjs::Error::new_from_js_message(
-                        "bridge",
-                        "JsValue",
-                        shutdown.error().to_string(),
-                    )),
                 }
             })
         },

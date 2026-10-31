@@ -291,7 +291,7 @@ fn test_dynamic_module_resolver_found() {
             "test-module".to_string(),
             DynamicModuleEntry::Source(b"export const x = 1;".to_vec()),
         );
-        let _ = ctx.store_userdata(modules);
+        let _ = crate::runtime::context_data::store(&ctx, modules);
 
         let mut resolver = DynamicModuleResolver::default();
         let result = resolver.resolve(&ctx, ".", "test-module", None);
@@ -318,7 +318,7 @@ fn test_dynamic_module_loader_found() {
             "test-module".to_string(),
             DynamicModuleEntry::Source(b"export const x = 1;".to_vec()),
         );
-        let _ = ctx.store_userdata(modules);
+        let _ = crate::runtime::context_data::store(&ctx, modules);
 
         let mut loader = DynamicModuleLoader::default();
         let result = loader.load(&ctx, "test-module", None);

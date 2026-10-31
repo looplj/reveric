@@ -101,6 +101,45 @@ void main({bool initializeLibrary = true}) {
       }
     });
   });
+  testWidgets('shared native runtime isolates plugin contexts and local close', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final group = await JsEngineGroup.create();
+      final a = await group.createEngine();
+      final b = await group.createEngine();
+      try {
+        await a.init(
+          bridge: (_) async => const JsResult.ok(JsValue.string('A')),
+        );
+        await b.init(
+          bridge: (_) async => const JsResult.ok(JsValue.string('B')),
+        );
+        await a.eval(
+          source: JsCode.code(
+            "globalThis.privateValue=1; Object.prototype.poison=1; JSON.stringify=()=> 'poison';",
+          ),
+        );
+        expect(
+          await b.eval(
+            source: JsCode.code(
+              "JSON.stringify([typeof privateValue,typeof ({}).poison,await fjs.bridge_call('same-token')])",
+            ),
+          ),
+          const JsValue.string('["undefined","undefined","B"]'),
+        );
+        await a.close();
+        expect(
+          await b.eval(source: JsCode.code("await fjs.bridge_call('alive')")),
+          const JsValue.string('B'),
+        );
+      } finally {
+        await a.close();
+        await b.close();
+        await group.close();
+      }
+    });
+  });
 }
 
 Future<void> _cancelEngines(List<String> sources) async {

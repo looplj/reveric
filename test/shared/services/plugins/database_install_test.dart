@@ -18,6 +18,7 @@ import 'package:reveric/shared/services/plugins/host.dart';
 import 'package:reveric/shared/services/plugins/installer.dart';
 import 'package:reveric/shared/services/plugins/package_archive.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
+import 'package:reveric/shared/services/plugins/runtime.dart';
 import 'package:reveric/shared/services/plugins/sqlite.dart';
 
 const schema =
@@ -27,6 +28,7 @@ PluginPackageArchive package(
   int version, {
   String migration = upgrade,
   bool brokenApply = false,
+  String? entry,
 }) {
   final archive = Archive()
     ..addFile(
@@ -56,11 +58,12 @@ PluginPackageArchive package(
     ..addFile(
       ArchiveFile.string(
         'dist/index.js',
-        brokenApply
-            ? "var __revericPlugin={apply(){throw new Error('broken apply')}};"
-            : """
-var __revericPlugin={apply(setup){setup.tasks.register('organize',async context=>{await context.storage.set('runs',((await context.storage.get('runs'))||0)+1);return {summary:'done'};});setup.tasks.register('paused',async()=>({summary:'paused task'}));setup.tools.register({name:'Hold',description:'Wait',inputSchema:{type:'object'},handler:async(input,context)=>{await context.http.fetch(input.url);return {ok:true};}});setup.tools.register({name:'ReadNotes',description:'Read notes',inputSchema:{type:'object'},handler:async(input,context)=>({rows:await context.sqlite.query({sql:'SELECT * FROM notes'})})});}};
-""",
+        entry ??
+            (brokenApply
+                ? "var __revericPlugin={apply(){throw new Error('broken apply')}};"
+                : """
+let readCalls=0; var __revericPlugin={apply(setup){setup.tasks.register('organize',async context=>{await context.storage.set('runs',((await context.storage.get('runs'))||0)+1);return {summary:'done'};});setup.tasks.register('paused',async()=>({summary:'paused task'}));setup.tools.register({name:'Hold',description:'Wait',inputSchema:{type:'object'},handler:async(input,context)=>{await context.http.fetch(input.url);return {ok:true};}});setup.tools.register({name:'ReadNotes',description:'Read notes',inputSchema:{type:'object'},handler:async(input,context)=>({visits:++readCalls,rows:await context.sqlite.query({sql:'SELECT * FROM notes'})})});}};
+"""),
       ),
     );
   if (version == 2) {
@@ -116,6 +119,111 @@ void main() {
     await database.close();
     await root.delete(recursive: true);
   });
+  for (final scenario in [
+    'valid',
+    'broken apply',
+    'native timeout',
+    'memory exhaustion',
+  ]) {
+    test(
+      'preflight $scenario preserves old in-flight calls and module state',
+      () async {
+        final previousHttp = HttpOverrides.current;
+        HttpOverrides.global = null;
+        addTearDown(() => HttpOverrides.global = previousHttp);
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final arrived = Completer<HttpRequest>();
+        server.listen(arrived.complete);
+        final initial = await host.execute('ReadNotes', {});
+        expect(initial['visits'], 1);
+        var finished = false;
+        final holding = host
+            .execute('Hold', {'url': 'http://127.0.0.1:${server.port}/hold'})
+            .then((value) {
+              finished = true;
+              return value;
+            });
+        final request = await arrived.future.timeout(
+          const Duration(seconds: 3),
+        );
+        final candidate = package(
+          2,
+          brokenApply: scenario == 'broken apply',
+          entry: switch (scenario) {
+            'native timeout' => 'while(true){}',
+            'memory exhaustion' =>
+              'const a=[];while(true){a.push(new Array(100000).fill("abcdefgh"));}',
+            _ => null,
+          },
+        );
+        try {
+          final validation = host.validatePackage(
+            PluginPackage(
+              'candidate',
+              candidate.manifest,
+              utf8.decode(candidate.files[candidate.manifest.main]!),
+              source: 'local',
+            ),
+          );
+          if (scenario == 'valid') {
+            await validation;
+          } else {
+            final code = scenario == 'native timeout'
+                ? 'plugin_timeout'
+                : scenario == 'memory exhaustion'
+                ? 'plugin_memory_limit'
+                : 'plugin_error';
+            final expected = isA<PluginExecutionError>().having(
+              (error) => error.code,
+              'code',
+              code,
+            );
+            // QuickJS throws null if it cannot allocate the OOM exception itself.
+            // Keep that diagnostic instead of misclassifying arbitrary JS `throw null`.
+            await expectLater(
+              validation,
+              throwsA(
+                scenario == 'memory exhaustion'
+                    ? anyOf(
+                        expected,
+                        isA<PluginExecutionError>()
+                            .having(
+                              (error) => error.code,
+                              'code',
+                              'plugin_error',
+                            )
+                            .having(
+                              (error) => error.message,
+                              'native diagnostic',
+                              'Runtime error: null',
+                            ),
+                      )
+                    : expected,
+              ),
+            );
+          }
+          expect(
+            finished,
+            false,
+            reason: 'preflight must not cancel the old handler',
+          );
+          expect(host.statuses.single.manifest!.version, '1.0.0');
+          expect(
+            (await host.execute('ReadNotes', {}))['visits'],
+            2,
+            reason:
+                'preflight must not evict and silently reload the old module',
+          );
+          request.response.write('done');
+          await request.response.close();
+          expect((await holding)['ok'], true);
+        } finally {
+          await server.close(force: true);
+          await holding;
+        }
+      },
+    );
+  }
   test(
     'failed updates restore old tasks without changing paused schedules',
     () async {
@@ -261,6 +369,8 @@ void main() {
   test(
     'main registry transaction failure restores original after database file switch',
     () async {
+      expect((await host.execute('ReadNotes', {}))['visits'], 1);
+      final candidate = package(2);
       final end = await host.beginMaintenance('test.install');
       try {
         await expectLater(
@@ -274,7 +384,14 @@ void main() {
               {'version': 1, 'sql': schema},
               {'version': 2, 'sql': upgrade},
             ],
-            validate: () async {},
+            validate: () => host.validatePackage(
+              PluginPackage(
+                'candidate',
+                candidate.manifest,
+                utf8.decode(candidate.files[candidate.manifest.main]!),
+                source: 'local',
+              ),
+            ),
             commit: () async {
               await database.pluginDao.install(
                 pluginId: 'test.install',
@@ -294,6 +411,7 @@ void main() {
         (await database.pluginDao.getPlugin('test.install'))!.version,
         '1.0.0',
       );
+      expect((await host.execute('ReadNotes', {}))['visits'], 2);
       expect(await rows(), [
         {'text': 'original'},
       ]);

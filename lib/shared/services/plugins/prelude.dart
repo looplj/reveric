@@ -6,10 +6,13 @@
 import 'dart:convert';
 import 'sql_bridge.dart';
 
-/// 插件代码之前执行：只提供注册与日志，处理函数在调用阶段拿到各自的上下文。
-String pluginPrelude(String id, String version) =>
-    pluginSqliteBridge +
-    r'''
+/// 插件代码之前执行：只提供注册，处理函数在调用阶段拿到各自的上下文。
+String pluginPrelude(String id, String version, String slot, String token) {
+  final body =
+      r'''
+const fjs = Object.freeze({bridge_call(value) {
+  return __nativeBridge(JSON.stringify({...JSON.parse(value), token:__TOKEN__}));
+}});
 const __tools = Object.create(null);
 const __tasks = Object.create(null);
 const __prompts = Object.create(null);
@@ -23,7 +26,7 @@ class PluginHostError extends Error {
   constructor(code, message) { super(message); this.name = "PluginHostError"; this.code = code; }
 }
 async function __bridge(message) {
-  const reply = JSON.parse(await fjs.bridge_call(JSON.stringify(message)));
+  const reply = JSON.parse(await __nativeBridge(JSON.stringify({...message, token:__TOKEN__})));
   if (!reply.ok) throw new PluginHostError(reply.code, reply.error);
   return reply.result;
 }
@@ -32,9 +35,6 @@ function __call(method, args) {
   return __bridge({kind:'call', method, args});
 }
 const __plugin = Object.freeze(__IDENTITY__);
-const __log = Object.freeze(Object.fromEntries(['info','warn','error'].map(level => [level, (message, data) => {
-  __bridge({kind:'log', level, message: String(message), data: data === undefined ? null : data}).catch(() => {});
-}])));
 function __reject(message) {
   __registrationError ??= message;
   throw new Error(message);
@@ -53,7 +53,6 @@ function __take(value, key, table, label) {
 }
 const __setup = Object.freeze({
   plugin: __plugin,
-  log: __log,
   tools: Object.freeze({register(tool) {
     if (tool && typeof tool === 'object' && 'kind' in tool) __reject('Reserved tool property: kind');
     __definitions.push(__take(tool, 'name', __tools, 'tool'));
@@ -84,7 +83,7 @@ const __setup = Object.freeze({
     __actionNames.push(name);
   }}),
 });
-// 每次调用都向宿主上报完整注册，宿主校验通过后才能调用业务 API。
+// 加载时上报完整注册，宿主校验通过后保留 handler。
 async function __apply() {
   try {
     if (typeof __revericPlugin?.apply !== 'function') throw new Error('Missing apply');
@@ -97,10 +96,30 @@ async function __apply() {
 async function __handler(table, key, label) {
   const handler = table[key];
   if (typeof handler !== 'function') {
-    await __bridge({kind:'mismatch', message: label + ' is not registered: ' + key});
+    throw new PluginHostError('plugin_registration_mismatch', label + ' is not registered: ' + key);
   }
   return handler;
 }
+function __errorResult(error) {
+  return {kind:'result', error:String(error) + '\n' + String(error?.stack || ''),
+    code: typeof error?.code === 'string' ? error.code : null,
+    message: typeof error?.message === 'string' ? error.message : String(error)};
+}
+__PLUGIN_CODE__
+try { await __apply(); } catch (error) {
+  await __bridge(__errorResult(error)).catch(() => {});
+  return;
+}
+globalThis[__SLOT__] = async function(__token, __script) {
+  async function __bridge(message) {
+    const reply = JSON.parse(await __nativeBridge(JSON.stringify({...message, token:__token})));
+    if (!reply.ok) throw new PluginHostError(reply.code, reply.error);
+    return reply.result;
+  }
+  function __call(method, args) { return __bridge({kind:'call', method, args}); }
+  const __log = Object.freeze(Object.fromEntries(['info','warn','error'].map(level => [level, (message, data) => {
+    __bridge({kind:'log', level, message:String(message), data:data ?? null}).catch(() => {});
+  }])));
 const __http = Object.freeze({fetch(url, init = {}) {return __call('http.fetch', {...init, url});}});
 const __storage = Object.freeze({get(key) {return __call('storage.get', {key});}, set(key, value) {return __call('storage.set', {key, value});}, remove(key) {return __call('storage.remove', {key});}});
 const __settings = Object.freeze({get(key) {return __call('settings.get', {key});}});
@@ -139,29 +158,31 @@ async function __finish(run) {
   try { outcome = {value: await run()}; } catch (error) { outcome = {error}; }
   let message;
   if ('error' in outcome) {
-    const error = outcome.error;
-    message = {kind:'result', error:String(error) + '\n' + String(error?.stack || ''),
-      code: typeof error?.code === 'string' ? error.code : null,
-      message: typeof error?.message === 'string' ? error.message : String(error)};
+    message = __errorResult(outcome.error);
   } else {
     const invalid = __jsonError(outcome.value, '$');
     message = invalid ? {kind:'result', invalid} : {kind:'result', value:outcome.value};
   }
   await __bridge(message).catch(() => {});
 }
+return await eval(__script);
+};
+await __bridge({kind:'result',value:{}});
+})(fjs.bridge_call.bind(fjs));
 '''
-        .replaceFirst(
-          '__IDENTITY__',
-          jsonEncode({'id': id, 'version': version}),
-        );
+          .replaceAll('__SLOT__', jsonEncode(slot))
+          .replaceAll('__TOKEN__', jsonEncode(token))
+          .replaceFirst(
+            '__IDENTITY__',
+            jsonEncode({'id': id, 'version': version}),
+          );
 
-String pluginActivate() =>
-    'await __finish(async () => { await __apply(); return {}; });';
+  return 'await (async (__nativeBridge) => {\n$pluginSqliteBridge$body';
+}
 
 String pluginInvokeAction(String action, String callId) =>
     '''
 await __finish(async () => {
-  await __apply();
   const handler = await __handler(__actions, ${jsonEncode(action)}, 'Action');
   return handler(__context({callId:${jsonEncode(callId)}}));
 });
@@ -175,7 +196,6 @@ String pluginInvoke(
 ) =>
     '''
 await __finish(async () => {
-  await __apply();
   const handler = await __handler(__tools, ${jsonEncode(tool)}, 'Tool');
   return handler(${jsonEncode(input)}, __context({...__workData, callId:${jsonEncode(callId)}, request:Object.freeze(${jsonEncode(request)})}));
 });
@@ -188,7 +208,6 @@ String pluginInvokeViewAction(
 ) =>
     '''
 await __finish(async () => {
-  await __apply();
   const input = ${jsonEncode(input)};
   const handler = await __handler(__views[${jsonEncode(viewId)}] ?? {}, ${jsonEncode(action)}, 'View action');
   const ui = Object.freeze(Object.fromEntries(['toast','dialog','navigate'].map(method => [method, args => __call('ui.' + method, args)])));
@@ -200,7 +219,6 @@ await __finish(async () => {
 String pluginInvokePrompt(String providerId, Map<String, dynamic> request) =>
     '''
 await __finish(async () => {
-  await __apply();
   const handler = await __handler(__prompts, ${jsonEncode(providerId)}, 'Prompt provider');
   const text = await handler(Object.freeze({plugin:__plugin, log:__log, request:Object.freeze(${jsonEncode(request)}),
     sqlite:Object.freeze({query:__sqlite.query}), storage:Object.freeze({get:__storage.get}), settings:__settings}));
@@ -211,7 +229,6 @@ await __finish(async () => {
 String pluginInvokeTask(String taskId, Map<String, dynamic> run) =>
     '''
 await __finish(async () => {
-  await __apply();
   const handler = await __handler(__tasks, ${jsonEncode(taskId)}, 'Task');
   const result = await handler(__context(${jsonEncode(run)}));
   if (result !== undefined && (result === null || typeof result !== 'object' || Array.isArray(result))) {

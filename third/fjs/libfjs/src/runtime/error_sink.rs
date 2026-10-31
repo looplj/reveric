@@ -1,19 +1,39 @@
-use crate::runtime::driver::DriverController;
+use crate::runtime::driver::{DriverController, DriverErrorSource};
+use crate::runtime::shutdown::RuntimeShutdown;
 use rquickjs::{CatchResultExt, CaughtError, Ctx, Exception, FromJs, JsLifetime, Value};
 use std::sync::Once;
 
 #[derive(Clone)]
 pub(crate) struct RuntimeErrorSink {
     driver: DriverController,
+    shutdown: Option<RuntimeShutdown>,
 }
 
 impl RuntimeErrorSink {
     pub(crate) fn new(driver: DriverController) -> Self {
-        Self { driver }
+        Self {
+            driver,
+            shutdown: None,
+        }
     }
 
+    pub(crate) fn scoped(driver: DriverController, shutdown: RuntimeShutdown) -> Self {
+        Self {
+            driver,
+            shutdown: Some(shutdown),
+        }
+    }
     pub(crate) fn push(&self, error: String) {
-        self.driver.push_error(error);
+        self.push_from(DriverErrorSource::Unattributed, error);
+    }
+    pub(crate) fn push_from(&self, source: DriverErrorSource, error: String) {
+        if !self
+            .shutdown
+            .as_ref()
+            .is_some_and(RuntimeShutdown::requested)
+        {
+            self.driver.push_error_from(source, error);
+        }
     }
 }
 
@@ -28,7 +48,7 @@ static INSTALL_SPAWN_ERROR_HANDLER: Once = Once::new();
 pub(crate) fn install_llrt_spawn_error_handler() {
     INSTALL_SPAWN_ERROR_HANDLER.call_once(|| {
         llrt_context::set_spawn_error_handler(|ctx, error| {
-            if let Some(sink) = ctx.userdata::<RuntimeErrorSink>() {
+            if let Some(sink) = crate::runtime::context_data::get::<RuntimeErrorSink>(&ctx) {
                 sink.push(format_caught_error(ctx, error));
             }
         });

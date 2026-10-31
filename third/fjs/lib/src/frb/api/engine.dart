@@ -12,7 +12,7 @@ import 'source.dart';
 import 'value.dart';
 part 'engine.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `already_loaded_error`, `begin_close`, `begin_init`, `close_with_mode`, `declare_dynamic_modules`, `ensure_no_unhandled_job_errors`, `ensure_running`, `ensure_runtime_accessible`, `ensure_unique_module_names`, `evaluate_dynamic_module`, `finish_init`, `first_duplicate_name`, `format_unhandled_job_errors`, `new_bridge_call`, `register_fjs`, `resources`, `retire_resources_after_immediate_close`, `rollback_init`, `take_resources`, `with_foreground_js_result`
+// These functions are ignored because they are not marked as `pub`: `already_loaded_error`, `begin_close`, `begin_init`, `close_shared_context`, `close_with_mode`, `declare_dynamic_modules`, `ensure_no_unhandled_job_errors`, `ensure_running`, `ensure_runtime_accessible`, `ensure_unique_module_names`, `evaluate_dynamic_module`, `finish_init`, `first_duplicate_name`, `format_unhandled_job_errors`, `new_bridge_call`, `register_fjs`, `resources`, `retire_resources_after_immediate_close`, `rollback_init`, `take_resources`, `with_foreground_js_result`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `JsEngineResources`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `eq`, `fmt`
 
@@ -73,6 +73,9 @@ abstract class JsEngine implements RustOpaqueInterface {
 
   /// Closes the engine immediately and releases its owned resources.
   ///
+  /// For an engine created by `JsEngineGroup`, this revokes only its context
+  /// and bridge. The shared runtime driver and sibling contexts remain live.
+  ///
   /// After close, the engine wrapper cannot be used anymore. This method
   /// marks the engine closed, requests runtime cancellation, stops the
   /// background driver, detaches the `fjs` bridge object, skips the full
@@ -97,6 +100,9 @@ abstract class JsEngine implements RustOpaqueInterface {
   Future<void> close();
 
   /// Closes the engine after draining pending runtime work.
+  ///
+  /// Group child engines close their context immediately: they never drain
+  /// or stop work belonging to sibling contexts.
   ///
   /// This preserves the pre-3.2 graceful teardown behavior: the engine stops
   /// accepting new work, detaches the bridge, runs pending timers, Promise
@@ -531,6 +537,24 @@ abstract class JsEngine implements RustOpaqueInterface {
 
   /// Sets the memory limit on the engine-owned runtime.
   Future<void> setMemoryLimit({required BigInt limit});
+}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<JsEngineGroup>>
+abstract class JsEngineGroup implements RustOpaqueInterface {
+  /// Cancels every realm and closes the shared runtime.
+  Future<void> close();
+
+  /// Creates a restricted runtime without ambient filesystem, network or timer builtins.
+  static Future<JsEngineGroup> create(
+          {JsEngineRuntimeOptions? runtimeOptions}) =>
+      LibFjs.instance.api
+          .crateApiEngineJsEngineGroupCreate(runtimeOptions: runtimeOptions);
+
+  /// Creates an isolated realm. Initialize its bridge before evaluating plugin code.
+  Future<JsEngine> createEngine();
+
+  /// Applies the continuous JavaScript budget to the entire group.
+  Future<void> setExecutionTimeLimit({int? limitMillis});
 }
 
 /// Runtime configuration applied when constructing a high-level `JsEngine`.

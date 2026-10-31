@@ -79,7 +79,6 @@ function harness(
   };
   const setup: PluginSetup = {
     plugin,
-    log: services.log,
     tools: {
       register: (tool) => {
         tools.set(tool.name, tool);

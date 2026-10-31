@@ -3,19 +3,27 @@
 //
 // Lifecycle
 // - The entry bundle exports `apply(setup: PluginSetup)`. `apply` only
-//   registers handlers; apart from `setup.log`, no Host API is available.
-// - Every activation and every handler call runs in a fresh runtime: the
-//   Host evaluates the bundle, runs `apply`, then calls one handler. Module
-//   state never survives between calls; persist with `storage` or `sqlite`.
-// - `apply` must register the same definitions every time. A call whose
-//   registrations differ from the activation fails with
-//   `plugin_registration_mismatch`.
-// - Each handler receives a context for its phase. Use that context; the
-//   setup object passed to `apply` has no data access.
-// - Cancellation and time limits close the runtime: pending Host calls never
-//   resolve and no further plugin code runs. Handlers do not poll for
-//   cancellation. Keep related writes in one `sqlite.transaction` so an
-//   interrupted run leaves consistent data.
+//   registers handlers; no Host API is available.
+// - Business plugins share one runtime, each with its own isolated context.
+//   Loading a plugin runs `apply`
+//   once; subsequent calls reuse its handlers and module state. Calls may overlap
+//   while awaiting Host APIs. TSX pages retain their own independent runtimes.
+// - Updating, disabling or unloading a plugin destroys its context, including
+//   globals and intrinsic changes. Persist durable state with
+//   `storage` or `sqlite`; module state is only a cache.
+// - Each handler receives a context for its phase and invocation. Do not retain
+//   a context for use by another call; the setup object has no data access.
+// - Cancellation or a wall-clock timeout revokes the invocation's Host APIs
+//   and rejects pending bridge waits. The Host waits up to 500 ms for its JS
+//   execution to finish. If it does not stop, the shared runtime is closed and
+//   rebuilt; other outstanding calls fail with `plugin_runtime_reset`.
+//   A Host call attempted after an invocation has finished also retires the
+//   runtime, including detached work that outlives its handler. Unhandled
+//   rejections from detached work are logged; they do not fail later calls.
+// - Continuous JS budget violations and memory exhaustion also rebuild the
+//   shared runtime. Plugins reload before their next use. Completed writes are
+//   not rolled back and the runtime never replays failed calls. Keep
+//   related writes in one `sqlite.transaction`.
 //
 // Results
 // - Handler results must be strict JSON: null, boolean, finite number,
@@ -89,7 +97,7 @@ export interface PluginLog {
 // Setup
 
 /**
- * Passed to `apply`. Only registration and logging are available.
+ * Passed to `apply`. Only registration is available.
  * Manifest `settings.fields` declares form fields; `settings.actions` declares
  * action titles and required fields. `tasks[id]` declares title and
  * intervalMinutes (15–10080); register only its handler here.
@@ -101,7 +109,6 @@ export interface PluginLog {
  */
 export interface PluginSetup {
   readonly plugin: PluginInfo;
-  readonly log: PluginLog;
   readonly tools: { register(tool: ToolRegistration): void };
   readonly prompts: {
     /** Reference data added to the conversation before model requests. */

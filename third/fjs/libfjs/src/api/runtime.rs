@@ -859,7 +859,14 @@ impl JsAsyncRuntime {
                     let source = DriverErrorSource::promise(&promise);
                     let error = crate::runtime::job_error::format_value(&ctx, reason);
                     if !is_handled {
-                        rejection_driver.push_error_from(source, error);
+                        if let Some(sink) = crate::runtime::context_data::get::<
+                            crate::runtime::error_sink::RuntimeErrorSink,
+                        >(&ctx)
+                        {
+                            sink.push_from(source, error);
+                        } else {
+                            rejection_driver.push_error_from(source, error);
+                        }
                     } else {
                         rejection_driver.remove_error_source(source);
                     }
@@ -1034,6 +1041,9 @@ impl JsAsyncRuntime {
         is_last_runtime_owner: bool,
     ) {
         crate::runtime::executor::spawn_js(async move {
+            context
+                .async_with(async |ctx| crate::runtime::context_data::clear(&ctx))
+                .await;
             drop(context);
             JsAsyncRuntime::cleanup_after_context_drop(runtime.clone()).await;
             if is_last_runtime_owner {
@@ -1303,6 +1313,7 @@ pub struct JsAsyncContext {
     pub(crate) runtime: rquickjs::AsyncRuntime,
     pub(crate) driver: crate::runtime::driver::DriverController,
     pub(crate) shutdown: RuntimeShutdown,
+    pub(crate) context_shutdown: Option<RuntimeShutdown>,
     pub(crate) cleaned: Arc<AtomicBool>,
     pub(crate) runtime_lifetime: Option<Arc<()>>,
     pub(crate) context_lifetime: Option<Arc<()>>,
@@ -1310,6 +1321,12 @@ pub struct JsAsyncContext {
 }
 
 impl JsAsyncContext {
+    pub(crate) fn execution_shutdown(&self) -> RuntimeShutdown {
+        self.context_shutdown
+            .clone()
+            .unwrap_or_else(|| self.shutdown.clone())
+    }
+
     fn take_unhandled_job_error(&self) -> Option<JsError> {
         let errors = self.driver.drain_errors();
         if errors.is_empty() {
@@ -1323,8 +1340,8 @@ impl JsAsyncContext {
     }
 
     fn ensure_no_unhandled_job_errors(&self) -> Result<(), JsError> {
-        if self.shutdown.requested() {
-            return Err(self.shutdown.error());
+        if self.execution_shutdown().requested() {
+            return Err(self.execution_shutdown().error());
         }
         if let Some(error) = self.take_unhandled_job_error() {
             Err(error)
@@ -1337,11 +1354,11 @@ impl JsAsyncContext {
     where
         F: for<'js> AsyncFnOnce(rquickjs::Ctx<'js>, u64) -> JsResult + Send + 'static,
     {
-        if self.shutdown.requested() {
-            return JsResult::Err(self.shutdown.error());
+        if self.execution_shutdown().requested() {
+            return JsResult::Err(self.execution_shutdown().error());
         }
         let checkpoint = self.driver.error_checkpoint();
-        let shutdown = self.shutdown.clone();
+        let shutdown = self.execution_shutdown();
         self.with_js(async move |ctx| {
             if shutdown.requested() {
                 return JsResult::Err(shutdown.error());
@@ -1397,6 +1414,20 @@ impl JsAsyncContext {
     /// final context = await JsAsyncContext.from(runtime: runtime);
     /// ```
     pub async fn from(runtime: &JsAsyncRuntime) -> Result<Self, JsError> {
+        Self::from_runtime(runtime, false).await
+    }
+
+    pub(crate) async fn from_shared(runtime: &JsAsyncRuntime) -> Result<Self, JsError> {
+        Self::from_runtime(runtime, true).await
+    }
+
+    async fn from_runtime(runtime: &JsAsyncRuntime, shared: bool) -> Result<Self, JsError> {
+        let context_shutdown = shared.then(|| runtime.shutdown.child());
+        let driver = if shared {
+            runtime.driver.context_scope()
+        } else {
+            runtime.driver.clone()
+        };
         let runtime_handle = runtime.rt.clone();
         let context = crate::runtime::executor::run_js(async move {
             rquickjs::AsyncContext::full(&runtime_handle).await
@@ -1410,19 +1441,29 @@ impl JsAsyncContext {
         let loaded_dynamic_modules = LoadedDynamicModules::default();
 
         let context_for_userdata = context.clone();
-        let error_sink = crate::runtime::error_sink::RuntimeErrorSink::new(runtime.driver.clone());
+        let error_sink = match &context_shutdown {
+            Some(shutdown) => crate::runtime::error_sink::RuntimeErrorSink::scoped(
+                driver.clone(),
+                shutdown.clone(),
+            ),
+            None => crate::runtime::error_sink::RuntimeErrorSink::new(driver.clone()),
+        };
         crate::runtime::executor::run_js(async move {
             context_for_userdata
                 .async_with(async |ctx| {
-                    ctx.store_userdata(error_sink).map_err(|e| {
+                    crate::runtime::context_data::store(&ctx, error_sink).map_err(|e| {
                         JsError::storage(format!("Failed to store runtime error sink: {e:?}"))
                     })?;
-                    ctx.store_userdata(dynamic_modules.clone()).map_err(|e| {
-                        JsError::storage(format!("Failed to store dynamic modules: {e:?}"))
-                    })?;
-                    ctx.store_userdata(loaded_dynamic_modules).map_err(|e| {
-                        JsError::storage(format!("Failed to store loaded dynamic modules: {e:?}"))
-                    })?;
+                    crate::runtime::context_data::store(&ctx, dynamic_modules.clone()).map_err(
+                        |e| JsError::storage(format!("Failed to store dynamic modules: {e:?}")),
+                    )?;
+                    crate::runtime::context_data::store(&ctx, loaded_dynamic_modules).map_err(
+                        |e| {
+                            JsError::storage(format!(
+                                "Failed to store loaded dynamic modules: {e:?}"
+                            ))
+                        },
+                    )?;
                     Ok::<(), JsError>(())
                 })
                 .await
@@ -1440,8 +1481,9 @@ impl JsAsyncContext {
         Ok(Self {
             ctx: Some(context),
             runtime: runtime.rt.clone(),
-            driver: runtime.driver.clone(),
+            driver,
             shutdown: runtime.shutdown.clone(),
+            context_shutdown,
             cleaned: runtime.cleaned.clone(),
             runtime_lifetime: runtime.runtime_lifetime.clone(),
             context_lifetime: Some(Arc::new(())),
@@ -1492,8 +1534,8 @@ impl JsAsyncContext {
     /// - If code evaluation fails
     /// - If global attachment fails
     pub async fn eval_with_options(&self, code: String, options: JsEvalOptions) -> JsResult {
-        if self.shutdown.requested() {
-            return JsResult::Err(self.shutdown.error());
+        if self.execution_shutdown().requested() {
+            return JsResult::Err(self.execution_shutdown().error());
         }
         if let Some(error) = self.take_unhandled_job_error() {
             return JsResult::Err(error);
@@ -1501,7 +1543,7 @@ impl JsAsyncContext {
 
         let attachment = self.global_attachment.clone();
         let driver = self.driver.clone();
-        let shutdown = self.shutdown.clone();
+        let shutdown = self.execution_shutdown();
         self.with_foreground_js_result(async move |ctx, checkpoint| {
             if let Some(attachment) = &attachment
                 && let Err(e) = attachment.attach(&ctx)
@@ -1567,8 +1609,8 @@ impl JsAsyncContext {
     /// - If file cannot be read
     /// - If code evaluation fails
     pub async fn eval_file_with_options(&self, path: String, options: JsEvalOptions) -> JsResult {
-        if self.shutdown.requested() {
-            return JsResult::Err(self.shutdown.error());
+        if self.execution_shutdown().requested() {
+            return JsResult::Err(self.execution_shutdown().error());
         }
         if let Some(error) = self.take_unhandled_job_error() {
             return JsResult::Err(error);
@@ -1584,7 +1626,7 @@ impl JsAsyncContext {
 
         let attachment = self.global_attachment.clone();
         let driver = self.driver.clone();
-        let shutdown = self.shutdown.clone();
+        let shutdown = self.execution_shutdown();
         self.with_foreground_js_result(async move |ctx, checkpoint| {
             if let Some(attachment) = &attachment
                 && let Err(e) = attachment.attach(&ctx)
@@ -1637,8 +1679,8 @@ impl JsAsyncContext {
         method: String,
         params: Option<Vec<JsValue>>,
     ) -> JsResult {
-        if self.shutdown.requested() {
-            return JsResult::Err(self.shutdown.error());
+        if self.execution_shutdown().requested() {
+            return JsResult::Err(self.execution_shutdown().error());
         }
         if let Some(error) = self.take_unhandled_job_error() {
             return JsResult::Err(error);
@@ -1647,7 +1689,7 @@ impl JsAsyncContext {
         let params = params.unwrap_or_default();
         let attachment = self.global_attachment.clone();
         let driver = self.driver.clone();
-        let shutdown = self.shutdown.clone();
+        let shutdown = self.execution_shutdown();
         self.with_foreground_js_result(async move |ctx, checkpoint| {
             if let Some(attachment) = &attachment
                 && let Err(e) = attachment.attach(&ctx)

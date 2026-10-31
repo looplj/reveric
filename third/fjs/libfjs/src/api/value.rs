@@ -63,12 +63,12 @@ impl<'js> ValueIntrinsics<'js> {
 pub(crate) fn install_value_intrinsics<'js>(
     ctx: &Ctx<'js>,
 ) -> Result<(), crate::api::error::JsError> {
-    if ctx.userdata::<ValueIntrinsics<'js>>().is_some() {
+    if crate::runtime::context_data::get::<ValueIntrinsics<'js>>(&ctx).is_some() {
         return Ok(());
     }
 
     let intrinsics = ValueIntrinsics::capture(ctx)?;
-    ctx.store_userdata(intrinsics).map_err(|e| {
+    crate::runtime::context_data::store(&ctx, intrinsics).map_err(|e| {
         crate::api::error::JsError::context(format!("Failed to store value intrinsics: {e:?}"))
     })?;
     Ok(())
@@ -715,7 +715,7 @@ impl JsValue {
                 let obj = value
                     .as_object()
                     .ok_or_else(|| rquickjs::Error::new_from_js("value", "Object"))?;
-                let intrinsics = ctx.userdata::<ValueIntrinsics<'js>>();
+                let intrinsics = crate::runtime::context_data::get::<ValueIntrinsics<'js>>(&ctx);
 
                 // Check for ArrayBuffer. The instanceof gate matters:
                 // `ArrayBuffer::from_object` probes via `JS_GetArrayBuffer`,

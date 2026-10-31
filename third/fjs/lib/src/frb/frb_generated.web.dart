@@ -43,6 +43,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_JsEnginePtr => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine;
 
+  CrossPlatformFinalizerArg
+      get rust_arc_decrement_strong_count_JsEngineGroupPtr => wire
+          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup;
+
   CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_JsRuntimePtr =>
       wire.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime;
 
@@ -82,6 +86,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           dynamic raw);
 
   @protected
+  JsEngineGroup
+      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          dynamic raw);
+
+  @protected
   JsRuntime
       dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
           dynamic raw);
@@ -114,6 +123,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsEngine
       dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
+          dynamic raw);
+
+  @protected
+  JsEngineGroup
+      dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
           dynamic raw);
 
   @protected
@@ -171,6 +185,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsEngine
       dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
+          dynamic raw);
+
+  @protected
+  JsEngineGroup
+      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
           dynamic raw);
 
   @protected
@@ -460,6 +479,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           SseDeserializer deserializer);
 
   @protected
+  JsEngineGroup
+      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          SseDeserializer deserializer);
+
+  @protected
   JsRuntime
       sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
           SseDeserializer deserializer);
@@ -492,6 +516,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsEngine
       sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
+          SseDeserializer deserializer);
+
+  @protected
+  JsEngineGroup
+      sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
           SseDeserializer deserializer);
 
   @protected
@@ -547,6 +576,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsEngine
       sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
+          SseDeserializer deserializer);
+
+  @protected
+  JsEngineGroup
+      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
           SseDeserializer deserializer);
 
   @protected
@@ -858,6 +892,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void
+      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          JsEngineGroup self, SseSerializer serializer);
+
+  @protected
+  void
       sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
           JsRuntime self, SseSerializer serializer);
 
@@ -890,6 +929,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   void
       sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
           JsEngine self, SseSerializer serializer);
+
+  @protected
+  void
+      sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          JsEngineGroup self, SseSerializer serializer);
 
   @protected
   void
@@ -949,6 +993,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   void
       sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
           JsEngine self, SseSerializer serializer);
+
+  @protected
+  void
+      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          JsEngineGroup self, SseSerializer serializer);
 
   @protected
   void
@@ -1300,6 +1349,18 @@ class LibFjsWire implements BaseWire {
           .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
               ptr);
 
+  void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          int ptr) =>
+      wasmModule
+          .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+              ptr);
+
+  void rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          int ptr) =>
+      wasmModule
+          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+              ptr);
+
   void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
           int ptr) =>
       wasmModule
@@ -1381,6 +1442,14 @@ extension type LibFjsWasmModule._(JSObject _) implements JSObject {
 
   external void
       rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
+          int ptr);
+
+  external void
+      rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
+          int ptr);
+
+  external void
+      rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngineGroup(
           int ptr);
 
   external void

@@ -196,3 +196,34 @@ Foreground polls notify the driver when they yield so idle detection also
 covers long Host operations. Existing engine close error diagnostics remain
 intact. Native tests cover CPU/microtask interruption, awaited Host latency,
 fire-and-forget calls and normal close regressions.
+
+## Resident plugin contexts
+
+`JsEngineGroup` owns one restricted QuickJS runtime and driver. `createEngine()`
+creates a separate context with its own globals, intrinsics, module registry,
+bridge callback and cancellation state. Ordinary `JsEngine.create()` remains an
+independent runtime for Codemode; native TSX sessions retain their existing path.
+
+rquickjs stores `Ctx::userdata` on the runtime, not the context. FJS therefore
+keys module metadata, cached conversion intrinsics and error sinks by native
+context identity in `runtime/context_data.rs`, and removes those entries during
+context teardown. Child engines consume only their own background errors, and
+the queue cap applies per context so one realm cannot evict a sibling's errors.
+Because a child context outlives individual calls, its queued background errors
+do not fail the next engine operation; the host drains them explicitly, and
+`close()` still reports whatever remains after teardown.
+Bridge identity comes from the native callback attached to that context;
+application invocation tokens cannot select a sibling context's callback.
+
+Closing a child revokes even saved copies of its native bridge and cancels its
+pending host waits without shutting down the shared driver. Closing the group,
+or hitting its continuous execution budget, cancels all children. The memory
+limit is also shared. The application rebuilds the group after fatal resource
+errors and reloads registrations lazily; it does not replay failed writes.
+
+Regression tests prove shared runtime ownership, global/prototype and module
+isolation, context-local value conversion and background diagnostics, native
+bridge revocation, sibling survival after context close, and group-wide native
+interrupts. Application tests also exercise stringify-based token theft,
+explicitly supplied foreign tokens, global slot enumeration and pollution
+cleanup on plugin unload/update.

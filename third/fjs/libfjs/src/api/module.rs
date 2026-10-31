@@ -106,18 +106,18 @@ impl LoadedDynamicModules {
 }
 
 pub(crate) fn mark_dynamic_module_loaded(ctx: &Ctx<'_>, name: &str) {
-    if let Some(loaded_modules) = ctx.userdata::<LoadedDynamicModules>() {
+    if let Some(loaded_modules) = crate::runtime::context_data::get::<LoadedDynamicModules>(&ctx) {
         loaded_modules.insert(name.to_string());
     }
 }
 
 pub(crate) fn is_dynamic_module_loaded(ctx: &Ctx<'_>, name: &str) -> bool {
-    ctx.userdata::<LoadedDynamicModules>()
+    crate::runtime::context_data::get::<LoadedDynamicModules>(&ctx)
         .is_some_and(|loaded_modules| loaded_modules.contains(name))
 }
 
 pub(crate) fn get_loaded_dynamic_module_names(ctx: &Ctx<'_>) -> Vec<String> {
-    ctx.userdata::<LoadedDynamicModules>()
+    crate::runtime::context_data::get::<LoadedDynamicModules>(&ctx)
         .map_or_else(Vec::new, |loaded_modules| loaded_modules.snapshot())
 }
 
@@ -179,7 +179,9 @@ impl Resolver for DynamicModuleResolver {
         name: &str,
         _attributes: Option<ImportAttributes<'js>>,
     ) -> rquickjs::Result<String> {
-        if let Some(modules_storage) = ctx.userdata::<DynamicModuleStorage>() {
+        if let Some(modules_storage) =
+            crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx)
+        {
             let modules = modules_storage
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -227,7 +229,9 @@ impl Loader for DynamicModuleLoader {
         name: &str,
         _attributes: Option<ImportAttributes<'js>>,
     ) -> rquickjs::Result<Module<'js, rquickjs::module::Declared>> {
-        if let Some(modules_storage) = ctx.userdata::<DynamicModuleStorage>() {
+        if let Some(modules_storage) =
+            crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx)
+        {
             let entry = modules_storage
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -315,11 +319,11 @@ impl ModuleNames<'_> {
 pub(crate) fn get_available_module_names(ctx: &Ctx<'_>) -> Vec<String> {
     let mut names = HashSet::new();
 
-    if let Some(module_names) = ctx.userdata::<ModuleNames>() {
+    if let Some(module_names) = crate::runtime::context_data::get::<ModuleNames>(&ctx) {
         names.extend(module_names.list.iter().cloned());
     }
 
-    if let Some(modules_storage) = ctx.userdata::<DynamicModuleStorage>() {
+    if let Some(modules_storage) = crate::runtime::context_data::get::<DynamicModuleStorage>(&ctx) {
         names.extend(
             modules_storage
                 .read()
@@ -348,7 +352,7 @@ pub struct GlobalAttachment {
 
 /// Marker type to track if a context has been initialized with global attachments.
 #[frb(ignore)]
-struct GlobalAttachmentInitialized {}
+pub(crate) struct GlobalAttachmentInitialized {}
 
 // SAFETY: This zero-sized marker contains no references or context-bound
 // JavaScript handles, so it is valid for every JavaScript lifetime.
@@ -432,19 +436,22 @@ impl GlobalAttachment {
     /// Returns Ok if attachment succeeds, or an error if initialization fails.
     pub fn attach(&self, ctx: &Ctx<'_>) -> rquickjs::Result<()> {
         // Check if this context has already been initialized
-        if ctx.userdata::<GlobalAttachmentInitialized>().is_some() {
+        if crate::runtime::context_data::get::<GlobalAttachmentInitialized>(&ctx).is_some() {
             return Ok(());
         }
 
         if !self.inner.names.is_empty() {
-            let _ = ctx.store_userdata(ModuleNames::new(self.inner.names.clone()));
+            let _ = crate::runtime::context_data::store(
+                &ctx,
+                ModuleNames::new(self.inner.names.clone()),
+            );
         }
         for init in &self.inner.functions {
             init(ctx)?;
         }
 
         // Only mark the context initialized after all setup completed successfully.
-        let _ = ctx.store_userdata(GlobalAttachmentInitialized {});
+        let _ = crate::runtime::context_data::store(&ctx, GlobalAttachmentInitialized {});
         Ok(())
     }
 }
@@ -666,7 +673,9 @@ fn init_guarded_timers(ctx: &Ctx<'_>) -> rquickjs::Result<()> {
 }
 
 fn record_timer_callback_error<'js>(ctx: Ctx<'js>, error: Value<'js>) -> rquickjs::Result<bool> {
-    if let Some(sink) = ctx.userdata::<crate::runtime::error_sink::RuntimeErrorSink>() {
+    if let Some(sink) =
+        crate::runtime::context_data::get::<crate::runtime::error_sink::RuntimeErrorSink>(&ctx)
+    {
         sink.push(crate::runtime::error_sink::format_value(&ctx, error));
         Ok(true)
     } else {

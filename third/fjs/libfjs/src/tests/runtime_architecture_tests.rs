@@ -1845,3 +1845,262 @@ async fn task_execution_budget_excludes_host_wait_but_not_detached_cpu() {
     }
     assert!(engine.closed());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_group_shares_runtime_but_isolates_globals_and_native_bridges() {
+    use crate::api::engine::JsEngineGroup;
+    let group = JsEngineGroup::create(None).await.unwrap();
+    let a = group.create_engine().await.unwrap();
+    let b = group.create_engine().await.unwrap();
+    let ar = a.runtime_for_test();
+    let br = b.runtime_for_test();
+    assert!(Arc::ptr_eq(
+        ar.runtime_lifetime.as_ref().unwrap(),
+        br.runtime_lifetime.as_ref().unwrap()
+    ));
+    a.init(|_| Box::pin(async { JsResult::Ok(JsValue::String("A".into())) }))
+        .await
+        .unwrap();
+    b.init(|_| Box::pin(async { JsResult::Ok(JsValue::String("B".into())) }))
+        .await
+        .unwrap();
+    a.eval(JsCode::Code("globalThis.leaked = 1; Object.prototype.poison = 1; JSON.stringify = () => 'poison'; globalThis.savedBridge = fjs.bridge_call;".into()), None).await.unwrap();
+    let result = b.eval(JsCode::Code("JSON.stringify([typeof leaked, typeof ({}).poison, typeof savedBridge, await fjs.bridge_call('same-token')])".into()), None).await.unwrap();
+    assert_eq!(
+        result,
+        JsValue::String(r#"["undefined","undefined","undefined","B"]"#.into())
+    );
+    assert_eq!(
+        a.eval(JsCode::Code("await savedBridge('same-token')".into()), None)
+            .await
+            .unwrap(),
+        JsValue::String("A".into())
+    );
+    a.close().await.unwrap();
+    assert_eq!(
+        b.eval(JsCode::Code("21*2".into()), None).await.unwrap(),
+        JsValue::Integer(42)
+    );
+    b.close().await.unwrap();
+    group.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_group_context_close_cancels_host_wait_without_stopping_sibling() {
+    use crate::api::engine::JsEngineGroup;
+    let group = JsEngineGroup::create(None).await.unwrap();
+    let a = Arc::new(group.create_engine().await.unwrap());
+    let b = group.create_engine().await.unwrap();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let signal = entered.clone();
+    a.init(move |_| {
+        let signal = signal.clone();
+        Box::pin(async move {
+            signal.notify_one();
+            std::future::pending::<JsResult>().await
+        })
+    })
+    .await
+    .unwrap();
+    b.init_without_bridge().await.unwrap();
+    let caller = a.clone();
+    let pending = tokio::spawn(async move {
+        caller
+            .eval(JsCode::Code("await fjs.bridge_call('wait')".into()), None)
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(2), entered.notified())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), a.close())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(pending.await.unwrap(), Err(JsError::Cancelled(_))));
+    assert_eq!(
+        b.eval(JsCode::Code("42".into()), None).await.unwrap(),
+        JsValue::Integer(42)
+    );
+    assert!(b.driver_running().await.unwrap());
+    b.close().await.unwrap();
+    group.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_group_background_errors_stay_with_their_context() {
+    use crate::api::engine::JsEngineGroup;
+    let group = JsEngineGroup::create(None).await.unwrap();
+    let a = group.create_engine().await.unwrap();
+    let b = group.create_engine().await.unwrap();
+    a.init_without_bridge().await.unwrap();
+    b.init_without_bridge().await.unwrap();
+    a.eval(
+        JsCode::Code("Promise.reject(new Error('A-only')); 1".into()),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        b.eval(JsCode::Code("42".into()), None).await.unwrap(),
+        JsValue::Integer(42)
+    );
+    assert!(b.drain_unhandled_job_errors().is_empty());
+    // A resident context keeps serving calls; its queued failure stays drainable.
+    assert_eq!(
+        a.eval(JsCode::Code("1".into()), None).await.unwrap(),
+        JsValue::Integer(1)
+    );
+    assert!(
+        a.drain_unhandled_job_errors()
+            .iter()
+            .any(|message| message.contains("A-only"))
+    );
+    a.close().await.unwrap();
+    b.close().await.unwrap();
+    group.close().await.unwrap();
+}
+
+#[test]
+fn driver_error_cap_is_per_context_scope() {
+    let driver = crate::runtime::driver::DriverController::default();
+    let noisy = driver.context_scope();
+    let quiet = driver.context_scope();
+    quiet.push_error("quiet".to_string());
+    for index in 0..40 {
+        noisy.push_error(format!("noisy-{index}"));
+    }
+    assert_eq!(quiet.drain_errors(), vec!["quiet".to_string()]);
+    let noisy_errors = noisy.drain_errors();
+    assert_eq!(noisy_errors.len(), 32);
+    assert_eq!(noisy_errors.first().map(String::as_str), Some("noisy-8"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_group_runtime_timeout_reaches_every_context() {
+    use crate::api::engine::JsEngineGroup;
+    let group = JsEngineGroup::create(None).await.unwrap();
+    group.set_execution_time_limit(Some(30)).await.unwrap();
+    let a = group.create_engine().await.unwrap();
+    let b = group.create_engine().await.unwrap();
+    a.init_without_bridge().await.unwrap();
+    b.init_without_bridge().await.unwrap();
+    assert!(matches!(
+        a.eval(JsCode::Code("while(true){}".into()), None).await,
+        Err(JsError::Timeout { .. })
+    ));
+    assert!(matches!(
+        b.eval(JsCode::Code("42".into()), None).await,
+        Err(JsError::Timeout { .. })
+    ));
+    a.close().await.unwrap();
+    b.close().await.unwrap();
+    group.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_group_modules_and_value_intrinsics_are_context_local() {
+    use crate::api::engine::JsEngineGroup;
+    let group = JsEngineGroup::create(None).await.unwrap();
+    let a = group.create_engine().await.unwrap();
+    let b = group.create_engine().await.unwrap();
+    a.init_without_bridge().await.unwrap();
+    b.init_without_bridge().await.unwrap();
+    for (engine, value) in [(&a, "A"), (&b, "B")] {
+        engine
+            .declare_new_module(JsModule::code(
+                "private".into(),
+                format!("export const identity = '{value}';"),
+            ))
+            .await
+            .unwrap();
+    }
+    a.declare_new_module(JsModule::code(
+        "only-a".into(),
+        "export const secret = 'A-secret';".into(),
+    ))
+    .await
+    .unwrap();
+    for (engine, value) in [(&a, "A"), (&b, "B")] {
+        assert_eq!(
+            engine
+                .eval(
+                    JsCode::Code("(await import('private')).identity".into()),
+                    None
+                )
+                .await
+                .unwrap(),
+            JsValue::String(value.into())
+        );
+    }
+    assert!(!b.is_module_declared("only-a".into()).await.unwrap());
+    assert!(
+        b.eval(JsCode::Code("await import('only-a')".into()), None)
+            .await
+            .is_err()
+    );
+    a.eval(
+        JsCode::Code("Date.prototype.getTime = () => 999;".into()),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        b.eval(
+            JsCode::Code("[new Date(123), new Uint8Array([1,2])]".into()),
+            None
+        )
+        .await
+        .unwrap(),
+        JsValue::Array(vec![JsValue::Date(123), JsValue::Bytes(vec![1, 2])])
+    );
+    a.close().await.unwrap();
+    assert_eq!(
+        b.eval(
+            JsCode::Code("(await import('private')).identity".into()),
+            None
+        )
+        .await
+        .unwrap(),
+        JsValue::String("B".into())
+    );
+    b.close().await.unwrap();
+    group.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_group_saved_native_bridge_is_revoked_on_context_close() {
+    use crate::api::engine::JsEngineGroup;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let group = JsEngineGroup::create(None).await.unwrap();
+    let a = group.create_engine().await.unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let called = calls.clone();
+    a.init(move |_| {
+        called.fetch_add(1, Ordering::AcqRel);
+        Box::pin(async { JsResult::Ok(JsValue::None) })
+    })
+    .await
+    .unwrap();
+    a.eval(
+        JsCode::Code("globalThis.saved = fjs.bridge_call; await saved('before');".into()),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(calls.load(Ordering::Acquire), 1);
+    let raw_context = a.context_for_test();
+    a.close().await.unwrap();
+    // Exercise the actual saved native function, bypassing the public eval guard.
+    raw_context
+        .with_js(async |ctx| {
+            assert!(
+                ctx.eval::<rquickjs::Value, _>("saved('after')")
+                    .catch(&ctx)
+                    .is_err()
+            );
+        })
+        .await;
+    assert_eq!(calls.load(Ordering::Acquire), 1);
+    drop(raw_context);
+    group.close().await.unwrap();
+}

@@ -78,10 +78,14 @@ class PluginHostService {
     PluginExecutorFactory? executorFactory,
     String? platform,
     this.applicationSupport,
-  }) : executorFactory =
-           executorFactory ??
-           ((call, stop) => PluginRuntime(hostCall: call, onStop: stop)),
-       platform = platform ?? Platform.operatingSystem;
+  }) : _executorFactoryOverride = executorFactory,
+       platform = platform ?? Platform.operatingSystem {
+    this.executorFactory =
+        executorFactory ??
+        ((call, stop) =>
+            PluginRuntime(hostCall: call, onStop: stop, business: _business));
+  }
+  final _business = PluginBusinessRuntime();
   final Future<Directory> Function()? applicationSupport;
   Future<Directory> supportDirectory() =>
       applicationSupport?.call() ?? getApplicationSupportDirectory();
@@ -116,7 +120,8 @@ class PluginHostService {
   final PluginDao dao;
   final PluginRegistry registry;
   final Future<List<PluginPackage>> Function()? packages;
-  final PluginExecutorFactory executorFactory;
+  late final PluginExecutorFactory executorFactory;
+  final PluginExecutorFactory? _executorFactoryOverride;
   final String platform;
   final _changes = StreamController<List<PluginStatus>>.broadcast();
   final _pages =
@@ -788,31 +793,42 @@ class PluginHostService {
   final _recoveryErrors = <String, Object>{};
 
   Future<void> validatePackage(PluginPackage package) async {
-    final definitions = await executorFactory(
-      _applyApi(package.manifest.id),
-      () {},
-    ).activate(package.manifest, package.code);
-    final tools = <PluginTool>[];
-    for (final view in package.manifest.pages) {
-      await readPackageText(
-        package,
-        view.source,
-        maxBytes: view.isTsx ? 2 * 1024 * 1024 : 1024 * 1024,
+    // Candidate code must not replace resident registrations or consume their
+    // shared execution/memory budget, even if apply fails or never returns.
+    final validationRuntime = PluginBusinessRuntime();
+    try {
+      const call = _applyApi;
+      final executor =
+          _executorFactoryOverride?.call(call, () {}) ??
+          PluginRuntime(hostCall: call, business: validationRuntime);
+      final definitions = await executor.activate(
+        package.manifest,
+        package.code,
       );
-    }
-    for (final definition in definitions) {
-      if (definition['kind'] == null) {
-        tools.add(
-          PluginTool(
-            package.manifest.id,
-            package.manifest.name,
-            package.source,
-            definition,
-          ),
+      final tools = <PluginTool>[];
+      for (final view in package.manifest.pages) {
+        await readPackageText(
+          package,
+          view.source,
+          maxBytes: view.isTsx ? 2 * 1024 * 1024 : 1024 * 1024,
         );
       }
+      for (final definition in definitions) {
+        if (definition['kind'] == null) {
+          tools.add(
+            PluginTool(
+              package.manifest.id,
+              package.manifest.name,
+              package.source,
+              definition,
+            ),
+          );
+        }
+      }
+      registry.validate(package.manifest.id, tools);
+    } finally {
+      await validationRuntime.dispose();
     }
-    registry.validate(package.manifest.id, tools);
   }
 
   Future<void Function()> beginMaintenance(String id) async {
@@ -1105,6 +1121,7 @@ class PluginHostService {
     status.state = 'activating';
     await _promptCollector.cancelPlugin(pluginId);
     await tasks.stopPlugin(pluginId);
+    await _business.unload(pluginId);
     if (_recoveryErrors.containsKey(pluginId)) {
       status.state = 'failed';
       status.error = _recoveryErrors[pluginId].toString();
@@ -1151,7 +1168,7 @@ class PluginHostService {
         databases.resume(pluginId);
         await databases.migrate(pluginId, await databaseMigrations(package));
       }
-      final runtime = executorFactory(_applyApi(pluginId), () {});
+      final runtime = executorFactory(_applyApi, () {});
       final definitions = await runtime.activate(
         package.manifest,
         package.code,
@@ -1288,6 +1305,7 @@ class PluginHostService {
     await closePluginPages(id);
     await _promptCollector.cancelPlugin(id);
     await tasks.stopPlugin(id);
+    await _business.unload(id);
     await _closeIdleDatabase(id);
     await dao.uninstall(id);
     registry.remove(id);
@@ -1753,13 +1771,14 @@ class PluginHostService {
     throw PluginHostError('unavailable', 'Host API not implemented: $method');
   };
 
-  /// apply 阶段只能写日志；插件此时尚未取得凭据，无需脱敏。
-  PluginHostCall _applyApi(String id) => (method, args) async {
-    if (method.startsWith('log.')) {
-      return _pluginLog(id, method, args, const []);
-    }
-    throw PluginHostError('unavailable', 'Host APIs unavailable during apply');
-  };
+  /// apply 阶段只做注册，不开放任何宿主 API。
+  static Future<Object?> _applyApi(
+    String method,
+    Map<String, dynamic> args,
+  ) async => throw PluginHostError(
+    'unavailable',
+    'Host APIs unavailable during apply',
+  );
 
   Object? _pluginLog(
     String id,
@@ -1851,6 +1870,7 @@ class PluginHostService {
     _disposed = true;
     await _promptCollector.dispose();
     await tasks.dispose();
+    await _business.dispose();
     for (final page in _pages.values.toList()) {
       await page.session.close();
     }

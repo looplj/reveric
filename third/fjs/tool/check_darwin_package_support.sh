@@ -94,7 +94,7 @@ cd "$ROOT_DIR"
 
 PACKAGE_VERSION="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
 [ -n "$PACKAGE_VERSION" ] || fail "unable to read package version from pubspec.yaml"
-EXPECTED_FRB_CONTENT_HASH=2135818864
+EXPECTED_FRB_CONTENT_HASH=-2026370464
 DART_EXECUTABLE="${CARGOKIT_DART_EXECUTABLE:-dart}"
 
 check_version_invariants() {
@@ -342,7 +342,7 @@ fjs.xcframework.zip.checksum'
   if grep -F -- "--ignore-warnings" tool/prepare_darwin_release.sh >/dev/null; then
     fail "release preparation must not ignore pub publish warnings"
   fi
-  require_exact_line "tool/check_darwin_package_support.sh" "EXPECTED_FRB_CONTENT_HASH=2135818864"
+  require_exact_line "tool/check_darwin_package_support.sh" "EXPECTED_FRB_CONTENT_HASH=-2026370464"
   awk '
     /DART_EXECUTABLE.*check_frb_content_hash\.dart .*"\$EXPECTED_FRB_CONTENT_HASH"/ { found = 1 }
     END { exit !found }

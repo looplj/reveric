@@ -17,6 +17,7 @@ const FALLBACK_POLL_INTERVAL: Duration = Duration::from_secs(1);
 #[derive(Clone, Default)]
 pub(crate) struct DriverController {
     inner: Arc<DriverState>,
+    scope: Option<u64>,
 }
 
 #[derive(Default)]
@@ -27,6 +28,7 @@ struct DriverState {
     clock: OnceLock<Instant>,
     next_task_id: AtomicU64,
     next_error_id: AtomicU64,
+    next_scope_id: AtomicU64,
     lifecycle: Mutex<DriverLifecycle>,
     errors: Mutex<VecDeque<DriverError>>,
     stop_finished: Notify,
@@ -35,6 +37,7 @@ struct DriverState {
 
 struct DriverError {
     id: u64,
+    scope: Option<u64>,
     source: DriverErrorSource,
     message: String,
 }
@@ -85,6 +88,13 @@ enum DriverLifecycle {
 }
 
 impl DriverController {
+    pub(crate) fn context_scope(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            scope: Some(self.inner.next_scope_id.fetch_add(1, Ordering::AcqRel)),
+        }
+    }
+
     pub(crate) fn set_execution_time_limit(&self, limit_millis: Option<u32>) {
         self.inner.execution_started_us.store(0, Ordering::Release);
         self.inner.execution_expired.store(false, Ordering::Release);
@@ -258,11 +268,15 @@ impl DriverController {
             .errors
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if errors.len() == MAX_ERRORS {
-            errors.pop_front();
+        // The cap is per context scope so a noisy realm cannot evict a sibling's errors.
+        if errors.iter().filter(|queued| queued.scope == self.scope).count() == MAX_ERRORS
+            && let Some(index) = errors.iter().position(|queued| queued.scope == self.scope)
+        {
+            errors.remove(index);
         }
         errors.push_back(DriverError {
             id,
+            scope: self.scope,
             source,
             message: error,
         });
@@ -302,13 +316,21 @@ impl DriverController {
     }
 
     pub(crate) fn drain_errors(&self) -> Vec<String> {
-        self.inner
+        let mut errors = self
+            .inner
             .errors
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .drain(..)
-            .map(|error| error.message)
-            .collect()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut drained = Vec::new();
+        errors.retain(|error| {
+            if self.scope.is_none() || error.scope == self.scope {
+                drained.push(error.message.clone());
+                false
+            } else {
+                true
+            }
+        });
+        drained
     }
 
     /// Signals the driver that foreground work may have scheduled new runtime
@@ -358,8 +380,20 @@ async fn drive_runtime(runtime: rquickjs::AsyncRuntime, driver: DriverController
                 }
             }
             Err(error) => {
-                let error = crate::runtime::job_error::async_job_context(error.0).await;
-                driver.push_error(error.to_string());
+                error
+                    .0
+                    .async_with(async |ctx| {
+                        let error = crate::api::error::JsError::from_pending_exception(&ctx);
+                        if let Some(sink) = crate::runtime::context_data::get::<
+                            crate::runtime::error_sink::RuntimeErrorSink,
+                        >(&ctx)
+                        {
+                            sink.push(error.to_string());
+                        } else {
+                            driver.push_error(error.to_string());
+                        }
+                    })
+                    .await;
             }
         }
     }
