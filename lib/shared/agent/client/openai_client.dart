@@ -439,6 +439,9 @@ class OpenAiClient implements ProviderClient {
             : signature,
         toolCalls: toolCalls,
         usage: usage,
+        finishReason: choice.finishReason == null
+            ? null
+            : _mapFinishReason(choice.finishReason!.toJson()),
       );
     } finally {
       _abortCompleter = null;
@@ -629,13 +632,7 @@ class OpenAiClient implements ProviderClient {
 
           if (choice.finishReason != null) {
             finishReasonEvents += 1;
-            finalFinishReason = switch (choice.finishReason!.toJson()) {
-              'stop' => StreamFinishReason.stop,
-              'length' => StreamFinishReason.length,
-              'tool_calls' || 'function_call' => StreamFinishReason.toolCalls,
-              'content_filter' => StreamFinishReason.contentFilter,
-              _ => StreamFinishReason.unknown,
-            };
+            finalFinishReason = _mapFinishReason(choice.finishReason!.toJson());
             if (partialToolCalls.isNotEmpty) {
               if (_log.isDebugEnabled) {
                 _log.debug(
@@ -719,6 +716,14 @@ class OpenAiClient implements ProviderClient {
       _abortCompleter = null;
     }
   }
+
+  StreamFinishReason _mapFinishReason(String reason) => switch (reason) {
+    'stop' => StreamFinishReason.stop,
+    'length' => StreamFinishReason.length,
+    'tool_calls' || 'function_call' => StreamFinishReason.toolCalls,
+    'content_filter' => StreamFinishReason.contentFilter,
+    _ => StreamFinishReason.unknown,
+  };
 
   @override
   Future<List<double>> embed(String text, {String? model}) async {

@@ -119,9 +119,6 @@ class _TaskRow extends HookWidget {
     final errorKey = switch (row.lastErrorCode) {
       'model_not_configured' => LocaleKeys.settingsPluginsTaskModelMissing,
       'permission_denied' => LocaleKeys.settingsPluginsNeedsPermission,
-      'rate_limited' ||
-      'context_limit' => LocaleKeys.settingsPluginsTaskAiLimit,
-      'ai_timeout' ||
       'task_timeout' ||
       'plugin_timeout' => LocaleKeys.settingsPluginsResourceLimit,
       null || 'cancelled' || 'interrupted' => null,

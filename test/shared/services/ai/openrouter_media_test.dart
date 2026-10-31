@@ -18,6 +18,7 @@ import 'package:reveric/shared/models/video/task_result.dart';
 import 'package:reveric/shared/services/ai/audio/openrouter.dart';
 import 'package:reveric/shared/services/ai/image.dart';
 import 'package:reveric/shared/services/ai/video/openrouter.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
 
 void main() {
@@ -30,7 +31,11 @@ void main() {
   test(
     'model discovery routes embedding and chat separately from media catalogs',
     () async {
-      for (final kind in [AiModelKind.chat, AiModelKind.embedding]) {
+      for (final kind in [
+        AiModelKind.chat,
+        AiModelKind.embedding,
+        AiModelKind.audio,
+      ]) {
         final models = await http.runWithClient(
           () => fetchProviderModels(provider, kind: kind),
           () => MockClient((r) async {
@@ -39,11 +44,42 @@ void main() {
               AiModelKind.embedding => '/api/v1/embeddings/models',
               _ => '/api/v1/models',
             });
+            expect(r.url.queryParameters['output_modalities'], switch (kind) {
+              AiModelKind.chat => 'text',
+              AiModelKind.audio => 'speech',
+              _ => null,
+            });
             expect(r.headers['Authorization'], 'Bearer key');
+            if (kind == AiModelKind.audio) {
+              return http.Response(
+                jsonEncode({
+                  'data': [
+                    {
+                      'id': 'bytedance-seed/seed-audio-1-0',
+                      'architecture': {
+                        'output_modalities': ['speech'],
+                      },
+                    },
+                    {
+                      'id': 'vendor/model',
+                      'architecture': {
+                        'output_modalities': ['text'],
+                      },
+                    },
+                  ],
+                }),
+                200,
+              );
+            }
             return http.Response('{"data":[{"id":"vendor/model"}]}', 200);
           }),
         );
-        expect(models, ['vendor/model']);
+        expect(
+          models,
+          kind == AiModelKind.audio
+              ? ['bytedance-seed/seed-audio-1-0']
+              : ['vendor/model'],
+        );
       }
       expect(
         await fetchProviderModels(provider, kind: AiModelKind.image),
@@ -53,9 +89,6 @@ void main() {
         await fetchProviderModels(provider, kind: AiModelKind.video),
         contains('google/veo-3.1'),
       );
-      expect(await fetchProviderModels(provider, kind: AiModelKind.audio), [
-        'bytedance-seed/seed-audio-1-0',
-      ]);
     },
   );
 
@@ -71,6 +104,7 @@ void main() {
         const MethodChannel('plugins.flutter.io/path_provider'),
         (_) async => dir.path,
       );
+      await RevericPaths.initialize();
       addTearDown(() async {
         messenger.setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

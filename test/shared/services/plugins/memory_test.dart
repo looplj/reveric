@@ -11,6 +11,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/models/plugin/manifest.dart';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
+import 'package:reveric/shared/services/plugins/ai.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
 import 'package:reveric/shared/services/plugins/agent_dispatcher.dart';
@@ -73,20 +75,7 @@ void main() {
         registry: PluginRegistry(hostToolNames: {}),
         packages: () async => [package],
         applicationSupport: () async => root,
-        taskAi: (request, cancellation) async {
-          calls++;
-          final input = jsonDecode(request.prompt) as List;
-          return (
-            text: jsonEncode([
-              for (final row in input)
-                {
-                  ...row as Map<String, dynamic>,
-                  'content': 'Refined: ${row['content']}',
-                },
-            ]),
-            usage: <String, dynamic>{'input_tokens': 20, 'output_tokens': 10},
-          );
-        },
+        ai: _RefineAi(() => calls++),
       );
       var host = build();
       PluginUiSession? page;
@@ -220,4 +209,34 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 45)),
   );
+}
+
+class _RefineAi implements PluginAiApi {
+  _RefineAi(this.onCall);
+  final void Function() onCall;
+
+  @override
+  List<Map<String, dynamic>> listModels() => const [];
+
+  @override
+  Future<PluginAiResult> generate(
+    PluginAiRequest request,
+    AgentCancellationToken cancellation,
+  ) async {
+    onCall();
+    final input = jsonDecode(request.prompt) as List;
+    return (
+      text: jsonEncode([
+        for (final row in input)
+          {
+            ...row as Map<String, dynamic>,
+            'content': 'Refined: ${row['content']}',
+          },
+      ]),
+      finishReason: 'stop',
+      providerId: 'mock',
+      model: 'mock-model',
+      usage: <String, dynamic>{'input_tokens': 20, 'output_tokens': 10},
+    );
+  }
 }

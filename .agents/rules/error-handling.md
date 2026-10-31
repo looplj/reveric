@@ -1,6 +1,7 @@
 # 错误处理规则
 
-- 面向用户的 UI、Toast、SnackBar、Dialog 等展示中，禁止直接透出底层异常对象、SDK 原始报错或 `DioException.toString()`；此限制不适用于返回给 Agent 的工具结果。
+- 面向用户的 UI、Toast、SnackBar、Dialog 等展示中，禁止直接透出底层异常对象、SDK 原始报错、堆栈、完整响应体（JSON / HTML）或 `DioException.toString()`；此限制不适用于返回给 Agent 的工具结果。
+- 服务商在响应中返回的可读错误文案（如 `error.message`，用 `tryReadProviderMessage` 提取）不属于底层报错，界面可以直接展示。
 - 返回给 Agent 的工具结果应保留实际错误码、底层错误消息及命令诊断日志，供 Agent 判断原因和处理失败；不得仅返回笼统的“操作失败”，或只把详情写入日志而不提供给 Agent。
 - 用户界面应将底层错误转换为用户可理解的说明；开发排查所需的技术细节同时写入日志，不因用户展示要求而删减 Agent 工具结果中的诊断信息。
 - 涉及 HTTP / SDK 调用失败时，日志必须尽量包含请求目标、状态码、异常类型，以及服务端错误返回体或响应体内容，避免只打印一句失败信息。

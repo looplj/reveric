@@ -25,7 +25,7 @@ import 'sqlite.dart';
 import 'database_install.dart';
 import 'prompt.dart';
 import 'tasks.dart';
-import 'task_ai.dart';
+import 'ai.dart';
 import '../../models/plugin/task.dart';
 import '../../models/plugin/request.dart';
 import 'ui_session.dart';
@@ -74,7 +74,7 @@ class PluginHostService {
     required this.registry,
     this.packages,
     this.data,
-    this.taskAi,
+    this.ai,
     PluginExecutorFactory? executorFactory,
     String? platform,
     this.applicationSupport,
@@ -112,7 +112,7 @@ class PluginHostService {
   }
 
   final PluginDataService? data;
-  final PluginTaskAiExecutor? taskAi;
+  final PluginAiApi? ai;
   final PluginDao dao;
   final PluginRegistry registry;
   final Future<List<PluginPackage>> Function()? packages;
@@ -197,6 +197,7 @@ class PluginHostService {
         secrets,
         workId: workId,
         cancellation: cancellation.token,
+        aiLabel: 'page:${view.id}',
       );
       session = PluginUiSession(
         tree: PluginUiTree(
@@ -324,6 +325,7 @@ class PluginHostService {
               secrets,
               workId: workId,
               cancellation: sqlCancellation.token,
+              aiLabel: 'page:${view.id}',
             );
             final runtime = executorFactory(
               (method, args) async {
@@ -466,36 +468,8 @@ class PluginHostService {
     final http = PluginHttpApi(),
         sqlCancellation = AgentCancellationController();
     final unlink = cancellation.onCancel(sqlCancellation.cancel);
-    var aiCalls = 0;
-    final responses = <Map<String, dynamic>>[];
-    Map<String, dynamic>? usage() {
-      if (aiCalls == 0) {
-        return null;
-      }
-      final result = <String, dynamic>{
-        'runId': run.runId,
-        'calls': aiCalls,
-        'responses': [
-          for (final response in responses) Map<String, dynamic>.from(response),
-        ],
-      };
-      for (final key in [
-        'input_tokens',
-        'output_tokens',
-        'cache_read_tokens',
-        'cache_write_tokens',
-        'reasoning_tokens',
-      ]) {
-        final values = responses
-            .map((response) => response[key])
-            .whereType<num>();
-        if (values.isNotEmpty) {
-          result[key] = values.fold<num>(0, (sum, value) => sum + value);
-        }
-      }
-      return result;
-    }
-
+    // 同一 runId 的重试累计用量，展示整次运行的成本。
+    Map<String, dynamic>? usage;
     try {
       final taskRow = await dao.attachedDatabase.pluginTaskDao.get(
         id,
@@ -507,28 +481,24 @@ class PluginHostService {
         throw PluginHostError('cancelled', 'Task lease is no longer current');
       }
       final prior = taskRow.lastUsage;
-      if (prior?['runId'] == run.runId) {
-        final count = prior!['calls'];
-        if (count is! int ||
-            count < 0 ||
-            count > 2 ||
-            prior['responses'] is! List) {
-          throw PluginHostError(
-            'task_state_invalid',
-            'Stored task usage is invalid',
-          );
-        }
-        aiCalls = count;
-        responses.addAll(
-          (prior['responses'] as List).map(
-            (value) => Map<String, dynamic>.from(value as Map),
-          ),
-        );
+      if (prior?['runId'] == run.runId && prior!['calls'] is int) {
+        usage = Map<String, dynamic>.from(prior);
       }
-      Future<void> recordUsage() async {
+      Future<void> addUsage(PluginAiResult result) async {
+        final next = <String, dynamic>{
+          ...?usage,
+          'runId': run.runId,
+          'calls': ((usage?['calls'] as int?) ?? 0) + 1,
+        };
+        for (final MapEntry(:key, :value) in result.usage.entries) {
+          if (value is num) {
+            next[key] = ((next[key] as num?) ?? 0) + value;
+          }
+        }
+        usage = next;
         if (!await dao.attachedDatabase.pluginTaskDao.recordUsage(
           taskRow,
-          usage()!,
+          next,
           DateTime.now(),
         )) {
           throw PluginHostError(
@@ -545,6 +515,9 @@ class PluginHostService {
         http,
         secrets,
         cancellation: sqlCancellation.token,
+        aiLabel: 'task:${definition.id}',
+        aiRunId: run.runId,
+        onAiResult: addUsage,
       );
       final runtime = executorFactory(
         (method, args) async {
@@ -557,79 +530,6 @@ class PluginHostService {
               'cancelled',
               'Task is cancelled or its plugin changed',
             );
-          }
-          if (method == 'ai.generateText') {
-            if (!package.manifest.permissions.contains('ai.generateText') ||
-                !(await dao.grantedPermissions(
-                  id,
-                )).contains('ai.generateText')) {
-              throw PluginHostError(
-                'permission_denied',
-                'Missing permission: ai.generateText',
-              );
-            }
-            final system = args['system'],
-                prompt = args['prompt'],
-                maxTokens = args['maxOutputTokens'] ?? 4096;
-            if (system is! String ||
-                prompt is! String ||
-                prompt.trim().isEmpty ||
-                maxTokens is! int ||
-                maxTokens < 1 ||
-                maxTokens > 4096) {
-              throw PluginHostError(
-                'invalid_argument',
-                'Task AI requires system/prompt and 1–4096 output tokens',
-              );
-            }
-            if (aiCalls >= 2) {
-              throw PluginHostError(
-                'rate_limited',
-                'At most two AI calls are allowed per task run',
-              );
-            }
-            final execute = taskAi;
-            if (execute == null) {
-              throw PluginHostError(
-                'model_not_configured',
-                'Task AI model service is not configured',
-              );
-            }
-            aiCalls++;
-            await recordUsage();
-            final callCancellation = AgentCancellationController();
-            final unlinkCall = sqlCancellation.token.onCancel(
-              callCancellation.cancel,
-            );
-            final PluginTaskAiResult response;
-            try {
-              response =
-                  await execute(
-                    PluginTaskAiRequest(
-                      pluginId: id,
-                      taskId: definition.id,
-                      runId: run.runId,
-                      system: system,
-                      prompt: prompt,
-                      maxOutputTokens: maxTokens,
-                    ),
-                    callCancellation.token,
-                  ).timeout(
-                    const Duration(seconds: 120),
-                    onTimeout: () {
-                      callCancellation.cancel();
-                      throw PluginHostError(
-                        'ai_timeout',
-                        'Task AI exceeded 120 seconds',
-                      );
-                    },
-                  );
-            } finally {
-              unlinkCall();
-            }
-            responses.add(response.usage);
-            await recordUsage();
-            return {'text': response.text};
           }
           if (method.startsWith('ui.')) {
             throw PluginHostError(
@@ -652,7 +552,7 @@ class PluginHostService {
         run.toJson(),
         cancellation,
       );
-      return (summary: summary, usage: usage());
+      return (summary: summary, usage: usage);
     } catch (error) {
       throw PluginTaskExecutionError(
         error is PluginHostError
@@ -661,7 +561,7 @@ class PluginHostService {
             ? error.code
             : 'task_failed',
         error.toString(),
-        usage: usage(),
+        usage: usage,
       );
     } finally {
       unlink();
@@ -1547,6 +1447,7 @@ class PluginHostService {
           executionContext: executionContext,
           toolName: name,
           cancellation: sqlCancellation.token,
+          aiLabel: 'tool:$name',
         ),
         () {
           http.cancel();
@@ -1637,6 +1538,7 @@ class PluginHostService {
           cancellation: sqlCancellation.token,
           draftSettings: settings,
           draftSecrets: secrets,
+          aiLabel: 'action:$name',
         ),
         () {
           http.cancel();
@@ -1687,6 +1589,9 @@ class PluginHostService {
     Duration sqlWaitBudget = const Duration(seconds: 5),
     Map<String, Object?> draftSettings = const {},
     Map<String, String?> draftSecrets = const {},
+    String? aiLabel,
+    String? aiRunId,
+    Future<void> Function(PluginAiResult result)? onAiResult,
   }) => (method, args) async {
     if (promptReadOnly &&
         !const {
@@ -1702,11 +1607,46 @@ class PluginHostService {
         'Prompt providers may only read private data/settings and log diagnostics',
       );
     }
-    if (method == 'ai.generateText') {
-      throw PluginHostError(
-        'permission_denied',
-        'AI generation is only available inside a scheduled task',
+    if (method == 'ai.listModels' || method == 'ai.generateText') {
+      if (aiLabel == null) {
+        throw PluginHostError(
+          'permission_denied',
+          'AI is unavailable in this context',
+        );
+      }
+      if (!package.manifest.permissions.contains('ai.generateText') ||
+          !(await dao.grantedPermissions(id)).contains('ai.generateText')) {
+        throw PluginHostError(
+          'permission_denied',
+          'Missing permission: ai.generateText',
+        );
+      }
+      final service = ai;
+      if (service == null) {
+        throw PluginHostError(
+          'model_not_configured',
+          'Plugin AI service is not configured',
+        );
+      }
+      if (method == 'ai.listModels') {
+        return service.listModels();
+      }
+      final result = await service.generate(
+        PluginAiRequest.fromArgs(
+          args,
+          pluginId: id,
+          label: aiLabel,
+          runId: aiRunId,
+        ),
+        cancellation ?? AgentCancellationController().token,
       );
+      await onAiResult?.call(result);
+      return {
+        'text': result.text,
+        'finishReason': result.finishReason,
+        'providerId': result.providerId,
+        'model': result.model,
+      };
     }
     if (method.startsWith('sqlite.')) {
       if (package.manifest.database == null) {

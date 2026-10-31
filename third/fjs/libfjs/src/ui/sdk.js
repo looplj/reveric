@@ -78,6 +78,7 @@ globalThis.__revericPageContext = Object.freeze({
   settings: Object.freeze({get:key => call('settings.get',{key})}),
   secrets: Object.freeze({get:key => call('secrets.get',{key})}),
   http: Object.freeze({fetch:(url,init={}) => call('http.fetch',{...init,url})}),
+  ai: Object.freeze({listModels: () => call('ai.listModels', {}), generateText: input => call('ai.generateText', input)}),
   ...Object.fromEntries(['chapters','characters'].map(resource=>[resource,Object.freeze(Object.fromEntries(['list','get','update'].map(method=>[method,args=>call(resource+'.'+method,args||{})])))])),
   ui: Object.freeze(Object.fromEntries(['toast','dialog','navigate'].map(method=>[method,args=>call('ui.'+method,args)]))),
 });

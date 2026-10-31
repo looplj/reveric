@@ -3892,7 +3892,6 @@ abstract final class LocaleKeys {
   static const settingsPluginsTaskUsage = 'settings.plugins_task_usage';
   static const settingsPluginsTaskModelMissing =
       'settings.plugins_task_model_missing';
-  static const settingsPluginsTaskAiLimit = 'settings.plugins_task_ai_limit';
   static const settingsPluginsTools = 'settings.plugins_tools';
   static const settingsPluginsNoTools = 'settings.plugins_no_tools';
   static const settingsPluginsOverridden = 'settings.plugins_overridden';
@@ -5055,8 +5054,7 @@ abstract final class LocaleKeys {
   static const settingsUsageSourceRoleplay = 'settings.usage_source_roleplay';
   static const settingsUsageSourceMonologue = 'settings.usage_source_monologue';
   static const settingsUsageSourceTheater = 'settings.usage_source_theater';
-  static const settingsUsageSourcePluginTask =
-      'settings.usage_source_plugin_task';
+  static const settingsUsageSourcePlugin = 'settings.usage_source_plugin';
   static const settingsUsageSourceCouncil = 'settings.usage_source_council';
   static const settingsUsageSourceOther = 'settings.usage_source_other';
   static const settingsUsageSessionsSortConversationTime =

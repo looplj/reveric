@@ -650,6 +650,15 @@ class OpenAIResponsesClient implements ProviderClient {
   }
 
   ChatResponse _parseResponse(or.ResponseResource response) {
+    switch (response.status) {
+      case or.ResponseStatus.failed:
+      case or.ResponseStatus.cancelled:
+      case or.ResponseStatus.queued:
+      case or.ResponseStatus.inProgress:
+        throw StateError('Responses request status: ${response.status!.value}');
+      default:
+        break;
+    }
     final textBuf = StringBuffer();
     final thinkBuf = StringBuffer();
     final toolCalls = <ToolCall>[];
@@ -693,6 +702,15 @@ class OpenAIResponsesClient implements ProviderClient {
       encryptedContents: encryptedContents,
       toolCalls: toolCalls,
       usage: _convertUsage(response.usage),
+      finishReason: switch (response.incompleteDetails?.reason) {
+        'max_output_tokens' => StreamFinishReason.length,
+        'content_filter' => StreamFinishReason.contentFilter,
+        null when response.status == or.ResponseStatus.completed =>
+          toolCalls.isNotEmpty
+              ? StreamFinishReason.toolCalls
+              : StreamFinishReason.stop,
+        _ => StreamFinishReason.unknown,
+      },
     );
   }
 

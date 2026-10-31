@@ -28,7 +28,7 @@ abstract final class UsageSources {
   static const monologue = 'monologue';
   static const theater = 'theater';
   static const council = 'council';
-  static const pluginTask = 'plugin_task';
+  static const plugin = 'plugin';
 
   static const values = [
     chat,
@@ -37,7 +37,7 @@ abstract final class UsageSources {
     monologue,
     theater,
     council,
-    pluginTask,
+    plugin,
   ];
 
   /// 会话模式值作为统计来源。

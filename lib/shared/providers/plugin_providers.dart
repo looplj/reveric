@@ -4,7 +4,7 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/plugins/task_ai.dart';
+import '../services/plugins/ai.dart';
 import 'settings_providers.dart';
 import 'usage_query_providers.dart';
 import '../services/plugins/host.dart';
@@ -18,8 +18,10 @@ import 'novel_providers.dart';
 final pluginHostServiceProvider = Provider<PluginHostService>((ref) {
   final host = PluginHostService(
     dao: ref.watch(appDatabaseProvider).pluginDao,
-    taskAi: (request, cancellation) =>
-        ref.read(pluginTaskAiServiceProvider).generate(request, cancellation),
+    ai: PluginAiService(
+      settings: () => ref.read(aiSettingsProvider),
+      usageService: ref.read(usageServiceProvider),
+    ),
     data: PluginDataService(
       database: ref.watch(appDatabaseProvider),
       services: (path) => (
@@ -51,10 +53,3 @@ final pluginStatusesProvider = StreamProvider<List<PluginStatus>>((ref) async* {
   yield host.statuses;
   yield* host.changes;
 });
-
-final pluginTaskAiServiceProvider = Provider<PluginTaskAiService>(
-  (ref) => PluginTaskAiService(
-    settings: () => ref.read(aiSettingsProvider),
-    usageService: ref.watch(usageServiceProvider),
-  ),
-);

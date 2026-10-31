@@ -106,7 +106,8 @@ const __storage = Object.freeze({get(key) {return __call('storage.get', {key});}
 const __settings = Object.freeze({get(key) {return __call('settings.get', {key});}});
 const __secrets = Object.freeze({get(key) {return __call('secrets.get', {key});}});
 const __sqlite = __revericSqlite(__call);
-const __services = Object.freeze({plugin:__plugin, log:__log, http:__http, storage:__storage, settings:__settings, secrets:__secrets, sqlite:__sqlite});
+const __ai = Object.freeze({listModels() {return __call('ai.listModels', {});}, generateText(input) {return __call('ai.generateText', input);}});
+const __services = Object.freeze({plugin:__plugin, log:__log, http:__http, storage:__storage, settings:__settings, secrets:__secrets, sqlite:__sqlite, ai:__ai});
 const __workData = Object.freeze(Object.fromEntries(['chapters','characters'].map(resource => [resource, Object.freeze(Object.fromEntries(['list','get','update'].map(operation => [operation, (input = {}) => __call(resource + '.' + operation, input)])))])));
 function __context(extra) { return Object.freeze({...__services, ...extra}); }
 function __jsonError(value, path) {
@@ -212,8 +213,7 @@ String pluginInvokeTask(String taskId, Map<String, dynamic> run) =>
 await __finish(async () => {
   await __apply();
   const handler = await __handler(__tasks, ${jsonEncode(taskId)}, 'Task');
-  const ai = Object.freeze({generateText(input) {return __call('ai.generateText', input);}});
-  const result = await handler(__context({...${jsonEncode(run)}, ai}));
+  const result = await handler(__context(${jsonEncode(run)}));
   if (result !== undefined && (result === null || typeof result !== 'object' || Array.isArray(result))) {
     throw new Error('Task must return a summary object or void');
   }

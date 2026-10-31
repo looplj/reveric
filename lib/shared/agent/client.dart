@@ -162,6 +162,9 @@ class ChatResponse {
   final List<ToolCall> toolCalls;
   final AiUsage? usage;
 
+  /// Provider 报告的结束原因；未报告时为 null。
+  final StreamFinishReason? finishReason;
+
   const ChatResponse({
     this.text = '',
     this.thinking = '',
@@ -169,6 +172,7 @@ class ChatResponse {
     this.encryptedContents = const [],
     this.toolCalls = const [],
     this.usage,
+    this.finishReason,
   });
 }
 

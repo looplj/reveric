@@ -585,6 +585,9 @@ class AnthropicClient implements ProviderClient {
       signature: signature,
       toolCalls: toolCalls,
       usage: _convertUsage(response.usage),
+      finishReason: response.stopReason == null
+          ? null
+          : _mapStopReason(response.stopReason!),
     );
   }
 

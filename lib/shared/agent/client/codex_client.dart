@@ -128,6 +128,7 @@ class CodexClient implements ProviderClient {
     final calls = <String, ToolCall>{};
     final partialCalls = <String>{};
     AiUsage? usage;
+    StreamFinishReason? finishReason;
     var completed = false;
     await for (final event in chatStream(
       messages: messages,
@@ -176,6 +177,7 @@ class CodexClient implements ProviderClient {
               thinkingChars: thinking.length,
             );
           }
+          finishReason = event.finishReason;
           completed = true;
         case SignatureDelta():
           break;
@@ -199,6 +201,7 @@ class CodexClient implements ProviderClient {
       encryptedContents: encryptedContents,
       toolCalls: calls.values.toList(),
       usage: usage,
+      finishReason: finishReason,
     );
   }
 

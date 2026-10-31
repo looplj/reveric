@@ -41,6 +41,7 @@ function harness(
   const services: PluginServices = {
     plugin,
     sqlite: { query: unavailable, execute: unavailable, transaction: unavailable },
+    ai: { listModels: unavailable, generateText: unavailable },
     http: {
       fetch: async (url, init) => {
         requests.push({ url, init });

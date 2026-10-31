@@ -329,8 +329,16 @@ class GeminiClient implements ProviderClient {
     final textBuf = StringBuffer();
     final thinkBuf = StringBuffer();
     final toolCalls = <ToolCall>[];
+    final blockReason = response.promptFeedback?.blockReason;
+    StreamFinishReason? finishReason = blockReason == null
+        ? null
+        : _mapFinishReason(blockReason);
 
     for (final candidate in response.candidates ?? []) {
+      final candidateFinishReason = candidate.finishReason;
+      if (candidateFinishReason != null) {
+        finishReason = _mapFinishReason(candidateFinishReason);
+      }
       for (final part in candidate.content?.parts ?? []) {
         switch (part) {
           case gai.TextPart(
@@ -377,6 +385,7 @@ class GeminiClient implements ProviderClient {
       thinking: thinkBuf.toString(),
       toolCalls: toolCalls,
       usage: _convertUsage(response.usageMetadata),
+      finishReason: finishReason,
     );
   }
 

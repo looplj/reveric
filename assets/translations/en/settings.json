@@ -703,7 +703,7 @@
   "settings.plugins_preview_description": "Run the TSX sample to try state updates, input and page lifecycle.",
   "settings.plugins_view_failed": "This plugin page could not be displayed. Close it and reopen to try again.",
   "settings.plugins_prompt_skipped": "Plugin context was skipped for request {requestId}.",
-  "settings.usage_source_plugin_task": "Plugin tasks",
+  "settings.usage_source_plugin": "Plugins",
   "settings.plugins_tasks": "Background tasks",
   "settings.plugins_task_running": "Running",
   "settings.plugins_task_success": "Completed",
@@ -718,6 +718,5 @@
   "settings.plugins_task_finished": "Last finished: {date}",
   "settings.plugins_task_usage": "{calls} model calls · {input} input / {output} output tokens",
   "settings.plugins_task_model_missing": "Configure a default chat model in AI settings.",
-  "settings.plugins_task_ai_limit": "The model request exceeds the task budget.",
-  "settings.plugins_ai_permission": "Background tasks can use your default chat model and incur model usage."
+  "settings.plugins_ai_permission": "The plugin can list and use your configured chat models and incur model usage."
 }

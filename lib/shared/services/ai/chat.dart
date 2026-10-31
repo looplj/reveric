@@ -16,7 +16,6 @@ import '../../agent/agent_config.dart'
 import '../../agent/agent_event.dart' show AgentRoundResult;
 import '../../agent/agent_hook.dart' show AgentHook;
 import '../../models/ai_chat_models.dart';
-import '../../agent/client.dart' show ProviderClient;
 import '../../models/agent_skill.dart';
 import '../../models/ai_provider.dart';
 import '../../models/ai_session_mode.dart';
@@ -472,6 +471,34 @@ class AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
+  }) async {
+    final response = await chatCompletionDetachedResponse(
+      messages,
+      timeout: timeout,
+      context: context,
+      hooks: hooks,
+    );
+    if (response.text.isEmpty) {
+      _aiClientLog.error(
+        'empty detached response: provider=${_config.id} model=$_chatModel '
+        'finishReason=${response.finishReason} '
+        'thinkingLen=${response.thinking.length} '
+        'toolCalls=${response.toolCalls.length} usage=${response.usage}',
+      );
+      throw Exception('Empty response from provider');
+    }
+    return response.text;
+  }
+
+  /// 同 [chatCompletionDetached]，返回完整响应（含 usage、finishReason）。
+  ///
+  /// [maxOutputTokens] 原样传给 provider；[cancellation] 取消时中止底层请求；
+  /// 保留空正文响应，由调用方根据 finishReason 判断。
+  Future<ChatResponse> chatCompletionDetachedResponse(
+    List<AiMessage> messages, {
+    required Duration timeout,
+    AiSessionContext? context,
+    List<AgentHook> hooks = const [],
     int? maxOutputTokens,
     AgentCancellationToken? cancellation,
   }) async {
@@ -529,7 +556,7 @@ class AiClient {
           await hook.afterLLM(round);
         }
       }
-      return response.text;
+      return response;
     } finally {
       // _httpClient 非空时为共享实例，dispose 不会关闭它（见 AiProviderInitializer）。
       unlink?.call();

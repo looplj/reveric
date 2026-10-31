@@ -144,6 +144,8 @@ export interface PluginServices {
   readonly secrets: PluginSecrets;
   /** Requires plugin.json `database`; otherwise calls fail with `database_not_declared`. */
   readonly sqlite: PluginSqlite;
+  /** Requires the `ai.generateText` permission; otherwise calls fail with `permission_denied`. */
+  readonly ai: PluginAi;
 }
 
 /** Chapter and character access, limited to the work of the current request or page. */
@@ -202,15 +204,6 @@ export interface TaskContext extends PluginServices {
   readonly trigger: "scheduled" | "manual";
   /** Milliseconds since the epoch. */
   readonly scheduledAt: number;
-  /** Requires the `ai.generateText` permission. At most two calls per run. */
-  readonly ai: {
-    generateText(input: {
-      system: string;
-      prompt: string;
-      /** 1–4096, default 4096. */
-      maxOutputTokens?: number;
-    }): Promise<{ text: string }>;
-  };
 }
 
 /**
@@ -374,6 +367,65 @@ export interface PluginSettings {
 /** Values of plugin.json `settings.fields` fields of type `secret`. */
 export interface PluginSecrets {
   get(key: string): Promise<string | null>;
+}
+
+/** A chat model the user has configured and enabled. */
+export interface AiModel {
+  providerId: string;
+  /** Provider name shown in the app. */
+  providerName: string;
+  model: string;
+  /** Model name shown in the app. */
+  modelName: string;
+  /** Whether this is the user's default chat model. */
+  isDefault: boolean;
+  /** Accepted `reasoningEffort` values, weakest first; null for non-reasoning models. */
+  reasoningEfforts: string[] | null;
+}
+
+export interface GenerateTextInput {
+  system: string;
+  /** Non-empty. */
+  prompt: string;
+  /**
+   * Model from `listModels()`; give both or neither. Without them the user's
+   * default chat model is used, failing with `model_not_configured` when there
+   * is none. An unknown pair fails with `model_not_found`.
+   */
+  providerId?: string;
+  model?: string;
+  /** 1–65536, sent to the provider as is. Defaults to the model's output limit. */
+  maxOutputTokens?: number;
+  /**
+   * One of the model's `reasoningEfforts`; other values fail with
+   * `invalid_argument`. Defaults to the effort the user chose for the model.
+   */
+  reasoningEffort?: string;
+}
+
+/**
+ * Why the model stopped. `length` means the output hit `maxOutputTokens` and
+ * `text` is truncated (possibly empty when reasoning used the whole budget).
+ */
+export type FinishReason = "stop" | "length" | "content_filter" | "tool_calls" | "unknown";
+
+export interface GenerateTextResult {
+  text: string;
+  finishReason: FinishReason;
+  /** Model that produced the text. */
+  providerId: string;
+  model: string;
+}
+
+/**
+ * Single-turn text generation with the user's chat models. Calls incur model
+ * usage, recorded under the plugin. Each request times out after 5 minutes
+ * (`timeout`), and the handler's own time limit still applies. Provider
+ * failures reject with `ai_error` carrying the provider message.
+ */
+export interface PluginAi {
+  listModels(): Promise<AiModel[]>;
+  generateText(input: GenerateTextInput): Promise<GenerateTextResult>;
 }
 
 export type SqlValue = null | string | number | bigint | Uint8Array;

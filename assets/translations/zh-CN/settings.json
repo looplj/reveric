@@ -703,7 +703,7 @@
   "settings.plugins_preview_description": "运行 TSX 示例，验证状态更新、输入和页面生命周期。",
   "settings.plugins_view_failed": "插件页面无法显示，请关闭后重新打开。",
   "settings.plugins_prompt_skipped": "本次请求已跳过插件上下文（{requestId}）。",
-  "settings.usage_source_plugin_task": "插件任务",
+  "settings.usage_source_plugin": "插件",
   "settings.plugins_tasks": "后台任务",
   "settings.plugins_task_running": "运行中",
   "settings.plugins_task_success": "已完成",
@@ -718,6 +718,5 @@
   "settings.plugins_task_finished": "最近结束：{date}",
   "settings.plugins_task_usage": "模型调用 {calls} 次 · 输入 {input} / 输出 {output} tokens",
   "settings.plugins_task_model_missing": "请在 AI 设置中配置默认聊天模型。",
-  "settings.plugins_task_ai_limit": "模型请求超出任务预算。",
-  "settings.plugins_ai_permission": "后台任务可以调用默认聊天模型，并产生模型用量。"
+  "settings.plugins_ai_permission": "插件可以查看并调用你配置的聊天模型，并产生模型用量。"
 }

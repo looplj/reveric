@@ -1,8 +1,8 @@
-// 职责: 通过真实 JS 任务验证 Host AI 权限、跨重试配额、用量与更新/撤权取消。
+// 职责: 通过真实 JS 任务与工具验证 Host AI 权限、用量累计与更新/撤权取消。
 // 关联文件:
 //   lib/shared/services/plugins/host.dart
 //   lib/shared/services/plugins/tasks.dart
-//   lib/shared/services/plugins/task_ai.dart
+//   lib/shared/services/plugins/ai.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -19,16 +19,21 @@ import 'package:reveric/shared/services/plugins/installer.dart';
 import 'package:reveric/shared/services/plugins/package_archive.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
 import 'package:reveric/shared/services/plugins/runtime.dart';
-import 'package:reveric/shared/services/plugins/task_ai.dart';
+import 'package:reveric/shared/services/plugins/ai.dart';
 
 const code = """
 var __revericPlugin={apply(setup){setup.tasks.register('organize',async(context)=>{
 const mode=(await context.storage.get('mode'))||'normal';
 let response;
-for(let i=0;i<(mode==='quota'?3:1);i++) response=await context.ai.generateText({system:'system',prompt:mode,maxOutputTokens:50});
+for(let i=0;i<(mode==='repeat'?3:1);i++) response=await context.ai.generateText({system:'system',prompt:mode,maxOutputTokens:50});
 await context.storage.set('output',response.text);
 return {summary:'Finished '+context.runId};
-});}};
+});
+setup.tools.register({name:'AiEcho',description:'Echo',inputSchema:{type:'object'},handler:async(input,context)=>{
+const models=await context.ai.listModels();
+const response=await context.ai.generateText({system:'s',prompt:'tool',providerId:models[0].providerId,model:models[0].model,reasoningEffort:'low'});
+return {models:models.length,...response};
+}});}};
 """;
 Map<String, dynamic> manifest(String version) => {
   'id': 'test.tasks',
@@ -62,7 +67,7 @@ void main() {
     await LibFjs.init(externalLibrary: ExternalLibrary.open(path));
   });
   test(
-    'real task runs persist usage, cap retries and cancel on permission revoke/update',
+    'real task and tool AI calls record usage and cancel on permission revoke/update',
     () async {
       final database = AppDatabase.forTest(NativeDatabase.memory());
       final root = await Directory.systemTemp.createTemp('plugin-task-host-');
@@ -73,8 +78,8 @@ void main() {
       await File(
         '${folder.parent.path}/plugin.json',
       ).writeAsString(jsonEncode(manifest('1.0.0')));
-      final calls = <PluginTaskAiRequest>[];
-      AgentCancellationToken? waiting;
+      final ai = _FakeAi();
+      final calls = ai.calls;
       final host = PluginHostService(
         dao: database.pluginDao,
         registry: PluginRegistry(hostToolNames: {}),
@@ -87,28 +92,7 @@ void main() {
             source: 'local',
           ),
         ],
-        taskAi: (request, cancellation) async {
-          calls.add(request);
-          if (request.prompt == 'wait') {
-            waiting = cancellation;
-            final gate = Completer<PluginTaskAiResult>();
-            cancellation.onCancel(
-              () => gate.completeError(
-                PluginHostError('cancelled', 'AI stopped'),
-              ),
-            );
-            return gate.future;
-          }
-          return (
-            text: 'AI suggestion',
-            usage: {
-              'input_tokens': 10,
-              'output_tokens': 4,
-              'model': 'mock',
-              'providerId': 'mock',
-            },
-          );
-        },
+        ai: ai,
       );
       Future<void> mode(String value) => database.pluginDao.setPluginData(
         'test.tasks',
@@ -131,6 +115,8 @@ void main() {
         expect(calls, hasLength(1));
         expect(calls.single.maxOutputTokens, 50);
         expect(calls.single.pluginId, 'test.tasks');
+        expect(calls.single.label, 'task:organize');
+        expect(calls.single.runId, (await row()).runId);
         expect((await row()).lastUsage?['input_tokens'], 10);
         expect((await row()).lastUsage?['calls'], 1);
         expect(
@@ -139,37 +125,32 @@ void main() {
           ),
           'AI suggestion',
         );
-        await mode('quota');
+        await mode('repeat');
         await host.tasks.runNow('test.tasks', 'organize');
-        await finished('retrying');
-        final quota = await row();
-        expect(quota.lastErrorCode, 'rate_limited');
-        expect(quota.lastUsage?['calls'], 2);
-        expect(calls, hasLength(3));
-        await database.pluginTaskDao.defer(
-          quota,
-          DateTime.now().subtract(const Duration(seconds: 1)),
-          DateTime.now(),
-        );
-        await host.tasks.tick();
-        await until(
-          () async =>
-              !host.tasks.pending('test.tasks', 'organize') &&
-              (await row()).attempt == 2,
-        );
-        expect((await row()).runId, quota.runId);
-        expect(calls, hasLength(3));
+        await finished('success');
+        expect(calls, hasLength(4));
+        expect((await row()).lastUsage?['calls'], 3);
+        expect((await row()).lastUsage?['input_tokens'], 30);
+        final tool = await host.execute('AiEcho', {});
+        expect(tool['models'], 1);
+        expect(tool['text'], 'AI suggestion');
+        expect(tool['finishReason'], 'stop');
+        expect(tool['providerId'], 'mock');
+        expect(calls.last.label, 'tool:AiEcho');
+        expect(calls.last.runId, isNull);
+        expect(calls.last.model, 'mock-model');
+        expect(calls.last.reasoningEffort, 'low');
         await mode('wait');
         await host.tasks.runNow('test.tasks', 'organize');
-        await until(() => waiting != null);
+        await until(() => ai.waiting != null);
         await host.revokePermissions('test.tasks');
-        expect(waiting!.isCancellationRequested, true);
+        expect(ai.waiting!.isCancellationRequested, true);
         expect((await row()).lastStatus, 'cancelled');
         expect(host.statuses.single.state, 'needs_permission');
         await host.confirmPermissions('test.tasks');
-        waiting = null;
+        ai.waiting = null;
         await host.tasks.runNow('test.tasks', 'organize');
-        await until(() => waiting != null);
+        await until(() => ai.waiting != null);
         final archive = Archive()
           ..addFile(
             ArchiveFile.string('plugin.json', jsonEncode(manifest('2.0.0'))),
@@ -183,7 +164,7 @@ void main() {
           grantedPermissions: {'ai.generateText'},
           temporaryRoot: root,
         );
-        expect(waiting!.isCancellationRequested, true);
+        expect(ai.waiting!.isCancellationRequested, true);
         expect(host.statuses.single.manifest!.version, '2.0.0');
         expect((await row()).lastStatus, 'cancelled');
         await host.setForeground(false);
@@ -202,4 +183,37 @@ void main() {
       }
     },
   );
+}
+
+class _FakeAi implements PluginAiApi {
+  final calls = <PluginAiRequest>[];
+  AgentCancellationToken? waiting;
+
+  @override
+  List<Map<String, dynamic>> listModels() => [
+    {'providerId': 'mock', 'model': 'mock-model'},
+  ];
+
+  @override
+  Future<PluginAiResult> generate(
+    PluginAiRequest request,
+    AgentCancellationToken cancellation,
+  ) {
+    calls.add(request);
+    if (request.prompt == 'wait') {
+      waiting = cancellation;
+      final gate = Completer<PluginAiResult>();
+      cancellation.onCancel(
+        () => gate.completeError(PluginHostError('cancelled', 'AI stopped')),
+      );
+      return gate.future;
+    }
+    return Future.value((
+      text: 'AI suggestion',
+      finishReason: 'stop',
+      providerId: 'mock',
+      model: 'mock-model',
+      usage: <String, dynamic>{'input_tokens': 10, 'output_tokens': 4},
+    ));
+  }
 }

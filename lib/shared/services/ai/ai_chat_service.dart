@@ -6,7 +6,6 @@
 
 //   lib/shared/models/ai_chat_models.dart
 
-import 'dart:math' show min;
 import 'package:flutter/foundation.dart';
 
 import '../../logger/app_logger.dart';
@@ -141,10 +140,22 @@ class AiChatService {
     AiSessionContext? context,
   }) async {
     final response = await chatCompletionResponse(messages, context: context);
+    if (response.text.isEmpty) {
+      _log.error(
+        'empty response: provider=${_config.id} model=$_chatModel '
+        'finishReason=${response.finishReason} '
+        'thinkingLen=${response.thinking.length} '
+        'toolCalls=${response.toolCalls.length} usage=${response.usage}',
+      );
+      throw Exception('Empty response from provider');
+    }
     return response.text;
   }
 
   /// Single-turn chat, preserving provider usage metadata for accounting.
+  ///
+  /// [maxOutputTokens] 原样传给 provider，缺省时取模型的默认输出上限。
+  /// 保留空正文响应，由调用方根据 finishReason 判断。
   Future<ChatResponse> chatCompletionResponse(
     List<AiMessage> messages, {
     AiSessionContext? context,
@@ -157,10 +168,7 @@ class AiChatService {
         'Must be positive',
       );
     }
-    final maxTokens = min(
-      maxOutputTokens ?? resolveAgentMaxTokens(_chatModel),
-      resolveAgentMaxTokens(_chatModel),
-    );
+    final maxTokens = maxOutputTokens ?? resolveAgentMaxTokens(_chatModel);
     final effectiveContext = _compactContext(context ?? _sessionContext);
     final conversation = _buildConversation(messages, effectiveContext);
     final tools = _resolveTools(context);
@@ -186,16 +194,6 @@ class AiChatService {
       ),
     );
 
-    if (response.text.isEmpty) {
-      // 记录请求目标与响应构成，便于区分「模型只思考没出文」「maxTokens 被思考耗尽」等场景。
-      _log.error(
-        '[AI] empty response: provider=${_config.id} model=$_chatModel '
-        'effort=$resolvedEffort maxTokens=$maxTokens '
-        'thinkingLen=${response.thinking.length} '
-        'toolCalls=${response.toolCalls.length} usage=${response.usage}',
-      );
-      throw Exception('Empty response from provider');
-    }
     return response;
   }
 

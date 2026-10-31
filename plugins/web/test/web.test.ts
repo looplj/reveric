@@ -68,6 +68,7 @@ function harness(
     settings: { get: unavailable },
     secrets: { get: unavailable },
     sqlite: { query: unavailable, execute: unavailable, transaction: unavailable },
+    ai: { listModels: unavailable, generateText: unavailable },
     chapters: { list: unavailable, get: unavailable, update: unavailable },
     characters: { list: unavailable, get: unavailable, update: unavailable },
   };

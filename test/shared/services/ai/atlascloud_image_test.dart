@@ -378,24 +378,40 @@ void main() {
     },
   );
 
-  for (final payload in [
-    {'code': 400, 'message': 'private upstream failure'},
-    {
-      'data': {
-        'id': 'task',
-        'status': 'failed',
-        'error': 'private upstream failure',
+  // 供应商返回的可读错误未命中本地化文案时原样展示；其余失败用本地化说明。
+  for (final (payload, providerMessage) in <(Map<String, Object>, String?)>[
+    (
+      {'code': 400, 'message': 'upstream quota exhausted'},
+      'upstream quota exhausted',
+    ),
+    (
+      {
+        'data': {
+          'id': 'task',
+          'status': 'failed',
+          'error': 'upstream quota exhausted',
+        },
       },
-    },
-    {
-      'data': {'status': 'processing'},
-    },
-    {
-      'data': {'id': 'task', 'status': 'completed', 'outputs': []},
-    },
-    {
-      'data': {'id': 'task', 'status': 'unknown'},
-    },
+      'upstream quota exhausted',
+    ),
+    (
+      {
+        'data': {'status': 'processing'},
+      },
+      null,
+    ),
+    (
+      {
+        'data': {'id': 'task', 'status': 'completed', 'outputs': []},
+      },
+      null,
+    ),
+    (
+      {
+        'data': {'id': 'task', 'status': 'unknown'},
+      },
+      null,
+    ),
   ]) {
     test(
       'invalid prediction $payload fails without further network requests',
@@ -411,8 +427,8 @@ void main() {
               throwsA(
                 isA<AiImageGenerationException>().having(
                   (e) => e.userMessage,
-                  'safe error',
-                  isNot(contains('private')),
+                  'user message',
+                  providerMessage ?? isNot(contains('upstream')),
                 ),
               ),
             );

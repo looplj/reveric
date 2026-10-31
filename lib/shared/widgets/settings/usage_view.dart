@@ -504,7 +504,7 @@ String _usageSourceLabel(BuildContext context, String rawSource) {
     UsageSources.monologue => LocaleKeys.settingsUsageSourceMonologue,
     UsageSources.theater => LocaleKeys.settingsUsageSourceTheater,
     UsageSources.council => LocaleKeys.settingsUsageSourceCouncil,
-    UsageSources.pluginTask => LocaleKeys.settingsUsageSourcePluginTask,
+    UsageSources.plugin => LocaleKeys.settingsUsageSourcePlugin,
     _ => LocaleKeys.settingsUsageSourceOther,
   });
 }

@@ -57,8 +57,6 @@ class _ModeAiClient extends AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
-    int? maxOutputTokens,
-    AgentCancellationToken? cancellation,
   }) async {
     return _titleFuture;
   }

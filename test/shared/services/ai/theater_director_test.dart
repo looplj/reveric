@@ -42,8 +42,6 @@ class _TheaterAiClient extends AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
-    int? maxOutputTokens,
-    AgentCancellationToken? cancellation,
   }) async => 'Title';
 }
 
