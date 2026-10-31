@@ -431,7 +431,13 @@ class RoleplayOrchestrator {
       client: aiService.providerClient,
       providerId: aiService.providerId,
       config: aiService.agentConfig,
-      toolManager: PluginAgentToolDispatcher(inner: tm, host: pluginHost),
+      toolManager: PluginAgentToolDispatcher(
+        agentId: session.character.characterId,
+        scope: (workId: session.novelId, mode: 'roleplay'),
+        inner: tm,
+        host: pluginHost,
+        sessionId: session.id,
+      ),
       allowedTools: _roleplayToolNames(aiService),
       initialMessages: _buildInitialMessages(
         session,

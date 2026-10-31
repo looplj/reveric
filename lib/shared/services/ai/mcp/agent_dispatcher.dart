@@ -9,6 +9,7 @@ import 'package:mcp_dart/mcp_dart.dart' as sdk;
 import '../../../agent/agent_tool_dispatcher.dart';
 import '../../../agent/client.dart';
 import '../../../agent/client/gemini_client.dart';
+import '../../../agent/message.dart' show AgentMessage;
 import '../../../models/mcp/config.dart';
 import '../../../models/mcp/tool_descriptor.dart';
 import '../../mcp/settings_service.dart';
@@ -66,7 +67,11 @@ class McpAgentToolDispatcher
   @override
   String requestSystemPrompt = '';
   @override
-  Future<void> prepareRequest() async {
+  String? get systemPromptOverride => null;
+  @override
+  List<AgentMessage> requestMessages(List<AgentMessage> context) => const [];
+  @override
+  Future<void> prepareRequest({required bool runStart}) async {
     if (!isEnabled()) {
       _direct = {};
       requestSystemPrompt = '';

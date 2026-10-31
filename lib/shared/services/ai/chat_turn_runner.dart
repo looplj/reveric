@@ -1712,7 +1712,7 @@ class ChatTurnRunner {
       mode,
     );
     ctxMgr.summarizer = buildDefaultContextSummarizer(
-      agentId: 'chat_panel',
+      agentId: 'orchestrator',
       systemPrompt: systemPrompt,
       allowedTools: allowedTools,
       client: client.providerClient,
@@ -1724,12 +1724,15 @@ class ChatTurnRunner {
     );
 
     final agent = Agent.custom(
-      id: 'chat_panel',
+      id: 'orchestrator',
       systemPrompt: systemPrompt,
       client: client.providerClient,
       providerId: client.providerId,
       config: client.agentConfig,
       toolManager: PluginAgentToolDispatcher(
+        agentId: 'orchestrator',
+        scope: (workId: promptContext.workId, mode: mode.value),
+        sessionId: sessionId,
         inner: mcpDispatcher,
         host: pluginHost,
       ),
@@ -2473,9 +2476,12 @@ class ChatTurnRunner {
               final isCompletionReminder = completionMessageIds.contains(
                 message.id,
               );
-              // 完成通知在请求前送达；先移除空占位，让落库顺序与模型上下文一致。
+              final isPluginContext = message.content.trim().startsWith(
+                '<system-remind type="plugin_context"',
+              );
+              // 完成通知与插件快照在请求前送达；先移除空占位，让落库顺序与模型上下文一致。
               // 已有正文或工具的上一轮必须保留其完整记录。
-              if (isCompletionReminder &&
+              if ((isCompletionReminder || isPluginContext) &&
                   uiAssistantStreaming &&
                   !currentMessageHasVisibleText &&
                   !currentMessageHasVisibleBlock &&

@@ -4,6 +4,7 @@
 //   lib/shared/services/ai/tools.dart
 
 import '../models/ai_nested_tool_call.dart';
+import 'message.dart' show AgentMessage;
 
 /// 工具定义 — 供 LLM tool_choice 使用
 class ToolDef {
@@ -184,8 +185,15 @@ abstract interface class AgentToolDispatcher {
 
 /// 可选的请求级动态能力；普通 Agent 调度器保持静态契约。
 abstract interface class AgentRequestToolDispatcher {
-  Future<void> prepareRequest();
+  /// 每次模型请求前调用；[runStart] 为一次 run 的首个请求，run 级状态只在此时刷新。
+  Future<void> prepareRequest({required bool runStart});
   String get requestSystemPrompt;
+
+  /// 本次 run 替换 Agent system prompt 的文本；null 表示沿用原 prompt。
+  String? get systemPromptOverride;
+
+  /// 根据当前上下文返回本轮需追加的消息；由 Agent 写入上下文并作为新消息发布。
+  List<AgentMessage> requestMessages(List<AgentMessage> context);
   bool isExternalCall(String name, Map<String, dynamic> input);
   Map<String, dynamic>? callMetadata(
     String name,

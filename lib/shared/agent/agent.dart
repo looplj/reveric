@@ -394,10 +394,10 @@ class Agent {
   /// 构建送给 LLM 的完整消息列表：system prompt + context manager 输出。
   Future<List<AgentMessage>> _buildMessages() async {
     final systemContent = StringBuffer();
-    systemContent.write(systemPrompt);
     final requestTools = _toolManager is AgentRequestToolDispatcher
         ? _toolManager as AgentRequestToolDispatcher
         : null;
+    systemContent.write(requestTools?.systemPromptOverride ?? systemPrompt);
     if (requestTools != null && requestTools.requestSystemPrompt.isNotEmpty) {
       systemContent.writeln();
       systemContent.write(requestTools.requestSystemPrompt);
@@ -550,6 +550,8 @@ class Agent {
       }
 
       String lastText = '';
+      // run 级请求状态（如插件替换的 system prompt）只在本次 process 的首个请求刷新。
+      var requestRunStart = true;
       final partialResponseText = StringBuffer();
       final loopDetector = LoopDetector();
       var thinkingOnlyRoundCount = 0;
@@ -621,14 +623,16 @@ class Agent {
                 ? _toolManager as AgentRequestToolDispatcher
                 : null;
             if (requestTools != null) {
-              await requestTools.prepareRequest();
+              await requestTools.prepareRequest(runStart: requestRunStart);
+              requestRunStart = false;
             }
             final toolNames = allowedTools;
             final tools = toolNames != null
                 ? _toolManager.toolDefsForNames(toolNames)
                 : _toolManager.allToolDefs();
             final systemPromptTokens = estimateTextTokens(
-              '$systemPrompt\n${requestTools?.requestSystemPrompt ?? ''}\n${memoryBlock ?? ''}',
+              '${requestTools?.systemPromptOverride ?? systemPrompt}\n'
+              '${requestTools?.requestSystemPrompt ?? ''}\n${memoryBlock ?? ''}',
             );
             late List<AgentMessage> msgs;
             var hookTools = tools;
@@ -694,6 +698,18 @@ class Agent {
                     inbox?.close();
                     yield const AgentCancelled();
                     return;
+                  }
+                }
+              }
+              // 请求级消息按压缩后的上下文判定，追加到历史末尾并发布给持久化方。
+              if (requestTools != null) {
+                final requestMessages = requestTools.requestMessages(
+                  _contextManager.messages,
+                );
+                if (requestMessages.isNotEmpty) {
+                  _contextManager.addMessages(requestMessages);
+                  for (final message in requestMessages) {
+                    yield AgentMessageAdded(message);
                   }
                 }
               }

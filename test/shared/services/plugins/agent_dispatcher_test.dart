@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:reveric/shared/agent/fake_agent.dart';
+import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/services/plugins/agent_dispatcher.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
@@ -29,12 +30,16 @@ class RequestInner extends FakeAgentToolDispatcher
       );
   int requests = 0;
   @override
-  Future<void> prepareRequest() async {
+  Future<void> prepareRequest({required bool runStart}) async {
     requests++;
   }
 
   @override
   String get requestSystemPrompt => 'MCP summary';
+  @override
+  String? get systemPromptOverride => null;
+  @override
+  List<AgentMessage> requestMessages(List<AgentMessage> context) => const [];
   @override
   bool isExternalCall(String name, Map<String, dynamic> input) =>
       name.startsWith('mcp__');
@@ -76,7 +81,7 @@ void main() {
         'plugin_unavailable',
       );
       await host.start();
-      await chained.prepareRequest();
+      await chained.prepareRequest(runStart: true);
       expect(chained.toolDefsForNames(['Read']).map((d) => d.name), [
         'Read',
         'WebSearch',
@@ -104,10 +109,10 @@ void main() {
         (await chained.executeTool(name: 'WebFetch', input: {}))['error_code'],
         'plugin_unavailable',
       );
-      await chained.prepareRequest();
+      await chained.prepareRequest(runStart: true);
       expect(chained.toolDefsForNames(['Read']).map((d) => d.name), ['Read']);
       await host.setEnabled('test.web', true);
-      await chained.prepareRequest();
+      await chained.prepareRequest(runStart: true);
       expect(chained.allToolNames(), contains('WebFetch'));
       expect(inner.requests, 3);
     },

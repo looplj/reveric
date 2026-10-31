@@ -23,6 +23,7 @@ import 'registry.dart';
 import 'runtime.dart';
 import 'sqlite.dart';
 import 'database_install.dart';
+import 'prompt.dart';
 import '../../models/plugin/request.dart';
 import 'ui_session.dart';
 import 'a2ui_session.dart';
@@ -58,6 +59,7 @@ class PluginStatus {
 
   /// 必填配置未填写；此时不能开启插件。
   bool needsConfig;
+  PluginPromptDiagnostic? promptDiagnostic;
 }
 
 typedef PluginExecutorFactory =
@@ -429,6 +431,17 @@ class PluginHostService {
     }
   }
 
+  late final _promptCollector = PluginPromptCollector(
+    onDiagnostic: _promptDiagnostic,
+  );
+  void _promptDiagnostic(PluginPromptDiagnostic diagnostic) {
+    _log.warning(
+      'Prompt omitted plugin=${diagnostic.pluginId} provider=${diagnostic.providerId} request=${diagnostic.requestId} code=${diagnostic.code}: ${diagnostic.message}',
+    );
+    _statuses[diagnostic.pluginId]?.promptDiagnostic = diagnostic;
+    _emit();
+  }
+
   Future<PluginRequestContext> requestContext({
     required String? sessionId,
     required String agentId,
@@ -470,6 +483,156 @@ class PluginHostService {
     final row = await dao.attachedDatabase.aiChatSessionDao.getById(id);
     return row != null &&
         (row.novelId.isEmpty ? null : row.novelId) == request.workId;
+  }
+
+  bool _promptAvailable(String id) =>
+      _statuses[id]?.state == 'available' && !_maintenance.contains(id);
+
+  PluginPromptSource _promptSource(
+    String id,
+    List<Map<String, dynamic>> definitions,
+    String provider,
+    PluginRequestContext request,
+  ) {
+    final package = _packages[id]!;
+    return PluginPromptSource(
+      pluginId: id,
+      providerId: provider,
+      current: () async =>
+          !_disposed &&
+          _packages[id] == package &&
+          _promptAvailable(id) &&
+          await _requestCurrent(request),
+      run: (budget, cancellation) async {
+        final http = PluginHttpApi();
+        final sqlCancellation = AgentCancellationController();
+        final unlink = cancellation.onCancel(sqlCancellation.cancel);
+        try {
+          final secrets = await dao.secretValues(id);
+          return await executorFactory(
+            _hostApi(
+              id,
+              package,
+              http,
+              secrets,
+              promptReadOnly: true,
+              cancellation: sqlCancellation.token,
+              sqlWaitBudget: budget,
+            ),
+            () {
+              http.cancel();
+              sqlCancellation.cancel();
+            },
+          ).runPrompt(
+            package.manifest,
+            package.code,
+            definitions,
+            provider,
+            request.toJson(),
+            budget,
+            cancellation,
+          );
+        } finally {
+          unlink();
+          sqlCancellation.cancel();
+          http.cancel();
+        }
+      },
+    );
+  }
+
+  /// 本轮模型请求的插件参考数据；由调用方与历史快照比较后决定是否追加消息。
+  Future<List<PluginPromptResult>> requestPromptContext(
+    PluginRequestContext request,
+  ) async {
+    if (_disposed) {
+      return const [];
+    }
+    final sources = <PluginPromptSource>[];
+    for (final entry in _registrations.entries) {
+      if (!_promptAvailable(entry.key)) {
+        continue;
+      }
+      final providers = [
+        for (final definition in entry.value)
+          if (definition['kind'] == 'prompt')
+            definition['prompt']['id'] as String,
+      ];
+      if (providers.isEmpty) {
+        continue;
+      }
+      _statuses[entry.key]?.promptDiagnostic = null;
+      for (final provider in providers) {
+        sources.add(_promptSource(entry.key, entry.value, provider, request));
+      }
+    }
+    if (sources.isEmpty) {
+      return const [];
+    }
+    _emit();
+    return _promptCollector.collect(request, sources);
+  }
+
+  /// 替换请求所属会话模式的 system prompt；无匹配、多个插件冲突、失败或返回空时为 null。
+  Future<String?> requestSystemPrompt(PluginRequestContext request) async {
+    if (_disposed) {
+      return null;
+    }
+    final matches = <({String id, String provider})>[];
+    for (final entry in _registrations.entries) {
+      if (!_promptAvailable(entry.key)) {
+        continue;
+      }
+      for (final definition in entry.value) {
+        if (definition['kind'] == 'systemPrompt' &&
+            (definition['systemPrompt']['modes'] as List).contains(
+              request.mode,
+            )) {
+          matches.add((
+            id: entry.key,
+            provider: definition['systemPrompt']['id'] as String,
+          ));
+        }
+      }
+    }
+    if (matches.isEmpty) {
+      return null;
+    }
+    for (final match in matches) {
+      _statuses[match.id]?.promptDiagnostic = null;
+    }
+    if (matches.length > 1) {
+      final owners = matches.map((m) => '${m.id}/${m.provider}').join(', ');
+      for (final match in matches) {
+        _promptDiagnostic(
+          PluginPromptDiagnostic(
+            pluginId: match.id,
+            providerId: match.provider,
+            requestId: request.requestId,
+            code: 'prompt_conflict',
+            message:
+                'Multiple providers replace the ${request.mode} system prompt: $owners',
+          ),
+        );
+      }
+      return null;
+    }
+    _emit();
+    final match = matches.single;
+    final results = await _promptCollector.collect(
+      request,
+      [
+        _promptSource(
+          match.id,
+          _registrations[match.id]!,
+          match.provider,
+          request,
+        ),
+      ],
+      pluginTokens: 8000,
+      totalTokens: 8000,
+    );
+    return results.isEmpty ? null : results.single.text;
   }
 
   final _registrations = <String, List<Map<String, dynamic>>>{};
@@ -523,6 +686,7 @@ class PluginHostService {
     await closePluginPages(id);
     final databases = await privateDatabases();
     _maintenance.add(id);
+    await _promptCollector.cancelPlugin(id);
     databases.pause(id);
     void release() {
       if (!_recoveryErrors.containsKey(id)) {
@@ -796,6 +960,7 @@ class PluginHostService {
     _views.remove(pluginId);
     status.error = null;
     status.state = 'activating';
+    await _promptCollector.cancelPlugin(pluginId);
     if (_recoveryErrors.containsKey(pluginId)) {
       status.state = 'failed';
       status.error = _recoveryErrors[pluginId].toString();
@@ -975,6 +1140,7 @@ class PluginHostService {
 
   Future<void> uninstall(String id) => mutate(id, () async {
     await closePluginPages(id);
+    await _promptCollector.cancelPlugin(id);
     await _closeIdleDatabase(id);
     await dao.uninstall(id);
     registry.remove(id);
@@ -1496,6 +1662,7 @@ class PluginHostService {
       return;
     }
     _disposed = true;
+    await _promptCollector.dispose();
     for (final page in _pages.values.toList()) {
       await page.session.close();
     }

@@ -403,6 +403,9 @@ class AgentCouncilOrchestrator {
         providerId: svc.providerId,
         config: svc.agentConfig,
         toolManager: PluginAgentToolDispatcher(
+          agentId: p.id,
+          scope: (workId: accumulatedSession.novelId, mode: 'council'),
+          sessionId: accumulatedSession.id,
           host: pluginHost,
           inner: sharedMcp == null
               ? tm
@@ -671,7 +674,13 @@ class AgentCouncilOrchestrator {
         client: aiService.providerClient,
         providerId: aiService.providerId,
         config: aiService.agentConfig,
-        toolManager: PluginAgentToolDispatcher(inner: tm, host: pluginHost),
+        toolManager: PluginAgentToolDispatcher(
+          agentId: 'summarizer',
+          scope: (workId: session.novelId, mode: 'council'),
+          inner: tm,
+          host: pluginHost,
+          sessionId: session.id,
+        ),
         hooks: _agentHooks(sessionId: session.id, aiService: aiService),
       );
 

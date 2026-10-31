@@ -208,6 +208,14 @@ class PluginSettingsRow extends HookConsumerWidget {
               ),
             ],
           ),
+          if (status.promptDiagnostic case final diagnostic?)
+            Text(
+              context.t(
+                LocaleKeys.settingsPluginsPromptSkipped,
+                namedArgs: {'requestId': diagnostic.requestId},
+              ),
+              style: typo.uiSmall.copyWith(color: colors.warningText),
+            ),
           // 配置已补齐后提示自动消失。
           if (notice.value case final key?
               when key != LocaleKeys.settingsPluginsConfigRequired ||

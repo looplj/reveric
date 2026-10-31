@@ -162,7 +162,7 @@ void main() {
       );
       var loadedAfterModelRequest = false;
       final summarize = buildDefaultContextSummarizer(
-        agentId: 'chat_panel',
+        agentId: 'orchestrator',
         systemPrompt: 'Main system prompt',
         memoryBlock: 'Stable memory',
         allowedTools: const ['Read'],
@@ -291,7 +291,7 @@ void main() {
         },
       );
       manager.summarizer = buildDefaultContextSummarizer(
-        agentId: 'chat_panel',
+        agentId: 'orchestrator',
         systemPrompt: 'system',
         allowedTools: const [],
         client: client,
@@ -364,7 +364,7 @@ void main() {
         },
       );
       final summarize = buildDefaultContextSummarizer(
-        agentId: 'chat_panel',
+        agentId: 'orchestrator',
         systemPrompt: 'Main system prompt',
         allowedTools: const ['Read'],
         client: client,

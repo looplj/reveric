@@ -309,7 +309,7 @@ void main() {
         service: service,
         isEnabled: () => true,
       );
-      await dispatcher.prepareRequest();
+      await dispatcher.prepareRequest(runStart: true);
       for (final run in [false, true]) {
         final name = run ? 'Run' : 'mcp__notes__write';
         final input = run
@@ -346,7 +346,7 @@ void main() {
       service: service,
       isEnabled: () => true,
     );
-    await dispatcher.prepareRequest();
+    await dispatcher.prepareRequest(runStart: true);
     final scheduler = CodemodeScheduler(maxActive: 1);
     addTearDown(scheduler.dispose);
     final result = await CodemodeOrchestrator().execute(
@@ -398,12 +398,12 @@ void main() {
       }
 
       final first = dispatcher('a');
-      await first.prepareRequest();
+      await first.prepareRequest(runStart: true);
       expect(attempts, 1);
       expect(first.requestSystemPrompt, contains('connection refused'));
-      await first.prepareRequest();
+      await first.prepareRequest(runStart: true);
       final rebuilt = dispatcher('a');
-      await rebuilt.prepareRequest();
+      await rebuilt.prepareRequest(runStart: true);
       await expectLater(
         rebuilt.catalog.listTools(mcpServer: 'notes'),
         throwsA(predicate((e) => e.toString().contains('connection refused'))),
@@ -414,13 +414,13 @@ void main() {
       await service.setForeground(true);
       expect(attempts, 1);
       final second = dispatcher('b');
-      await second.prepareRequest();
+      await second.prepareRequest(runStart: true);
       expect(attempts, 2);
       expect(
         second.allToolDefs().map((t) => t.name),
         contains('mcp__notes__write'),
       );
-      await first.prepareRequest();
+      await first.prepareRequest(runStart: true);
       expect(
         first.allToolDefs().map((t) => t.name),
         isNot(contains('mcp__notes__write')),
@@ -514,7 +514,7 @@ void main() {
         sourceSessionId: 'a',
         isEnabled: () => true,
       );
-      await dispatcher.prepareRequest();
+      await dispatcher.prepareRequest(runStart: true);
       expect(connected, ['notes']);
       expect((await service.oauth.tokens(good))!.accessToken, 'valid-token');
       expect(
@@ -558,12 +558,12 @@ void main() {
         sourceSessionId: 'b',
         isEnabled: () => true,
       );
-      await next.prepareRequest();
+      await next.prepareRequest(runStart: true);
       expect(
         next.allToolDefs().map((t) => t.name),
         contains('mcp__bad__write'),
       );
-      await dispatcher.prepareRequest();
+      await dispatcher.prepareRequest(runStart: true);
       expect(
         dispatcher.allToolDefs().map((t) => t.name),
         isNot(contains('mcp__bad__write')),
@@ -738,11 +738,11 @@ void main() {
         isEnabled: () => true,
         mcpOnlyRun: true,
       );
-      await dispatcher.prepareRequest();
+      await dispatcher.prepareRequest(runStart: true);
       await service.runtime.ensureReady('notes');
       final before = dispatcher.allToolDefs().map((d) => d.name).toList();
       await dispatcher.catalog.searchTool('笔记');
-      await dispatcher.prepareRequest();
+      await dispatcher.prepareRequest(runStart: true);
       expect(dispatcher.allToolDefs().map((d) => d.name), before);
       expect(before, isNot(contains('mcp__notes__write')));
       final denied = await dispatcher.executeTool(

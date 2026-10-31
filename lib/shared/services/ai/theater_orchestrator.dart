@@ -375,7 +375,13 @@ class TheaterOrchestrator {
         client: subClient ?? aiService.providerClient,
         providerId: aiService.providerId,
         config: aiService.agentConfig,
-        toolManager: PluginAgentToolDispatcher(inner: tm, host: pluginHost),
+        toolManager: PluginAgentToolDispatcher(
+          agentId: p.characterId,
+          scope: (workId: accumulatedSession.novelId, mode: 'theater'),
+          inner: tm,
+          host: pluginHost,
+          sessionId: accumulatedSession.id,
+        ),
         allowedTools: _theaterToolNames(aiService),
         hooks: _agentHooks(
           sessionId: accumulatedSession.id,
