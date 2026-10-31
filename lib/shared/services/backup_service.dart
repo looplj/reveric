@@ -18,6 +18,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'production/backup_media.dart';
+import 'plugins/host.dart';
+import 'plugins/runtime.dart';
 import '../logger/app_logger.dart';
 import '../models/mcp/config.dart';
 import '../utils/storage_paths.dart';
@@ -64,6 +66,7 @@ class BackupResult {
 
 class RestoreResult {
   final bool success;
+  final bool cancelled;
   final RestoreFailureReason? failureReason;
   final bool needsRestart;
   final String? safetyBackupPath;
@@ -71,6 +74,7 @@ class RestoreResult {
 
   const RestoreResult({
     required this.success,
+    this.cancelled = false,
     this.failureReason,
     this.needsRestart = false,
     this.safetyBackupPath,
@@ -158,15 +162,29 @@ const _backupEntries = [
   'avatars',
   'agent_avatars',
   'file_workspaces',
+  'plugins',
+  'plugin_data',
 ];
 
 class BackupService {
+  BackupService({this.pluginHost});
+  final PluginHostService? pluginHost;
   static const _backupVersion = 1;
 
   /// 备份所有数据到 zip 包
   ///
   /// 使用 SQLite backup API 生成数据库快照，并打包小说封面、AI 图片、Agent 头像。
   Future<BackupResult> backupToZip({String? outputDirectory}) async {
+    final host = pluginHost;
+    if (host == null) {
+      return _backupToZip(outputDirectory: outputDirectory);
+    }
+    return host.withPackageSnapshot(
+      () => _backupToZip(outputDirectory: outputDirectory),
+    );
+  }
+
+  Future<BackupResult> _backupToZip({String? outputDirectory}) async {
     _log.info('backupToZip started, outputDirectory=$outputDirectory');
     final warnings = <BackupWarning>[];
     try {
@@ -177,6 +195,7 @@ class BackupService {
       await _ensureOutputDirectoryWritable(outputDir);
       _log.info('output directory writable check passed');
       await _preflightSqliteSnapshots(appSupportDir);
+      _ensurePluginInstallSettled(appSupportDir);
       _log.info('preflight SQLite snapshots passed');
 
       // 创建临时目录用于组装备份内容
@@ -206,9 +225,18 @@ class BackupService {
         );
         _log.info('Step 2/8: done');
 
+        await _copyPluginDatabaseSnapshots(
+          appSupportDir,
+          Directory(p.join(tempDir.path, 'plugin_data')),
+          pluginHost,
+        );
+
         // 媒体文件集合只取决于目录，不查询资产或业务引用。
         for (final directory in _backupEntries.where(
-          (entry) => entry != 'reveric.sqlite' && entry != 'novel_workspaces',
+          (entry) =>
+              entry != 'reveric.sqlite' &&
+              entry != 'novel_workspaces' &&
+              entry != 'plugin_data',
         )) {
           await _copyDirIfExists(
             RevericPaths.resolveRelative(
@@ -414,6 +442,7 @@ class BackupService {
         );
       }
 
+      await pluginHost?.shutdownForRestore();
       needsRestart = true;
       if (onBeforeFileRestore != null) {
         _log.info('Restore: running pre-file-restore hook mode=${mode.name}');
@@ -466,6 +495,13 @@ class BackupService {
         safetyBackupPath: safetyBackupPath,
       );
     } catch (error, stackTrace) {
+      if (error is PluginHostError && error.code == 'cancelled') {
+        return RestoreResult(
+          success: false,
+          cancelled: true,
+          safetyBackupPath: safetyBackupPath,
+        );
+      }
       _log.error('Restore failed', error: error, stackTrace: stackTrace);
       return RestoreResult(
         success: false,
@@ -1198,6 +1234,80 @@ Future<void> _ensureOutputDirectoryWritable(String outputDir) async {
   } finally {
     if (await probe.exists()) {
       await probe.delete();
+    }
+  }
+}
+
+void _ensurePluginInstallSettled(Directory support) {
+  final file = File(p.join(support.path, 'reveric.sqlite'));
+  if (!file.existsSync()) {
+    return;
+  }
+  final database = sqlite3.open(
+    toWindowsSafePath(file.path),
+    mode: OpenMode.readOnly,
+  );
+  try {
+    if (database
+        .select(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='app_states'",
+        )
+        .isEmpty) {
+      return;
+    }
+    for (final row in database.select(
+      "SELECT key,value FROM app_states WHERE key LIKE 'plugin_install.%'",
+    )) {
+      if (!(row['key'] as String).startsWith('plugin_install.')) {
+        continue;
+      }
+      final record = jsonDecode(row['value'] as String);
+      if (record is! Map || record['phase'] != 'done') {
+        throw _BackupFailure(
+          BackupFailureReason.sqliteUnreadable,
+          'Plugin installation recovery must complete before backup',
+        );
+      }
+    }
+  } finally {
+    database.close();
+  }
+}
+
+Future<void> _copyPluginDatabaseSnapshots(
+  Directory support,
+  Directory destination,
+  PluginHostService? host,
+) async {
+  final source = Directory(p.join(support.path, 'plugin_data'));
+  if (!await source.exists()) {
+    return;
+  }
+  await for (final entry in source.list(followLinks: false)) {
+    if (entry is! Directory ||
+        !RegExp(
+          r'^[a-z0-9]+(\.[a-z0-9-]+)+$',
+        ).hasMatch(p.basename(entry.path))) {
+      throw const FormatException('Invalid plugin data directory in backup');
+    }
+    final file = File(p.join(entry.path, 'data.sqlite'));
+    if (await FileSystemEntity.isLink(file.path)) {
+      throw const FormatException('Plugin database cannot be a symbolic link');
+    }
+    if (!await file.exists()) {
+      continue;
+    }
+    final target = File(
+      p.join(destination.path, p.basename(entry.path), 'data.sqlite'),
+    );
+    await target.parent.create(recursive: true);
+    if (host != null) {
+      await (await host.privateDatabases()).backup(
+        p.basename(entry.path),
+        target.path,
+      );
+    } else {
+      await _copySqliteSnapshotIfExists(file.path, target.path);
     }
   }
 }

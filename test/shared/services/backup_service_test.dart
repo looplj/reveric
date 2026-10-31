@@ -7,7 +7,12 @@
 
 import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/models/generation/task.dart';
+import 'dart:async';
 import 'dart:convert';
+import 'package:drift/native.dart' show NativeDatabase;
+import 'package:reveric/shared/services/plugins/host.dart';
+import 'package:reveric/shared/services/plugins/registry.dart';
+import 'package:reveric/shared/services/plugins/runtime.dart';
 import '../../fixtures/director/animated.dart';
 import '../../helpers/backup_fixture.dart';
 import 'package:reveric/shared/models/director/document.dart';
@@ -31,6 +36,20 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
 late BackupDatabases _databases;
+
+class _CancellingPluginHost extends PluginHostService {
+  _CancellingPluginHost(AppDatabase database, Directory root)
+    : super(
+        dao: database.pluginDao,
+        registry: PluginRegistry(hostToolNames: {}),
+        packages: () async => [],
+        applicationSupport: () async => root,
+      );
+  @override
+  Future<void> shutdownForRestore() async {
+    throw PluginHostError('cancelled', 'Keep plugin draft');
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -149,6 +168,171 @@ void main() {
       restoredDb.close();
     }
   });
+
+  test(
+    'plugin database snapshot waits for package mutations and full restore retains exact data',
+    () async {
+      _writeLibrary(appSupportDir, {
+        'work': (title: 'Work', marker: 'plugin snapshot'),
+      });
+      final appDatabase = AppDatabase.forTest(
+        NativeDatabase(File(p.join(appSupportDir.path, 'reveric.sqlite'))),
+      );
+      final host = PluginHostService(
+        dao: appDatabase.pluginDao,
+        registry: PluginRegistry(hostToolNames: {}),
+        packages: () async => [],
+        applicationSupport: () async => appSupportDir,
+      );
+      var databaseClosed = false;
+      try {
+        await host.start();
+        final databases = await host.privateDatabases();
+        await databases.migrate('example.search', [
+          {
+            'version': 1,
+            'sql':
+                'CREATE TABLE notes(id INTEGER PRIMARY KEY, text TEXT NOT NULL);',
+          },
+        ]);
+        await databases.call('example.search', 'execute', {
+          'statement': {'sql': "INSERT INTO notes(text) VALUES ('original')"},
+        });
+        final pluginFile = File(
+          p.join(
+            appSupportDir.path,
+            'plugins/example.search/1.0.0/dist/index.js',
+          ),
+        );
+        await pluginFile.parent.create(recursive: true);
+        await pluginFile.writeAsString('original package');
+        await appDatabase.pluginDao.install(
+          pluginId: 'example.search',
+          version: '1.0.0',
+          packagePath: 'plugins/example.search/1.0.0',
+          permissions: [],
+        );
+        final ignored = File(
+          p.join(
+            appSupportDir.path,
+            'plugin_data/example.search/install-orphan/previous.sqlite',
+          ),
+        );
+        await ignored.parent.create(recursive: true);
+        await ignored.writeAsString('temporary copy');
+        final entered = Completer<void>(), release = Completer<void>();
+        final mutation = host.mutate('example.search', () async {
+          entered.complete();
+          await release.future;
+          await databases.call('example.search', 'execute', {
+            'statement': {
+              'sql': "INSERT INTO notes(text) VALUES ('before snapshot')",
+            },
+          });
+        });
+        await entered.future;
+        var finished = false;
+        final service = BackupService(pluginHost: host);
+        final backupFuture = service
+            .backupToZip(outputDirectory: outputDir.path)
+            .then((value) {
+              finished = true;
+              return value;
+            });
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(finished, false);
+        release.complete();
+        await mutation;
+        final backup = await backupFuture;
+        expect(backup.success, true, reason: '${backup.failureReason}');
+        final archive = ZipDecoder().decodeBytes(
+          await File(backup.backupPath!).readAsBytes(),
+        );
+        final names = archive.files.map((f) => f.name).toList();
+        expect(names, contains('plugin_data/example.search/data.sqlite'));
+        expect(
+          names.any(
+            (name) =>
+                name.contains('install-orphan') ||
+                name.endsWith('-journal') ||
+                name.endsWith('-wal'),
+          ),
+          false,
+        );
+        await databases.call('example.search', 'execute', {
+          'statement': {
+            'sql': "INSERT INTO notes(text) VALUES ('after snapshot')",
+          },
+        });
+        await pluginFile.writeAsString('changed package');
+        final restored = await service.restoreFromZip(
+          backup.backupPath!,
+          mode: RestoreMode.fullReplacement,
+          onBeforeFileRestore: () async {
+            await appDatabase.close();
+            databaseClosed = true;
+          },
+        );
+        expect(restored.success, true, reason: '${restored.failureReason}');
+        final restoredDb = sqlite3.open(
+          p.join(appSupportDir.path, 'plugin_data/example.search/data.sqlite'),
+          mode: OpenMode.readOnly,
+        );
+        try {
+          expect(
+            restoredDb
+                .select('SELECT text FROM notes ORDER BY id')
+                .map((r) => r['text']),
+            ['original', 'before snapshot'],
+          );
+        } finally {
+          restoredDb.close();
+        }
+        expect(await pluginFile.readAsString(), 'original package');
+        expect(ignored.existsSync(), false);
+      } finally {
+        await host.dispose();
+        if (!databaseClosed) {
+          await appDatabase.close();
+        }
+      }
+    },
+  );
+
+  test(
+    'plugin restore cancellation preserves files and avoids restart requirement',
+    () async {
+      final source = await Directory(
+        p.join(tempRoot.path, 'source-plugin-cancel'),
+      ).create();
+      _writeLibrary(source, {'work': (title: 'Work', marker: 'backup')});
+      final archive = packSource(source);
+      _writeLibrary(appSupportDir, {
+        'work': (title: 'Work', marker: 'current'),
+      });
+      final database = AppDatabase.forTest(
+        NativeDatabase(File(p.join(appSupportDir.path, 'reveric.sqlite'))),
+      );
+      final host = _CancellingPluginHost(database, appSupportDir);
+      var beforeFiles = false;
+      try {
+        final result = await BackupService(pluginHost: host).restoreFromZip(
+          archive.path,
+          mode: RestoreMode.fullReplacement,
+          onBeforeFileRestore: () async {
+            beforeFiles = true;
+          },
+        );
+        expect(result.cancelled, true);
+        expect(result.needsRestart, false);
+        expect(beforeFiles, false);
+        expect(_readContentMarker(appSupportDir, 'work'), 'current');
+      } finally {
+        await host.dispose();
+        await database.close();
+      }
+    },
+  );
 
   for (final parentName in [
     'Media.staging',
@@ -967,6 +1151,12 @@ void main() {
       await file.writeAsBytes([7, 8, 9]);
     }
 
+    final pluginFile = File(
+      p.join(appSupportDir.path, 'plugins/example.search/1.0.0/dist/index.js'),
+    );
+    await pluginFile.parent.create(recursive: true);
+    await pluginFile.writeAsString('plugin payload');
+
     final result = await BackupService().backupToZip(
       outputDirectory: outputDir.path,
     );
@@ -979,6 +1169,7 @@ void main() {
     final names = archive.files.map((file) => file.name).toSet();
     expect(names, contains('file_workspaces/novel_1/images/avatar.png'));
     expect(names, contains('avatars/me.png'));
+    expect(names, contains('plugins/example.search/1.0.0/dist/index.js'));
     expect(
       names,
       contains(
@@ -1165,7 +1356,6 @@ void main() {
     expect(_readContentMarker(appSupportDir, 'novel-a'), 'backup-a');
     expect(_readContentMarker(appSupportDir, 'novel-b'), 'current-b');
     expect(_readContentMarker(appSupportDir, 'novel-c'), 'current-c');
-    expect(_readMemoryMarker(appSupportDir, 'novel-a'), 'current-a');
   });
 
   for (final storedPath in [
@@ -1698,12 +1888,6 @@ void _writeLibrary(
         'description': entry.value.marker,
         'content_database_path': relativePath,
       });
-      insertBackupRow(db, 'memories', {
-        'id': 'memory-${entry.key}',
-        'novel_id': entry.key,
-        'category': 'context',
-        'content': entry.value.marker,
-      });
       if (draftNovelIds?.contains(entry.key) ?? false) {
         db.execute('UPDATE novels SET draft = 1 WHERE id = ?', [entry.key]);
       }
@@ -1746,21 +1930,6 @@ String _readContentMarker(Directory appSupportDir, String novelId) {
   );
   try {
     return db.select('SELECT value FROM content_marker').single['value']
-        as String;
-  } finally {
-    db.close();
-  }
-}
-
-String _readMemoryMarker(Directory appSupportDir, String novelId) {
-  final db = sqlite3.open(
-    p.join(appSupportDir.path, 'reveric.sqlite'),
-    mode: OpenMode.readOnly,
-  );
-  try {
-    return db.select('SELECT content FROM memories WHERE novel_id = ?', [
-          novelId,
-        ]).single['content']
         as String;
   } finally {
     db.close();

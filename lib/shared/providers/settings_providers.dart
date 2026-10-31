@@ -37,6 +37,7 @@ import 'novel_maintenance_providers.dart';
 import 'ai_mode_processing.dart';
 
 import 'webdav_backup_providers.dart';
+import 'plugin_providers.dart';
 import '../services/debug/debug_ai_provider.dart';
 
 export '../services/auto_backup_scheduler.dart' show BackupFrequency;
@@ -3349,7 +3350,7 @@ DateTime? lastBackupTime(Ref ref) {
 
 @Riverpod(keepAlive: true)
 BackupService backupService(Ref ref) {
-  return BackupService();
+  return BackupService(pluginHost: ref.watch(pluginHostServiceProvider));
 }
 
 @Riverpod(keepAlive: true)

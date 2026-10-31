@@ -21,6 +21,8 @@ import 'data.dart';
 import 'http.dart';
 import 'registry.dart';
 import 'runtime.dart';
+import 'sqlite.dart';
+import 'database_install.dart';
 import '../../models/plugin/request.dart';
 import 'ui_session.dart';
 import 'a2ui_session.dart';
@@ -77,6 +79,32 @@ class PluginHostService {
   final Future<Directory> Function()? applicationSupport;
   Future<Directory> supportDirectory() =>
       applicationSupport?.call() ?? getApplicationSupportDirectory();
+  Future<PluginSqliteService>? _databases;
+  Future<PluginSqliteService> privateDatabases() => _databases ??=
+      supportDirectory().then((root) => PluginSqliteService(root: root));
+  Future<List<Map<String, Object?>>> databaseMigrations(
+    PluginPackage package,
+  ) async {
+    final declaration = package.manifest.database;
+    if (declaration == null) {
+      throw PluginHostError(
+        'database_not_declared',
+        'Plugin has not declared a database',
+      );
+    }
+    return [
+      for (final migration in declaration.migrations)
+        {
+          'version': migration.version,
+          'sql': await readPackageText(
+            package,
+            migration.source,
+            maxBytes: 1024 * 1024,
+          ),
+        },
+    ];
+  }
+
   final PluginDataService? data;
   final PluginDao dao;
   final PluginRegistry registry;
@@ -455,6 +483,7 @@ class PluginHostService {
   final _running = <String, int>{};
   final _maintenance = <String>{};
   final _drainers = <String, Completer<void>>{};
+  final _recoveryErrors = <String, Object>{};
 
   Future<void> validatePackage(PluginPackage package) async {
     final definitions = await executorFactory(
@@ -482,6 +511,64 @@ class PluginHostService {
       }
     }
     registry.validate(package.manifest.id, tools);
+  }
+
+  Future<void Function()> beginMaintenance(String id) async {
+    if (_maintenance.contains(id)) {
+      throw PluginHostError(
+        'database_busy',
+        'Plugin is already in maintenance',
+      );
+    }
+    await closePluginPages(id);
+    final databases = await privateDatabases();
+    _maintenance.add(id);
+    databases.pause(id);
+    void release() {
+      if (!_recoveryErrors.containsKey(id)) {
+        _maintenance.remove(id);
+        databases.resume(id);
+      }
+    }
+
+    try {
+      final queue = _queues[id];
+      if (queue != null) {
+        for (final waiter in queue) {
+          waiter.complete(false);
+        }
+        queue.clear();
+      }
+      if ((_running[id] ?? 0) > 0) {
+        await (_drainers[id] = Completer<void>()).future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => throw PluginHostError(
+            'plugin_busy',
+            'Plugin executions are still running; update was not applied',
+          ),
+        );
+      }
+      await databases.drain(id);
+      return release;
+    } catch (_) {
+      release();
+      rethrow;
+    } finally {
+      _drainers.remove(id);
+    }
+  }
+
+  void markRecoveryRequired(String id, Object error) {
+    _recoveryErrors[id] = error;
+    registry.remove(id);
+    _views.remove(id);
+    _registrations.remove(id);
+    final status = _statuses[id];
+    if (status != null) {
+      status.state = 'failed';
+      status.error = error.toString();
+    }
+    _emit();
   }
 
   final _queues = <String, List<Completer<bool>>>{};
@@ -656,6 +743,16 @@ class PluginHostService {
   }
 
   Future<void> _start() async {
+    if ((await dao.attachedDatabase.appStateDao.getAllByPrefix(
+      'plugin_install.',
+    )).isNotEmpty) {
+      _recoveryErrors.addAll(
+        await PluginDatabaseInstallOrchestrator().recover(
+          database: dao.attachedDatabase,
+          root: await supportDirectory(),
+        ),
+      );
+    }
     final found = await (packages?.call() ?? _discover());
     final ordered = <(PluginPackage, DateTime)>[];
     for (final package in found) {
@@ -699,8 +796,15 @@ class PluginHostService {
     _views.remove(pluginId);
     status.error = null;
     status.state = 'activating';
+    if (_recoveryErrors.containsKey(pluginId)) {
+      status.state = 'failed';
+      status.error = _recoveryErrors[pluginId].toString();
+      _emit();
+      return;
+    }
     if (!status.enabled) {
       status.state = 'disabled';
+      await _closeIdleDatabase(pluginId);
       _emit();
       return;
     }
@@ -732,6 +836,12 @@ class PluginHostService {
         return;
       }
       final package = _packages[pluginId]!;
+      if (package.manifest.database != null) {
+        final databases = await privateDatabases();
+        await databases.close(pluginId);
+        databases.resume(pluginId);
+        await databases.migrate(pluginId, await databaseMigrations(package));
+      }
       final runtime = executorFactory(_applyApi(pluginId), () {});
       final definitions = await runtime.activate(
         package.manifest,
@@ -788,6 +898,35 @@ class PluginHostService {
     return next;
   }
 
+  Future<T> withPackageSnapshot<T>(Future<T> Function() action) async {
+    await start();
+    final previous = _snapshotBarrier;
+    final mutations = _serial.values.toList();
+    final gate = Completer<void>();
+    _snapshotBarrier = gate.future;
+    try {
+      await previous;
+      await Future.wait(mutations);
+      return await action();
+    } finally {
+      gate.complete();
+    }
+  }
+
+  Future<void> shutdownForRestore() => withPackageSnapshot(() async {
+    final releases = <void Function()>[];
+    try {
+      for (final id in _packages.keys.toList()) {
+        releases.add(await beginMaintenance(id));
+      }
+      await dispose();
+    } finally {
+      for (final release in releases) {
+        release();
+      }
+    }
+  });
+
   /// Refresh an installed package only after its registry transaction commits.
   Future<void> loadInstalled(PluginPackage package) async {
     final id = package.manifest.id;
@@ -820,8 +959,23 @@ class PluginHostService {
     await _activate(id);
   });
 
+  Future<void> _closeIdleDatabase(String id) async {
+    final pending = _databases;
+    if (pending == null) {
+      return;
+    }
+    final databases = await pending;
+    databases.pause(id);
+    unawaited(
+      databases.close(id).catchError((Object error, StackTrace stack) {
+        _log.warning('Database close deferred plugin=$id: $error');
+      }),
+    );
+  }
+
   Future<void> uninstall(String id) => mutate(id, () async {
     await closePluginPages(id);
+    await _closeIdleDatabase(id);
     await dao.uninstall(id);
     registry.remove(id);
     _registrations.remove(id);
@@ -1141,6 +1295,27 @@ class PluginHostService {
         'AI generation is only available inside a scheduled task',
       );
     }
+    if (method.startsWith('sqlite.')) {
+      if (package.manifest.database == null) {
+        throw PluginHostError(
+          'database_not_declared',
+          'Plugin has not declared a database',
+        );
+      }
+      if (_disposed ||
+          _packages[id] != package ||
+          _statuses[id]?.state != 'available') {
+        throw PluginHostError('unavailable', 'Plugin database is unavailable');
+      }
+      return (await privateDatabases()).call(
+        id,
+        method.substring('sqlite.'.length),
+        args,
+        cancellation: cancellation,
+        waitBudget: sqlWaitBudget,
+        readOnly: promptReadOnly,
+      );
+    }
     if (method.startsWith('chapters.') || method.startsWith('characters.')) {
       final parts = method.split('.');
       final permission =
@@ -1334,6 +1509,9 @@ class PluginHostService {
         waiter.complete(false);
       }
       queue.clear();
+    }
+    if (_databases != null) {
+      await (await _databases!).dispose();
     }
     await _changes.close();
   }

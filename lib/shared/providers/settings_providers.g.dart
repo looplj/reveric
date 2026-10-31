@@ -1659,7 +1659,7 @@ final class BackupServiceProvider
   }
 }
 
-String _$backupServiceHash() => r'74e878b8ec8677fffe3b5b1aea6d3ee5c504c106';
+String _$backupServiceHash() => r'bd73f7c6e86610801538c7c3f0e218bbb52dd4e9';
 
 @ProviderFor(autoBackupScheduler)
 final autoBackupSchedulerProvider = AutoBackupSchedulerProvider._();

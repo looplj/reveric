@@ -11,6 +11,8 @@ import 'package:pub_semver/pub_semver.dart';
 import '../../logger/app_logger.dart';
 import 'host.dart';
 import 'package_archive.dart';
+import 'database_install.dart';
+import 'runtime.dart';
 
 final _log = AppLogger.forModule('PluginInstall');
 
@@ -52,97 +54,134 @@ class PluginInstallOrchestrator {
                 Version.parse(existing.version))) {
       throw StateError('Plugin update must have a newer local package version');
     }
-    await host.closePluginPages(manifest.id);
-    final support = await host.supportDirectory();
-    final relative = 'plugins/${manifest.id}/${manifest.version}';
-    final destination = Directory(
-      p.joinAll([support.path, ...relative.split('/')]),
-    );
-    final staging = await archive.extract(temporaryRoot);
-    var moved = false;
-    var committed = false;
+    final endMaintenance = await host.beginMaintenance(manifest.id);
     try {
-      if (await destination.exists()) {
-        // Soft uninstall keeps packages. Reinstall the exact retained package;
-        // a different payload must use a new version.
-        final retained = <String>{};
-        await for (final entity in destination.list(
-          recursive: true,
-          followLinks: false,
-        )) {
-          if (entity is Link) {
-            throw const FormatException(
-              'Installed package contains a symbolic link',
-            );
-          }
-          if (entity is File) {
-            final path = p
-                .relative(entity.path, from: destination.path)
-                .split(p.separator)
-                .join('/');
-            retained.add(path);
-            if (!listEquals(await entity.readAsBytes(), archive.files[path])) {
-              throw StateError('Retained package differs; use a newer version');
+      final support = await host.supportDirectory();
+      final relative = 'plugins/${manifest.id}/${manifest.version}';
+      final destination = Directory(
+        p.joinAll([support.path, ...relative.split('/')]),
+      );
+      final staging = await archive.extract(temporaryRoot);
+      var moved = false;
+      var committed = false;
+      try {
+        if (await destination.exists()) {
+          // Soft uninstall keeps packages. Reinstall the exact retained package;
+          // a different payload must use a new version.
+          final retained = <String>{};
+          await for (final entity in destination.list(
+            recursive: true,
+            followLinks: false,
+          )) {
+            if (entity is Link) {
+              throw const FormatException(
+                'Installed package contains a symbolic link',
+              );
+            }
+            if (entity is File) {
+              final path = p
+                  .relative(entity.path, from: destination.path)
+                  .split(p.separator)
+                  .join('/');
+              retained.add(path);
+              if (!listEquals(
+                await entity.readAsBytes(),
+                archive.files[path],
+              )) {
+                throw StateError(
+                  'Retained package differs; use a newer version',
+                );
+              }
             }
           }
+          if (!setEquals(retained, archive.files.keys.toSet())) {
+            throw StateError('Retained package is incomplete');
+          }
+        } else {
+          await destination.parent.create(recursive: true);
+          // Staging is application-owned and expected on the same filesystem.
+          await staging.rename(destination.path);
+          moved = true;
         }
-        if (!setEquals(retained, archive.files.keys.toSet())) {
-          throw StateError('Retained package is incomplete');
-        }
-      } else {
-        await destination.parent.create(recursive: true);
-        // Staging is application-owned and expected on the same filesystem.
-        await staging.rename(destination.path);
-        moved = true;
-      }
-      await host.dao.install(
-        pluginId: manifest.id,
-        version: manifest.version,
-        packagePath: relative,
-        permissions: manifest.permissions,
-      );
-      committed = true;
-      await host.loadInstalled(
-        PluginPackage(
+        final package = PluginPackage(
           relative,
           manifest,
           utf8.decode(archive.files[manifest.main]!),
           source: 'local',
-        ),
-      );
-      if (existing != null && existing.packagePath != relative) {
-        final oldExpected = 'plugins/${manifest.id}/${existing.version}';
-        if (existing.packagePath == oldExpected) {
-          try {
-            final old = Directory(
-              p.joinAll([support.path, ...oldExpected.split('/')]),
-            );
-            if (await old.exists()) {
-              await old.delete(recursive: true);
+        );
+        Future<void> commit() => host.dao.install(
+          pluginId: manifest.id,
+          version: manifest.version,
+          packagePath: relative,
+          permissions: manifest.permissions,
+        );
+        if (manifest.database != null) {
+          await PluginDatabaseInstallOrchestrator().install(
+            database: host.dao.attachedDatabase,
+            databases: await host.privateDatabases(),
+            pluginId: manifest.id,
+            version: manifest.version,
+            oldVersion: existing?.version,
+            migrations: await host.databaseMigrations(package),
+            validate: () => host.validatePackage(package),
+            commit: commit,
+          );
+        } else {
+          await host.validatePackage(package);
+          await commit();
+        }
+        committed = true;
+        await host.loadInstalled(
+          PluginPackage(
+            relative,
+            manifest,
+            utf8.decode(archive.files[manifest.main]!),
+            source: 'local',
+          ),
+        );
+        if (existing != null && existing.packagePath != relative) {
+          final oldExpected = 'plugins/${manifest.id}/${existing.version}';
+          if (existing.packagePath == oldExpected) {
+            try {
+              final old = Directory(
+                p.joinAll([support.path, ...oldExpected.split('/')]),
+              );
+              if (await old.exists()) {
+                await old.delete(recursive: true);
+              }
+            } catch (error, stack) {
+              _log.error(
+                'Old package cleanup failed: ${manifest.id}',
+                error: error,
+                stackTrace: stack,
+              );
             }
-          } catch (error, stack) {
-            _log.error(
-              'Old package cleanup failed: ${manifest.id}',
-              error: error,
-              stackTrace: stack,
-            );
           }
         }
+      } catch (error, stack) {
+        if (error is PluginHostError &&
+            error.code == 'database_recovery_required') {
+          host.markRecoveryRequired(manifest.id, error);
+        }
+        _log.error(
+          'Package installation failed: ${manifest.id}',
+          error: error,
+          stackTrace: stack,
+        );
+        if (moved &&
+            !committed &&
+            !(error is PluginHostError &&
+                error.code == 'database_recovery_required')) {
+          await destination.delete(recursive: true);
+        }
+        rethrow;
+      } finally {
+        if (await staging.exists()) {
+          await staging.delete(recursive: true);
+        }
       }
-    } catch (error, stack) {
-      _log.error(
-        'Package installation failed: ${manifest.id}',
-        error: error,
-        stackTrace: stack,
-      );
-      if (moved && !committed) {
-        await destination.delete(recursive: true);
-      }
-      rethrow;
     } finally {
-      if (await staging.exists()) {
-        await staging.delete(recursive: true);
-      }
+      endMaintenance();
     }
   }
 }

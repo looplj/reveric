@@ -1006,6 +1006,9 @@ class BackupSettingsSection extends HookConsumerWidget {
         return;
       }
       pendingRestore.value = null;
+      if (restoreResult.cancelled) {
+        return;
+      }
       if (restoreResult.success) {
         feedback.showSuccess(
           context.t(LocaleKeys.settingsBackupRestoreSuccess),
