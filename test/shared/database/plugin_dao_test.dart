@@ -8,7 +8,7 @@ import 'package:reveric/shared/database/app_database.dart';
 
 void main() {
   test(
-    'v0.4.0 fixture upgrades without altering existing rows or table definitions',
+    'published fixture upgrades while preserving retained tables including legacy memory',
     () async {
       final original = <String, String>{};
       final counts = <String, int>{};
@@ -38,7 +38,7 @@ void main() {
         (await db.customSelect('PRAGMA user_version').getSingle()).read<int>(
           'user_version',
         ),
-        2,
+        AppDatabase.currentSchemaVersion,
       );
       expect(
         (await db
@@ -47,9 +47,24 @@ void main() {
                 )
                 .get())
             .map((row) => row.read<String>('name')),
-        ['plugin_registry', 'plugin_secrets', 'plugin_storage'],
+        [
+          'plugin_permissions',
+          'plugin_registry',
+          'plugin_secrets',
+          'plugin_storage',
+        ],
       );
-      for (final entry in original.entries) {
+      expect(
+        await db
+            .customSelect(
+              "SELECT name FROM sqlite_master WHERE name = 'memories'",
+            )
+            .get(),
+        hasLength(1),
+      );
+      for (final entry in original.entries.where(
+        (entry) => entry.key != 'memories',
+      )) {
         expect(
           (await db
                   .customSelect(
@@ -68,6 +83,7 @@ void main() {
         );
       }
       for (final table in [
+        'plugin_permissions',
         'plugin_registry',
         'plugin_storage',
         'plugin_secrets',
@@ -118,7 +134,12 @@ void main() {
                 )
                 .get())
             .map((row) => row.read<String>('name')),
-        ['plugin_registry', 'plugin_secrets', 'plugin_storage'],
+        [
+          'plugin_permissions',
+          'plugin_registry',
+          'plugin_secrets',
+          'plugin_storage',
+        ],
       );
       final dao = db.pluginDao;
       for (final id in ['a.test', 'b.test']) {

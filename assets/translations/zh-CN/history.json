@@ -69,5 +69,6 @@
   "history.rollback_skipped": "已回滚 {restored} 项；{skipped} 项因目标或历史记录缺失而跳过。",
   "history.restore_partial": "已恢复可用的变更；部分变更因目标或历史记录缺失而跳过。",
   "history.restore_skipped": "未恢复任何变更：目标或历史记录已不存在。",
-  "history.commit_message.manual_storyboard_save": "保存制片修改"
+  "history.commit_message.manual_storyboard_save": "保存制片修改",
+  "history.commit_message.plugin_update": "插件修改"
 }

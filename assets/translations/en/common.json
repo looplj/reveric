@@ -102,5 +102,10 @@
   "common.generate": "Generate",
   "common.clear": "Clear",
   "common.open_link_failed": "Unable to open link.",
-  "common.refresh": "Refresh"
+  "common.refresh": "Refresh",
+  "common.install": "Install",
+  "common.uninstall": "Uninstall",
+  "common.revoke": "Revoke",
+  "common.resume": "Resume",
+  "common.run_now": "Run now"
 }

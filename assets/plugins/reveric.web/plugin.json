@@ -1,7 +1,10 @@
 {
   "id": "reveric.web",
-  "name": "联网检索",
-  "description": "使用百度提供网页搜索，并支持网页读取；搜索可能因安全验证或反爬限制而不稳定。",
+  "name": { "zh-CN": "联网检索", "en": "Web Search" },
+  "description": {
+    "zh-CN": "使用百度提供网页搜索，并支持网页读取；搜索可能因安全验证或反爬限制而不稳定。",
+    "en": "Searches the web with Baidu and reads web pages. Search may be unreliable because of security checks or anti-scraping limits."
+  },
   "version": "1.0.0",
   "author": "Reveric",
   "pluginApiVersion": "^1",

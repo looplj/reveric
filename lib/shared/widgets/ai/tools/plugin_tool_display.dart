@@ -3,7 +3,9 @@
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/widgets/ai/tools/plugin_tool_card_body.dart
 //   lib/shared/widgets/ai/tools/tool_card_descriptor.dart
+import 'package:flutter/widgets.dart';
 import '../../../models/ai_message_block.dart';
+import '../../../models/plugin/text.dart';
 
 bool isPluginToolBlock(AiToolCallBlock block) =>
     block.source == 'plugin' ||
@@ -29,8 +31,17 @@ Map<String, dynamic> pluginToolDisplay(AiToolCallBlock block) {
   };
 }
 
-String pluginToolTitle(AiToolCallBlock block) =>
-    pluginToolDisplay(block)['title']?.toString() ?? block.toolName;
+String pluginToolTitle(BuildContext context, AiToolCallBlock block) =>
+    readPluginText(
+      pluginToolDisplay(block)['title'],
+    )?.resolve(Localizations.localeOf(context)) ??
+    block.toolName;
+
+/// 调用时保存的插件名称，按当前界面语言取值。
+String? pluginToolSource(BuildContext context, AiToolCallBlock block) =>
+    readPluginText(
+      block.metadata?['plugin_name'],
+    )?.resolve(Localizations.localeOf(context));
 String? pluginToolSummary(AiToolCallBlock block) {
   final key = pluginToolDisplay(block)['summaryArg'];
   final value = key is String ? block.arguments[key]?.toString().trim() : null;

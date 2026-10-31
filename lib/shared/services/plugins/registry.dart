@@ -8,6 +8,7 @@ import 'package:mcp_dart/mcp_dart.dart' show JsonSchema;
 import 'package:mcp_dart/src/shared/json_schema/json_schema_validator.dart'
     show compileJsonSchemaValidator;
 import '../../agent/agent_tool_dispatcher.dart';
+import '../../models/plugin/text.dart';
 
 class PluginTool {
   PluginTool(this.pluginId, this.pluginName, this.source, this.definition) {
@@ -28,9 +29,31 @@ class PluginTool {
       if (display is! Map<String, dynamic>) {
         throw const FormatException('Invalid display');
       }
-      for (final key in ['title', 'summaryArg', 'resultPath']) {
+      if (display.containsKey('title')) {
+        parsePluginText(display['title'], 'display.title');
+      }
+      for (final key in ['summaryArg', 'resultPath']) {
         if (display.containsKey(key) && display[key] is! String) {
           throw FormatException('Invalid display.$key');
+        }
+      }
+      if (display.containsKey('view')) {
+        final view = display['view'];
+        if (view is! Map<String, dynamic> ||
+            view['protocol'] != 'reveric-ui-v1' ||
+            view['source'] is! String) {
+          throw const FormatException('Invalid display.view');
+        }
+        final source = view['source'] as String;
+        if (!source.endsWith('.json') ||
+            source.startsWith('/') ||
+            source.contains('\\') ||
+            source.contains(':') ||
+            source.split('/').any((s) => s.isEmpty || s == '.' || s == '..') ||
+            !display.containsKey('result')) {
+          throw const FormatException(
+            'A2UI card requires a package JSON path and generic result display',
+          );
         }
       }
       if (display.containsKey('result') &&
@@ -46,7 +69,8 @@ class PluginTool {
       }
     }
   }
-  final String pluginId, pluginName, source;
+  final String pluginId, source;
+  final PluginText pluginName;
   final Map<String, dynamic> definition;
   String get name => definition['name'] as String;
   Map<String, dynamic>? get display =>
@@ -86,7 +110,7 @@ class PluginRegistry {
     return null;
   }
 
-  void register(String pluginId, List<PluginTool> tools) {
+  void validate(String pluginId, List<PluginTool> tools) {
     final names = <String>{};
     for (final tool in tools) {
       if (!names.add(tool.name) || hostToolNames.contains(tool.name)) {
@@ -106,8 +130,12 @@ class PluginRegistry {
         }
       }
     }
+  }
+
+  void register(String pluginId, List<PluginTool> tools) {
+    validate(pluginId, tools);
     _plugins[pluginId] = List.unmodifiable(tools);
-    knownToolNames.addAll(names);
+    knownToolNames.addAll(tools.map((tool) => tool.name));
   }
 
   void remove(String pluginId) {

@@ -36,12 +36,7 @@ void main() {
       try {
         await tester.runAsync(() async {
           await host.start();
-          expect(host.statuses.single.manifest?.id, 'reveric.web');
-          expect(
-            host.statuses.single.state,
-            'available',
-            reason: host.statuses.single.error,
-          );
+          expect(web(host).state, 'available', reason: web(host).error);
           expect(
             host.registry.effectiveTools.map((tool) => tool.name),
             containsAll(['WebSearch', 'WebFetch']),
@@ -60,12 +55,12 @@ void main() {
           expect(result['ok'], true, reason: result.toString());
           expect(result['content'], contains('Readable local response.'));
           stdout.writeln(
-            'PLUGIN_NATIVE_SMOKE activated=${host.statuses.single.manifest!.version} fetch=ok',
+            'PLUGIN_NATIVE_SMOKE activated=${web(host).manifest!.version} fetch=ok',
           );
         });
         await tester.pumpWidget(wrapPluginSettings(host));
         await tester.pumpAndSettle();
-        expect(find.text('联网检索'), findsOneWidget);
+        expect(find.text('Web Search'), findsOneWidget);
         await tester.tap(
           find.byKey(const ValueKey('plugin-details-reveric.web')),
         );
@@ -106,9 +101,12 @@ void main() {
   );
 }
 
+PluginStatus web(PluginHostService host) =>
+    host.statuses.singleWhere((status) => status.manifest?.id == 'reveric.web');
+
 Future<void> _waitState(PluginHostService host, String expected) async {
   await Future<void>(() async {
-    while (host.statuses.single.state != expected) {
+    while (web(host).state != expected) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
   }).timeout(const Duration(seconds: 10));

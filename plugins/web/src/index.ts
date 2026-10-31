@@ -1,16 +1,16 @@
-import type { PluginContext } from "../../sdk/index";
+import type { PluginSetup } from "../../sdk/index";
 import definitions from "./definitions.json";
 import { webSearch } from "./search";
 import { webFetch } from "./fetch";
-export function apply(context: PluginContext): void {
-  context.tools.register({
+export function apply(setup: PluginSetup): void {
+  setup.tools.register({
     ...definitions.WebSearch,
     display: { summaryArg: "query", result: "items", resultPath: "results" },
-    handler: (input, call) => webSearch(context, input, call),
+    handler: (input, context) => webSearch(context, input),
   });
-  context.tools.register({
+  setup.tools.register({
     ...definitions.WebFetch,
     display: { summaryArg: "url", result: "text", resultPath: "content" },
-    handler: (input, call) => webFetch(context, input, call),
+    handler: (input, context) => webFetch(context, input),
   });
 }

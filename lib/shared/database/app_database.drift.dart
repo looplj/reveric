@@ -22323,6 +22323,19 @@ class $PluginStorageTable extends PluginStorage
     requiredDuringInsert: false,
     clientDefault: () => DateTime.now(),
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     pluginId,
@@ -22330,6 +22343,7 @@ class $PluginStorageTable extends PluginStorage
     value,
     createdAt,
     updatedAt,
+    deletedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -22379,6 +22393,12 @@ class $PluginStorageTable extends PluginStorage
         updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -22408,6 +22428,10 @@ class $PluginStorageTable extends PluginStorage
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
     );
   }
 
@@ -22424,12 +22448,14 @@ class PluginStorageData extends DataClass
   final String value;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime deletedAt;
   const PluginStorageData({
     required this.pluginId,
     required this.key,
     required this.value,
     required this.createdAt,
     required this.updatedAt,
+    required this.deletedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -22439,6 +22465,7 @@ class PluginStorageData extends DataClass
     map['value'] = Variable<String>(value);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
     return map;
   }
 
@@ -22449,6 +22476,7 @@ class PluginStorageData extends DataClass
       value: Value(value),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      deletedAt: Value(deletedAt),
     );
   }
 
@@ -22463,6 +22491,7 @@ class PluginStorageData extends DataClass
       value: serializer.fromJson<String>(json['value']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
     );
   }
   @override
@@ -22474,6 +22503,7 @@ class PluginStorageData extends DataClass
       'value': serializer.toJson<String>(value),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
     };
   }
 
@@ -22483,12 +22513,14 @@ class PluginStorageData extends DataClass
     String? value,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? deletedAt,
   }) => PluginStorageData(
     pluginId: pluginId ?? this.pluginId,
     key: key ?? this.key,
     value: value ?? this.value,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt ?? this.deletedAt,
   );
   PluginStorageData copyWithCompanion(PluginStorageCompanion data) {
     return PluginStorageData(
@@ -22497,6 +22529,7 @@ class PluginStorageData extends DataClass
       value: data.value.present ? data.value.value : this.value,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -22507,13 +22540,15 @@ class PluginStorageData extends DataClass
           ..write('key: $key, ')
           ..write('value: $value, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(pluginId, key, value, createdAt, updatedAt);
+  int get hashCode =>
+      Object.hash(pluginId, key, value, createdAt, updatedAt, deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -22522,7 +22557,8 @@ class PluginStorageData extends DataClass
           other.key == this.key &&
           other.value == this.value &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
 }
 
 class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
@@ -22531,6 +22567,7 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
   final Value<String> value;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime> deletedAt;
   final Value<int> rowid;
   const PluginStorageCompanion({
     this.pluginId = const Value.absent(),
@@ -22538,6 +22575,7 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
     this.value = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PluginStorageCompanion.insert({
@@ -22546,6 +22584,7 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
     required String value,
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : pluginId = Value(pluginId),
        key = Value(key),
@@ -22556,6 +22595,7 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
     Expression<String>? value,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -22564,6 +22604,7 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
       if (value != null) 'value': value,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -22574,6 +22615,7 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
     Value<String>? value,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<DateTime>? deletedAt,
     Value<int>? rowid,
   }) {
     return PluginStorageCompanion(
@@ -22582,6 +22624,7 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
       value: value ?? this.value,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -22604,6 +22647,9 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -22618,6 +22664,373 @@ class PluginStorageCompanion extends UpdateCompanion<PluginStorageData> {
           ..write('value: $value, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PluginPermissionsTable extends PluginPermissions
+    with TableInfo<$PluginPermissionsTable, PluginPermission> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PluginPermissionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _pluginIdMeta = const VerificationMeta(
+    'pluginId',
+  );
+  @override
+  late final GeneratedColumn<String> pluginId = GeneratedColumn<String>(
+    'plugin_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _permissionMeta = const VerificationMeta(
+    'permission',
+  );
+  @override
+  late final GeneratedColumn<String> permission = GeneratedColumn<String>(
+    'permission',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    pluginId,
+    permission,
+    createdAt,
+    updatedAt,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'plugin_permissions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PluginPermission> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('plugin_id')) {
+      context.handle(
+        _pluginIdMeta,
+        pluginId.isAcceptableOrUnknown(data['plugin_id']!, _pluginIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pluginIdMeta);
+    }
+    if (data.containsKey('permission')) {
+      context.handle(
+        _permissionMeta,
+        permission.isAcceptableOrUnknown(data['permission']!, _permissionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_permissionMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {pluginId, permission};
+  @override
+  PluginPermission map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PluginPermission(
+      pluginId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plugin_id'],
+      )!,
+      permission: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}permission'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PluginPermissionsTable createAlias(String alias) {
+    return $PluginPermissionsTable(attachedDatabase, alias);
+  }
+}
+
+class PluginPermission extends DataClass
+    implements Insertable<PluginPermission> {
+  final String pluginId;
+  final String permission;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime deletedAt;
+  const PluginPermission({
+    required this.pluginId,
+    required this.permission,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['plugin_id'] = Variable<String>(pluginId);
+    map['permission'] = Variable<String>(permission);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  PluginPermissionsCompanion toCompanion(bool nullToAbsent) {
+    return PluginPermissionsCompanion(
+      pluginId: Value(pluginId),
+      permission: Value(permission),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory PluginPermission.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PluginPermission(
+      pluginId: serializer.fromJson<String>(json['pluginId']),
+      permission: serializer.fromJson<String>(json['permission']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'pluginId': serializer.toJson<String>(pluginId),
+      'permission': serializer.toJson<String>(permission),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  PluginPermission copyWith({
+    String? pluginId,
+    String? permission,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? deletedAt,
+  }) => PluginPermission(
+    pluginId: pluginId ?? this.pluginId,
+    permission: permission ?? this.permission,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  PluginPermission copyWithCompanion(PluginPermissionsCompanion data) {
+    return PluginPermission(
+      pluginId: data.pluginId.present ? data.pluginId.value : this.pluginId,
+      permission: data.permission.present
+          ? data.permission.value
+          : this.permission,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PluginPermission(')
+          ..write('pluginId: $pluginId, ')
+          ..write('permission: $permission, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(pluginId, permission, createdAt, updatedAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PluginPermission &&
+          other.pluginId == this.pluginId &&
+          other.permission == this.permission &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class PluginPermissionsCompanion extends UpdateCompanion<PluginPermission> {
+  final Value<String> pluginId;
+  final Value<String> permission;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const PluginPermissionsCompanion({
+    this.pluginId = const Value.absent(),
+    this.permission = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PluginPermissionsCompanion.insert({
+    required String pluginId,
+    required String permission,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : pluginId = Value(pluginId),
+       permission = Value(permission);
+  static Insertable<PluginPermission> custom({
+    Expression<String>? pluginId,
+    Expression<String>? permission,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (pluginId != null) 'plugin_id': pluginId,
+      if (permission != null) 'permission': permission,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PluginPermissionsCompanion copyWith({
+    Value<String>? pluginId,
+    Value<String>? permission,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return PluginPermissionsCompanion(
+      pluginId: pluginId ?? this.pluginId,
+      permission: permission ?? this.permission,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (pluginId.present) {
+      map['plugin_id'] = Variable<String>(pluginId.value);
+    }
+    if (permission.present) {
+      map['permission'] = Variable<String>(permission.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PluginPermissionsCompanion(')
+          ..write('pluginId: $pluginId, ')
+          ..write('permission: $permission, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -23045,6 +23458,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ImageAssetReferencesTable(this);
   late final $PluginRegistryTable pluginRegistry = $PluginRegistryTable(this);
   late final $PluginStorageTable pluginStorage = $PluginStorageTable(this);
+  late final $PluginPermissionsTable pluginPermissions =
+      $PluginPermissionsTable(this);
   late final $PluginSecretsTable pluginSecrets = $PluginSecretsTable(this);
   late final PluginDao pluginDao = PluginDao(this as AppDatabase);
   late final AiProviderDao aiProviderDao = AiProviderDao(this as AppDatabase);
@@ -23140,6 +23555,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     imageAssetReferences,
     pluginRegistry,
     pluginStorage,
+    pluginPermissions,
     pluginSecrets,
   ];
   @override
@@ -35212,6 +35628,7 @@ typedef $$PluginStorageTableCreateCompanionBuilder =
       required String value,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<DateTime> deletedAt,
       Value<int> rowid,
     });
 typedef $$PluginStorageTableUpdateCompanionBuilder =
@@ -35221,6 +35638,7 @@ typedef $$PluginStorageTableUpdateCompanionBuilder =
       Value<String> value,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<DateTime> deletedAt,
       Value<int> rowid,
     });
 
@@ -35255,6 +35673,11 @@ class $$PluginStorageTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -35292,6 +35715,11 @@ class $$PluginStorageTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PluginStorageTableAnnotationComposer
@@ -35317,6 +35745,9 @@ class $$PluginStorageTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 }
 
 class $$PluginStorageTableTableManager
@@ -35359,6 +35790,7 @@ class $$PluginStorageTableTableManager
                 Value<String> value = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PluginStorageCompanion(
                 pluginId: pluginId,
@@ -35366,6 +35798,7 @@ class $$PluginStorageTableTableManager
                 value: value,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedAt: deletedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -35375,6 +35808,7 @@ class $$PluginStorageTableTableManager
                 required String value,
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PluginStorageCompanion.insert(
                 pluginId: pluginId,
@@ -35382,6 +35816,7 @@ class $$PluginStorageTableTableManager
                 value: value,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedAt: deletedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -35416,6 +35851,230 @@ typedef $$PluginStorageTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $PluginStorageTable, PluginStorageData>,
       ),
       PluginStorageData,
+      PrefetchHooks Function()
+    >;
+typedef $$PluginPermissionsTableCreateCompanionBuilder =
+    PluginPermissionsCompanion Function({
+      required String pluginId,
+      required String permission,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$PluginPermissionsTableUpdateCompanionBuilder =
+    PluginPermissionsCompanion Function({
+      Value<String> pluginId,
+      Value<String> permission,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$PluginPermissionsTableFilterComposer
+    extends Composer<_$AppDatabase, $PluginPermissionsTable> {
+  $$PluginPermissionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get pluginId => $composableBuilder(
+    column: $table.pluginId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get permission => $composableBuilder(
+    column: $table.permission,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PluginPermissionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PluginPermissionsTable> {
+  $$PluginPermissionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get pluginId => $composableBuilder(
+    column: $table.pluginId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get permission => $composableBuilder(
+    column: $table.permission,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PluginPermissionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PluginPermissionsTable> {
+  $$PluginPermissionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get pluginId =>
+      $composableBuilder(column: $table.pluginId, builder: (column) => column);
+
+  GeneratedColumn<String> get permission => $composableBuilder(
+    column: $table.permission,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$PluginPermissionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PluginPermissionsTable,
+          PluginPermission,
+          $$PluginPermissionsTableFilterComposer,
+          $$PluginPermissionsTableOrderingComposer,
+          $$PluginPermissionsTableAnnotationComposer,
+          $$PluginPermissionsTableCreateCompanionBuilder,
+          $$PluginPermissionsTableUpdateCompanionBuilder,
+          (
+            PluginPermission,
+            BaseReferences<
+              _$AppDatabase,
+              $PluginPermissionsTable,
+              PluginPermission
+            >,
+          ),
+          PluginPermission,
+          PrefetchHooks Function()
+        > {
+  $$PluginPermissionsTableTableManager(
+    _$AppDatabase db,
+    $PluginPermissionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PluginPermissionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PluginPermissionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PluginPermissionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> pluginId = const Value.absent(),
+                Value<String> permission = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PluginPermissionsCompanion(
+                pluginId: pluginId,
+                permission: permission,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String pluginId,
+                required String permission,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PluginPermissionsCompanion.insert(
+                pluginId: pluginId,
+                permission: permission,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$PluginPermissionsTable, PluginPermission>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $PluginPermissionsTable,
+                    PluginPermission
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PluginPermissionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PluginPermissionsTable,
+      PluginPermission,
+      $$PluginPermissionsTableFilterComposer,
+      $$PluginPermissionsTableOrderingComposer,
+      $$PluginPermissionsTableAnnotationComposer,
+      $$PluginPermissionsTableCreateCompanionBuilder,
+      $$PluginPermissionsTableUpdateCompanionBuilder,
+      (
+        PluginPermission,
+        BaseReferences<
+          _$AppDatabase,
+          $PluginPermissionsTable,
+          PluginPermission
+        >,
+      ),
+      PluginPermission,
       PrefetchHooks Function()
     >;
 typedef $$PluginSecretsTableCreateCompanionBuilder =
@@ -35714,6 +36373,8 @@ class $AppDatabaseManager {
       $$PluginRegistryTableTableManager(_db, _db.pluginRegistry);
   $$PluginStorageTableTableManager get pluginStorage =>
       $$PluginStorageTableTableManager(_db, _db.pluginStorage);
+  $$PluginPermissionsTableTableManager get pluginPermissions =>
+      $$PluginPermissionsTableTableManager(_db, _db.pluginPermissions);
   $$PluginSecretsTableTableManager get pluginSecrets =>
       $$PluginSecretsTableTableManager(_db, _db.pluginSecrets);
 }

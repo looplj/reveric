@@ -6,6 +6,8 @@ mixin _$PluginDaoMixin on DatabaseAccessor<AppDatabase> {
   $PluginRegistryTable get pluginRegistry => attachedDatabase.pluginRegistry;
   $PluginStorageTable get pluginStorage => attachedDatabase.pluginStorage;
   $PluginSecretsTable get pluginSecrets => attachedDatabase.pluginSecrets;
+  $PluginPermissionsTable get pluginPermissions =>
+      attachedDatabase.pluginPermissions;
   PluginDaoManager get managers => PluginDaoManager(this);
 }
 
@@ -21,4 +23,9 @@ class PluginDaoManager {
       $$PluginStorageTableTableManager(_db.attachedDatabase, _db.pluginStorage);
   $$PluginSecretsTableTableManager get pluginSecrets =>
       $$PluginSecretsTableTableManager(_db.attachedDatabase, _db.pluginSecrets);
+  $$PluginPermissionsTableTableManager get pluginPermissions =>
+      $$PluginPermissionsTableTableManager(
+        _db.attachedDatabase,
+        _db.pluginPermissions,
+      );
 }

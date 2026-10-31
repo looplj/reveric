@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type {
+  ActionContext,
   ActionResult,
-  PluginContext,
+  PluginServices,
+  PluginSetup,
+  ToolContext,
   HttpRequest,
   JsonObject,
   ToolRegistration,
@@ -34,20 +37,10 @@ function harness(
   const unavailable = async (): Promise<never> => {
     throw new Error("Unexpected host API");
   };
-  const context: PluginContext = {
-    plugin: { id: "reveric.deepseek", version: "1.0.0" },
-    tools: {
-      register: (tool) => {
-        tools.set(tool.name, tool);
-      },
-    },
-    actions: {
-      register: (name, handler) => {
-        actions.set(name, () =>
-          handler({ callId: "test", cancelled: false }),
-        );
-      },
-    },
+  const plugin = { id: "reveric.deepseek", version: "1.0.0" };
+  const services: PluginServices = {
+    plugin,
+    sqlite: { query: unavailable, execute: unavailable, transaction: unavailable },
     http: {
       fetch: async (url, init) => {
         requests.push({ url, init });
@@ -80,14 +73,42 @@ function harness(
     settings: { get: unavailable },
     storage: { get: unavailable, set: unavailable, remove: unavailable },
   };
-  apply(context);
+  const unexpected = () => {
+    throw new Error("Unexpected registration");
+  };
+  const setup: PluginSetup = {
+    plugin,
+    log: services.log,
+    tools: {
+      register: (tool) => {
+        tools.set(tool.name, tool);
+      },
+    },
+    prompts: { context: unexpected, system: unexpected },
+    tasks: { register: unexpected },
+    pages: { registerAction: unexpected },
+    settings: {
+      registerAction: (name, handler) => {
+        const context: ActionContext = { ...services, callId: "test" };
+        actions.set(name, () => handler(context));
+      },
+    },
+  };
+  apply(setup);
+  const context: ToolContext = {
+    ...services,
+    callId: "test",
+    request: { requestId: "test", sessionId: "test", workId: null, agentId: "test", mode: "chat" },
+    chapters: { list: unavailable, get: unavailable, update: unavailable },
+    characters: { list: unavailable, get: unavailable, update: unavailable },
+  };
   return {
     tools,
     actions,
     requests,
     logs,
     run: (tool: string, input: JsonObject) =>
-      tools.get(tool)!.handler(input, { callId: "test", cancelled: false }),
+      tools.get(tool)!.handler(input, context),
   };
 }
 

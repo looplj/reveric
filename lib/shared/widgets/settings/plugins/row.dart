@@ -10,6 +10,7 @@
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/design-system.md
+import '../../../services/plugins/runtime.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -21,6 +22,7 @@ import '../../../providers/plugin_providers.dart';
 import '../../../services/plugins/host.dart';
 import '../../../theme/theme.dart';
 import 'config_panel.dart';
+import 'manage_panel.dart';
 
 final _log = AppLogger.forModule('Plugin');
 
@@ -62,8 +64,9 @@ class PluginSettingsRow extends HookConsumerWidget {
         manifest = status.manifest;
     final colors = RevericTheme.colorsOf(context),
         typo = RevericTheme.typographyOf(context);
+    final locale = Localizations.localeOf(context);
     final name =
-        manifest?.name ??
+        manifest?.name.resolve(locale) ??
         status.path
             .split('/')
             .where((part) => part.isNotEmpty)
@@ -73,6 +76,8 @@ class PluginSettingsRow extends HookConsumerWidget {
     final statusKey = switch (status.state) {
       'disabled' when status.needsConfig =>
         LocaleKeys.settingsPluginsNeedsConfig,
+      'needs_config' => LocaleKeys.settingsPluginsNeedsConfig,
+      'needs_permission' => LocaleKeys.settingsPluginsNeedsPermission,
       'disabled' => LocaleKeys.settingsPluginsDisabled,
       'unsupported' => LocaleKeys.settingsPluginsUnsupported,
       'activating' => LocaleKeys.settingsPluginsActivating,
@@ -100,6 +105,9 @@ class PluginSettingsRow extends HookConsumerWidget {
       try {
         await host.setEnabled(status.id, value);
       } catch (error, stack) {
+        if (error is PluginHostError && error.code == 'cancelled') {
+          return;
+        }
         _log.error(
           'Enable preference failed: ${status.id}',
           error: error,
@@ -218,10 +226,9 @@ class PluginSettingsRow extends HookConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: RevericSpacing.sm),
-                    if (manifest?.description case final description?
-                        when description.isNotEmpty)
+                    if (manifest?.description case final description?)
                       Text(
-                        description,
+                        description.resolve(locale),
                         style: typo.ui.copyWith(color: colors.textSecondary),
                       ),
                     if (manifest?.author case final author?
@@ -244,6 +251,7 @@ class PluginSettingsRow extends HookConsumerWidget {
                           style: typo.ui.copyWith(color: colors.warningText),
                         ),
                       ),
+                    PluginManagePanel(host: host, status: status),
                     if (manifest != null && manifest.settings.isNotEmpty) ...[
                       const SizedBox(height: RevericSpacing.lg),
                       PluginConfigPanel(host: host, manifest: manifest),
@@ -273,7 +281,7 @@ class PluginSettingsRow extends HookConsumerWidget {
                               host.registry.resolve(tool.name)?.pluginId ==
                                       status.id
                                   ? tool.name
-                                  : '${tool.name} · ${context.t(LocaleKeys.settingsPluginsOverridden, namedArgs: {'plugin': host.registry.resolve(tool.name)?.pluginName ?? tool.pluginName})}',
+                                  : '${tool.name} · ${context.t(LocaleKeys.settingsPluginsOverridden, namedArgs: {'plugin': (host.registry.resolve(tool.name)?.pluginName ?? tool.pluginName).resolve(locale)})}',
                               style: typo.uiSmall.copyWith(
                                 color: colors.textSecondary,
                               ),

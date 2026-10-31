@@ -102,5 +102,10 @@
   "common.generate": "生成",
   "common.clear": "清空",
   "common.open_link_failed": "无法打开链接。",
-  "common.refresh": "刷新"
+  "common.refresh": "刷新",
+  "common.install": "安装",
+  "common.uninstall": "卸载",
+  "common.revoke": "撤销",
+  "common.resume": "恢复",
+  "common.run_now": "立即运行"
 }

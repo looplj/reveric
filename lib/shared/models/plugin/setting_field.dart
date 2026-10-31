@@ -2,6 +2,8 @@
 // 关联文件:
 //   lib/shared/widgets/settings/plugins/config_surface.dart
 //   lib/shared/widgets/settings/plugins/config_form.dart
+//   lib/shared/models/plugin/text.dart
+import 'text.dart';
 
 /// 清单 `settings` 中字段的 `type`。
 enum PluginSettingType {
@@ -19,7 +21,7 @@ class PluginSettingOption {
   const PluginSettingOption({required this.value, required this.label});
 
   final String value;
-  final String label;
+  final PluginText label;
 }
 
 /// 清单 `settings` 中声明的一个配置字段。
@@ -40,8 +42,8 @@ class PluginSettingField {
   /// 字段名，即 `context.settings.get` / `context.secrets.get` 使用的 key。
   final String key;
   final PluginSettingType type;
-  final String title;
-  final String? description;
+  final PluginText title;
+  final PluginText? description;
   final bool required;
 
   /// 已按字段类型校验过的默认值；`secret` 没有默认值。
@@ -110,10 +112,7 @@ PluginSettingField _parseField(Object? key, Object? json) {
   if (type == null) {
     throw FormatException('settings.$key.type is not supported');
   }
-  final title = optional<String>('title');
-  if (title == null || title.trim().isEmpty) {
-    throw FormatException('settings.$key.title is required');
-  }
+  final title = parsePluginText(json['title'], 'settings.$key.title');
   final numeric =
       type == PluginSettingType.integer || type == PluginSettingType.number;
   final textual =
@@ -138,7 +137,10 @@ PluginSettingField _parseField(Object? key, Object? json) {
     key: key,
     type: type,
     title: title,
-    description: optional<String>('description'),
+    description: parseOptionalPluginText(
+      json['description'],
+      'settings.$key.description',
+    ),
     required:
         type != PluginSettingType.boolean &&
         (optional<bool>('required') ?? false),
@@ -175,14 +177,16 @@ List<PluginSettingOption> _parseOptions(String key, Object? json) {
   }
   final seen = <String>{};
   return [
-    for (final item in json)
+    for (final (index, item) in json.indexed)
       if (item is Map &&
           item['value'] is String &&
-          item['label'] is String &&
           seen.add(item['value'] as String))
         PluginSettingOption(
           value: item['value'] as String,
-          label: item['label'] as String,
+          label: parsePluginText(
+            item['label'],
+            'settings.$key.options[$index].label',
+          ),
         )
       else
         throw FormatException('settings.$key.options has an invalid item'),

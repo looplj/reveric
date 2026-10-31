@@ -1,4 +1,4 @@
-// 职责: 应用级数据库定义与小说、设置、AI Provider、AI 聊天、Memory 的持久化读写。
+// 职责: 应用级数据库定义与小说、设置、AI Provider、AI 聊天 的持久化读写。
 // 关联文件:
 //   lib/shared/providers/novel_providers.dart
 //   lib/shared/services/novel_actions.dart
@@ -1157,6 +1157,19 @@ class PluginRegistry extends Table {
   Set<Column<Object>> get primaryKey => {pluginId};
 }
 
+class PluginPermissions extends Table {
+  TextColumn get pluginId => text()();
+  TextColumn get permission => text()();
+  DateTimeColumn get createdAt =>
+      dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get deletedAt =>
+      dateTime().customConstraint('NOT NULL DEFAULT 0')();
+  @override
+  Set<Column<Object>> get primaryKey => {pluginId, permission};
+}
+
 class PluginStorage extends Table {
   TextColumn get pluginId => text()();
   TextColumn get key => text()();
@@ -1165,6 +1178,8 @@ class PluginStorage extends Table {
       dateTime().clientDefault(() => DateTime.now())();
   DateTimeColumn get updatedAt =>
       dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get deletedAt =>
+      dateTime().customConstraint('NOT NULL DEFAULT 0')();
   @override
   Set<Column<Object>> get primaryKey => {pluginId, key};
 }
@@ -1220,6 +1235,7 @@ final _log = AppLogger.forModule('Database');
     ImageAssetReferences,
     PluginRegistry,
     PluginStorage,
+    PluginPermissions,
     PluginSecrets,
   ],
   daos: [
@@ -1272,7 +1288,7 @@ class AppDatabase extends _$AppDatabase {
 
   static _CachedAppDatabase? _cachedDatabase;
 
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1288,6 +1304,21 @@ class AppDatabase extends _$AppDatabase {
         } catch (error, stackTrace) {
           _log.error(
             '[DB] CREATE plugin_registry/plugin_storage/plugin_secrets schema=2',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 3) {
+        try {
+          await migrator.createTable(pluginPermissions);
+          if (from >= 2) {
+            await migrator.addColumn(pluginStorage, pluginStorage.deletedAt);
+          }
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] CREATE plugin_permissions / ALTER plugin_storage schema=3',
             error: error,
             stackTrace: stackTrace,
           );

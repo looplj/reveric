@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:reveric/shared/models/plugin/manifest.dart';
+import 'package:reveric/shared/models/plugin/text.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
 import 'package:reveric/shared/services/plugins/runtime.dart';
@@ -35,8 +36,7 @@ PluginPackage package({
     'pluginApiVersion': '^1',
     'defaultEnabled': true,
     'platforms': ?platforms,
-    'settings': ?settings,
-    'actions': ?actions,
+    'settings': {'fields': ?settings, 'actions': ?actions},
   }),
   '',
 );
@@ -45,6 +45,41 @@ class FakeExecutor implements PluginExecutor {
   FakeExecutor({this.pending, this.started});
   final Completer<Map<String, dynamic>>? pending;
   final Completer<void>? started;
+  @override
+  Future<String?> runTask(
+    PluginManifest manifest,
+    String code,
+    List<Map<String, dynamic>> expected,
+    String taskId,
+    Map<String, dynamic> run,
+    AgentCancellationToken cancellation,
+  ) async => throw UnimplementedError('Task runtime fixture required');
+
+  @override
+  Future<String?> runPrompt(
+    PluginManifest manifest,
+    String code,
+    List<Map<String, dynamic>> expected,
+    String providerId,
+    Map<String, dynamic> request,
+    Duration budget,
+    AgentCancellationToken cancellation,
+  ) async => null;
+
+  @override
+  Future<List<dynamic>> runViewAction(
+    PluginManifest manifest,
+    String code,
+    List<Map<String, dynamic>> expected,
+    String viewId,
+    String action,
+    Map<String, dynamic> input,
+    String callId,
+    AgentCancellationToken? cancellation,
+  ) async {
+    throw UnimplementedError('View actions require a runtime fixture');
+  }
+
   @override
   Future<List<Map<String, dynamic>>> activate(
     PluginManifest manifest,
@@ -58,8 +93,9 @@ class FakeExecutor implements PluginExecutor {
     String tool,
     Map<String, dynamic> input,
     String callId,
-    AgentCancellationToken? cancellation,
-  ) async {
+    AgentCancellationToken? cancellation, {
+    Map<String, dynamic> request = const {},
+  }) async {
     if (started != null && !started!.isCompleted) {
       started!.complete();
     }
@@ -88,8 +124,9 @@ class _LoggingExecutor extends FakeExecutor {
     String tool,
     Map<String, dynamic> input,
     String callId,
-    AgentCancellationToken? cancellation,
-  ) async {
+    AgentCancellationToken? cancellation, {
+    Map<String, dynamic> request = const {},
+  }) async {
     await call('log.info', {
       'message': 'credential=$secret',
       'data': {'credential': secret},
@@ -110,8 +147,9 @@ class _GatedExecutor extends FakeExecutor {
     String tool,
     Map<String, dynamic> input,
     String callId,
-    AgentCancellationToken? cancellation,
-  ) async {
+    AgentCancellationToken? cancellation, {
+    Map<String, dynamic> request = const {},
+  }) async {
     onActive(1);
     final gate = Completer<Map<String, dynamic>>();
     gates[callId] = gate;
@@ -358,11 +396,13 @@ void main() {
     };
     final manifest = PluginManifest.fromJson({
       ...valid,
-      'settings': settings,
-      'actions': {
-        'verifyApiKey': {
-          'title': 'Verify',
-          'requires': ['apiKey'],
+      'settings': {
+        'fields': settings,
+        'actions': {
+          'verifyApiKey': {
+            'title': 'Verify',
+            'requires': ['apiKey'],
+          },
         },
       },
     });
@@ -392,13 +432,111 @@ void main() {
       expect(
         () => PluginManifest.fromJson({
           ...valid,
-          'settings': settings,
-          'actions': actions,
+          'settings': {'fields': settings, 'actions': actions},
         }),
         throwsFormatException,
       );
     }
   });
+  test(
+    'manifest validates page locations, protocols, actions and task metadata',
+    () {
+      final base = package().manifest.json;
+      final page = <String, dynamic>{
+        'title': 'Report',
+        'location': 'home.plugin',
+        'protocol': 'reveric-ui-v1',
+        'source': 'report.json',
+        'actions': ['load'],
+        'onMount': 'load',
+      };
+      final parsed = PluginManifest.fromJson({
+        ...base,
+        'pages': {'report': page},
+        'tasks': {
+          'organize': {'title': 'Organize', 'intervalMinutes': 60},
+        },
+      });
+      expect(parsed.pages.single.id, 'report');
+      expect(parsed.tasks.single.intervalMinutes, 60);
+      for (final change in <Map<String, dynamic>>[
+        {'location': null},
+        {'location': 'plugin.page'},
+        {'protocol': 'unknown'},
+        {'source': '../report.json'},
+        {'source': 'report.js'},
+        {'id': 'other'},
+        {
+          'actions': ['load', 'load'],
+        },
+        {'onMount': 'missing'},
+        {'protocol': 'reveric-tsx-v1', 'source': 'report.js'},
+      ]) {
+        expect(
+          () => PluginManifest.fromJson({
+            ...base,
+            'pages': {
+              'report': {...page, ...change},
+            },
+          }),
+          throwsFormatException,
+        );
+      }
+      for (final interval in [14, 10081, 60.5, '60']) {
+        expect(
+          () => PluginManifest.fromJson({
+            ...base,
+            'tasks': {
+              'organize': {'title': 'Organize', 'intervalMinutes': interval},
+            },
+          }),
+          throwsFormatException,
+        );
+      }
+      for (final change in <Map<String, dynamic>>[
+        {'pages': []},
+        {'tasks': []},
+        {
+          'pages': {'bad/id': page},
+        },
+        {
+          'settings': {
+            'apiKey': {'type': 'secret', 'title': 'Key'},
+          },
+        },
+        {'actions': {}},
+        {'views': {}},
+      ]) {
+        expect(
+          () => PluginManifest.fromJson({...base, ...change}),
+          throwsFormatException,
+        );
+      }
+    },
+  );
+  test(
+    'custom tool cards declare their own supported protocol and safe source',
+    () {
+      PluginTool card(Object? view) =>
+          PluginTool('test.card', PluginText.plain('Card'), 'bundled', {
+            ...definition('Card'),
+            'display': {'result': 'json', 'view': view},
+          });
+      expect(
+        card({'protocol': 'reveric-ui-v1', 'source': 'views/card.json'}).name,
+        'Card',
+      );
+      for (final view in [
+        'views/card.json',
+        null,
+        {'source': 'views/card.json'},
+        {'protocol': 'reveric-tsx-v1', 'source': 'card.js'},
+        {'protocol': 'reveric-ui-v1', 'source': '../card.json'},
+      ]) {
+        expect(() => card(view), throwsFormatException);
+      }
+    },
+  );
   test('manifest rejects malformed contracts and paths', () {
     final valid = package().manifest.json;
     for (final change in [
@@ -411,6 +549,14 @@ void main() {
       {'pluginApiVersion': '^2'},
       {'defaultEnabled': 'yes'},
       {'settings': []},
+      {'uiProtocol': 'reveric-ui-v1'},
+      {
+        'uiProtocols': ['future'],
+      },
+      {
+        'uiProtocols': ['reveric-ui-v1', 'reveric-ui-v1'],
+      },
+      {'uiProtocols': 'reveric-ui-v1'},
     ]) {
       expect(
         () => PluginManifest.fromJson({...valid, ...change}),
@@ -424,7 +570,7 @@ void main() {
     () {
       final registry = PluginRegistry(hostToolNames: {'Read'});
       PluginTool tool(String id, String source, String name) =>
-          PluginTool(id, id, source, definition(name));
+          PluginTool(id, PluginText.plain(id), source, definition(name));
       registry.register('bundled', [tool('bundled', 'bundled', 'WebFetch')]);
       registry.register('first', [tool('first', 'local', 'WebFetch')]);
       expect(registry.resolve('WebFetch')!.pluginId, 'first');
@@ -443,7 +589,7 @@ void main() {
         throwsStateError,
       );
       expect(
-        () => PluginTool('bad', 'bad', 'local', {
+        () => PluginTool('bad', PluginText.plain('bad'), 'local', {
           'name': 'Bad',
           'description': 'x',
           'inputSchema': {'type': 'array'},

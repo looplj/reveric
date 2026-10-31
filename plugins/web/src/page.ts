@@ -1,6 +1,6 @@
 import { parse } from "node-html-parser";
 import type {
-  PluginContext,
+  PluginServices,
   HttpResponse,
   JsonObject,
   Json,
@@ -37,7 +37,7 @@ export function blocked(body: string): boolean {
   );
 }
 export function logFailure(
-  context: PluginContext,
+  context: PluginServices,
   tool: string,
   url: string,
   response?: HttpResponse,
@@ -56,7 +56,7 @@ export function logFailure(
   return diagnostic;
 }
 export function pageFailure(
-  context: PluginContext,
+  context: PluginServices,
   tool: string,
   url: string,
   response: HttpResponse,
@@ -80,7 +80,7 @@ export function pageFailure(
   };
 }
 export function requestFailure(
-  context: PluginContext,
+  context: PluginServices,
   tool: string,
   url: string,
   error: unknown,

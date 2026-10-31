@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { apply } from "../src/index";
 import type {
-  PluginContext,
+  PluginSetup,
+  ToolContext,
   HttpResponse,
   HttpRequest,
   JsonObject,
@@ -28,30 +29,53 @@ function harness(
   const unavailable = async () => {
     throw new Error("M2 API unavailable");
   };
-  const context: PluginContext = {
-    plugin: { id: "reveric.web", version: "1.0.0" },
+  const plugin = { id: "reveric.web", version: "1.0.0" };
+  const log = {
+    info: (...args: unknown[]) => {
+      logs.push(args);
+    },
+    warn: (...args: unknown[]) => {
+      logs.push(args);
+    },
+    error: (...args: unknown[]) => {
+      logs.push(args);
+    },
+  };
+  const unexpected = () => {
+    throw new Error("Unexpected registration");
+  };
+  const setup: PluginSetup = {
+    plugin,
+    log,
     tools: {
       register(tool) {
         tools.set(tool.name, tool);
       },
     },
-    actions: { register: () => {} },
+    prompts: { context: unexpected, system: unexpected },
+    tasks: { register: unexpected },
+    pages: { registerAction: unexpected },
+    settings: { registerAction: unexpected },
+  };
+  apply(setup);
+  const context: ToolContext = {
+    callId: "test",
+    request: { requestId: "test", sessionId: "test", workId: null, agentId: "test", mode: "chat" },
+    plugin,
+    log,
     http: { fetch },
-    log: {
-      info: (...args) => logs.push(args),
-      warn: (...args) => logs.push(args),
-      error: (...args) => logs.push(args),
-    },
     storage: { get: unavailable, set: unavailable, remove: unavailable },
     settings: { get: unavailable },
     secrets: { get: unavailable },
+    sqlite: { query: unavailable, execute: unavailable, transaction: unavailable },
+    chapters: { list: unavailable, get: unavailable, update: unavailable },
+    characters: { list: unavailable, get: unavailable, update: unavailable },
   };
-  apply(context);
   return {
     tools,
     logs,
     run: (name: string, input: JsonObject) =>
-      tools.get(name)!.handler(input, { callId: "test", cancelled: false }),
+      tools.get(name)!.handler(input, context),
   };
 }
 const hostError = (code: string, message: string) =>

@@ -1,5 +1,5 @@
 import { parse } from "node-html-parser";
-import type { PluginContext, JsonObject, ToolCall } from "../../sdk/index";
+import type { JsonObject, ToolContext } from "../../sdk/index";
 import {
   blocked,
   htmlAccept,
@@ -12,9 +12,8 @@ import {
   stringArgument,
 } from "./page";
 export async function webSearch(
-  context: PluginContext,
+  context: ToolContext,
   input: JsonObject,
-  _call: ToolCall,
 ): Promise<JsonObject> {
   const query = stringArgument(input.query);
   if (!query)

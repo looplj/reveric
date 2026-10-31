@@ -157,6 +157,7 @@ Map<String, Object?> pluginConfigValidity({
 Map<String, Object?> _fieldComponent(
   PluginSettingField field,
   PluginConfigStrings strings,
+  Locale locale,
 ) {
   final id = _fieldId(field.key);
   final checks = _checksOf(field, strings);
@@ -164,16 +165,16 @@ Map<String, Object?> _fieldComponent(
     PluginSettingType.boolean => {
       'id': id,
       'component': 'Switch',
-      'label': field.title,
+      'label': field.title.resolve(locale),
       'value': _path(_valuePath(field)),
     },
     PluginSettingType.select => {
       'id': id,
       'component': 'ChoicePicker',
-      'label': field.title,
+      'label': field.title.resolve(locale),
       'options': [
         for (final option in field.options)
-          {'label': option.label, 'value': option.value},
+          {'label': option.label.resolve(locale), 'value': option.value},
       ],
       'value': _path(_valuePath(field)),
       'checks': checks,
@@ -181,7 +182,7 @@ Map<String, Object?> _fieldComponent(
     _ => {
       'id': id,
       'component': 'TextField',
-      'label': field.title,
+      'label': field.title.resolve(locale),
       'variant': switch (field.type) {
         PluginSettingType.text => 'longText',
         PluginSettingType.integer || PluginSettingType.number => 'number',
@@ -222,12 +223,18 @@ List<Map<String, Object?>> _actionChecks(
   PluginAction action,
   List<PluginSettingField> fields,
   PluginConfigStrings strings,
+  Locale locale,
 ) => [
   for (final key in action.requires)
     {
       'condition': _path('/actionReady/${action.name}/$key'),
       'message': strings.actionRequires(
-        fields.where((field) => field.key == key).firstOrNull?.title ?? key,
+        fields
+                .where((field) => field.key == key)
+                .firstOrNull
+                ?.title
+                .resolve(locale) ??
+            key,
       ),
     },
 ];
@@ -343,7 +350,7 @@ List<Map<String, Object?>> buildPluginConfigMessages({
   for (final field in fields) {
     final groupId = 'group_${field.key}';
     groups.add(groupId);
-    final description = field.description;
+    final description = field.description?.resolve(locale);
     components
       ..add({
         'id': groupId,
@@ -354,7 +361,7 @@ List<Map<String, Object?>> buildPluginConfigMessages({
             'desc_${field.key}',
         ],
       })
-      ..add(_fieldComponent(field, strings));
+      ..add(_fieldComponent(field, strings, locale));
     if (field.isSecret) {
       components
         ..add(
@@ -396,7 +403,7 @@ List<Map<String, Object?>> buildPluginConfigMessages({
         'id': id,
         'component': 'Button',
         'child': '${id}_label',
-        'checks': _actionChecks(action, fields, strings),
+        'checks': _actionChecks(action, fields, strings, locale),
         'action': {
           'event': {
             'name': runActionEvent,

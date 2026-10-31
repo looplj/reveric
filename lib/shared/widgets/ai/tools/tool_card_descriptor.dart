@@ -37,7 +37,7 @@ import 'plugin_tool_display.dart';
 /// 例如 "Looking up"、"Writing to"、"Editing"。
 String toolActionVerb(BuildContext context, AiToolCallBlock block) {
   if (isPluginToolBlock(block)) {
-    return pluginToolTitle(block);
+    return pluginToolTitle(context, block);
   }
   final toolName = block.toolName;
   if (isRelationCreateBlock(block)) {
@@ -84,7 +84,7 @@ String toolActionVerb(BuildContext context, AiToolCallBlock block) {
 
 String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
   if (isPluginToolBlock(block)) {
-    return pluginToolTitle(block);
+    return pluginToolTitle(context, block);
   }
   if (block.toolName != 'Run') {
     return localizedToolName(context, block.toolName);
@@ -405,7 +405,8 @@ String? toolHeaderSubtitle(
   ToolRelationEndpointLabels? relationEndpoints,
 }) {
   if (isPluginToolBlock(block)) {
-    final title = pluginToolTitle(block), summary = pluginToolSummary(block);
+    final title = pluginToolTitle(context, block),
+        summary = pluginToolSummary(block);
     return summary == null ? title : '$title $summary';
   }
   if (block.toolName == 'Codemode') {

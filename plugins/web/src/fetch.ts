@@ -1,7 +1,7 @@
 import { parse } from "node-html-parser";
 import { NodeHtmlMarkdown } from "node-html-markdown";
 import { buildAbsoluteURL } from "url-toolkit";
-import type { PluginContext, JsonObject, ToolCall } from "../../sdk/index";
+import type { JsonObject, ToolContext } from "../../sdk/index";
 import {
   blocked,
   htmlAccept,
@@ -57,9 +57,8 @@ function redirectTarget(url: string, body: string): string | null {
   return null;
 }
 export async function webFetch(
-  context: PluginContext,
+  context: ToolContext,
   input: JsonObject,
-  _call: ToolCall,
 ): Promise<JsonObject> {
   const raw = stringArgument(input.url);
   if (!raw)

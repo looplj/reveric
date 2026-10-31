@@ -15,6 +15,9 @@
 //   反查某个 key 是否已存在时，优先 Grep value 的片段，不要猜常量名。
 // - 新增或修改 key 必须同步 en 与 zh-CN 两份 JSON，规则见 .agents/rules/i18n.md。
 abstract final class LocaleKeys {
+  static const historyCommitMessagePluginUpdate =
+      'history.commit_message.plugin_update';
+
   // ── audio ──
   static const audioVoiceMinimaxKindheartedgirl =
       'audio.voice.minimaxKindheartedgirl';
@@ -2124,6 +2127,10 @@ abstract final class LocaleKeys {
   static const commonRefresh = 'common.refresh';
   static const commonExport = 'common.export';
   static const commonPlay = 'common.play';
+  static const commonRevoke = 'common.revoke';
+  static const settingsPluginsPermissions = 'settings.plugins_permissions';
+  static const commonInstall = 'common.install';
+  static const commonUninstall = 'common.uninstall';
   static const commonCancel = 'common.cancel';
   static const commonChoose = 'common.choose';
   static const commonChangeCreate = 'common.change_create';
@@ -2172,6 +2179,8 @@ abstract final class LocaleKeys {
   static const commonNoDescription = 'common.no_description';
   static const commonOutline = 'common.outline';
   static const commonPaste = 'common.paste';
+  static const commonResume = 'common.resume';
+  static const commonRunNow = 'common.run_now';
   static const commonPause = 'common.pause';
   static const commonPayoff = 'common.payoff';
   static const commonReadOnly = 'common.read_only';
@@ -3873,6 +3882,21 @@ abstract final class LocaleKeys {
   static const roleplaySessionTitleFmt = 'roleplay.session_title_fmt';
   static const roleplaySpeakingFmt = 'roleplay.speaking_fmt';
   static const roleplayStart = 'roleplay.start';
+  static const settingsPluginsChoosePackage = 'settings.plugins_choose_package';
+  static const settingsPluginsNewPermissions =
+      'settings.plugins_new_permissions';
+  static const settingsPluginsNoNewPermissions =
+      'settings.plugins_no_new_permissions';
+  static const settingsPluginsInstallFailed = 'settings.plugins_install_failed';
+  static const settingsPluginsNeedsPermission =
+      'settings.plugins_needs_permission';
+  static const settingsPluginsUninstallConfirm =
+      'settings.plugins_uninstall_confirm';
+  static const settingsPluginsPreviewTitle = 'settings.plugins_preview_title';
+  static const settingsPluginsPreviewDescription =
+      'settings.plugins_preview_description';
+  static const settingsPluginsPromptSkipped = 'settings.plugins_prompt_skipped';
+  static const settingsPluginsViewFailed = 'settings.plugins_view_failed';
   static const settingsPlugins = 'settings.plugins';
   static const settingsPluginsDescription = 'settings.plugins_description';
   static const settingsPluginsEmpty = 'settings.plugins_empty';
@@ -3884,6 +3908,24 @@ abstract final class LocaleKeys {
   static const settingsPluginsAvailable = 'settings.plugins_available';
   static const settingsPluginsFailed = 'settings.plugins_failed';
   static const settingsPluginsAuthor = 'settings.plugins_author';
+  static const settingsPluginsAiPermission = 'settings.plugins_ai_permission';
+  static const settingsPluginsTasks = 'settings.plugins_tasks';
+  static const settingsPluginsTaskRunning = 'settings.plugins_task_running';
+  static const settingsPluginsTaskSuccess = 'settings.plugins_task_success';
+  static const settingsPluginsTaskFailed = 'settings.plugins_task_failed';
+  static const settingsPluginsTaskRetrying = 'settings.plugins_task_retrying';
+  static const settingsPluginsTaskCancelled = 'settings.plugins_task_cancelled';
+  static const settingsPluginsTaskInterrupted =
+      'settings.plugins_task_interrupted';
+  static const settingsPluginsTaskRemoved = 'settings.plugins_task_removed';
+  static const settingsPluginsTaskReady = 'settings.plugins_task_ready';
+  static const settingsPluginsTaskPaused = 'settings.plugins_task_paused';
+  static const settingsPluginsTaskNext = 'settings.plugins_task_next';
+  static const settingsPluginsTaskFinished = 'settings.plugins_task_finished';
+  static const settingsPluginsTaskUsage = 'settings.plugins_task_usage';
+  static const settingsPluginsTaskModelMissing =
+      'settings.plugins_task_model_missing';
+  static const settingsPluginsTaskAiLimit = 'settings.plugins_task_ai_limit';
   static const settingsPluginsTools = 'settings.plugins_tools';
   static const settingsPluginsNoTools = 'settings.plugins_no_tools';
   static const settingsPluginsOverridden = 'settings.plugins_overridden';
@@ -5046,6 +5088,8 @@ abstract final class LocaleKeys {
   static const settingsUsageSourceRoleplay = 'settings.usage_source_roleplay';
   static const settingsUsageSourceMonologue = 'settings.usage_source_monologue';
   static const settingsUsageSourceTheater = 'settings.usage_source_theater';
+  static const settingsUsageSourcePluginTask =
+      'settings.usage_source_plugin_task';
   static const settingsUsageSourceCouncil = 'settings.usage_source_council';
   static const settingsUsageSourceOther = 'settings.usage_source_other';
   static const settingsUsageSessionsSortConversationTime =

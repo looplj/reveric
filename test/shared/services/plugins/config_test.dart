@@ -21,15 +21,17 @@ PluginManifest configManifest(String id) => PluginManifest.fromJson({
   'pluginApiVersion': '^1',
   'main': 'dist/index.js',
   'settings': {
-    'count': {
-      'type': 'integer',
-      'title': 'Count',
-      'min': 1,
-      'max': 50,
-      'default': 10,
+    'fields': {
+      'count': {
+        'type': 'integer',
+        'title': 'Count',
+        'min': 1,
+        'max': 50,
+        'default': 10,
+      },
+      'apiKey': {'type': 'secret', 'title': 'API Key', 'required': true},
+      'optionalKey': {'type': 'secret', 'title': 'Optional'},
     },
-    'apiKey': {'type': 'secret', 'title': 'API Key', 'required': true},
-    'optionalKey': {'type': 'secret', 'title': 'Optional'},
   },
 });
 
@@ -44,8 +46,9 @@ class _Reader extends FakeExecutor {
     String tool,
     Map<String, dynamic> input,
     String callId,
-    AgentCancellationToken? cancellation,
-  ) async => {
+    AgentCancellationToken? cancellation, {
+    Map<String, dynamic> request = const {},
+  }) async => {
     'value': await call(input['method'] as String, {'key': input['key']}),
   };
 }
@@ -212,7 +215,13 @@ void main() {
       () => PluginManifest.fromJson({
         ...configManifest('test.one').json,
         'settings': {
-          'apiKey': {'type': 'secret', 'title': 'API Key', 'default': 'secret'},
+          'fields': {
+            'apiKey': {
+              'type': 'secret',
+              'title': 'API Key',
+              'default': 'secret',
+            },
+          },
         },
       }),
       throwsFormatException,

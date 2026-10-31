@@ -8,9 +8,10 @@ import 'package:http/http.dart' as http;
 import 'runtime.dart';
 
 class PluginHttpApi {
-  PluginHttpApi({HttpClient Function()? clientFactory})
+  PluginHttpApi({HttpClient Function()? clientFactory, this.requestLimit = 50})
     : _clientFactory = clientFactory ?? HttpClient.new;
   final HttpClient Function() _clientFactory;
+  final int? requestLimit;
   final Set<HttpClient> _clients = {};
   final List<Completer<void>> _waiting = [];
   var _active = 0;
@@ -28,10 +29,11 @@ class PluginHttpApi {
   }
 
   Future<Map<String, dynamic>> fetch(Map<String, dynamic> args) async {
-    if (++_count > 50) {
+    _count++;
+    if (requestLimit != null && _count > requestLimit!) {
       throw PluginHostError(
         'rate_limited',
-        'More than 50 requests in one execution',
+        'More than $requestLimit requests in one execution',
       );
     }
     if (_active >= 4) {

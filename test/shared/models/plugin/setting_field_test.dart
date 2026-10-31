@@ -4,6 +4,8 @@
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/models/plugin/setting_field.dart';
 
@@ -53,7 +55,10 @@ void main() {
       expect(fields[1].defaultValue, 5);
       expect(fields[1].min, 1);
       expect(fields[2].maxLength, 200);
-      expect(fields[6].options.map((o) => o.label), ['中国', 'US']);
+      expect(
+        fields[6].options.map((o) => o.label.resolve(const Locale('en'))),
+        ['中国', 'US'],
+      );
     });
 
     test('an omitted settings object has no fields', () {

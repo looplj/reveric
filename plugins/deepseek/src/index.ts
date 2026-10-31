@@ -1,6 +1,8 @@
 import type {
+  ActionContext,
   ActionResult,
-  PluginContext,
+  PluginServices,
+  PluginSetup,
   JsonObject,
   HttpResponse,
 } from "../../sdk/index";
@@ -58,7 +60,7 @@ function redact(value: string, secret: string): string {
 }
 
 async function request(
-  context: PluginContext,
+  context: PluginServices,
   endpoint: "search" | "fetch",
   input: JsonObject,
 ): Promise<JsonObject> {
@@ -174,7 +176,7 @@ async function request(
 }
 
 /** Checks the key against the lightweight model list; the settings page may pass an unsaved key. */
-async function verifyApiKey(context: PluginContext): Promise<ActionResult> {
+async function verifyApiKey(context: ActionContext): Promise<ActionResult> {
   let apiKey = "";
   try {
     apiKey = (await context.secrets.get("apiKey"))?.trim() ?? "";
@@ -212,12 +214,12 @@ async function verifyApiKey(context: PluginContext): Promise<ActionResult> {
   }
 }
 
-export function apply(context: PluginContext): void {
-  context.actions.register("verifyApiKey", () => verifyApiKey(context));
-  context.tools.register({
+export function apply(setup: PluginSetup): void {
+  setup.settings.registerAction("verifyApiKey", verifyApiKey);
+  setup.tools.register({
     ...definitions.DeepSeekSearch,
     display: { summaryArg: "query", result: "items", resultPath: "results" },
-    handler: async (input) => {
+    handler: async (input, context) => {
       const invalid = validateSearch(input);
       if (invalid) return failure("invalid_argument", invalid);
       return request(context, "search", {
@@ -233,10 +235,10 @@ export function apply(context: PluginContext): void {
       });
     },
   });
-  context.tools.register({
+  setup.tools.register({
     ...definitions.DeepSeekFetch,
     display: { summaryArg: "url", result: "text", resultPath: "content" },
-    handler: async (input) =>
+    handler: async (input, context) =>
       validUrl(input.url)
         ? request(context, "fetch", { url: input.url })
         : failure(

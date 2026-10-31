@@ -69,5 +69,6 @@
   "history.rollback_skipped": "Rolled back {restored} changes; skipped {skipped} changes whose target or history is unavailable.",
   "history.restore_partial": "Restored available changes. Some changes were skipped because their target or history is unavailable.",
   "history.restore_skipped": "No changes restored: the target or history is unavailable.",
-  "history.commit_message.manual_storyboard_save": "Save production changes"
+  "history.commit_message.manual_storyboard_save": "Save production changes",
+  "history.commit_message.plugin_update": "Plugin changes"
 }

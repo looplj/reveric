@@ -3,6 +3,7 @@
 //   lib/shared/services/plugins/host.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/plugins/host.dart';
+import '../services/plugins/data.dart';
 import '../services/plugins/registry.dart';
 import '../services/ai/tools.dart';
 import '../services/ai/codemode/tool.dart';
@@ -12,6 +13,13 @@ import 'novel_providers.dart';
 final pluginHostServiceProvider = Provider<PluginHostService>((ref) {
   final host = PluginHostService(
     dao: ref.watch(appDatabaseProvider).pluginDao,
+    data: PluginDataService(
+      database: ref.watch(appDatabaseProvider),
+      services: (path) => (
+        content: ref.read(novelContentServiceProvider(path)),
+        overlay: ref.read(workingOverlayServiceProvider(path)),
+      ),
+    ),
     registry: PluginRegistry(
       hostToolNames: aiToolCatalog.map((tool) => tool.name).toSet()
         ..add(codemodeToolName),

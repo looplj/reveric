@@ -10,7 +10,12 @@ import 'registry.dart';
 
 class PluginAgentToolDispatcher
     implements AgentToolDispatcher, AgentRequestToolDispatcher {
-  PluginAgentToolDispatcher({required this.inner, required this.host});
+  PluginAgentToolDispatcher({
+    required this.inner,
+    required this.host,
+    this.sessionId,
+  });
+  final String? sessionId;
   final AgentToolDispatcher inner;
   final PluginHostService host;
   Map<String, PluginTool> _snapshot = {};
@@ -55,7 +60,7 @@ class PluginAgentToolDispatcher
       'tool_source': 'plugin',
       if (tool != null) ...{
         'plugin_id': tool.pluginId,
-        'plugin_name': tool.pluginName,
+        'plugin_name': tool.pluginName.toJson(),
         if (tool.display != null) 'plugin_display': tool.display,
       },
     };
@@ -96,6 +101,8 @@ class PluginAgentToolDispatcher
       name,
       input,
       callId: callId ?? '',
+      sessionId: context?.sessionId ?? sessionId,
+      executionContext: context,
       cancellation: context?.cancellationToken,
     );
     final payload = {...result, '_metadata': metadata};
