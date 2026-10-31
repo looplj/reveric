@@ -1,5 +1,7 @@
 import { parse } from "node-html-parser";
 import { NodeHtmlMarkdown } from "node-html-markdown";
+import { getMarkdownForHtmlNodes } from "node-html-markdown/dist/visitor";
+import { nodeHtmlParserConfig } from "node-html-markdown/dist/utilities";
 import { buildAbsoluteURL } from "url-toolkit";
 import type { JsonObject, ToolContext } from "../../sdk/index";
 import {
@@ -11,7 +13,6 @@ import {
   normalize,
   pageFailure,
   requestFailure,
-  titleOf,
   validUrl,
   stringArgument,
 } from "./page";
@@ -152,8 +153,9 @@ export async function webFetch(
     stage = "parse";
     const contentType = response.headers["content-type"] ?? "",
       html = isHtml(response.body, contentType),
-      title = html ? titleOf(response.body) : "";
-    if (html && blocked(response.body))
+      root = html ? parse(response.body, nodeHtmlParserConfig) : null,
+      title = normalize(root?.querySelector("title")?.textContent ?? "");
+    if (html && blocked(response.body, title))
       return pageFailure(
         context,
         "WebFetch",
@@ -161,7 +163,6 @@ export async function webFetch(
         response,
         "blocked",
       );
-    const root = html ? parse(response.body) : null;
     if (root) {
       let base = response.url;
       const declaredBase = root
@@ -184,12 +185,17 @@ export async function webFetch(
         }
       }
     }
+    // Reuse the parser/visitor exported by the pinned Markdown package; the
+    // string API would serialize this tree and retain a second full DOM.
     const content = (
       root
-        ? NodeHtmlMarkdown.translate(root.toString(), {
-            preferNativeParser: false,
-            ignore: ["script", "style", "meta", "link", "noscript"],
-          })
+        ? getMarkdownForHtmlNodes(
+            new NodeHtmlMarkdown({
+              preferNativeParser: false,
+              ignore: ["script", "style", "meta", "link", "noscript"],
+            }),
+            root,
+          )
         : response.body
     ).trim();
     root

@@ -21,8 +21,8 @@ export function isHtml(body: string, contentType: string): boolean {
     body,
   );
 }
-export function blocked(body: string): boolean {
-  const title = titleOf(body).toLowerCase(),
+export function blocked(body: string, knownTitle?: string): boolean {
+  const title = (knownTitle ?? titleOf(body)).toLowerCase(),
     lower = body.toLowerCase();
   return (
     title === "百度安全验证" ||
