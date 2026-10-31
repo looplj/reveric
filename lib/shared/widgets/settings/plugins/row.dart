@@ -23,6 +23,7 @@ import '../../../services/plugins/host.dart';
 import '../../../theme/theme.dart';
 import 'config_panel.dart';
 import 'manage_panel.dart';
+import 'tasks_panel.dart';
 
 final _log = AppLogger.forModule('Plugin');
 
@@ -260,6 +261,7 @@ class PluginSettingsRow extends HookConsumerWidget {
                         ),
                       ),
                     PluginManagePanel(host: host, status: status),
+                    PluginTasksPanel(host: host, pluginId: status.id),
                     if (manifest != null && manifest.settings.isNotEmpty) ...[
                       const SizedBox(height: RevericSpacing.lg),
                       PluginConfigPanel(host: host, manifest: manifest),

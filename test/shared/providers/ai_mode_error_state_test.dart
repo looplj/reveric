@@ -7,6 +7,7 @@
 //   lib/shared/providers/roleplay_providers.dart
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,6 +45,8 @@ class _MissingToolManagerAiClient extends AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
+    int? maxOutputTokens,
+    AgentCancellationToken? cancellation,
   }) async {
     return '';
   }

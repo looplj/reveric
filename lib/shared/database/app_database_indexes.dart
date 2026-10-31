@@ -6,6 +6,7 @@
 import 'package:drift/drift.dart';
 
 Future<void> createAppDatabaseIndexes(GeneratedDatabase database) async {
+  await createPluginTaskIndexes(database);
   await database.customStatement(
     'CREATE INDEX IF NOT EXISTS provider_assets_by_asset_id_provider_id '
     'ON provider_assets (asset_id, provider_id)',
@@ -122,3 +123,9 @@ WHERE deleted_at = 0 AND draft = 0
     'ON novels (source_novel_id)',
   );
 }
+
+Future<void> createPluginTaskIndexes(
+  GeneratedDatabase database,
+) => database.customStatement(
+  'CREATE INDEX IF NOT EXISTS plugin_tasks_by_enabled_next_due_at ON plugin_tasks(enabled, next_due_at)',
+);

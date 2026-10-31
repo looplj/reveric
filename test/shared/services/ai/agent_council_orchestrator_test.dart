@@ -5,6 +5,7 @@
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/services/ai/chat.dart
 
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import '../../../helpers/plugin_host.dart';
 import 'dart:async';
 
@@ -31,6 +32,8 @@ class _FakeTitleAiClient extends AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
+    int? maxOutputTokens,
+    AgentCancellationToken? cancellation,
   }) {
     detachedCalls += 1;
     return title.future;

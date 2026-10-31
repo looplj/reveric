@@ -5,6 +5,7 @@
 //   lib/shared/services/ai/roleplay_orchestrator.dart
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,6 +48,8 @@ class _TitleAiClient extends AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
+    int? maxOutputTokens,
+    AgentCancellationToken? cancellation,
   }) {
     return titleFuture;
   }

@@ -22264,6 +22264,944 @@ class PluginRegistryCompanion extends UpdateCompanion<PluginRegistryData> {
   }
 }
 
+class $PluginTasksTable extends PluginTasks
+    with TableInfo<$PluginTasksTable, PluginTask> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PluginTasksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _pluginIdMeta = const VerificationMeta(
+    'pluginId',
+  );
+  @override
+  late final GeneratedColumn<String> pluginId = GeneratedColumn<String>(
+    'plugin_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _taskIdMeta = const VerificationMeta('taskId');
+  @override
+  late final GeneratedColumn<String> taskId = GeneratedColumn<String>(
+    'task_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _enabledMeta = const VerificationMeta(
+    'enabled',
+  );
+  @override
+  late final GeneratedColumn<bool> enabled = GeneratedColumn<bool>(
+    'enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 1',
+    defaultValue: const CustomExpression('1'),
+  );
+  static const VerificationMeta _nextDueAtMeta = const VerificationMeta(
+    'nextDueAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextDueAt = GeneratedColumn<DateTime>(
+    'next_due_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _runIdMeta = const VerificationMeta('runId');
+  @override
+  late final GeneratedColumn<String> runId = GeneratedColumn<String>(
+    'run_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _leaseExpiresAtMeta = const VerificationMeta(
+    'leaseExpiresAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> leaseExpiresAt =
+      GeneratedColumn<DateTime>(
+        'lease_expires_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _attemptMeta = const VerificationMeta(
+    'attempt',
+  );
+  @override
+  late final GeneratedColumn<int> attempt = GeneratedColumn<int>(
+    'attempt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lastStartedAtMeta = const VerificationMeta(
+    'lastStartedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastStartedAt =
+      GeneratedColumn<DateTime>(
+        'last_started_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastFinishedAtMeta = const VerificationMeta(
+    'lastFinishedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastFinishedAt =
+      GeneratedColumn<DateTime>(
+        'last_finished_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastStatusMeta = const VerificationMeta(
+    'lastStatus',
+  );
+  @override
+  late final GeneratedColumn<String> lastStatus = GeneratedColumn<String>(
+    'last_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('never'),
+  );
+  static const VerificationMeta _lastSummaryMeta = const VerificationMeta(
+    'lastSummary',
+  );
+  @override
+  late final GeneratedColumn<String> lastSummary = GeneratedColumn<String>(
+    'last_summary',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastErrorCodeMeta = const VerificationMeta(
+    'lastErrorCode',
+  );
+  @override
+  late final GeneratedColumn<String> lastErrorCode = GeneratedColumn<String>(
+    'last_error_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>?, String>
+  lastUsage =
+      GeneratedColumn<String>(
+        'last_usage',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<Map<String, dynamic>?>(
+        $PluginTasksTable.$converterlastUsagen,
+      );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    pluginId,
+    taskId,
+    enabled,
+    nextDueAt,
+    runId,
+    leaseExpiresAt,
+    attempt,
+    lastStartedAt,
+    lastFinishedAt,
+    lastStatus,
+    lastSummary,
+    lastErrorCode,
+    lastUsage,
+    createdAt,
+    updatedAt,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'plugin_tasks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PluginTask> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('plugin_id')) {
+      context.handle(
+        _pluginIdMeta,
+        pluginId.isAcceptableOrUnknown(data['plugin_id']!, _pluginIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pluginIdMeta);
+    }
+    if (data.containsKey('task_id')) {
+      context.handle(
+        _taskIdMeta,
+        taskId.isAcceptableOrUnknown(data['task_id']!, _taskIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_taskIdMeta);
+    }
+    if (data.containsKey('enabled')) {
+      context.handle(
+        _enabledMeta,
+        enabled.isAcceptableOrUnknown(data['enabled']!, _enabledMeta),
+      );
+    }
+    if (data.containsKey('next_due_at')) {
+      context.handle(
+        _nextDueAtMeta,
+        nextDueAt.isAcceptableOrUnknown(data['next_due_at']!, _nextDueAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nextDueAtMeta);
+    }
+    if (data.containsKey('run_id')) {
+      context.handle(
+        _runIdMeta,
+        runId.isAcceptableOrUnknown(data['run_id']!, _runIdMeta),
+      );
+    }
+    if (data.containsKey('lease_expires_at')) {
+      context.handle(
+        _leaseExpiresAtMeta,
+        leaseExpiresAt.isAcceptableOrUnknown(
+          data['lease_expires_at']!,
+          _leaseExpiresAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('attempt')) {
+      context.handle(
+        _attemptMeta,
+        attempt.isAcceptableOrUnknown(data['attempt']!, _attemptMeta),
+      );
+    }
+    if (data.containsKey('last_started_at')) {
+      context.handle(
+        _lastStartedAtMeta,
+        lastStartedAt.isAcceptableOrUnknown(
+          data['last_started_at']!,
+          _lastStartedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_finished_at')) {
+      context.handle(
+        _lastFinishedAtMeta,
+        lastFinishedAt.isAcceptableOrUnknown(
+          data['last_finished_at']!,
+          _lastFinishedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_status')) {
+      context.handle(
+        _lastStatusMeta,
+        lastStatus.isAcceptableOrUnknown(data['last_status']!, _lastStatusMeta),
+      );
+    }
+    if (data.containsKey('last_summary')) {
+      context.handle(
+        _lastSummaryMeta,
+        lastSummary.isAcceptableOrUnknown(
+          data['last_summary']!,
+          _lastSummaryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_error_code')) {
+      context.handle(
+        _lastErrorCodeMeta,
+        lastErrorCode.isAcceptableOrUnknown(
+          data['last_error_code']!,
+          _lastErrorCodeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {pluginId, taskId};
+  @override
+  PluginTask map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PluginTask(
+      pluginId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plugin_id'],
+      )!,
+      taskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}task_id'],
+      )!,
+      enabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}enabled'],
+      )!,
+      nextDueAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_due_at'],
+      )!,
+      runId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}run_id'],
+      ),
+      leaseExpiresAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}lease_expires_at'],
+      ),
+      attempt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempt'],
+      )!,
+      lastStartedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_started_at'],
+      ),
+      lastFinishedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_finished_at'],
+      ),
+      lastStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_status'],
+      )!,
+      lastSummary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_summary'],
+      ),
+      lastErrorCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error_code'],
+      ),
+      lastUsage: $PluginTasksTable.$converterlastUsagen.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}last_usage'],
+        ),
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PluginTasksTable createAlias(String alias) {
+    return $PluginTasksTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<Map<String, dynamic>, String> $converterlastUsage =
+      const JsonMapConverter();
+  static TypeConverter<Map<String, dynamic>?, String?> $converterlastUsagen =
+      NullAwareTypeConverter.wrap($converterlastUsage);
+}
+
+class PluginTask extends DataClass implements Insertable<PluginTask> {
+  final String pluginId;
+  final String taskId;
+  final bool enabled;
+  final DateTime nextDueAt;
+  final String? runId;
+  final DateTime? leaseExpiresAt;
+  final int attempt;
+  final DateTime? lastStartedAt;
+  final DateTime? lastFinishedAt;
+  final String lastStatus;
+  final String? lastSummary;
+  final String? lastErrorCode;
+  final Map<String, dynamic>? lastUsage;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime deletedAt;
+  const PluginTask({
+    required this.pluginId,
+    required this.taskId,
+    required this.enabled,
+    required this.nextDueAt,
+    this.runId,
+    this.leaseExpiresAt,
+    required this.attempt,
+    this.lastStartedAt,
+    this.lastFinishedAt,
+    required this.lastStatus,
+    this.lastSummary,
+    this.lastErrorCode,
+    this.lastUsage,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['plugin_id'] = Variable<String>(pluginId);
+    map['task_id'] = Variable<String>(taskId);
+    map['enabled'] = Variable<bool>(enabled);
+    map['next_due_at'] = Variable<DateTime>(nextDueAt);
+    if (!nullToAbsent || runId != null) {
+      map['run_id'] = Variable<String>(runId);
+    }
+    if (!nullToAbsent || leaseExpiresAt != null) {
+      map['lease_expires_at'] = Variable<DateTime>(leaseExpiresAt);
+    }
+    map['attempt'] = Variable<int>(attempt);
+    if (!nullToAbsent || lastStartedAt != null) {
+      map['last_started_at'] = Variable<DateTime>(lastStartedAt);
+    }
+    if (!nullToAbsent || lastFinishedAt != null) {
+      map['last_finished_at'] = Variable<DateTime>(lastFinishedAt);
+    }
+    map['last_status'] = Variable<String>(lastStatus);
+    if (!nullToAbsent || lastSummary != null) {
+      map['last_summary'] = Variable<String>(lastSummary);
+    }
+    if (!nullToAbsent || lastErrorCode != null) {
+      map['last_error_code'] = Variable<String>(lastErrorCode);
+    }
+    if (!nullToAbsent || lastUsage != null) {
+      map['last_usage'] = Variable<String>(
+        $PluginTasksTable.$converterlastUsagen.toSql(lastUsage),
+      );
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  PluginTasksCompanion toCompanion(bool nullToAbsent) {
+    return PluginTasksCompanion(
+      pluginId: Value(pluginId),
+      taskId: Value(taskId),
+      enabled: Value(enabled),
+      nextDueAt: Value(nextDueAt),
+      runId: runId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(runId),
+      leaseExpiresAt: leaseExpiresAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(leaseExpiresAt),
+      attempt: Value(attempt),
+      lastStartedAt: lastStartedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastStartedAt),
+      lastFinishedAt: lastFinishedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastFinishedAt),
+      lastStatus: Value(lastStatus),
+      lastSummary: lastSummary == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSummary),
+      lastErrorCode: lastErrorCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastErrorCode),
+      lastUsage: lastUsage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastUsage),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory PluginTask.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PluginTask(
+      pluginId: serializer.fromJson<String>(json['pluginId']),
+      taskId: serializer.fromJson<String>(json['taskId']),
+      enabled: serializer.fromJson<bool>(json['enabled']),
+      nextDueAt: serializer.fromJson<DateTime>(json['nextDueAt']),
+      runId: serializer.fromJson<String?>(json['runId']),
+      leaseExpiresAt: serializer.fromJson<DateTime?>(json['leaseExpiresAt']),
+      attempt: serializer.fromJson<int>(json['attempt']),
+      lastStartedAt: serializer.fromJson<DateTime?>(json['lastStartedAt']),
+      lastFinishedAt: serializer.fromJson<DateTime?>(json['lastFinishedAt']),
+      lastStatus: serializer.fromJson<String>(json['lastStatus']),
+      lastSummary: serializer.fromJson<String?>(json['lastSummary']),
+      lastErrorCode: serializer.fromJson<String?>(json['lastErrorCode']),
+      lastUsage: serializer.fromJson<Map<String, dynamic>?>(json['lastUsage']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'pluginId': serializer.toJson<String>(pluginId),
+      'taskId': serializer.toJson<String>(taskId),
+      'enabled': serializer.toJson<bool>(enabled),
+      'nextDueAt': serializer.toJson<DateTime>(nextDueAt),
+      'runId': serializer.toJson<String?>(runId),
+      'leaseExpiresAt': serializer.toJson<DateTime?>(leaseExpiresAt),
+      'attempt': serializer.toJson<int>(attempt),
+      'lastStartedAt': serializer.toJson<DateTime?>(lastStartedAt),
+      'lastFinishedAt': serializer.toJson<DateTime?>(lastFinishedAt),
+      'lastStatus': serializer.toJson<String>(lastStatus),
+      'lastSummary': serializer.toJson<String?>(lastSummary),
+      'lastErrorCode': serializer.toJson<String?>(lastErrorCode),
+      'lastUsage': serializer.toJson<Map<String, dynamic>?>(lastUsage),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  PluginTask copyWith({
+    String? pluginId,
+    String? taskId,
+    bool? enabled,
+    DateTime? nextDueAt,
+    Value<String?> runId = const Value.absent(),
+    Value<DateTime?> leaseExpiresAt = const Value.absent(),
+    int? attempt,
+    Value<DateTime?> lastStartedAt = const Value.absent(),
+    Value<DateTime?> lastFinishedAt = const Value.absent(),
+    String? lastStatus,
+    Value<String?> lastSummary = const Value.absent(),
+    Value<String?> lastErrorCode = const Value.absent(),
+    Value<Map<String, dynamic>?> lastUsage = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? deletedAt,
+  }) => PluginTask(
+    pluginId: pluginId ?? this.pluginId,
+    taskId: taskId ?? this.taskId,
+    enabled: enabled ?? this.enabled,
+    nextDueAt: nextDueAt ?? this.nextDueAt,
+    runId: runId.present ? runId.value : this.runId,
+    leaseExpiresAt: leaseExpiresAt.present
+        ? leaseExpiresAt.value
+        : this.leaseExpiresAt,
+    attempt: attempt ?? this.attempt,
+    lastStartedAt: lastStartedAt.present
+        ? lastStartedAt.value
+        : this.lastStartedAt,
+    lastFinishedAt: lastFinishedAt.present
+        ? lastFinishedAt.value
+        : this.lastFinishedAt,
+    lastStatus: lastStatus ?? this.lastStatus,
+    lastSummary: lastSummary.present ? lastSummary.value : this.lastSummary,
+    lastErrorCode: lastErrorCode.present
+        ? lastErrorCode.value
+        : this.lastErrorCode,
+    lastUsage: lastUsage.present ? lastUsage.value : this.lastUsage,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  PluginTask copyWithCompanion(PluginTasksCompanion data) {
+    return PluginTask(
+      pluginId: data.pluginId.present ? data.pluginId.value : this.pluginId,
+      taskId: data.taskId.present ? data.taskId.value : this.taskId,
+      enabled: data.enabled.present ? data.enabled.value : this.enabled,
+      nextDueAt: data.nextDueAt.present ? data.nextDueAt.value : this.nextDueAt,
+      runId: data.runId.present ? data.runId.value : this.runId,
+      leaseExpiresAt: data.leaseExpiresAt.present
+          ? data.leaseExpiresAt.value
+          : this.leaseExpiresAt,
+      attempt: data.attempt.present ? data.attempt.value : this.attempt,
+      lastStartedAt: data.lastStartedAt.present
+          ? data.lastStartedAt.value
+          : this.lastStartedAt,
+      lastFinishedAt: data.lastFinishedAt.present
+          ? data.lastFinishedAt.value
+          : this.lastFinishedAt,
+      lastStatus: data.lastStatus.present
+          ? data.lastStatus.value
+          : this.lastStatus,
+      lastSummary: data.lastSummary.present
+          ? data.lastSummary.value
+          : this.lastSummary,
+      lastErrorCode: data.lastErrorCode.present
+          ? data.lastErrorCode.value
+          : this.lastErrorCode,
+      lastUsage: data.lastUsage.present ? data.lastUsage.value : this.lastUsage,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PluginTask(')
+          ..write('pluginId: $pluginId, ')
+          ..write('taskId: $taskId, ')
+          ..write('enabled: $enabled, ')
+          ..write('nextDueAt: $nextDueAt, ')
+          ..write('runId: $runId, ')
+          ..write('leaseExpiresAt: $leaseExpiresAt, ')
+          ..write('attempt: $attempt, ')
+          ..write('lastStartedAt: $lastStartedAt, ')
+          ..write('lastFinishedAt: $lastFinishedAt, ')
+          ..write('lastStatus: $lastStatus, ')
+          ..write('lastSummary: $lastSummary, ')
+          ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('lastUsage: $lastUsage, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    pluginId,
+    taskId,
+    enabled,
+    nextDueAt,
+    runId,
+    leaseExpiresAt,
+    attempt,
+    lastStartedAt,
+    lastFinishedAt,
+    lastStatus,
+    lastSummary,
+    lastErrorCode,
+    lastUsage,
+    createdAt,
+    updatedAt,
+    deletedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PluginTask &&
+          other.pluginId == this.pluginId &&
+          other.taskId == this.taskId &&
+          other.enabled == this.enabled &&
+          other.nextDueAt == this.nextDueAt &&
+          other.runId == this.runId &&
+          other.leaseExpiresAt == this.leaseExpiresAt &&
+          other.attempt == this.attempt &&
+          other.lastStartedAt == this.lastStartedAt &&
+          other.lastFinishedAt == this.lastFinishedAt &&
+          other.lastStatus == this.lastStatus &&
+          other.lastSummary == this.lastSummary &&
+          other.lastErrorCode == this.lastErrorCode &&
+          other.lastUsage == this.lastUsage &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class PluginTasksCompanion extends UpdateCompanion<PluginTask> {
+  final Value<String> pluginId;
+  final Value<String> taskId;
+  final Value<bool> enabled;
+  final Value<DateTime> nextDueAt;
+  final Value<String?> runId;
+  final Value<DateTime?> leaseExpiresAt;
+  final Value<int> attempt;
+  final Value<DateTime?> lastStartedAt;
+  final Value<DateTime?> lastFinishedAt;
+  final Value<String> lastStatus;
+  final Value<String?> lastSummary;
+  final Value<String?> lastErrorCode;
+  final Value<Map<String, dynamic>?> lastUsage;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const PluginTasksCompanion({
+    this.pluginId = const Value.absent(),
+    this.taskId = const Value.absent(),
+    this.enabled = const Value.absent(),
+    this.nextDueAt = const Value.absent(),
+    this.runId = const Value.absent(),
+    this.leaseExpiresAt = const Value.absent(),
+    this.attempt = const Value.absent(),
+    this.lastStartedAt = const Value.absent(),
+    this.lastFinishedAt = const Value.absent(),
+    this.lastStatus = const Value.absent(),
+    this.lastSummary = const Value.absent(),
+    this.lastErrorCode = const Value.absent(),
+    this.lastUsage = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PluginTasksCompanion.insert({
+    required String pluginId,
+    required String taskId,
+    this.enabled = const Value.absent(),
+    required DateTime nextDueAt,
+    this.runId = const Value.absent(),
+    this.leaseExpiresAt = const Value.absent(),
+    this.attempt = const Value.absent(),
+    this.lastStartedAt = const Value.absent(),
+    this.lastFinishedAt = const Value.absent(),
+    this.lastStatus = const Value.absent(),
+    this.lastSummary = const Value.absent(),
+    this.lastErrorCode = const Value.absent(),
+    this.lastUsage = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : pluginId = Value(pluginId),
+       taskId = Value(taskId),
+       nextDueAt = Value(nextDueAt);
+  static Insertable<PluginTask> custom({
+    Expression<String>? pluginId,
+    Expression<String>? taskId,
+    Expression<bool>? enabled,
+    Expression<DateTime>? nextDueAt,
+    Expression<String>? runId,
+    Expression<DateTime>? leaseExpiresAt,
+    Expression<int>? attempt,
+    Expression<DateTime>? lastStartedAt,
+    Expression<DateTime>? lastFinishedAt,
+    Expression<String>? lastStatus,
+    Expression<String>? lastSummary,
+    Expression<String>? lastErrorCode,
+    Expression<String>? lastUsage,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (pluginId != null) 'plugin_id': pluginId,
+      if (taskId != null) 'task_id': taskId,
+      if (enabled != null) 'enabled': enabled,
+      if (nextDueAt != null) 'next_due_at': nextDueAt,
+      if (runId != null) 'run_id': runId,
+      if (leaseExpiresAt != null) 'lease_expires_at': leaseExpiresAt,
+      if (attempt != null) 'attempt': attempt,
+      if (lastStartedAt != null) 'last_started_at': lastStartedAt,
+      if (lastFinishedAt != null) 'last_finished_at': lastFinishedAt,
+      if (lastStatus != null) 'last_status': lastStatus,
+      if (lastSummary != null) 'last_summary': lastSummary,
+      if (lastErrorCode != null) 'last_error_code': lastErrorCode,
+      if (lastUsage != null) 'last_usage': lastUsage,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PluginTasksCompanion copyWith({
+    Value<String>? pluginId,
+    Value<String>? taskId,
+    Value<bool>? enabled,
+    Value<DateTime>? nextDueAt,
+    Value<String?>? runId,
+    Value<DateTime?>? leaseExpiresAt,
+    Value<int>? attempt,
+    Value<DateTime?>? lastStartedAt,
+    Value<DateTime?>? lastFinishedAt,
+    Value<String>? lastStatus,
+    Value<String?>? lastSummary,
+    Value<String?>? lastErrorCode,
+    Value<Map<String, dynamic>?>? lastUsage,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return PluginTasksCompanion(
+      pluginId: pluginId ?? this.pluginId,
+      taskId: taskId ?? this.taskId,
+      enabled: enabled ?? this.enabled,
+      nextDueAt: nextDueAt ?? this.nextDueAt,
+      runId: runId ?? this.runId,
+      leaseExpiresAt: leaseExpiresAt ?? this.leaseExpiresAt,
+      attempt: attempt ?? this.attempt,
+      lastStartedAt: lastStartedAt ?? this.lastStartedAt,
+      lastFinishedAt: lastFinishedAt ?? this.lastFinishedAt,
+      lastStatus: lastStatus ?? this.lastStatus,
+      lastSummary: lastSummary ?? this.lastSummary,
+      lastErrorCode: lastErrorCode ?? this.lastErrorCode,
+      lastUsage: lastUsage ?? this.lastUsage,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (pluginId.present) {
+      map['plugin_id'] = Variable<String>(pluginId.value);
+    }
+    if (taskId.present) {
+      map['task_id'] = Variable<String>(taskId.value);
+    }
+    if (enabled.present) {
+      map['enabled'] = Variable<bool>(enabled.value);
+    }
+    if (nextDueAt.present) {
+      map['next_due_at'] = Variable<DateTime>(nextDueAt.value);
+    }
+    if (runId.present) {
+      map['run_id'] = Variable<String>(runId.value);
+    }
+    if (leaseExpiresAt.present) {
+      map['lease_expires_at'] = Variable<DateTime>(leaseExpiresAt.value);
+    }
+    if (attempt.present) {
+      map['attempt'] = Variable<int>(attempt.value);
+    }
+    if (lastStartedAt.present) {
+      map['last_started_at'] = Variable<DateTime>(lastStartedAt.value);
+    }
+    if (lastFinishedAt.present) {
+      map['last_finished_at'] = Variable<DateTime>(lastFinishedAt.value);
+    }
+    if (lastStatus.present) {
+      map['last_status'] = Variable<String>(lastStatus.value);
+    }
+    if (lastSummary.present) {
+      map['last_summary'] = Variable<String>(lastSummary.value);
+    }
+    if (lastErrorCode.present) {
+      map['last_error_code'] = Variable<String>(lastErrorCode.value);
+    }
+    if (lastUsage.present) {
+      map['last_usage'] = Variable<String>(
+        $PluginTasksTable.$converterlastUsagen.toSql(lastUsage.value),
+      );
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PluginTasksCompanion(')
+          ..write('pluginId: $pluginId, ')
+          ..write('taskId: $taskId, ')
+          ..write('enabled: $enabled, ')
+          ..write('nextDueAt: $nextDueAt, ')
+          ..write('runId: $runId, ')
+          ..write('leaseExpiresAt: $leaseExpiresAt, ')
+          ..write('attempt: $attempt, ')
+          ..write('lastStartedAt: $lastStartedAt, ')
+          ..write('lastFinishedAt: $lastFinishedAt, ')
+          ..write('lastStatus: $lastStatus, ')
+          ..write('lastSummary: $lastSummary, ')
+          ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('lastUsage: $lastUsage, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $PluginStorageTable extends PluginStorage
     with TableInfo<$PluginStorageTable, PluginStorageData> {
   @override
@@ -23457,11 +24395,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ImageAssetReferencesTable imageAssetReferences =
       $ImageAssetReferencesTable(this);
   late final $PluginRegistryTable pluginRegistry = $PluginRegistryTable(this);
+  late final $PluginTasksTable pluginTasks = $PluginTasksTable(this);
   late final $PluginStorageTable pluginStorage = $PluginStorageTable(this);
   late final $PluginPermissionsTable pluginPermissions =
       $PluginPermissionsTable(this);
   late final $PluginSecretsTable pluginSecrets = $PluginSecretsTable(this);
   late final PluginDao pluginDao = PluginDao(this as AppDatabase);
+  late final PluginTaskDao pluginTaskDao = PluginTaskDao(this as AppDatabase);
   late final AiProviderDao aiProviderDao = AiProviderDao(this as AppDatabase);
   late final GenerationTaskDao generationTaskDao = GenerationTaskDao(
     this as AppDatabase,
@@ -23554,6 +24494,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     imageBatchSlots,
     imageAssetReferences,
     pluginRegistry,
+    pluginTasks,
     pluginStorage,
     pluginPermissions,
     pluginSecrets,
@@ -35621,6 +36562,442 @@ typedef $$PluginRegistryTableProcessedTableManager =
       PluginRegistryData,
       PrefetchHooks Function()
     >;
+typedef $$PluginTasksTableCreateCompanionBuilder =
+    PluginTasksCompanion Function({
+      required String pluginId,
+      required String taskId,
+      Value<bool> enabled,
+      required DateTime nextDueAt,
+      Value<String?> runId,
+      Value<DateTime?> leaseExpiresAt,
+      Value<int> attempt,
+      Value<DateTime?> lastStartedAt,
+      Value<DateTime?> lastFinishedAt,
+      Value<String> lastStatus,
+      Value<String?> lastSummary,
+      Value<String?> lastErrorCode,
+      Value<Map<String, dynamic>?> lastUsage,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$PluginTasksTableUpdateCompanionBuilder =
+    PluginTasksCompanion Function({
+      Value<String> pluginId,
+      Value<String> taskId,
+      Value<bool> enabled,
+      Value<DateTime> nextDueAt,
+      Value<String?> runId,
+      Value<DateTime?> leaseExpiresAt,
+      Value<int> attempt,
+      Value<DateTime?> lastStartedAt,
+      Value<DateTime?> lastFinishedAt,
+      Value<String> lastStatus,
+      Value<String?> lastSummary,
+      Value<String?> lastErrorCode,
+      Value<Map<String, dynamic>?> lastUsage,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$PluginTasksTableFilterComposer
+    extends Composer<_$AppDatabase, $PluginTasksTable> {
+  $$PluginTasksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get pluginId => $composableBuilder(
+    column: $table.pluginId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get taskId => $composableBuilder(
+    column: $table.taskId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextDueAt => $composableBuilder(
+    column: $table.nextDueAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get runId => $composableBuilder(
+    column: $table.runId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get leaseExpiresAt => $composableBuilder(
+    column: $table.leaseExpiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attempt => $composableBuilder(
+    column: $table.attempt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastStartedAt => $composableBuilder(
+    column: $table.lastStartedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastFinishedAt => $composableBuilder(
+    column: $table.lastFinishedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastStatus => $composableBuilder(
+    column: $table.lastStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastSummary => $composableBuilder(
+    column: $table.lastSummary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastErrorCode => $composableBuilder(
+    column: $table.lastErrorCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<
+    Map<String, dynamic>?,
+    Map<String, dynamic>,
+    String
+  >
+  get lastUsage => $composableBuilder(
+    column: $table.lastUsage,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PluginTasksTableOrderingComposer
+    extends Composer<_$AppDatabase, $PluginTasksTable> {
+  $$PluginTasksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get pluginId => $composableBuilder(
+    column: $table.pluginId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get taskId => $composableBuilder(
+    column: $table.taskId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextDueAt => $composableBuilder(
+    column: $table.nextDueAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get runId => $composableBuilder(
+    column: $table.runId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get leaseExpiresAt => $composableBuilder(
+    column: $table.leaseExpiresAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attempt => $composableBuilder(
+    column: $table.attempt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastStartedAt => $composableBuilder(
+    column: $table.lastStartedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastFinishedAt => $composableBuilder(
+    column: $table.lastFinishedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastStatus => $composableBuilder(
+    column: $table.lastStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastSummary => $composableBuilder(
+    column: $table.lastSummary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastErrorCode => $composableBuilder(
+    column: $table.lastErrorCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastUsage => $composableBuilder(
+    column: $table.lastUsage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PluginTasksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PluginTasksTable> {
+  $$PluginTasksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get pluginId =>
+      $composableBuilder(column: $table.pluginId, builder: (column) => column);
+
+  GeneratedColumn<String> get taskId =>
+      $composableBuilder(column: $table.taskId, builder: (column) => column);
+
+  GeneratedColumn<bool> get enabled =>
+      $composableBuilder(column: $table.enabled, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextDueAt =>
+      $composableBuilder(column: $table.nextDueAt, builder: (column) => column);
+
+  GeneratedColumn<String> get runId =>
+      $composableBuilder(column: $table.runId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get leaseExpiresAt => $composableBuilder(
+    column: $table.leaseExpiresAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get attempt =>
+      $composableBuilder(column: $table.attempt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastStartedAt => $composableBuilder(
+    column: $table.lastStartedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastFinishedAt => $composableBuilder(
+    column: $table.lastFinishedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastStatus => $composableBuilder(
+    column: $table.lastStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastSummary => $composableBuilder(
+    column: $table.lastSummary,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastErrorCode => $composableBuilder(
+    column: $table.lastErrorCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<Map<String, dynamic>?, String>
+  get lastUsage =>
+      $composableBuilder(column: $table.lastUsage, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$PluginTasksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PluginTasksTable,
+          PluginTask,
+          $$PluginTasksTableFilterComposer,
+          $$PluginTasksTableOrderingComposer,
+          $$PluginTasksTableAnnotationComposer,
+          $$PluginTasksTableCreateCompanionBuilder,
+          $$PluginTasksTableUpdateCompanionBuilder,
+          (
+            PluginTask,
+            BaseReferences<_$AppDatabase, $PluginTasksTable, PluginTask>,
+          ),
+          PluginTask,
+          PrefetchHooks Function()
+        > {
+  $$PluginTasksTableTableManager(_$AppDatabase db, $PluginTasksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PluginTasksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PluginTasksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PluginTasksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> pluginId = const Value.absent(),
+                Value<String> taskId = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
+                Value<DateTime> nextDueAt = const Value.absent(),
+                Value<String?> runId = const Value.absent(),
+                Value<DateTime?> leaseExpiresAt = const Value.absent(),
+                Value<int> attempt = const Value.absent(),
+                Value<DateTime?> lastStartedAt = const Value.absent(),
+                Value<DateTime?> lastFinishedAt = const Value.absent(),
+                Value<String> lastStatus = const Value.absent(),
+                Value<String?> lastSummary = const Value.absent(),
+                Value<String?> lastErrorCode = const Value.absent(),
+                Value<Map<String, dynamic>?> lastUsage = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PluginTasksCompanion(
+                pluginId: pluginId,
+                taskId: taskId,
+                enabled: enabled,
+                nextDueAt: nextDueAt,
+                runId: runId,
+                leaseExpiresAt: leaseExpiresAt,
+                attempt: attempt,
+                lastStartedAt: lastStartedAt,
+                lastFinishedAt: lastFinishedAt,
+                lastStatus: lastStatus,
+                lastSummary: lastSummary,
+                lastErrorCode: lastErrorCode,
+                lastUsage: lastUsage,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String pluginId,
+                required String taskId,
+                Value<bool> enabled = const Value.absent(),
+                required DateTime nextDueAt,
+                Value<String?> runId = const Value.absent(),
+                Value<DateTime?> leaseExpiresAt = const Value.absent(),
+                Value<int> attempt = const Value.absent(),
+                Value<DateTime?> lastStartedAt = const Value.absent(),
+                Value<DateTime?> lastFinishedAt = const Value.absent(),
+                Value<String> lastStatus = const Value.absent(),
+                Value<String?> lastSummary = const Value.absent(),
+                Value<String?> lastErrorCode = const Value.absent(),
+                Value<Map<String, dynamic>?> lastUsage = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PluginTasksCompanion.insert(
+                pluginId: pluginId,
+                taskId: taskId,
+                enabled: enabled,
+                nextDueAt: nextDueAt,
+                runId: runId,
+                leaseExpiresAt: leaseExpiresAt,
+                attempt: attempt,
+                lastStartedAt: lastStartedAt,
+                lastFinishedAt: lastFinishedAt,
+                lastStatus: lastStatus,
+                lastSummary: lastSummary,
+                lastErrorCode: lastErrorCode,
+                lastUsage: lastUsage,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$PluginTasksTable, PluginTask>(table),
+                  BaseReferences<_$AppDatabase, $PluginTasksTable, PluginTask>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PluginTasksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PluginTasksTable,
+      PluginTask,
+      $$PluginTasksTableFilterComposer,
+      $$PluginTasksTableOrderingComposer,
+      $$PluginTasksTableAnnotationComposer,
+      $$PluginTasksTableCreateCompanionBuilder,
+      $$PluginTasksTableUpdateCompanionBuilder,
+      (
+        PluginTask,
+        BaseReferences<_$AppDatabase, $PluginTasksTable, PluginTask>,
+      ),
+      PluginTask,
+      PrefetchHooks Function()
+    >;
 typedef $$PluginStorageTableCreateCompanionBuilder =
     PluginStorageCompanion Function({
       required String pluginId,
@@ -36371,6 +37748,8 @@ class $AppDatabaseManager {
       $$ImageAssetReferencesTableTableManager(_db, _db.imageAssetReferences);
   $$PluginRegistryTableTableManager get pluginRegistry =>
       $$PluginRegistryTableTableManager(_db, _db.pluginRegistry);
+  $$PluginTasksTableTableManager get pluginTasks =>
+      $$PluginTasksTableTableManager(_db, _db.pluginTasks);
   $$PluginStorageTableTableManager get pluginStorage =>
       $$PluginStorageTableTableManager(_db, _db.pluginStorage);
   $$PluginPermissionsTableTableManager get pluginPermissions =>

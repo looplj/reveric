@@ -44,6 +44,7 @@ import 'daos/asset_dao.dart';
 import 'daos/production_style_dao.dart';
 import 'daos/app_settings_dao.dart';
 import 'daos/plugin_dao.dart';
+import 'daos/plugin_task_dao.dart';
 import 'daos/app_state_dao.dart';
 import 'daos/memory_dao.dart';
 import 'daos/novel_dao.dart';
@@ -1141,6 +1142,30 @@ class ReadingProgress extends Table {
   Set<Column<Object>> get primaryKey => {novelId};
 }
 
+class PluginTasks extends Table {
+  TextColumn get pluginId => text()();
+  TextColumn get taskId => text()();
+  BoolColumn get enabled => boolean().customConstraint('NOT NULL DEFAULT 1')();
+  DateTimeColumn get nextDueAt => dateTime()();
+  TextColumn get runId => text().nullable()();
+  DateTimeColumn get leaseExpiresAt => dateTime().nullable()();
+  IntColumn get attempt => integer().withDefault(const Constant(0))();
+  DateTimeColumn get lastStartedAt => dateTime().nullable()();
+  DateTimeColumn get lastFinishedAt => dateTime().nullable()();
+  TextColumn get lastStatus => text().withDefault(const Constant('never'))();
+  TextColumn get lastSummary => text().nullable()();
+  TextColumn get lastErrorCode => text().nullable()();
+  TextColumn get lastUsage => text().map(const JsonMapConverter()).nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get deletedAt =>
+      dateTime().customConstraint('NOT NULL DEFAULT 0')();
+  @override
+  Set<Column<Object>> get primaryKey => {pluginId, taskId};
+}
+
 class PluginRegistry extends Table {
   TextColumn get pluginId => text()();
   TextColumn get version => text()();
@@ -1234,12 +1259,14 @@ final _log = AppLogger.forModule('Database');
     ImageBatchSlots,
     ImageAssetReferences,
     PluginRegistry,
+    PluginTasks,
     PluginStorage,
     PluginPermissions,
     PluginSecrets,
   ],
   daos: [
     PluginDao,
+    PluginTaskDao,
     AiProviderDao,
     GenerationTaskDao,
     ProviderAssetDao,
@@ -1313,12 +1340,14 @@ class AppDatabase extends _$AppDatabase {
       if (from < 3) {
         try {
           await migrator.createTable(pluginPermissions);
+          await migrator.createTable(pluginTasks);
+          await createPluginTaskIndexes(migrator.database);
           if (from >= 2) {
             await migrator.addColumn(pluginStorage, pluginStorage.deletedAt);
           }
         } catch (error, stackTrace) {
           _log.error(
-            '[DB] CREATE plugin_permissions / ALTER plugin_storage schema=3',
+            '[DB] CREATE plugin_permissions/plugin_tasks / ALTER plugin_storage schema=3',
             error: error,
             stackTrace: stackTrace,
           );

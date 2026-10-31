@@ -52,6 +52,7 @@ void main() {
           'plugin_registry',
           'plugin_secrets',
           'plugin_storage',
+          'plugin_tasks',
         ],
       );
       expect(
@@ -139,6 +140,7 @@ void main() {
           'plugin_registry',
           'plugin_secrets',
           'plugin_storage',
+          'plugin_tasks',
         ],
       );
       final dao = db.pluginDao;

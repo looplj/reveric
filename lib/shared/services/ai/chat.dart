@@ -95,85 +95,48 @@ class AiClient {
   @Deprecated('Use AiClient.fromConfig(AiServiceConfig(...)) instead')
   AiClient(
     this._config, {
-    required String chatModel,
-    String? reasoningEffort,
+    required this._chatModel,
+    this._reasoningEffort,
     String? segmenterModel,
-    NovelContentService? novelContentService,
-    WorkingOverlayService? workingOverlayService,
-    AiSessionContext? sessionContext,
-    AiNovelReader? novelReader,
-    AiNovelWriter? novelWriter,
-    AiNovelDraftClearer? novelDraftClearer,
-    CrossWorkAccess? crossWorkAccess,
-    Future<List<AiProvider>> Function()? providerReader,
-    AiToolCallRequestedCallback? onToolCallRequested,
-    AiToolEventCallback? onToolStarted,
-    AiToolEventCallback? onToolFinished,
-    AiToolShouldExecuteCallback? shouldExecuteTool,
+    this._novelContentService,
+    this._workingOverlayService,
+    this._sessionContext,
+    this._novelReader,
+    this._novelWriter,
+    this._novelDraftClearer,
+    this._crossWorkAccess,
+    this._providerReader,
+    this._onToolCallRequested,
+    this._onToolStarted,
+    this._onToolFinished,
+    this._shouldExecuteTool,
     AiInterruptReason? Function()? interruptReason,
-    AiImageGenerationCallback? imageGenerationCallback,
-    AiImageEditCallback? imageEditCallback,
-    AiCreateLocationCallback? createLocationCallback,
-    SubAgentListProvider? subAgentListProvider,
-    ValueNotifier<AiSessionMode>? sessionModeNotifier,
-    AiAskUserCallback? askUserCallback,
-    SuggestNextActionCallback? suggestNextActionCallback,
+    this._imageGenerationCallback,
+    this._imageEditCallback,
+    this._createLocationCallback,
+    this._subAgentListProvider,
+    this._sessionModeNotifier,
+    this._askUserCallback,
+    this._suggestNextActionCallback,
 
-    String? sessionId,
-    String? sourceSessionId,
-    String contentKind = contentKindNovel,
-    String? workId,
-    String? currentSeasonId,
-    String? currentEpisodeId,
-    Future<AgentSkillLoadResult?> Function(String slug)? skillLoader,
-    AiAgentSkillsCommandCallback? agentSkillsCommandCallback,
-    AiThemesCommandCallback? themesCommandCallback,
-    AiSubagentsCommandCallback? subagentsCommandCallback,
-    AiSessionsCommandCallback? sessionsCommandCallback,
-    AiRunNotifyCallback? notifyCallback,
-    AiCanvasActivityReporter? canvasActivityReporter,
-    http.Client? httpClient,
-    TraceHeadersProvider? traceHeadersProvider,
-    SubSessionTraceHeadersProvider? subSessionTraceHeaders,
-    String? cacheKeyUserId,
-  }) : _novelContentService = novelContentService,
-       _workingOverlayService = workingOverlayService,
-       _sessionContext = sessionContext,
-       _novelReader = novelReader,
-       _novelWriter = novelWriter,
-       _novelDraftClearer = novelDraftClearer,
-       _crossWorkAccess = crossWorkAccess,
-       _providerReader = providerReader,
-       _onToolCallRequested = onToolCallRequested,
-       _onToolStarted = onToolStarted,
-       _onToolFinished = onToolFinished,
-       _shouldExecuteTool = shouldExecuteTool,
-       _imageGenerationCallback = imageGenerationCallback,
-       _imageEditCallback = imageEditCallback,
-       _createLocationCallback = createLocationCallback,
-       _subAgentListProvider = subAgentListProvider,
-       _sessionModeNotifier = sessionModeNotifier,
-       _askUserCallback = askUserCallback,
-       _suggestNextActionCallback = suggestNextActionCallback,
-       _sessionId = sessionId,
-       _sourceSessionId = sourceSessionId,
-       _contentKind = contentKind,
-       _workId = workId,
-       _currentSeasonId = currentSeasonId,
-       _currentEpisodeId = currentEpisodeId,
-       _skillLoader = skillLoader,
-       _agentSkillsCommandCallback = agentSkillsCommandCallback,
-       _themesCommandCallback = themesCommandCallback,
-       _subagentsCommandCallback = subagentsCommandCallback,
-       _sessionsCommandCallback = sessionsCommandCallback,
-       _notifyCallback = notifyCallback,
-       _canvasActivityReporter = canvasActivityReporter,
-       _chatModel = chatModel,
-       _reasoningEffort = reasoningEffort,
-       _httpClient = httpClient,
-       _traceHeadersProvider = traceHeadersProvider,
-       _subSessionTraceHeaders = subSessionTraceHeaders,
-       _cacheKeyUserId = cacheKeyUserId;
+    this._sessionId,
+    this._sourceSessionId,
+    this._contentKind = contentKindNovel,
+    this._workId,
+    this._currentSeasonId,
+    this._currentEpisodeId,
+    this._skillLoader,
+    this._agentSkillsCommandCallback,
+    this._themesCommandCallback,
+    this._subagentsCommandCallback,
+    this._sessionsCommandCallback,
+    this._notifyCallback,
+    this._canvasActivityReporter,
+    this._httpClient,
+    this._traceHeadersProvider,
+    this._subSessionTraceHeaders,
+    this._cacheKeyUserId,
+  });
 
   final AiProvider _config;
   final String _chatModel;
@@ -509,6 +472,8 @@ class AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
+    int? maxOutputTokens,
+    AgentCancellationToken? cancellation,
   }) async {
     if (_disposed) {
       throw StateError('AiClient has been disposed.');
@@ -521,8 +486,13 @@ class AiClient {
       traceHeadersProvider: _traceHeadersProvider,
       cacheKeyUserId: _cacheKeyUserId,
     );
+    void Function()? unlink;
     try {
       final client = await initializer.initialize();
+      unlink = cancellation?.onCancel(client.cancel);
+      if (cancellation?.isCancellationRequested == true) {
+        throw StateError('Completion cancelled before request');
+      }
       final service = AiChatService(
         client: client,
         config: _config,
@@ -534,7 +504,11 @@ class AiClient {
         chapterToolNamesResolver: _chapterToolNamesResolver,
       );
       final response = await service
-          .chatCompletionResponse(messages, context: context)
+          .chatCompletionResponse(
+            messages,
+            context: context,
+            maxOutputTokens: maxOutputTokens,
+          )
           .timeout(
             timeout,
             onTimeout: () {
@@ -558,6 +532,7 @@ class AiClient {
       return response.text;
     } finally {
       // _httpClient 非空时为共享实例，dispose 不会关闭它（见 AiProviderInitializer）。
+      unlink?.call();
       initializer.dispose();
     }
   }

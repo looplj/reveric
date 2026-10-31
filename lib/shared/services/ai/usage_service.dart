@@ -28,6 +28,7 @@ abstract final class UsageSources {
   static const monologue = 'monologue';
   static const theater = 'theater';
   static const council = 'council';
+  static const pluginTask = 'plugin_task';
 
   static const values = [
     chat,
@@ -36,6 +37,7 @@ abstract final class UsageSources {
     monologue,
     theater,
     council,
+    pluginTask,
   ];
 
   /// 会话模式值作为统计来源。
@@ -309,7 +311,7 @@ class UsageFilter {
 class UsageService {
   final AppDatabase _appDatabase;
 
-  UsageService({required AppDatabase appDatabase}) : _appDatabase = appDatabase;
+  UsageService({required this._appDatabase});
 
   /// 记录一次 LLM 调用的 token 用量。
   ///

@@ -60,6 +60,8 @@ class _PromptCaptureAiClient extends AiClient {
     required Duration timeout,
     AiSessionContext? context,
     List<AgentHook> hooks = const [],
+    int? maxOutputTokens,
+    AgentCancellationToken? cancellation,
   }) async {
     return 'Captured title';
   }

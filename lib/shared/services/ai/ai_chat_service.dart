@@ -6,6 +6,7 @@
 
 //   lib/shared/models/ai_chat_models.dart
 
+import 'dart:math' show min;
 import 'package:flutter/foundation.dart';
 
 import '../../logger/app_logger.dart';
@@ -36,24 +37,16 @@ final _log = AppLogger.forModule('AiChatService');
 
 class AiChatService {
   AiChatService({
-    required ProviderClient client,
-    required AiProvider config,
-    String? chatModel,
-    String? reasoningEffort,
-    AiToolManager? toolManager,
-    AiContextManager contextManager = const AiContextManager(),
-    AiSessionContext? sessionContext,
-    ValueNotifier<AiSessionMode>? sessionModeNotifier,
-    List<String>? Function(AiSessionContext? context)? chapterToolNamesResolver,
-  }) : _client = client,
-       _config = config,
-       _chatModel = chatModel,
-       _reasoningEffort = reasoningEffort,
-       _toolManager = toolManager,
-       _contextManager = contextManager,
-       _sessionContext = sessionContext,
-       _sessionModeNotifier = sessionModeNotifier,
-       _chapterToolNamesResolver = chapterToolNamesResolver;
+    required this._client,
+    required this._config,
+    this._chatModel,
+    this._reasoningEffort,
+    this._toolManager,
+    this._contextManager = const AiContextManager(),
+    this._sessionContext,
+    this._sessionModeNotifier,
+    this._chapterToolNamesResolver,
+  });
 
   final ProviderClient _client;
   final AiProvider _config;
@@ -155,7 +148,19 @@ class AiChatService {
   Future<ChatResponse> chatCompletionResponse(
     List<AiMessage> messages, {
     AiSessionContext? context,
+    int? maxOutputTokens,
   }) async {
+    if (maxOutputTokens != null && maxOutputTokens < 1) {
+      throw ArgumentError.value(
+        maxOutputTokens,
+        'maxOutputTokens',
+        'Must be positive',
+      );
+    }
+    final maxTokens = min(
+      maxOutputTokens ?? resolveAgentMaxTokens(_chatModel),
+      resolveAgentMaxTokens(_chatModel),
+    );
     final effectiveContext = _compactContext(context ?? _sessionContext);
     final conversation = _buildConversation(messages, effectiveContext);
     final tools = _resolveTools(context);
@@ -175,7 +180,7 @@ class AiChatService {
       tools: tools,
       options: AgentConfig(
         temperature: _config.temperature,
-        maxTokens: resolveAgentMaxTokens(_chatModel),
+        maxTokens: maxTokens,
         reasoningEffort: resolvedEffort,
         reasoningBudget: resolveReasoningBudget(_chatModel, resolvedEffort),
       ),
@@ -185,7 +190,7 @@ class AiChatService {
       // 记录请求目标与响应构成，便于区分「模型只思考没出文」「maxTokens 被思考耗尽」等场景。
       _log.error(
         '[AI] empty response: provider=${_config.id} model=$_chatModel '
-        'effort=$resolvedEffort maxTokens=${resolveAgentMaxTokens(_chatModel)} '
+        'effort=$resolvedEffort maxTokens=$maxTokens '
         'thinkingLen=${response.thinking.length} '
         'toolCalls=${response.toolCalls.length} usage=${response.usage}',
       );

@@ -24,6 +24,9 @@ import 'runtime.dart';
 import 'sqlite.dart';
 import 'database_install.dart';
 import 'prompt.dart';
+import 'tasks.dart';
+import 'task_ai.dart';
+import '../../models/plugin/task.dart';
 import '../../models/plugin/request.dart';
 import 'ui_session.dart';
 import 'a2ui_session.dart';
@@ -71,6 +74,7 @@ class PluginHostService {
     required this.registry,
     this.packages,
     this.data,
+    this.taskAi,
     PluginExecutorFactory? executorFactory,
     String? platform,
     this.applicationSupport,
@@ -108,6 +112,7 @@ class PluginHostService {
   }
 
   final PluginDataService? data;
+  final PluginTaskAiExecutor? taskAi;
   final PluginDao dao;
   final PluginRegistry registry;
   final Future<List<PluginPackage>> Function()? packages;
@@ -431,6 +436,240 @@ class PluginHostService {
     }
   }
 
+  late final tasks = PluginTaskScheduler(
+    dao: dao.attachedDatabase.pluginTaskDao,
+    run: _runScheduledTask,
+    canRun: (definition) =>
+        !_disposed &&
+        !_maintenance.contains(definition.pluginId) &&
+        _statuses[definition.pluginId]?.state == 'available' &&
+        _packages[definition.pluginId]?.manifest.version == definition.version,
+    onChanged: _emit,
+  );
+  Future<void> setForeground(bool foreground) =>
+      tasks.setForeground(foreground);
+  Future<PluginTaskResult> _runScheduledTask(
+    PluginTaskDefinition definition,
+    PluginTaskRun run,
+    AgentCancellationToken cancellation,
+  ) async {
+    final id = definition.pluginId, package = _packages[definition.pluginId];
+    if (package == null ||
+        package.manifest.version != definition.version ||
+        _statuses[id]?.state != 'available') {
+      throw PluginHostError(
+        'unavailable',
+        'Task plugin version is unavailable',
+      );
+    }
+    final expected = _registrations[id]!;
+    final http = PluginHttpApi(),
+        sqlCancellation = AgentCancellationController();
+    final unlink = cancellation.onCancel(sqlCancellation.cancel);
+    var aiCalls = 0;
+    final responses = <Map<String, dynamic>>[];
+    Map<String, dynamic>? usage() {
+      if (aiCalls == 0) {
+        return null;
+      }
+      final result = <String, dynamic>{
+        'runId': run.runId,
+        'calls': aiCalls,
+        'responses': [
+          for (final response in responses) Map<String, dynamic>.from(response),
+        ],
+      };
+      for (final key in [
+        'input_tokens',
+        'output_tokens',
+        'cache_read_tokens',
+        'cache_write_tokens',
+        'reasoning_tokens',
+      ]) {
+        final values = responses
+            .map((response) => response[key])
+            .whereType<num>();
+        if (values.isNotEmpty) {
+          result[key] = values.fold<num>(0, (sum, value) => sum + value);
+        }
+      }
+      return result;
+    }
+
+    try {
+      final taskRow = await dao.attachedDatabase.pluginTaskDao.get(
+        id,
+        definition.id,
+      );
+      if (taskRow == null ||
+          taskRow.runId != run.runId ||
+          taskRow.leaseExpiresAt == null) {
+        throw PluginHostError('cancelled', 'Task lease is no longer current');
+      }
+      final prior = taskRow.lastUsage;
+      if (prior?['runId'] == run.runId) {
+        final count = prior!['calls'];
+        if (count is! int ||
+            count < 0 ||
+            count > 2 ||
+            prior['responses'] is! List) {
+          throw PluginHostError(
+            'task_state_invalid',
+            'Stored task usage is invalid',
+          );
+        }
+        aiCalls = count;
+        responses.addAll(
+          (prior['responses'] as List).map(
+            (value) => Map<String, dynamic>.from(value as Map),
+          ),
+        );
+      }
+      Future<void> recordUsage() async {
+        if (!await dao.attachedDatabase.pluginTaskDao.recordUsage(
+          taskRow,
+          usage()!,
+          DateTime.now(),
+        )) {
+          throw PluginHostError(
+            'cancelled',
+            'Task lease changed before usage could be recorded',
+          );
+        }
+      }
+
+      final secrets = await dao.secretValues(id);
+      final api = _hostApi(
+        id,
+        package,
+        http,
+        secrets,
+        cancellation: sqlCancellation.token,
+      );
+      final runtime = executorFactory(
+        (method, args) async {
+          if (cancellation.isCancellationRequested ||
+              sqlCancellation.token.isCancellationRequested ||
+              _packages[id] != package ||
+              _statuses[id]?.state != 'available' ||
+              _maintenance.contains(id)) {
+            throw PluginHostError(
+              'cancelled',
+              'Task is cancelled or its plugin changed',
+            );
+          }
+          if (method == 'ai.generateText') {
+            if (!package.manifest.permissions.contains('ai.generateText') ||
+                !(await dao.grantedPermissions(
+                  id,
+                )).contains('ai.generateText')) {
+              throw PluginHostError(
+                'permission_denied',
+                'Missing permission: ai.generateText',
+              );
+            }
+            final system = args['system'],
+                prompt = args['prompt'],
+                maxTokens = args['maxOutputTokens'] ?? 4096;
+            if (system is! String ||
+                prompt is! String ||
+                prompt.trim().isEmpty ||
+                maxTokens is! int ||
+                maxTokens < 1 ||
+                maxTokens > 4096) {
+              throw PluginHostError(
+                'invalid_argument',
+                'Task AI requires system/prompt and 1–4096 output tokens',
+              );
+            }
+            if (aiCalls >= 2) {
+              throw PluginHostError(
+                'rate_limited',
+                'At most two AI calls are allowed per task run',
+              );
+            }
+            final execute = taskAi;
+            if (execute == null) {
+              throw PluginHostError(
+                'model_not_configured',
+                'Task AI model service is not configured',
+              );
+            }
+            aiCalls++;
+            await recordUsage();
+            final callCancellation = AgentCancellationController();
+            final unlinkCall = sqlCancellation.token.onCancel(
+              callCancellation.cancel,
+            );
+            final PluginTaskAiResult response;
+            try {
+              response =
+                  await execute(
+                    PluginTaskAiRequest(
+                      pluginId: id,
+                      taskId: definition.id,
+                      runId: run.runId,
+                      system: system,
+                      prompt: prompt,
+                      maxOutputTokens: maxTokens,
+                    ),
+                    callCancellation.token,
+                  ).timeout(
+                    const Duration(seconds: 120),
+                    onTimeout: () {
+                      callCancellation.cancel();
+                      throw PluginHostError(
+                        'ai_timeout',
+                        'Task AI exceeded 120 seconds',
+                      );
+                    },
+                  );
+            } finally {
+              unlinkCall();
+            }
+            responses.add(response.usage);
+            await recordUsage();
+            return {'text': response.text};
+          }
+          if (method.startsWith('ui.')) {
+            throw PluginHostError(
+              'permission_denied',
+              'Background tasks cannot open UI',
+            );
+          }
+          return api(method, args);
+        },
+        () {
+          http.cancel();
+          sqlCancellation.cancel();
+        },
+      );
+      final summary = await runtime.runTask(
+        package.manifest,
+        package.code,
+        expected,
+        definition.id,
+        run.toJson(),
+        cancellation,
+      );
+      return (summary: summary, usage: usage());
+    } catch (error) {
+      throw PluginTaskExecutionError(
+        error is PluginHostError
+            ? error.code
+            : error is PluginExecutionError
+            ? error.code
+            : 'task_failed',
+        error.toString(),
+        usage: usage(),
+      );
+    } finally {
+      unlink();
+      sqlCancellation.cancel();
+      http.cancel();
+    }
+  }
+
   late final _promptCollector = PluginPromptCollector(
     onDiagnostic: _promptDiagnostic,
   );
@@ -687,11 +926,13 @@ class PluginHostService {
     final databases = await privateDatabases();
     _maintenance.add(id);
     await _promptCollector.cancelPlugin(id);
+    await tasks.suspendPlugin(id);
     databases.pause(id);
     void release() {
       if (!_recoveryErrors.containsKey(id)) {
         _maintenance.remove(id);
         databases.resume(id);
+        tasks.kick();
       }
     }
 
@@ -917,6 +1158,7 @@ class PluginHostService {
         ),
       );
     }
+    await tasks.initialize();
     final found = await (packages?.call() ?? _discover());
     final ordered = <(PluginPackage, DateTime)>[];
     for (final package in found) {
@@ -951,6 +1193,7 @@ class PluginHostService {
     for (final item in ordered) {
       await _activate(item.$1.manifest.id);
     }
+    await tasks.start();
   }
 
   Future<void> _activate(String pluginId) async {
@@ -961,6 +1204,7 @@ class PluginHostService {
     status.error = null;
     status.state = 'activating';
     await _promptCollector.cancelPlugin(pluginId);
+    await tasks.stopPlugin(pluginId);
     if (_recoveryErrors.containsKey(pluginId)) {
       status.state = 'failed';
       status.error = _recoveryErrors[pluginId].toString();
@@ -1035,7 +1279,9 @@ class PluginHostService {
       ]);
       _registrations[pluginId] = List.unmodifiable(definitions);
       _views[pluginId] = List.unmodifiable(views);
+      await tasks.register(pluginId, package.manifest.tasks);
       status.state = 'available';
+      tasks.kick();
     } catch (error, stack) {
       status.state = 'failed';
       status.error = error.toString();
@@ -1141,6 +1387,7 @@ class PluginHostService {
   Future<void> uninstall(String id) => mutate(id, () async {
     await closePluginPages(id);
     await _promptCollector.cancelPlugin(id);
+    await tasks.stopPlugin(id);
     await _closeIdleDatabase(id);
     await dao.uninstall(id);
     registry.remove(id);
@@ -1663,6 +1910,7 @@ class PluginHostService {
     }
     _disposed = true;
     await _promptCollector.dispose();
+    await tasks.dispose();
     for (final page in _pages.values.toList()) {
       await page.session.close();
     }
