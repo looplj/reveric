@@ -81,6 +81,7 @@ void main() {
         'plugin_unavailable',
       );
       await host.start();
+      await host.setEnabled('test.web', true);
       await chained.prepareRequest(runStart: true);
       expect(chained.toolDefsForNames(['Read']).map((d) => d.name), [
         'Read',

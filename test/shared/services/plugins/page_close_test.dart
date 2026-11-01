@@ -68,7 +68,6 @@ const node=n.create('Button');n.set(node,{label:'ready'});n.listen(node,'onPress
             'version': '1.0.0',
             'pluginApiVersion': '^1',
             'main': 'index.js',
-            'defaultEnabled': true,
             'pages': {
               'page': {
                 'title': 'Page',
@@ -92,6 +91,7 @@ const node=n.create('Button');n.set(node,{label:'ready'});n.listen(node,'onPress
         var cancelled = 0;
         try {
           await host.start();
+          await host.setEnabled(package.manifest.id, true);
           Future<Object?> ui(String method, Map<String, dynamic> args) {
             final done = Completer<Object?>();
             waits.add(done);

@@ -102,7 +102,7 @@ class PluginDao extends DatabaseAccessor<AppDatabase> with _$PluginDaoMixin {
     required String version,
     required String source,
     required String packagePath,
-    required bool defaultEnabled,
+    required bool initiallyEnabled,
   }) => _write(pluginId, 'plugin_registry', 'UPSERT', () async {
     if (!['bundled', 'local'].contains(source)) {
       throw ArgumentError.value(source, 'source');
@@ -115,7 +115,7 @@ class PluginDao extends DatabaseAccessor<AppDatabase> with _$PluginDaoMixin {
           version: version,
           source: source,
           packagePath: packagePath,
-          enabled: existing?.enabled ?? defaultEnabled,
+          enabled: existing?.enabled ?? initiallyEnabled,
           createdAt: existing == null
               ? const Value.absent()
               : Value(existing.createdAt),

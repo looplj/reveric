@@ -34,7 +34,6 @@ PluginPackage package({
     'version': version,
     'main': 'dist/index.js',
     'pluginApiVersion': '^1',
-    'defaultEnabled': true,
     'platforms': ?platforms,
     'settings': {'fields': ?settings, 'actions': ?actions},
   }),
@@ -195,6 +194,71 @@ Future<void> _until(bool Function() condition) async {
 }
 
 void main() {
+  test('host defaults apply only to new bundled plugins', () async {
+    for (final platform in ['windows', 'macos', 'android']) {
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      final web = package(id: 'reveric.web');
+      PluginHostService build(List<PluginPackage> packages) =>
+          PluginHostService(
+            dao: db.pluginDao,
+            registry: PluginRegistry(hostToolNames: {}),
+            packages: () async => packages,
+            executorFactory: (call, stop) => FakeExecutor(),
+            platform: platform,
+          );
+      final host = build([
+        web,
+        package(id: 'reveric.memory'),
+        package(id: 'reveric.deepseek'),
+      ]);
+      try {
+        await host.start();
+        expect(
+          {for (final status in host.statuses) status.id: status.enabled},
+          {
+            'reveric.web': true,
+            'reveric.memory': false,
+            'reveric.deepseek': false,
+          },
+        );
+        await host.setEnabled('reveric.web', false);
+        await host.setEnabled('reveric.memory', true);
+      } finally {
+        await host.dispose();
+      }
+      final restarted = build([
+        package(id: 'reveric.web', version: '2.0.0'),
+        package(id: 'reveric.memory'),
+      ]);
+      try {
+        await restarted.start();
+        expect(
+          {for (final status in restarted.statuses) status.id: status.enabled},
+          {'reveric.web': false, 'reveric.memory': true},
+        );
+      } finally {
+        await restarted.dispose();
+        await db.close();
+      }
+      final localDb = AppDatabase.forTest(NativeDatabase.memory());
+      final localHost = PluginHostService(
+        dao: localDb.pluginDao,
+        registry: PluginRegistry(hostToolNames: {}),
+        packages: () async => [
+          PluginPackage(web.path, web.manifest, web.code, source: 'local'),
+        ],
+        executorFactory: (call, stop) => FakeExecutor(),
+        platform: platform,
+      );
+      try {
+        await localHost.start();
+        expect(localHost.statuses.single.enabled, false);
+      } finally {
+        await localHost.dispose();
+        await localDb.close();
+      }
+    }
+  });
   test(
     'queued cancellation returns before active calls finish and preserves four slots',
     () async {
@@ -226,6 +290,7 @@ void main() {
         }
       });
       await host.start();
+      await host.setEnabled('test.web', true);
       final running = [
         for (var i = 0; i < 4; i++)
           host.execute('WebFetch', {}, callId: 'initial$i'),
@@ -302,6 +367,7 @@ void main() {
     );
     addTearDown(host.dispose);
     await host.start();
+    await host.setEnabled('test.web', true);
     await host.execute('WebFetch', {});
     final message = messages.singleWhere(
       (value) => value.contains('[Plugin] plugin=test.web '),
@@ -340,6 +406,7 @@ void main() {
       );
       addTearDown(host.dispose);
       await host.start();
+      await host.setEnabled('test.web', true);
       await host.setEnabled('test.web', false);
 
       expect(
@@ -547,7 +614,6 @@ void main() {
         'platforms': ['ios'],
       },
       {'pluginApiVersion': '^2'},
-      {'defaultEnabled': 'yes'},
       {'settings': []},
       {'uiProtocol': 'reveric-ui-v1'},
       {
@@ -615,6 +681,7 @@ void main() {
       );
       addTearDown(host.dispose);
       await host.start();
+      await host.setEnabled('test.web', true);
       expect(host.registry.effectiveTools, hasLength(2));
       final running = host.execute('WebFetch', {});
       await started.future;
@@ -652,6 +719,7 @@ void main() {
         platform: platform,
       );
       await host.start();
+      await host.setEnabled('test.web', true);
       expect(
         host.statuses.single.state,
         platform == 'android' ? 'available' : 'unsupported',
@@ -682,6 +750,7 @@ void main() {
       );
       addTearDown(host.dispose);
       await host.start();
+      await host.setEnabled('test.web', true);
       expect(host.statuses.single.modelSelections, isEmpty);
       await host.saveConfig(
         'test.web',

@@ -6,8 +6,8 @@ import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 const root = dirname(fileURLToPath(import.meta.url));
-if (Number(process.versions.node.split(".")[0]) !== 22)
-  throw new Error("Use Node.js 22 (plugins/.nvmrc)");
+if (Number(process.versions.node.split(".")[0]) < 22)
+  throw new Error("Node.js 22 or later is required (plugins/.nvmrc recommends 22)");
 function run(args) {
   const result = spawnSync(process.execPath, args, {
     cwd: root,

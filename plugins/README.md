@@ -192,8 +192,10 @@ FJS_PROBE_LIBRARY=<target>/debug/libfjs.dylib fvm flutter test -j 1 \
 
 | 目录 | id | 说明 |
 | --- | --- | --- |
-| `memory/` | `reveric.memory` | 记忆：工具、提示词、定时任务、私有数据库、TSX 管理页 |
+| `memory/` | `reveric.memory` | 示例：记忆系统，演示工具、提示词、定时任务、私有数据库、TSX 管理页 |
 | `web/` | `reveric.web` | 联网检索与网页读取 |
 | `deepseek/` | `reveric.deepseek` | DeepSeek 搜索与读取，带设置动作 |
+
+内置插件的首次启用策略由 `lib/shared/services/plugins/host.dart` 中的 `_defaultEnabledBundledPlugins` 管理；新增默认启用项时，将插件 ID 加入该集合。已有用户选择保持不变。
 
 `memory/` 覆盖了大部分 SDK 能力，改 SDK 时优先用它做端到端验证（`test/shared/services/plugins/memory_test.dart`）。

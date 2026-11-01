@@ -44,7 +44,6 @@ Map<String, dynamic> manifest(String version) => {
     'organize': {'title': 'Organize', 'intervalMinutes': 60},
   },
   'main': 'dist/index.js',
-  'defaultEnabled': true,
   'permissions': ['ai.generateText'],
 };
 Future<void> until(FutureOr<bool> Function() condition) async {
@@ -108,6 +107,7 @@ void main() {
       );
       try {
         await host.start();
+        await host.setEnabled('test.tasks', true);
         expect(host.statuses.single.state, 'needs_permission');
         await host.confirmPermissions('test.tasks');
         await host.tasks.runNow('test.tasks', 'organize');

@@ -12,7 +12,6 @@
   "author": "Reveric",
   "pluginApiVersion": "^1",
   "main": "dist/index.js",
-  "defaultEnabled": false,
   "settings": {
     "fields": {
       "apiKey": {

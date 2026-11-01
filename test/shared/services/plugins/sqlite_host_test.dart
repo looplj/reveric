@@ -49,7 +49,6 @@ return __revericUi.element('Text',{get text(){const row=rows.value()?.[0];return
           'version': '1.0.0',
           'main': 'index.js',
           'pluginApiVersion': '^1',
-          'defaultEnabled': true,
           'pages': {
             'page': {
               'title': 'SQL page',
@@ -85,6 +84,7 @@ return {rowId:String(insert.lastInsertRowId),big:String(row.big),blob:Array.from
       );
       try {
         await host.start();
+        await host.setEnabled(package.manifest.id, true);
         expect(host.statuses.single.state, 'available');
         expect(await host.execute('Store', {}), {
           'rowId': '1',
@@ -171,7 +171,6 @@ return {rowId:String(insert.lastInsertRowId),big:String(row.big),blob:Array.from
           'version': '1.0.0',
           'pluginApiVersion': '^1',
           'main': 'index.js',
-          'defaultEnabled': true,
         }),
         """
 var __revericPlugin={apply(setup){setup.tools.register({name:'Undeclared',description:'Query',inputSchema:{type:'object'},handler:async(input,context)=>{try{await context.sqlite.query({sql:'SELECT 1'});return {unexpected:true};}catch(error){return {code:error.code};}}});}};
@@ -185,6 +184,7 @@ var __revericPlugin={apply(setup){setup.tools.register({name:'Undeclared',descri
       );
       try {
         await host.start();
+        await host.setEnabled(package.manifest.id, true);
         expect(await host.execute('Undeclared', {}), {
           'code': 'database_not_declared',
         });

@@ -32,7 +32,6 @@ PluginPackageArchive archive(
               'pluginApiVersion': '^1',
               'main': 'dist/index.js',
               'permissions': permissions,
-              'defaultEnabled': true,
             }),
           ),
         )

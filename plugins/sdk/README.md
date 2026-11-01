@@ -124,7 +124,6 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 | `pluginApiVersion` | 是 | 写 `"^1"` |
 | `main` | 是 | 固定为 `"dist/index.js"` |
 | `author` | 否 | 字符串 |
-| `defaultEnabled` | 否 | 安装后是否默认启用，默认 `false` |
 | `platforms` | 否 | `windows`、`macos`、`android` 的子集，默认全部 |
 | `permissions` | 否 | 需要的权限，见下表 |
 | `settings` | 否 | 设置表单字段和设置动作 |

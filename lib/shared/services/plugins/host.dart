@@ -37,6 +37,8 @@ import 'package:uuid/uuid.dart';
 
 final _log = AppLogger.forModule('Plugin');
 
+const _defaultEnabledBundledPlugins = {'reveric.web'};
+
 class PluginPackage {
   PluginPackage(this.path, this.manifest, this.code, {this.source = 'bundled'});
   final String path, code, source;
@@ -1096,7 +1098,9 @@ class PluginHostService {
         version: manifest.version,
         source: package.source,
         packagePath: package.path,
-        defaultEnabled: manifest.defaultEnabled,
+        initiallyEnabled:
+            package.source == 'bundled' &&
+            _defaultEnabledBundledPlugins.contains(manifest.id),
       );
       final row = (await dao.getPlugin(manifest.id))!;
       _packages[manifest.id] = package;

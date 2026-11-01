@@ -24,7 +24,6 @@ PluginPackage plugin(String id, String code) => PluginPackage(
     'version': '1.0.0',
     'pluginApiVersion': '^1',
     'main': 'index.js',
-    'defaultEnabled': true,
   }),
   code,
 );
@@ -103,6 +102,7 @@ $setTool
 
       try {
         await host.start();
+        await host.setEnabled('test.prompt', true);
         expect(host.statuses.single.state, 'available');
         expect(await round(runStart: true), isEmpty);
         expect(dispatcher.requestSystemPrompt, 'MCP summary');
@@ -223,6 +223,7 @@ $setTool
       var host = build();
       try {
         await host.start();
+        await host.setEnabled(persona.manifest.id, true);
         expect(host.statuses.single.state, 'available');
         final chat = PluginAgentToolDispatcher(
           inner: RequestInner(),
@@ -280,6 +281,9 @@ setup.prompts.system({id:'bad',modes:['unknown'],handler:async()=>'bad'});
         ];
         host = build();
         await host.start();
+        for (final package in packages) {
+          await host.setEnabled(package.manifest.id, true);
+        }
         final states = {
           for (final status in host.statuses) status.id: status.state,
         };

@@ -216,7 +216,6 @@ void main() {
         'version': '1.0.0',
         'pluginApiVersion': '^1',
         'main': 'dist/index.js',
-        'defaultEnabled': true,
         'permissions': ['chapters.read'],
       });
       final host = PluginHostService(
@@ -229,6 +228,7 @@ void main() {
       );
       try {
         await host.start();
+        await host.setEnabled('example.data', true);
         expect(host.statuses.single.state, 'needs_permission');
         await host.confirmPermissions('example.data');
         expect(

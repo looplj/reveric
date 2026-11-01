@@ -69,7 +69,6 @@ void main() {
           'version': '1.0.0',
           'main': 'index.js',
           'pluginApiVersion': '^1',
-          'defaultEnabled': true,
           'pages': {
             'report': {
               'title': 'Report',
@@ -96,6 +95,7 @@ void main() {
       );
       try {
         await host.start();
+        await host.setEnabled(package.manifest.id, true);
         var discard = false;
         final uiCalls = <String>[];
         final page = await host.openA2uiView(
@@ -169,7 +169,6 @@ void main() {
           'version': '1.0.0',
           'main': 'index.js',
           'pluginApiVersion': '^1',
-          'defaultEnabled': true,
           'pages': {
             'page': {
               'title': 'Page',
@@ -191,6 +190,7 @@ void main() {
       final sessions = <PluginUiSession>[];
       try {
         await host.start();
+        await host.setEnabled(package.manifest.id, true);
         expect(host.statuses.single.state, 'available');
         final view = host.views.single;
         var discard = false;

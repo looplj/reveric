@@ -150,7 +150,7 @@ void main() {
           version: '1.0.0',
           source: 'bundled',
           packagePath: 'assets/$id',
-          defaultEnabled: true,
+          initiallyEnabled: true,
         );
       }
       await dao.setEnabled('a.test', false);
@@ -159,7 +159,7 @@ void main() {
         version: '2.0.0',
         source: 'bundled',
         packagePath: 'assets/new',
-        defaultEnabled: true,
+        initiallyEnabled: true,
       );
       expect((await dao.getPlugin('a.test'))!.enabled, false);
       expect((await dao.getPlugin('b.test'))!.enabled, true);

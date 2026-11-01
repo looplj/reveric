@@ -1,6 +1,6 @@
 # 内置联网检索插件
 
-正式源码位于 `src/`，类型契约位于 `../sdk/`，构建产物提交到 `assets/plugins/reveric.web/`。使用 Node.js 22，在仓库根目录运行 `make plugins` 和 `make plugins-test`。Flutter 构建只读取已提交产物，不需要 Node。
+正式源码位于 `src/`，类型契约位于 `../sdk/`，构建产物提交到 `assets/plugins/reveric.web/`。使用 Node.js 22 或更高版本（`.nvmrc` 推荐 22），在仓库根目录运行 `make plugins` 和 `make plugins-test`。Flutter 构建只读取已提交产物，不需要 Node。
 
 `probe_test.dart` 现在验证正式产物的清单一致性、激活及两个工具的真实 fjs 调用。设置 `FJS_PROBE_LIBRARY` 后运行 `fvm flutter test plugins/web/probe_test.dart --concurrency=1`。Windows、Android 的原生验证仍待对应设备完成。
 

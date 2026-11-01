@@ -36,7 +36,6 @@ class PluginManifest {
   Set<String> get permissions => Set.unmodifiable(
     (json['permissions'] as List? ?? const []).cast<String>(),
   );
-  bool get defaultEnabled => json['defaultEnabled'] as bool? ?? false;
   List<String> get platforms => List<String>.from(
     json['platforms'] as List? ?? ['windows', 'macos', 'android'],
   );
@@ -71,9 +70,6 @@ class PluginManifest {
     );
     if (json.containsKey('author') && json['author'] is! String) {
       throw const FormatException('Invalid author');
-    }
-    if (json.containsKey('defaultEnabled') && json['defaultEnabled'] is! bool) {
-      throw const FormatException('Invalid defaultEnabled');
     }
     for (final key in ['platforms', 'permissions']) {
       if (json.containsKey(key) &&

@@ -1,18 +1,17 @@
 {
   "id": "reveric.memory",
   "name": {
-    "zh-CN": "记忆",
-    "en": "Memory"
+    "zh-CN": "示例：记忆系统",
+    "en": "Example: Memory"
   },
   "description": {
-    "zh-CN": "管理全局与作品记忆，为聊天提供参考，并生成可确认的整理建议。",
-    "en": "Manages global and per-work memories, offers them as chat references, and drafts organization suggestions for you to confirm."
+    "zh-CN": "记忆系统插件示例。",
+    "en": "Memory system plugin example."
   },
   "version": "1.0.0",
   "author": "Reveric",
   "pluginApiVersion": "^1",
   "main": "dist/index.js",
-  "defaultEnabled": false,
   "permissions": [
     "ai.generateText"
   ],
@@ -43,8 +42,8 @@
   "pages": {
     "manage": {
       "title": {
-        "zh-CN": "记忆",
-        "en": "Memory"
+        "zh-CN": "示例：记忆系统",
+        "en": "Example: Memory"
       },
       "location": "home.plugin",
       "protocol": "reveric-tsx-v1",
