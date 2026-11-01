@@ -6,3 +6,10 @@ export class PluginError extends Error {
     this.code = code;
   }
 }
+export function isHostError(error, code) {
+  return (
+    error instanceof Error &&
+    error.name === "PluginHostError" &&
+    (code === undefined || error.code === code)
+  );
+}

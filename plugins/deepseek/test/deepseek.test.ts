@@ -9,7 +9,7 @@ import type {
   HttpRequest,
   JsonObject,
   ToolRegistration,
-} from "../../sdk/index";
+} from "reveric-plugin-sdk";
 import { apply } from "../src/index";
 
 const item = {
@@ -40,7 +40,11 @@ function harness(
   const plugin = { id: "reveric.deepseek", version: "1.0.0" };
   const services: PluginServices = {
     plugin,
-    sqlite: { query: unavailable, execute: unavailable, transaction: unavailable },
+    sqlite: {
+      query: unavailable,
+      execute: unavailable,
+      transaction: unavailable,
+    },
     ai: { listModels: unavailable, generateText: unavailable },
     http: {
       fetch: async (url, init) => {
@@ -98,7 +102,13 @@ function harness(
   const context: ToolContext = {
     ...services,
     callId: "test",
-    request: { requestId: "test", sessionId: "test", workId: null, agentId: "test", mode: "chat" },
+    request: {
+      requestId: "test",
+      sessionId: "test",
+      workId: null,
+      agentId: "test",
+      mode: "chat",
+    },
     chapters: { list: unavailable, get: unavailable, update: unavailable },
     characters: { list: unavailable, get: unavailable, update: unavailable },
   };
@@ -157,7 +167,10 @@ test("verifyApiKey keeps host network and timeout codes", async () => {
 });
 test("verifyApiKey without a key fails without HTTP", async () => {
   const h = harness({}, 200, "  ");
-  assert.equal((await h.actions.get("verifyApiKey")!()).code, "missing_api_key");
+  assert.equal(
+    (await h.actions.get("verifyApiKey")!()).code,
+    "missing_api_key",
+  );
   assert.equal(h.requests.length, 0);
 });
 test("search forwards official arguments and preserves official result fields", async () => {

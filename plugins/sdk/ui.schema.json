@@ -1,9 +1,6 @@
 {
   "protocol": "reveric-tsx-v1",
   "common": {
-    "key": {
-      "type": "string"
-    },
     "testId": {
       "type": "string"
     },
@@ -55,7 +52,7 @@
           "default": "start"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {
         "children": "many"
       }
@@ -99,7 +96,7 @@
           "default": "start"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {
         "children": "many"
       }
@@ -148,12 +145,13 @@
           "default": "start"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {
         "children": "many"
       }
     },
     "Box": {
+      "children": "child",
       "props": {
         "padding": {
           "type": "string",
@@ -210,12 +208,13 @@
           "type": "nonnegative"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {
         "child": "one"
       }
     },
     "Scroll": {
+      "children": "child",
       "props": {
         "direction": {
           "type": "string",
@@ -229,7 +228,7 @@
           "type": "nonnegative"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {
         "child": "one"
       }
@@ -253,31 +252,33 @@
           "default": "md"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {}
     },
     "List": {
+      "wrapper": true,
       "props": {
         "itemExtent": {
           "type": "positive",
           "required": true
         },
         "height": {
-          "type": "positive",
-          "required": true
+          "type": "positive"
         },
         "itemCount": {
           "type": "integer",
-          "default": 0
+          "default": 0,
+          "internal": true
         },
         "firstIndex": {
           "type": "integer",
-          "default": 0
+          "default": 0,
+          "internal": true
         }
       },
-      "events": [
-        "viewport"
-      ],
+      "events": {
+        "viewport": "viewport"
+      },
       "slots": {
         "children": "many"
       }
@@ -313,7 +314,7 @@
           "type": "positiveInteger"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {}
     },
     "Markdown": {
@@ -323,7 +324,7 @@
           "required": true
         }
       },
-      "events": [],
+      "events": {},
       "slots": {}
     },
     "Icon": {
@@ -354,10 +355,11 @@
           "default": "default"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {}
     },
     "Card": {
+      "children": "child",
       "props": {
         "padding": {
           "type": "string",
@@ -376,7 +378,7 @@
           "default": "lg"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {
         "child": "one"
       }
@@ -392,7 +394,7 @@
           "default": "horizontal"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {}
     },
     "Badge": {
@@ -414,7 +416,7 @@
           "default": "default"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {}
     },
     "Loading": {
@@ -423,10 +425,11 @@
           "type": "string"
         }
       },
-      "events": [],
+      "events": {},
       "slots": {}
     },
     "EmptyState": {
+      "children": "actions",
       "props": {
         "label": {
           "type": "string"
@@ -436,7 +439,7 @@
           "required": true
         }
       },
-      "events": [],
+      "events": {},
       "slots": {
         "actions": "many"
       }
@@ -478,9 +481,9 @@
           "type": "string"
         }
       },
-      "events": [
-        "onPress"
-      ],
+      "events": {
+        "onPress": "press"
+      },
       "slots": {}
     },
     "IconButton": {
@@ -498,9 +501,9 @@
           "default": false
         }
       },
-      "events": [
-        "onPress"
-      ],
+      "events": {
+        "onPress": "press"
+      },
       "slots": {}
     },
     "TextField": {
@@ -527,10 +530,10 @@
           "default": false
         }
       },
-      "events": [
-        "onChange",
-        "onSubmit"
-      ],
+      "events": {
+        "onChange": "text",
+        "onSubmit": "text"
+      },
       "slots": {}
     },
     "SearchField": {
@@ -557,10 +560,10 @@
           "default": 300
         }
       },
-      "events": [
-        "onChange",
-        "onSubmit"
-      ],
+      "events": {
+        "onChange": "text",
+        "onSubmit": "text"
+      },
       "slots": {}
     },
     "Select": {
@@ -578,9 +581,9 @@
           "default": false
         }
       },
-      "events": [
-        "onChange"
-      ],
+      "events": {
+        "onChange": "select"
+      },
       "slots": {}
     },
     "Checkbox": {
@@ -597,9 +600,9 @@
           "default": false
         }
       },
-      "events": [
-        "onChange"
-      ],
+      "events": {
+        "onChange": "boolean"
+      },
       "slots": {}
     },
     "Switch": {
@@ -616,12 +619,14 @@
           "default": false
         }
       },
-      "events": [
-        "onChange"
-      ],
+      "events": {
+        "onChange": "boolean"
+      },
       "slots": {}
     },
     "Tabs": {
+      "wrapper": true,
+      "children": "content",
       "props": {
         "items": {
           "type": "tabs",
@@ -632,9 +637,9 @@
           "required": true
         }
       },
-      "events": [
-        "onChange"
-      ],
+      "events": {
+        "onChange": "tab"
+      },
       "slots": {
         "content": "one"
       }
@@ -650,28 +655,30 @@
           "required": true
         }
       },
-      "events": [
-        "onOpenChange"
-      ],
+      "events": {
+        "onOpenChange": "open"
+      },
       "slots": {
         "children": "many"
       }
     },
     "Menu": {
+      "children": "trigger",
       "props": {
         "items": {
           "type": "menuItems",
           "required": true
         }
       },
-      "events": [
-        "onSelect"
-      ],
+      "events": {
+        "onSelect": "id"
+      },
       "slots": {
         "trigger": "one"
       }
     },
     "Dialog": {
+      "children": "body",
       "props": {
         "open": {
           "type": "boolean",
@@ -682,24 +689,25 @@
           "required": true
         }
       },
-      "events": [
-        "onOpenChange"
-      ],
+      "events": {
+        "onOpenChange": "open"
+      },
       "slots": {
         "body": "one",
         "actions": "many"
       }
     },
     "Popover": {
+      "children": "body",
       "props": {
         "open": {
           "type": "boolean",
           "required": true
         }
       },
-      "events": [
-        "onOpenChange"
-      ],
+      "events": {
+        "onOpenChange": "open"
+      },
       "slots": {
         "trigger": "one",
         "body": "one"
@@ -708,7 +716,7 @@
     "Fragment": {
       "internal": true,
       "props": {},
-      "events": [],
+      "events": {},
       "slots": {
         "children": "many"
       }

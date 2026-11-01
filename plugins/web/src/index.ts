@@ -1,4 +1,4 @@
-import type { PluginSetup } from "../../sdk/index";
+import type { PluginSetup } from "reveric-plugin-sdk";
 import definitions from "./definitions.json";
 import { webSearch } from "./search";
 import { webFetch } from "./fetch";

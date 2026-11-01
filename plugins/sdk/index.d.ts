@@ -45,12 +45,7 @@
 //   as unexpected errors.
 
 export type Json =
-  | null
-  | boolean
-  | number
-  | string
-  | Json[]
-  | { [key: string]: Json };
+  null | boolean | number | string | Json[] | { [key: string]: Json };
 export type JsonObject = { [key: string]: Json };
 
 /**
@@ -77,6 +72,12 @@ export declare class PluginError extends Error {
 export interface PluginHostError extends Error {
   readonly code: string;
 }
+
+/** Whether `error` is a Host API rejection, optionally with the given code. */
+export declare function isHostError(
+  error: unknown,
+  code?: string,
+): error is PluginHostError;
 
 export interface PluginInfo {
   readonly id: string;
@@ -187,7 +188,8 @@ export interface ToolContext extends PluginServices, WorkData {
 }
 
 /** Session modes whose agents a system prompt provider can target. */
-export type SessionMode = "chat" | "council" | "monologue" | "theater" | "roleplay";
+export type SessionMode =
+  "chat" | "council" | "monologue" | "theater" | "roleplay";
 
 /**
  * Context of a prompt provider. Providers run within a small time budget
@@ -235,8 +237,17 @@ export interface ViewContext extends PluginServices, WorkData {
   readonly page: PageInfo;
   readonly ui: {
     toast(input: { message: string }): Promise<void>;
-    /** Resolves true when the user confirms. */
-    dialog(input: { title: string; message?: string }): Promise<boolean>;
+    /**
+     * Resolves true when the user confirms. `confirmLabel` (at most 40
+     * characters) replaces the default confirm wording; `danger` styles the
+     * confirm button as destructive.
+     */
+    dialog(input: {
+      title: string;
+      message?: string;
+      confirmLabel?: string;
+      tone?: "default" | "danger";
+    }): Promise<boolean>;
     navigate(input: { viewId: string }): Promise<void>;
   };
   readonly view: {
@@ -315,11 +326,15 @@ export interface SystemPromptRegistration {
 }
 
 /** Binds a task declared in plugin.json `tasks`; metadata lives in the manifest. */
-export type TaskHandler = (context: TaskContext) => Promise<{ summary?: string } | void>;
+export type TaskHandler = (
+  context: TaskContext,
+) => Promise<{ summary?: string } | void>;
 
 /** A2UI action returning updateComponents / updateDataModel messages (at most 1 MB). */
 export type PageActionHandler = (
-  data: JsonObject, event: JsonObject, context: ViewContext,
+  data: JsonObject,
+  event: JsonObject,
+  context: ViewContext,
 ) => Promise<Json[]>;
 
 /** Result of a settings action. */
@@ -419,7 +434,8 @@ export interface GenerateTextInput {
  * Why the model stopped. `length` means the output hit `maxOutputTokens` and
  * `text` is truncated (possibly empty when reasoning used the whole budget).
  */
-export type FinishReason = "stop" | "length" | "content_filter" | "tool_calls" | "unknown";
+export type FinishReason =
+  "stop" | "length" | "content_filter" | "tool_calls" | "unknown";
 
 export interface GenerateTextResult {
   text: string;
@@ -469,7 +485,10 @@ export interface DataApi<S, T> {
    * their list order). `limit` 1–100, default 20; `offset` default 0. Read
    * the full record with `get`.
    */
-  list(input?: { limit?: number; offset?: number }): Promise<{ items: S[]; hasMore: boolean }>;
+  list(input?: {
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: S[]; hasMore: boolean }>;
   get(input: { id: string }): Promise<T>;
   /**
    * Changes the given fields. Fails with `version_conflict` when the record

@@ -3,7 +3,7 @@ import { NodeHtmlMarkdown } from "node-html-markdown";
 import { getMarkdownForHtmlNodes } from "node-html-markdown/dist/visitor";
 import { nodeHtmlParserConfig } from "node-html-markdown/dist/utilities";
 import { buildAbsoluteURL } from "url-toolkit";
-import type { JsonObject, ToolContext } from "../../sdk/index";
+import type { JsonObject, ToolContext } from "reveric-plugin-sdk";
 import {
   blocked,
   htmlAccept,

@@ -300,6 +300,9 @@ mod tests {
     };
     #[test]
     fn production_handle_joins_slow_cleanup_for_concurrent_close_callers() {
+        let _counts = crate::ui::telemetry::TEST_COUNTS
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         assert!(
             UiSession::resource_counts()
                 .values()
@@ -345,6 +348,9 @@ var __revericView={mount(context){
     }
     #[test]
     fn production_drop_joins_bounded_cleanup_and_releases_pending_host() {
+        let _counts = crate::ui::telemetry::TEST_COUNTS
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         assert!(
             UiSession::resource_counts()
                 .values()

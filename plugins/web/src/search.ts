@@ -1,5 +1,5 @@
 import { parse } from "node-html-parser";
-import type { JsonObject, ToolContext } from "../../sdk/index";
+import type { JsonObject, ToolContext } from "reveric-plugin-sdk";
 import {
   blocked,
   htmlAccept,

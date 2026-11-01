@@ -1,0 +1,45 @@
+{
+  "name": "reveric-plugin-sdk",
+  "version": "0.1.0",
+  "description": "SDK, TSX page compiler and build CLI for Reveric plugins.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/looplj/reveric.git",
+    "directory": "plugins/sdk"
+  },
+  "homepage": "https://github.com/looplj/reveric/tree/unstable/plugins/sdk#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "reveric-plugin": "./cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./ui": {
+      "types": "./ui.d.ts"
+    },
+    "./build": "./builder.mjs",
+    "./tsconfig.base.json": "./tsconfig.base.json"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "ui.d.ts",
+    "ui.schema.json",
+    "tsx_transform.mjs",
+    "builder.mjs",
+    "cli.mjs",
+    "tsconfig.base.json"
+  ],
+  "dependencies": {
+    "esbuild": "0.25.12",
+    "fflate": "0.8.3",
+    "typescript": "5.9.3"
+  }
+}

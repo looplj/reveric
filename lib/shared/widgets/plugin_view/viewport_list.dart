@@ -33,8 +33,13 @@ class PluginUiViewportList extends HookWidget {
     // when the visible screen gets within half a screen of the window edge.
     void notify({bool force = false}) {
       final props = latest.value.props;
-      final extent = (props['itemExtent'] as num).toDouble(),
-          height = (props['height'] as num).toDouble();
+      final extent = (props['itemExtent'] as num).toDouble();
+      // A list without a height prop fills its parent, so the laid-out
+      // viewport rather than the prop decides how many rows fit.
+      final height =
+          controller.hasClients && controller.position.hasViewportDimension
+          ? controller.position.viewportDimension
+          : (props['height'] as num?)?.toDouble() ?? 0;
       final total = (props['itemCount'] as num).toInt();
       final page = math.max(1, (height / extent).ceil());
       final visible = math.min(
@@ -75,8 +80,13 @@ class PluginUiViewportList extends HookWidget {
     );
     final rows = node.slots['children'] ?? const <int>[];
     final start = (node.props['firstIndex'] as num).toInt();
-    return SizedBox(
-      height: (node.props['height'] as num).toDouble(),
+    final height = (node.props['height'] as num?)?.toDouble();
+    // Resizing a filling list changes the viewport without scrolling.
+    final list = NotificationListener<ScrollMetricsNotification>(
+      onNotification: (_) {
+        notify();
+        return false;
+      },
       child: ListView.builder(
         controller: controller,
         itemCount: (node.props['itemCount'] as num).toInt(),
@@ -86,6 +96,20 @@ class PluginUiViewportList extends HookWidget {
             ? buildNode(rows[index - start])
             : const SizedBox.shrink(),
       ),
+    );
+    if (height != null) {
+      return SizedBox(height: height, child: list);
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.hasBoundedHeight) {
+          throw FlutterError(
+            'Plugin List without height needs a parent with bounded height, '
+            'such as a Column child with flex. Inside Scroll, set height.',
+          );
+        }
+        return list;
+      },
     );
   }
 }

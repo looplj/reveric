@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:reveric/shared/components/reveric_button.dart';
 import 'package:reveric/shared/services/plugins/runtime.dart';
 import 'package:reveric/shared/widgets/plugin_view/host_ui.dart';
 import 'input_test.dart' show wrap;
@@ -59,4 +60,41 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+  testWidgets('dialog uses plugin confirm label and danger tone', (
+    tester,
+  ) async {
+    PluginPageUi? ui;
+    await tester.pumpWidget(
+      wrap(
+        Builder(
+          builder: (context) {
+            ui ??= PluginPageUi(context, (_) async {});
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await expectLater(
+      ui!.call('ui.dialog', {'title': 'Delete', 'tone': 'loud'}),
+      throwsA(isA<PluginHostError>()),
+    );
+    final answer = ui!.call('ui.dialog', {
+      'title': 'Delete this memory?',
+      'confirmLabel': 'Delete',
+      'tone': 'danger',
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Confirm'), findsNothing);
+    final button = find.ancestor(
+      of: find.text('Delete'),
+      matching: find.byType(RevericButton),
+    );
+    expect(button, findsOneWidget);
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(await answer, true);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
 }

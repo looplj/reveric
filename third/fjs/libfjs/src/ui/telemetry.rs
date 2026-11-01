@@ -9,6 +9,11 @@ static NEXT: AtomicU64 = AtomicU64::new(1);
 static WORKERS: LazyLock<Mutex<HashMap<u64, HashMap<String, u64>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Counts are process-wide: tests that start workers hold a read guard, and
+/// tests asserting exact counts hold the write guard so nothing overlaps.
+#[cfg(test)]
+pub(crate) static TEST_COUNTS: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
 pub(crate) struct Worker(pub u64);
 impl Worker {
     pub fn new() -> Self {

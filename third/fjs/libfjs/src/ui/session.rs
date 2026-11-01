@@ -295,6 +295,8 @@ mod tests {
         output: Receiver<UiOutput>,
         closed: Arc<AtomicBool>,
         thread: Option<std::thread::JoinHandle<()>>,
+        // Declared last: released only after Drop has joined the thread.
+        _counts: std::sync::RwLockReadGuard<'static, ()>,
     }
     impl Worker {
         fn start(handler: &str) -> Self {
@@ -309,6 +311,9 @@ mod tests {
             Self::from_source(source)
         }
         fn from_source(source: String) -> Self {
+            let counts = super::super::telemetry::TEST_COUNTS
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
             let (tx, rx) = sync_channel(256);
             let (out_tx, out_rx) = channel();
             let closed = Arc::new(AtomicBool::new(false));
@@ -331,6 +336,7 @@ mod tests {
                 output: out_rx,
                 closed,
                 thread: Some(thread),
+                _counts: counts,
             }
         }
         fn batch(&self) -> crate::api::ui::UiBatch {

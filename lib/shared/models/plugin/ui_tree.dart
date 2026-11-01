@@ -323,7 +323,7 @@ class PluginUiTree {
           touch(node.id);
         case fjs.UiOp_Listen(:final id, :final event, :final handler):
           final node = require(_id(id));
-          if (!(_definition(node.component)['events'] as List).contains(
+          if (!(_definition(node.component)['events'] as Map).containsKey(
             event,
           )) {
             throw FormatException('Unknown ${node.component} event $event');

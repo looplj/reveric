@@ -8,7 +8,7 @@ import type {
   HttpRequest,
   JsonObject,
   ToolRegistration,
-} from "../../sdk/index";
+} from "reveric-plugin-sdk";
 const response = (
   body: string,
   status = 200,
@@ -59,14 +59,24 @@ function harness(
   apply(setup);
   const context: ToolContext = {
     callId: "test",
-    request: { requestId: "test", sessionId: "test", workId: null, agentId: "test", mode: "chat" },
+    request: {
+      requestId: "test",
+      sessionId: "test",
+      workId: null,
+      agentId: "test",
+      mode: "chat",
+    },
     plugin,
     log,
     http: { fetch },
     storage: { get: unavailable, set: unavailable, remove: unavailable },
     settings: { get: unavailable },
     secrets: { get: unavailable },
-    sqlite: { query: unavailable, execute: unavailable, transaction: unavailable },
+    sqlite: {
+      query: unavailable,
+      execute: unavailable,
+      transaction: unavailable,
+    },
     ai: { listModels: unavailable, generateText: unavailable },
     chapters: { list: unavailable, get: unavailable, update: unavailable },
     characters: { list: unavailable, get: unavailable, update: unavailable },

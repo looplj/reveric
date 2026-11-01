@@ -4,7 +4,7 @@ import type {
   HttpResponse,
   JsonObject,
   Json,
-} from "../../sdk/index";
+} from "reveric-plugin-sdk";
 export const language = "zh-CN,zh;q=0.9,en;q=0.8";
 export const htmlAccept =
   "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";

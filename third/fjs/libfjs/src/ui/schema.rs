@@ -90,23 +90,23 @@ impl Event {
 }
 
 pub(crate) fn slot(component: &str, slot: &str) -> Option<bool> {
-    match (component, slot) {
-        ("Column", "children") => Some(false),
-        ("Row", "children") => Some(false),
-        ("Wrap", "children") => Some(false),
-        ("Box", "child") => Some(true),
-        ("Scroll", "child") => Some(true),
-        ("List", "children") => Some(false),
-        ("Card", "child") => Some(true),
-        ("EmptyState", "actions") => Some(false),
-        ("Tabs", "content") => Some(true),
-        ("Collapsible", "children") => Some(false),
-        ("Menu", "trigger") => Some(true),
-        ("Dialog", "body") => Some(true),
-        ("Dialog", "actions") => Some(false),
-        ("Popover", "trigger") => Some(true),
-        ("Popover", "body") => Some(true),
-        ("Fragment", "children") => Some(false),
+    match (component,slot) {
+        ("Column","children") => Some(false),
+        ("Row","children") => Some(false),
+        ("Wrap","children") => Some(false),
+        ("Box","child") => Some(true),
+        ("Scroll","child") => Some(true),
+        ("List","children") => Some(false),
+        ("Card","child") => Some(true),
+        ("EmptyState","actions") => Some(false),
+        ("Tabs","content") => Some(true),
+        ("Collapsible","children") => Some(false),
+        ("Menu","trigger") => Some(true),
+        ("Dialog","body") => Some(true),
+        ("Dialog","actions") => Some(false),
+        ("Popover","trigger") => Some(true),
+        ("Popover","body") => Some(true),
+        ("Fragment","children") => Some(false),
         _ => None,
     }
 }
@@ -143,41 +143,16 @@ impl Kind {
 /// The value kind and allowed strings of a component property.
 pub(crate) fn property(component: &str, key: &str) -> Option<(Kind, &'static [&'static str])> {
     match (component, key) {
-        ("Column", "gap") => Some((
-            Kind::Str,
-            &[
-                "none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l",
-            ],
-        )),
+        ("Column", "gap") => Some((Kind::Str, &["none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l"])),
         ("Column", "align") => Some((Kind::Str, &["start", "center", "end", "stretch"])),
         ("Column", "justify") => Some((Kind::Str, &["start", "center", "end", "spaceBetween"])),
-        ("Row", "gap") => Some((
-            Kind::Str,
-            &[
-                "none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l",
-            ],
-        )),
+        ("Row", "gap") => Some((Kind::Str, &["none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l"])),
         ("Row", "align") => Some((Kind::Str, &["start", "center", "end", "stretch"])),
         ("Row", "justify") => Some((Kind::Str, &["start", "center", "end", "spaceBetween"])),
-        ("Wrap", "gap") => Some((
-            Kind::Str,
-            &[
-                "none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l",
-            ],
-        )),
-        ("Wrap", "runGap") => Some((
-            Kind::Str,
-            &[
-                "none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l",
-            ],
-        )),
+        ("Wrap", "gap") => Some((Kind::Str, &["none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l"])),
+        ("Wrap", "runGap") => Some((Kind::Str, &["none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l"])),
         ("Wrap", "align") => Some((Kind::Str, &["start", "center", "end"])),
-        ("Box", "padding") => Some((
-            Kind::Str,
-            &[
-                "none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l",
-            ],
-        )),
+        ("Box", "padding") => Some((Kind::Str, &["none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l"])),
         ("Box", "surface") => Some((Kind::Str, &["transparent", "base", "elevated"])),
         ("Box", "radius") => Some((Kind::Str, &["none", "small", "medium", "large", "card"])),
         ("Box", "width") => Some((Kind::Nonnegative, &[])),
@@ -188,42 +163,23 @@ pub(crate) fn property(component: &str, key: &str) -> Option<(Kind, &'static [&'
         ("Box", "maxHeight") => Some((Kind::Nonnegative, &[])),
         ("Scroll", "direction") => Some((Kind::Str, &["vertical", "horizontal"])),
         ("Scroll", "maxHeight") => Some((Kind::Nonnegative, &[])),
-        ("Gap", "size") => Some((
-            Kind::Str,
-            &[
-                "none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l",
-            ],
-        )),
+        ("Gap", "size") => Some((Kind::Str, &["none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l"])),
         ("List", "itemExtent") => Some((Kind::Positive, &[])),
         ("List", "height") => Some((Kind::Positive, &[])),
         ("List", "itemCount") => Some((Kind::Integer, &[])),
         ("List", "firstIndex") => Some((Kind::Integer, &[])),
         ("Text", "text") => Some((Kind::Str, &[])),
         ("Text", "variant") => Some((Kind::Str, &["body", "caption", "heading"])),
-        ("Text", "tone") => Some((
-            Kind::Str,
-            &["default", "muted", "accent", "success", "warning", "danger"],
-        )),
+        ("Text", "tone") => Some((Kind::Str, &["default", "muted", "accent", "success", "warning", "danger"])),
         ("Text", "maxLines") => Some((Kind::PositiveInteger, &[])),
         ("Markdown", "text") => Some((Kind::Str, &[])),
         ("Icon", "name") => Some((Kind::Str, &[])),
         ("Icon", "size") => Some((Kind::Str, &["small", "standard", "large"])),
-        ("Icon", "tone") => Some((
-            Kind::Str,
-            &["default", "muted", "accent", "success", "warning", "danger"],
-        )),
-        ("Card", "padding") => Some((
-            Kind::Str,
-            &[
-                "none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l",
-            ],
-        )),
+        ("Icon", "tone") => Some((Kind::Str, &["default", "muted", "accent", "success", "warning", "danger"])),
+        ("Card", "padding") => Some((Kind::Str, &["none", "xxs", "xs", "sm", "md", "lg", "xl", "x2l", "x3l", "x4l"])),
         ("Divider", "direction") => Some((Kind::Str, &["horizontal", "vertical"])),
         ("Badge", "text") => Some((Kind::Str, &[])),
-        ("Badge", "tone") => Some((
-            Kind::Str,
-            &["default", "muted", "accent", "success", "warning", "danger"],
-        )),
+        ("Badge", "tone") => Some((Kind::Str, &["default", "muted", "accent", "success", "warning", "danger"])),
         ("Loading", "label") => Some((Kind::Str, &[])),
         ("EmptyState", "label") => Some((Kind::Str, &[])),
         ("EmptyState", "message") => Some((Kind::Str, &[])),
@@ -265,7 +221,6 @@ pub(crate) fn property(component: &str, key: &str) -> Option<(Kind, &'static [&'
         ("Dialog", "open") => Some((Kind::Bool, &[])),
         ("Dialog", "title") => Some((Kind::Str, &[])),
         ("Popover", "open") => Some((Kind::Bool, &[])),
-        (_, "key") => Some((Kind::Str, &[])),
         (_, "testId") => Some((Kind::Str, &[])),
         (_, "accessibleLabel") => Some((Kind::Str, &[])),
         (_, "flex") => Some((Kind::Integer, &[])),
@@ -289,8 +244,7 @@ pub(crate) fn valid(kind: Kind, choices: &[&str], value: &UiValue) -> bool {
         Kind::Tabs => options(value, "id", &["id", "label"]),
         Kind::MenuItems => options(value, "id", &["id", "label", "disabled", "danger"]),
     };
-    ok && (choices.is_empty()
-        || matches!(value, UiValue::String(v) if choices.contains(&v.as_str())))
+    ok && (choices.is_empty() || matches!(value, UiValue::String(v) if choices.contains(&v.as_str())))
 }
 fn options(value: &UiValue, identity: &str, keys: &[&str]) -> bool {
     let UiValue::Array(items) = value else {
@@ -304,9 +258,8 @@ fn options(value: &UiValue, identity: &str, keys: &[&str]) -> bool {
         item.keys().all(|key| keys.contains(&key.as_str()))
             && matches!(item.get(identity), Some(UiValue::String(id)) if seen.insert(id.clone()))
             && matches!(item.get("label"), Some(UiValue::String(_)))
-            && ["disabled", "danger"].iter().all(|key| {
-                item.get(*key)
-                    .is_none_or(|v| matches!(v, UiValue::Boolean(_)))
-            })
+            && ["disabled", "danger"]
+                .iter()
+                .all(|key| item.get(*key).is_none_or(|v| matches!(v, UiValue::Boolean(_))))
     })
 }

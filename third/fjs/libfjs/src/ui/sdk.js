@@ -63,15 +63,18 @@ function mount(view, root) {
   __pageDispose = dispose;
   return dispose;
 }
-const env = signal(__revericEnvironment);
-globalThis.__revericSetEnvironment = value => env.set(value);
+// One signal per field: a resize must not re-run code that only reads visible.
+const envFields = ['width','height','platform','theme','locale','visible'];
+const env = Object.fromEntries(envFields.map(key => [key, signal(__revericEnvironment?.[key])]));
+globalThis.__revericSetEnvironment = value => batch(() => { for (const key of envFields) env[key].set(value?.[key]); });
 const call = (method, args) => __pageDisposed ? Promise.reject(new Error('Page closed')) : __n.call(method, args).catch(raw => {
   let failure;try {failure=JSON.parse(raw);}catch {throw raw;}
   const error=new Error(failure.message);error.name='PluginHostError';error.code=failure.code;throw error;
 });
 globalThis.__revericPageContext = Object.freeze({
   sqlite: __revericSqlite(call),
-  root: __n.rootNode, page: Object.freeze(__revericScope.page), plugin: Object.freeze(__revericScope.plugin), environment: () => env(),
+  root: __n.rootNode, page: Object.freeze(__revericScope.page), plugin: Object.freeze(__revericScope.plugin),
+  environment: Object.freeze(Object.fromEntries(envFields.map(key => [key, () => env[key]()]))),
   log: Object.freeze(Object.fromEntries(['info','warn','error'].map(level=>[level,(message,data)=>{call('log.'+level,{message,data}).catch(()=>{});}]))),
   view: Object.freeze({ setDirty: value => call('view.setDirty', {value}) }),
   storage: Object.freeze({get: key => call('storage.get', {key}), set: (key,value) => call('storage.set', {key,value}), remove:key => call('storage.remove',{key})}),
@@ -97,12 +100,13 @@ function element(name, props = {}) {
     const descriptor = Object.getOwnPropertyDescriptor(props,key);
     // The user may have edited a text value since it was last sent. Its
     // correction must reach the host even when the normalized value is equal.
-    const textValue = key === 'value' && (name === 'TextField' || name === 'SearchField');
+    const textField = name === 'TextField' || name === 'SearchField';
+    const textValue = key === 'value' && textField;
     // A stable trampoline means swapping handlers never re-registers natively.
     let last = __unsent, handler = null, bound = false;
     const apply = () => {
       const value = props[key];
-      const slot=key==='children'&&!slots.includes(key) ? (slots.includes('child')?'child':slots.includes('body')?'body':slots[0]) : key;
+      const slot=key==='children' ? (__revericChildrenSlot[name] ?? key) : key;
       if (slots.includes(slot)) {
         const children = value == null ? [] : Array.isArray(value) ? value : [value];
         __n.replaceSlot(node,slot,children);
@@ -110,7 +114,8 @@ function element(name, props = {}) {
         handler = value ?? null;
         if (Boolean(handler) !== bound) {
           bound = Boolean(handler);
-          __n.listen(node,key,bound ? __guard(payload => handler(payload)) : null);
+          // editRevision only syncs text with the host; plugins see {value}.
+          __n.listen(node,key,bound ? __guard(payload => handler(textField ? {value: payload.value} : payload)) : null);
         }
       } else if (textValue || !Object.is(last, value)) {
         last = value;
@@ -133,9 +138,11 @@ function If(props) {
 }
 function List(props) {
   const viewport = signal({first:0,count:0});
-  const node = element('List',{get itemExtent(){return props.itemExtent;},get height(){return props.height;},
-    get itemCount(){return props.items.length;},get firstIndex(){return viewport().first;},
-    viewport:event=>viewport.set(event)});
+  const bound={get itemCount(){return props.items.length;},get firstIndex(){return viewport().first;},
+    viewport:event=>viewport.set(event)};
+  // Common props such as flex and testId pass through to the host element.
+  for (const key of Object.keys(props)) if (!['items','key','renderItem'].includes(key)) Object.defineProperty(bound,key,Object.getOwnPropertyDescriptor(props,key));
+  const node = element('List',bound);
   cleanup(() => __n.clearEach(node));
   effect(() => {const {first,count}=viewport(); __n.each(node,props.items.slice(first,first+count),props.key,props.renderItem,first);});
   return node;
@@ -171,8 +178,8 @@ globalThis.clearTimeout=globalThis.clearInterval=id=>__n.clearTimer(id);
 
 function Tabs(props) {
   const bound={};
-  for (const key of Object.keys(props)) if (key!=='content'&&key!=='children') Object.defineProperty(bound,key,Object.getOwnPropertyDescriptor(props,key));
-  Object.defineProperty(bound,'content',{enumerable:true,get(){const render=props.content??props.children;return render?render(props.value):element('Fragment');}});
+  for (const key of Object.keys(props)) if (key!=='children') Object.defineProperty(bound,key,Object.getOwnPropertyDescriptor(props,key));
+  Object.defineProperty(bound,'content',{enumerable:true,get(){const render=props.children;return render?render(props.value):element('Fragment');}});
   return element('Tabs',bound);
 }
 __revericUi.Tabs=Tabs;

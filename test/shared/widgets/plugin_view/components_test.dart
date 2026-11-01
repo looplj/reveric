@@ -154,6 +154,79 @@ void main() {
     await tester.pumpAndSettle();
     tree.dispose();
   });
+  testWidgets('flex list fills its parent and follows resizes', (tester) async {
+    final tree = PluginUiTree(surface: 'test', generation: 1),
+        events = <Map<String, Object?>>[],
+        height = ValueNotifier<double>(200);
+    tree.apply(
+      batch(1, [
+        create(2, 'Column'),
+        insert(1, 2),
+        create(3, 'List'),
+        set(3, {'itemExtent': 20, 'itemCount': 1000, 'flex': 1}),
+        fjs.UiOp.listen(id: id(3), event: 'viewport', handler: id(1)),
+        insert(2, 3),
+      ]),
+    );
+    await tester.pumpWidget(
+      wrap(
+        Align(
+          alignment: Alignment.topLeft,
+          child: ValueListenableBuilder<double>(
+            valueListenable: height,
+            builder: (context, value, _) => SizedBox(
+              height: value,
+              child: PluginUiTreeView(
+                tree: tree,
+                onEvent: (node, event, payload) => events.add(payload),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(ListView)).height, 200);
+    expect(events.last, {'first': 0, 'count': 20});
+    height.value = 400;
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(ListView)).height, 400);
+    expect(events.last, {'first': 0, 'count': 40});
+    expect(tester.takeException(), null);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    height.dispose();
+    tree.dispose();
+  });
+  testWidgets('list without height inside Scroll reports a clear error', (
+    tester,
+  ) async {
+    final tree = PluginUiTree(surface: 'test', generation: 1);
+    tree.apply(
+      batch(1, [
+        create(2, 'Scroll'),
+        insert(1, 2),
+        create(3, 'List'),
+        set(3, {'itemExtent': 20, 'itemCount': 10}),
+        insert(2, 3, slot: 'child'),
+      ]),
+    );
+    await tester.pumpWidget(
+      wrap(PluginUiTreeView(tree: tree, onEvent: (_, _, _) {})),
+    );
+    await tester.pump();
+    expect(
+      tester.takeException(),
+      isA<FlutterError>().having(
+        (e) => e.message,
+        'message',
+        contains('Inside Scroll, set height'),
+      ),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    tree.dispose();
+  });
   testWidgets('cross-parent move preserves focused editing state', (
     tester,
   ) async {

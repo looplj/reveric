@@ -5,7 +5,7 @@ import type {
   PluginSetup,
   JsonObject,
   HttpResponse,
-} from "../../sdk/index";
+} from "reveric-plugin-sdk";
 import definitions from "./definitions.json";
 
 const baseUrl = "https://api.deepseek.com/v1/tools";
@@ -181,7 +181,11 @@ async function verifyApiKey(context: ActionContext): Promise<ActionResult> {
   try {
     apiKey = (await context.secrets.get("apiKey"))?.trim() ?? "";
     if (!apiKey)
-      return { ok: false, code: "missing_api_key", message: "API Key is empty" };
+      return {
+        ok: false,
+        code: "missing_api_key",
+        message: "API Key is empty",
+      };
     const response = await context.http.fetch(modelsUrl, {
       method: "GET",
       headers: { Authorization: `Bearer ${apiKey}` },

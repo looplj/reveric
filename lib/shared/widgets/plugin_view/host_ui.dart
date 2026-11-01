@@ -58,7 +58,15 @@ class PluginPageUi {
         return null;
       case 'ui.dialog':
         final title = _text(args, 'title', 200),
-            message = _text(args, 'message', 10000, optional: true);
+            message = _text(args, 'message', 10000, optional: true),
+            confirmLabel = _text(args, 'confirmLabel', 40, optional: true),
+            tone = args['tone'] ?? 'default';
+        if (tone != 'default' && tone != 'danger') {
+          throw PluginHostError(
+            'invalid_argument',
+            'Invalid ui.tone (default or danger)',
+          );
+        }
         if (_showing) {
           throw PluginHostError('busy', 'A dialog is already open');
         }
@@ -68,6 +76,10 @@ class PluginPageUi {
                 context: context,
                 builder: (dialog) {
                   _dialog = ModalRoute.of(dialog);
+                  final label = confirmLabel.isEmpty
+                      ? dialog.t(LocaleKeys.commonConfirm)
+                      : confirmLabel;
+                  void confirm() => Navigator.of(dialog).pop(true);
                   return RevericDialog(
                     title: title,
                     content: message.isEmpty ? null : Text(message),
@@ -76,10 +88,10 @@ class PluginPageUi {
                         label: dialog.t(LocaleKeys.commonCancel),
                         onPressed: () => Navigator.of(dialog).pop(false),
                       ),
-                      RevericButton.primary(
-                        label: dialog.t(LocaleKeys.commonConfirm),
-                        onPressed: () => Navigator.of(dialog).pop(true),
-                      ),
+                      if (tone == 'danger')
+                        RevericButton.danger(label: label, onPressed: confirm)
+                      else
+                        RevericButton.primary(label: label, onPressed: confirm),
                     ],
                   );
                 },

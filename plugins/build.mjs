@@ -1,14 +1,6 @@
 import { build } from "esbuild";
-import { tsxPlugin } from "./sdk/tsx_transform.mjs";
-import {
-  readdir,
-  readFile,
-  mkdir,
-  writeFile,
-  copyFile,
-  mkdtemp,
-  rm,
-} from "node:fs/promises";
+import { buildPlugin } from "reveric-plugin-sdk/build";
+import { readdir, readFile, mkdtemp, rm, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -59,63 +51,30 @@ if (process.argv.includes("--test")) {
         tests.push(output);
       }
     }
-    run(["--test", ...tests, "sdk/tsx_transform.test.mjs", "sdk/sqlite_runtime.test.mjs"]);
+    run([
+      "--test",
+      ...tests,
+      "sdk/tsx_transform.test.mjs",
+      "sdk/builder.test.mjs",
+      "sdk/sqlite_runtime.test.mjs",
+    ]);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
 } else {
+  // Bundled plugins build exactly like third-party ones; only the output
+  // directory differs. The workspace-wide tsc above already type-checked them.
   for (const plugin of plugins) {
-    const manifestPath = join(root, plugin, "plugin.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    if (
-      !/^[a-z0-9]+(\.[a-z0-9-]+)+$/.test(manifest.id) ||
-      manifest.main !== "dist/index.js"
-    )
-      throw new Error(`Invalid bundled manifest: ${plugin}`);
-    const result = await build({
-      entryPoints: [join(root, plugin, "src/index.ts")],
-      bundle: true,
-      format: "iife",
-      globalName: "__revericPlugin",
-      minify: true,
-      // Keep Markdown hard-break spaces escaped in generated string literals.
-      supported: { "template-literal": false },
-      platform: "neutral",
-      mainFields: ["module", "main"],
-      target: "es2020",
-      charset: "utf8",
-      legalComments: "eof",
-      write: false,
+    const { id } = JSON.parse(
+      await readFile(join(root, plugin, "plugin.json"), "utf8"),
+    );
+    const { manifest, outDir } = await buildPlugin({
+      root: join(root, plugin),
+      outDir: resolve(root, "../assets/plugins", id),
+      typecheck: false,
       define: { "process.env.LOG_PERF": "false" },
     });
-    const bundle = result.outputFiles[0].contents;
-    if (bundle.byteLength > 2 * 1024 * 1024)
-      throw new Error(`${manifest.id} exceeds 2 MB`);
-    const output = resolve(root, "../assets/plugins", manifest.id);
-    await mkdir(join(output, "dist"), { recursive: true });
-    await writeFile(join(output, manifest.main), bundle);
-    const buildConfigPath=join(root,plugin,'build.json');
-    let config={};
-    try {config=JSON.parse(await readFile(buildConfigPath,'utf8'));}
-    catch(error) {if(error.code!=='ENOENT') throw error;}
-    for(const [name,entry] of Object.entries(config.views??{})) {
-      if(!/^[a-z][a-z0-9-]*$/.test(name)||typeof entry!=='string'||!entry.startsWith('src/views/')||!entry.endsWith('.tsx')||entry.split('/').includes('..')||entry.includes('\\')) throw new Error('Invalid view build entry');
-      await mkdir(join(output,'dist/views'),{recursive:true});
-      const view=await build({entryPoints:[join(root,plugin,entry)],bundle:true,format:'iife',globalName:'__revericView',
-        platform:'neutral',target:'es2020',charset:'utf8',sourcemap:true,sourcesContent:true,write:false,
-        outfile:join(output,'dist/views',name+'.js'),plugins:[tsxPlugin()]});
-      for(const file of view.outputFiles) {
-        if(file.path.endsWith('.js')&&file.contents.byteLength>2*1024*1024) throw new Error('View exceeds 2 MB');
-        await writeFile(file.path,file.contents);
-      }
-    }
-    for (const migration of manifest.database?.migrations ?? []) {
-      const source = migration.source;
-      if (typeof source !== 'string' || !source.endsWith('.sql') || source.startsWith('/') || source.includes('\\') || source.includes(':') || source.split('/').some(part => !part || part === '..' || part === '.')) throw new Error('Invalid migration source');
-      await mkdir(dirname(join(output, source)), {recursive:true});
-      await copyFile(join(root,plugin,source),join(output,source));
-    }
-    await copyFile(manifestPath, join(output, "plugin.json"));
-    console.log(`${manifest.id}: ${bundle.byteLength} bytes`);
+    const { size } = await stat(join(outDir, manifest.main));
+    console.log(`${manifest.id}: ${size} bytes`);
   }
 }

@@ -6,7 +6,6 @@
 const pluginUiSchema = <String, dynamic>{
   "protocol": "reveric-tsx-v1",
   "common": {
-    "key": {"type": "string"},
     "testId": {"type": "string"},
     "accessibleLabel": {"type": "string"},
     "flex": {"type": "integer", "default": 0},
@@ -41,7 +40,7 @@ const pluginUiSchema = <String, dynamic>{
           "default": "start",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {"children": "many"},
     },
     "Row": {
@@ -73,7 +72,7 @@ const pluginUiSchema = <String, dynamic>{
           "default": "start",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {"children": "many"},
     },
     "Wrap": {
@@ -116,10 +115,11 @@ const pluginUiSchema = <String, dynamic>{
           "default": "start",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {"children": "many"},
     },
     "Box": {
+      "children": "child",
       "props": {
         "padding": {
           "type": "string",
@@ -154,10 +154,11 @@ const pluginUiSchema = <String, dynamic>{
         "minHeight": {"type": "nonnegative"},
         "maxHeight": {"type": "nonnegative"},
       },
-      "events": [],
+      "events": {},
       "slots": {"child": "one"},
     },
     "Scroll": {
+      "children": "child",
       "props": {
         "direction": {
           "type": "string",
@@ -166,7 +167,7 @@ const pluginUiSchema = <String, dynamic>{
         },
         "maxHeight": {"type": "nonnegative"},
       },
-      "events": [],
+      "events": {},
       "slots": {"child": "one"},
     },
     "Gap": {
@@ -188,17 +189,18 @@ const pluginUiSchema = <String, dynamic>{
           "default": "md",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {},
     },
     "List": {
+      "wrapper": true,
       "props": {
         "itemExtent": {"type": "positive", "required": true},
-        "height": {"type": "positive", "required": true},
-        "itemCount": {"type": "integer", "default": 0},
-        "firstIndex": {"type": "integer", "default": 0},
+        "height": {"type": "positive"},
+        "itemCount": {"type": "integer", "default": 0, "internal": true},
+        "firstIndex": {"type": "integer", "default": 0, "internal": true},
       },
-      "events": ["viewport"],
+      "events": {"viewport": "viewport"},
       "slots": {"children": "many"},
     },
     "Text": {
@@ -223,14 +225,14 @@ const pluginUiSchema = <String, dynamic>{
         },
         "maxLines": {"type": "positiveInteger"},
       },
-      "events": [],
+      "events": {},
       "slots": {},
     },
     "Markdown": {
       "props": {
         "text": {"type": "string", "required": true},
       },
-      "events": [],
+      "events": {},
       "slots": {},
     },
     "Icon": {
@@ -254,10 +256,11 @@ const pluginUiSchema = <String, dynamic>{
           "default": "default",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {},
     },
     "Card": {
+      "children": "child",
       "props": {
         "padding": {
           "type": "string",
@@ -276,7 +279,7 @@ const pluginUiSchema = <String, dynamic>{
           "default": "lg",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {"child": "one"},
     },
     "Divider": {
@@ -287,7 +290,7 @@ const pluginUiSchema = <String, dynamic>{
           "default": "horizontal",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {},
     },
     "Badge": {
@@ -306,22 +309,23 @@ const pluginUiSchema = <String, dynamic>{
           "default": "default",
         },
       },
-      "events": [],
+      "events": {},
       "slots": {},
     },
     "Loading": {
       "props": {
         "label": {"type": "string"},
       },
-      "events": [],
+      "events": {},
       "slots": {},
     },
     "EmptyState": {
+      "children": "actions",
       "props": {
         "label": {"type": "string"},
         "message": {"type": "string", "required": true},
       },
-      "events": [],
+      "events": {},
       "slots": {"actions": "many"},
     },
     "Button": {
@@ -341,7 +345,7 @@ const pluginUiSchema = <String, dynamic>{
         "loading": {"type": "boolean", "default": false},
         "icon": {"type": "string"},
       },
-      "events": ["onPress"],
+      "events": {"onPress": "press"},
       "slots": {},
     },
     "IconButton": {
@@ -350,7 +354,7 @@ const pluginUiSchema = <String, dynamic>{
         "tooltip": {"type": "string", "required": true},
         "disabled": {"type": "boolean", "default": false},
       },
-      "events": ["onPress"],
+      "events": {"onPress": "press"},
       "slots": {},
     },
     "TextField": {
@@ -362,7 +366,7 @@ const pluginUiSchema = <String, dynamic>{
         "disabled": {"type": "boolean", "default": false},
         "multiline": {"type": "boolean", "default": false},
       },
-      "events": ["onChange", "onSubmit"],
+      "events": {"onChange": "text", "onSubmit": "text"},
       "slots": {},
     },
     "SearchField": {
@@ -374,7 +378,7 @@ const pluginUiSchema = <String, dynamic>{
         "disabled": {"type": "boolean", "default": false},
         "debounceMs": {"type": "nonnegative", "default": 300},
       },
-      "events": ["onChange", "onSubmit"],
+      "events": {"onChange": "text", "onSubmit": "text"},
       "slots": {},
     },
     "Select": {
@@ -383,7 +387,7 @@ const pluginUiSchema = <String, dynamic>{
         "options": {"type": "selectOptions", "required": true},
         "disabled": {"type": "boolean", "default": false},
       },
-      "events": ["onChange"],
+      "events": {"onChange": "select"},
       "slots": {},
     },
     "Checkbox": {
@@ -392,7 +396,7 @@ const pluginUiSchema = <String, dynamic>{
         "label": {"type": "string"},
         "disabled": {"type": "boolean", "default": false},
       },
-      "events": ["onChange"],
+      "events": {"onChange": "boolean"},
       "slots": {},
     },
     "Switch": {
@@ -401,15 +405,17 @@ const pluginUiSchema = <String, dynamic>{
         "label": {"type": "string"},
         "disabled": {"type": "boolean", "default": false},
       },
-      "events": ["onChange"],
+      "events": {"onChange": "boolean"},
       "slots": {},
     },
     "Tabs": {
+      "wrapper": true,
+      "children": "content",
       "props": {
         "items": {"type": "tabs", "required": true},
         "value": {"type": "string", "required": true},
       },
-      "events": ["onChange"],
+      "events": {"onChange": "tab"},
       "slots": {"content": "one"},
     },
     "Collapsible": {
@@ -417,35 +423,38 @@ const pluginUiSchema = <String, dynamic>{
         "title": {"type": "string", "required": true},
         "open": {"type": "boolean", "required": true},
       },
-      "events": ["onOpenChange"],
+      "events": {"onOpenChange": "open"},
       "slots": {"children": "many"},
     },
     "Menu": {
+      "children": "trigger",
       "props": {
         "items": {"type": "menuItems", "required": true},
       },
-      "events": ["onSelect"],
+      "events": {"onSelect": "id"},
       "slots": {"trigger": "one"},
     },
     "Dialog": {
+      "children": "body",
       "props": {
         "open": {"type": "boolean", "required": true},
         "title": {"type": "string", "required": true},
       },
-      "events": ["onOpenChange"],
+      "events": {"onOpenChange": "open"},
       "slots": {"body": "one", "actions": "many"},
     },
     "Popover": {
+      "children": "body",
       "props": {
         "open": {"type": "boolean", "required": true},
       },
-      "events": ["onOpenChange"],
+      "events": {"onOpenChange": "open"},
       "slots": {"trigger": "one", "body": "one"},
     },
     "Fragment": {
       "internal": true,
       "props": {},
-      "events": [],
+      "events": {},
       "slots": {"children": "many"},
     },
   },

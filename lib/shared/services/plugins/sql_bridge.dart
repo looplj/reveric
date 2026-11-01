@@ -6,53 +6,91 @@
 const pluginSqliteBridge = r'''
 // Shared JSON bridge codec. Executed in the same realm as plugin code.
 function __revericSqlite(call) {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const invalid = message => { const error = new Error(message); error.code = 'invalid_argument'; throw error; };
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const invalid = (message) => {
+    const error = new Error(message);
+    error.code = "invalid_argument";
+    throw error;
+  };
   function encode(value) {
-    if (value === null || typeof value === 'string') return value;
-    if (typeof value === 'number') {
-      if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) invalid('SQL numbers must be finite and integers safe; use bigint');
+    if (value === null || typeof value === "string") return value;
+    if (typeof value === "number") {
+      if (
+        !Number.isFinite(value) ||
+        (Number.isInteger(value) && !Number.isSafeInteger(value))
+      )
+        invalid("SQL numbers must be finite and integers safe; use bigint");
       return value;
     }
-    if (typeof value === 'bigint') {
-      if (value < -(1n << 63n) || value >= (1n << 63n)) invalid('SQL bigint exceeds signed 64-bit range');
-      return {__revericSql:'int64',value:value.toString()};
+    if (typeof value === "bigint") {
+      if (value < -(1n << 63n) || value >= 1n << 63n)
+        invalid("SQL bigint exceeds signed 64-bit range");
+      return { __revericSql: "int64", value: value.toString() };
     }
     if (value instanceof Uint8Array) {
-      let result='';
-      for(let i=0;i<value.length;i+=3) {
-        const a=value[i],b=value[i+1]??0,c=value[i+2]??0;
-        result+=alphabet[a>>2]+alphabet[((a&3)<<4)|(b>>4)]+(i+1<value.length?alphabet[((b&15)<<2)|(c>>6)]:'=')+(i+2<value.length?alphabet[c&63]:'=');
+      let result = "";
+      for (let i = 0; i < value.length; i += 3) {
+        const a = value[i],
+          b = value[i + 1] ?? 0,
+          c = value[i + 2] ?? 0;
+        result +=
+          alphabet[a >> 2] +
+          alphabet[((a & 3) << 4) | (b >> 4)] +
+          (i + 1 < value.length ? alphabet[((b & 15) << 2) | (c >> 6)] : "=") +
+          (i + 2 < value.length ? alphabet[c & 63] : "=");
       }
-      return {__revericSql:'blob',value:result};
+      return { __revericSql: "blob", value: result };
     }
-    return invalid('Expected SQL null, string, number, bigint or Uint8Array');
+    return invalid("Expected SQL null, string, number, bigint or Uint8Array");
   }
   function decode(value) {
-    if (value && typeof value === 'object' && value.__revericSql === 'int64') return BigInt(value.value);
-    if (value && typeof value === 'object' && value.__revericSql === 'blob') {
-      const raw=value.value, result=[];
-      for(let i=0;i<raw.length;i+=4) {
-        const a=alphabet.indexOf(raw[i]),b=alphabet.indexOf(raw[i+1]),c=alphabet.indexOf(raw[i+2]),d=alphabet.indexOf(raw[i+3]);
-        result.push((a<<2)|(b>>4));
-        if(raw[i+2]!=='=') result.push(((b&15)<<4)|(c>>2));
-        if(raw[i+3]!=='=') result.push(((c&3)<<6)|d);
+    if (value && typeof value === "object" && value.__revericSql === "int64")
+      return BigInt(value.value);
+    if (value && typeof value === "object" && value.__revericSql === "blob") {
+      const raw = value.value,
+        result = [];
+      for (let i = 0; i < raw.length; i += 4) {
+        const a = alphabet.indexOf(raw[i]),
+          b = alphabet.indexOf(raw[i + 1]),
+          c = alphabet.indexOf(raw[i + 2]),
+          d = alphabet.indexOf(raw[i + 3]);
+        result.push((a << 2) | (b >> 4));
+        if (raw[i + 2] !== "=") result.push(((b & 15) << 4) | (c >> 2));
+        if (raw[i + 3] !== "=") result.push(((c & 3) << 6) | d);
       }
       return new Uint8Array(result);
     }
     return value;
   }
   function statement(input) {
-    if (!input || typeof input.sql!=='string' || (input.params!==undefined&&!Array.isArray(input.params))) return invalid('Expected SQL statement with positional params');
-    return {sql:input.sql,params:(input.params??[]).map(encode)};
+    if (
+      !input ||
+      typeof input.sql !== "string" ||
+      (input.params !== undefined && !Array.isArray(input.params))
+    )
+      return invalid("Expected SQL statement with positional params");
+    return { sql: input.sql, params: (input.params ?? []).map(encode) };
   }
-  const write = result => ({changes:result.changes,lastInsertRowId:decode(result.lastInsertRowId)});
+  const write = (result) => ({
+    changes: result.changes,
+    lastInsertRowId: decode(result.lastInsertRowId),
+  });
   return Object.freeze({
-    query:async input => (await call('sqlite.query',{statement:statement(input)})).map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,decode(value)]))),
-    execute:async input => write(await call('sqlite.execute',{statement:statement(input)})),
-    transaction:async inputs => {
-      if(!Array.isArray(inputs)) return invalid('Expected SQL statement array');
-      return (await call('sqlite.transaction',{statements:inputs.map(statement)})).map(write);
+    query: async (input) =>
+      (await call("sqlite.query", { statement: statement(input) })).map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([key, value]) => [key, decode(value)]),
+        ),
+      ),
+    execute: async (input) =>
+      write(await call("sqlite.execute", { statement: statement(input) })),
+    transaction: async (inputs) => {
+      if (!Array.isArray(inputs))
+        return invalid("Expected SQL statement array");
+      return (
+        await call("sqlite.transaction", { statements: inputs.map(statement) })
+      ).map(write);
     },
   });
 }
