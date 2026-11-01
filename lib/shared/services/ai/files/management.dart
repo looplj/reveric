@@ -74,7 +74,7 @@ class ManagedFiles {
       }
       return portableAbsolute(path);
     }
-    CommandPaths(files).absolute(path, write: true);
+    final target = CommandPaths(files).absolute(path, write: true);
     if (path.contains('\\') || path.contains(':')) {
       throw const FormatException(
         'Use / separators in work-relative selectors.',
@@ -93,7 +93,7 @@ class ManagedFiles {
         'Empty, . and .. path segments are not allowed.',
       );
     }
-    return normalized;
+    return p.posix.joinAll(p.split(p.relative(target, from: _root)));
   }
 
   final String _root;

@@ -12,6 +12,90 @@ import 'package:reveric/shared/services/ai/provider_initializer.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 
 void main() {
+  for (final providerType in ['deepseek', 'openai_compatible']) {
+    test(
+      '$providerType preserves parallel image tool results on the wire',
+      () async {
+        final provider = aiProviderBuiltinById(
+          'deepseek',
+        )!.copyWith(type: providerType, apiKey: 'test-key');
+        final initializer = AiProviderInitializer(
+          config: provider,
+          chatModel: 'deepseek-flash',
+          httpClient: MockClient((request) async {
+            final body = jsonDecode(request.body) as Map;
+            final messages = (body['messages'] as List).cast<Map>();
+            expect(messages.map((m) => m['role']), [
+              'assistant',
+              'tool',
+              'tool',
+              'user',
+              'user',
+              'user',
+            ]);
+            expect(messages[1]['tool_call_id'], 'a');
+            expect(messages[2]['tool_call_id'], 'b');
+            for (var i = 0; i < 2; i++) {
+              final content = (messages[i + 3]['content'] as List).cast<Map>();
+              expect(
+                content.last['image_url']['url'],
+                'data:image/png;base64,${i == 0 ? 'AAA=' : 'BBB='}',
+              );
+            }
+            expect(messages.last['content'], 'continue');
+            return http.Response(
+              jsonEncode({
+                'choices': [
+                  {
+                    'index': 0,
+                    'message': {'role': 'assistant', 'content': 'ok'},
+                    'finish_reason': 'stop',
+                  },
+                ],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }),
+        );
+        addTearDown(initializer.dispose);
+        final api = await initializer.initialize();
+        await api.chat(
+          messages: [
+            const AgentMessage(
+              id: 'assistant',
+              role: AgentMessageRole.assistant,
+              blocks: [
+                ToolCallBlock(callId: 'a', toolName: 'Run', arguments: {}),
+                ToolCallBlock(callId: 'b', toolName: 'Run', arguments: {}),
+              ],
+            ),
+            for (final id in ['a', 'b'])
+              AgentMessage(
+                id: 'result-$id',
+                role: AgentMessageRole.user,
+                type: AgentMessageType.tool_result,
+                blocks: [
+                  ToolResultBlock(
+                    toolCallId: id,
+                    toolName: 'Run',
+                    content: [
+                      TextBlock('result $id'),
+                      ImageBlock(
+                        data: id == 'a' ? 'AAA=' : 'BBB=',
+                        mimeType: 'image/png',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            AgentMessage.user(id: 'next', content: 'continue'),
+          ],
+        );
+      },
+    );
+  }
+
   test('AtlasCloud reuses Chat Completions with its account key', () async {
     final provider = aiProviderBuiltinById(
       'openai',

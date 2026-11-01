@@ -62,6 +62,41 @@ void main() {
   tearDown(() => support.delete(recursive: true));
 
   test(
+    'stored references select the current-work attachment and protect the root',
+    () async {
+      await write('sessions/current/image.png');
+      for (final path in [
+        'file_workspaces/work/sessions/current/image.png',
+        'file_workspaces/work/sessions/current/*.png',
+      ]) {
+        final selection = await files.select(path, remove: false);
+        expect(selection.paths, ['sessions/current/image.png']);
+      }
+      final removal = await files.select(
+        'file_workspaces/work/sessions/current/image.png',
+        remove: true,
+      );
+      expect(removal.paths, ['sessions/current/image.png']);
+      await removal.verify();
+      await expectLater(
+        files.select('file_workspaces/work', remove: true, recursive: true),
+        throwsA(isA<ToolOperationException>()),
+      );
+      await expectLater(
+        files.select(
+          'file_workspaces/other/sessions/current/image.png',
+          remove: false,
+        ),
+      throwsFormatException,
+      );
+      expect(
+        await File('${root.path}/sessions/current/image.png').exists(),
+        isTrue,
+      );
+    },
+  );
+
+  test(
     'lists direct children with stable pagination and file metadata',
     () async {
       await write('media/a.mp4', '123');

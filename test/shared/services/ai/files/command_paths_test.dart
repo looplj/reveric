@@ -24,6 +24,36 @@ void main() {
   });
   tearDown(() => root.delete(recursive: true));
 
+  test('stored references resolve to the same current-work file', () async {
+    final file = await files.allocate('session', '.txt');
+    await file.writeAsString('attachment');
+    final stored = files.reference(file);
+    for (final path in [stored, stored.replaceAll('/', r'\')]) {
+      expect(
+        (await paths.resolve(path)).path,
+        await file.resolveSymbolicLinks(),
+      );
+      expect(paths.absolute(path, write: true), file.path);
+    }
+    expect(
+      (await paths.resolve(paths.reference(file))).path,
+      await file.resolveSymbolicLinks(),
+    );
+  });
+
+  for (final path in [
+    'file_workspaces/other/sessions/s/file.txt',
+    'file_workspaces/shared/sessions/s/file.txt',
+    'file_workspaces',
+    'file_workspaces/work/../other/file.txt',
+    r'file_workspaces\other\sessions\s\file.txt',
+  ]) {
+    test('rejects foreign or malformed stored reference $path', () {
+      expect(() => paths.absolute(path), throwsFormatException);
+      expect(() => paths.absolute(path, write: true), throwsFormatException);
+    });
+  }
+
   test(
     'relative inputs and outputs use the work root including bare filenames',
     () async {
@@ -108,6 +138,10 @@ void main() {
       ).writeAsString('private');
       await Link('${paths.root}/link').create(other.path);
       await expectLater(paths.resolve('link/keep.txt'), throwsFormatException);
+      await expectLater(
+        paths.resolve('file_workspaces/work/link/keep.txt'),
+        throwsFormatException,
+      );
       await expectLater(
         FfmpegOutputs.resolveTarget(files, 'session', 'link/new.mp4'),
         throwsFormatException,

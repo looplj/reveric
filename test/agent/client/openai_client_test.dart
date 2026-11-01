@@ -47,6 +47,111 @@ http.Response _okResponse() => http.Response(
 );
 
 void main() {
+  test(
+    'stream request closes each tool batch before sending its images',
+    () async {
+      var requests = 0;
+      final client = OpenAiClient(
+        apiKey: 'test',
+        baseUrl: 'https://example.invalid',
+        model: 'test',
+        streamClientFactory: () => MockClient((request) async {
+          requests++;
+          final body = jsonDecode(request.body) as Map;
+          expect(body['stream'], true);
+          final messages = (body['messages'] as List).cast<Map>();
+          expect(messages.map((m) => m['role']), [
+            'assistant',
+            'tool',
+            'tool',
+            'user',
+            'assistant',
+            'tool',
+            'user',
+            'user',
+          ]);
+          expect(messages[1]['tool_call_id'], 'a');
+          expect(messages[2]['tool_call_id'], 'b');
+          expect(messages[2]['content'], 'text-only result');
+          expect(messages[5]['tool_call_id'], 'c');
+          for (final entry in {3: 'AAA=', 6: 'CCC='}.entries) {
+            final parts = (messages[entry.key]['content'] as List).cast<Map>();
+            expect(
+              parts.last['image_url']['url'],
+              'data:image/png;base64,${entry.value}',
+            );
+          }
+          expect(messages.last['content'], 'continue');
+          return http.Response(
+            '${_openAiSseChunk(delta: const {'content': 'ok'}, finishReason: 'stop')}data: [DONE]\n\n',
+            200,
+            headers: {'content-type': 'text/event-stream'},
+          );
+        }),
+      );
+      final events = await client
+          .chatStream(
+            messages: [
+              const AgentMessage(
+                id: 'first',
+                role: AgentMessageRole.assistant,
+                blocks: [
+                  ToolCallBlock(callId: 'a', toolName: 'Run', arguments: {}),
+                  ToolCallBlock(callId: 'b', toolName: 'Run', arguments: {}),
+                ],
+              ),
+              const AgentMessage(
+                id: 'a',
+                role: AgentMessageRole.user,
+                type: AgentMessageType.tool_result,
+                blocks: [
+                  ToolResultBlock(
+                    toolCallId: 'a',
+                    toolName: 'Run',
+                    content: [ImageBlock(data: 'AAA=', mimeType: 'image/png')],
+                  ),
+                ],
+              ),
+              const AgentMessage(
+                id: 'b',
+                role: AgentMessageRole.user,
+                type: AgentMessageType.tool_result,
+                blocks: [
+                  ToolResultBlock(
+                    toolCallId: 'b',
+                    toolName: 'Run',
+                    content: [TextBlock('text-only result')],
+                  ),
+                ],
+              ),
+              const AgentMessage(
+                id: 'second',
+                role: AgentMessageRole.assistant,
+                blocks: [
+                  ToolCallBlock(callId: 'c', toolName: 'Run', arguments: {}),
+                ],
+              ),
+              const AgentMessage(
+                id: 'c',
+                role: AgentMessageRole.user,
+                type: AgentMessageType.tool_result,
+                blocks: [
+                  ToolResultBlock(
+                    toolCallId: 'c',
+                    toolName: 'Run',
+                    content: [ImageBlock(data: 'CCC=', mimeType: 'image/png')],
+                  ),
+                ],
+              ),
+              AgentMessage.user(id: 'next', content: 'continue'),
+            ],
+          )
+          .toList();
+      expect(requests, 1);
+      expect(events.whereType<TextDelta>().single.text, 'ok');
+    },
+  );
+
   test('interleaved image wrappers retain their exact order', () {
     final out = _make().convertMessages([
       AgentMessage.user(
