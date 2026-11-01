@@ -1,4 +1,4 @@
-// 职责: 从资源定义生成 Read 按需返回契约。
+// 职责: 声明内置工具输出结构，并从资源定义生成 Read 按需返回契约。
 // 关联文件:
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/services/ai/tools_schema.dart
@@ -23,7 +23,7 @@ Map<String, dynamic> _outputObject(
 
 const _outputPagination = <String, dynamic>{
   'total': _outputInteger,
-  'offset': _outputInteger,
+  'next_offset': _outputInteger,
   'limit': _outputInteger,
   'has_more': _outputBoolean,
 };
@@ -145,4 +145,251 @@ Map<String, dynamic> _resourceReadOutputSchema(
     };
   }
   return detail;
+}
+
+const _outputStrings = <String, dynamic>{
+  'type': 'array',
+  'items': _outputString,
+};
+const _outputMap = <String, dynamic>{
+  'type': 'object',
+  'additionalProperties': true,
+};
+const _outputMaps = <String, dynamic>{'type': 'array', 'items': _outputMap};
+
+/// 工具级静态输出契约；Read 的路径专属字段仍由 /_schema 按资源提供。
+Map<String, dynamic> _builtinToolOutputSchema(String name) {
+  final (properties, required) = switch (name) {
+    'Read' => (
+      <String, dynamic>{
+        'path': _outputString,
+        'type': _outputString,
+        'entries': _outputMaps,
+        'value': <String, dynamic>{},
+        ..._outputPagination,
+        ..._outputTextPagination,
+      },
+      <String>[],
+    ),
+    'Glob' => (
+      <String, dynamic>{
+        'matches': _outputStrings,
+        'total': _outputInteger,
+        'truncated': _outputBoolean,
+        'scanned_paths': _outputInteger,
+        'scan_limit': _outputInteger,
+        'scan_truncated': _outputBoolean,
+      },
+      [
+        'matches',
+        'total',
+        'truncated',
+        'scanned_paths',
+        'scan_limit',
+        'scan_truncated',
+      ],
+    ),
+    'Grep' => (
+      <String, dynamic>{
+        'text': _outputString,
+        'truncated': _outputBoolean,
+        'has_more': _outputBoolean,
+        'next_offset': _outputInteger,
+        'scanned_paths': _outputInteger,
+        'scan_limit': _outputInteger,
+        'scan_truncated': _outputBoolean,
+        'searched_files': _outputInteger,
+        'search_file_limit': _outputInteger,
+        'search_truncated': _outputBoolean,
+      },
+      [
+        'text',
+        'truncated',
+        'has_more',
+        'scanned_paths',
+        'scan_truncated',
+        'searched_files',
+        'search_truncated',
+      ],
+    ),
+    'Create' || 'Write' => (
+      <String, dynamic>{
+        'path': _outputString,
+        'id': _outputString,
+        'created': _outputBoolean,
+        'updated': _outputBoolean,
+        'fields': _outputStrings,
+        'ignored_fields': _outputStrings,
+        'content_word_counts': _outputObject(
+          {
+            'with_punctuation': _outputInteger,
+            'without_punctuation': _outputInteger,
+          },
+          ['with_punctuation', 'without_punctuation'],
+        ),
+      },
+      name == 'Create' ? ['path'] : <String>[],
+    ),
+    'Edit' => (
+      <String, dynamic>{
+        'path': _outputString,
+        'edited': _outputBoolean,
+        'match_count': _outputInteger,
+        'content_word_counts': _outputObject(
+          {
+            'with_punctuation': _outputInteger,
+            'without_punctuation': _outputInteger,
+          },
+          ['with_punctuation', 'without_punctuation'],
+        ),
+      },
+      ['edited', 'match_count'],
+    ),
+    'Replace' => (
+      <String, dynamic>{
+        'dry_run': _outputBoolean,
+        'matched_fields': _outputInteger,
+        'total_matches': _outputInteger,
+        'samples': _outputStrings,
+        'applied_fields': _outputInteger,
+        'total_replacements': _outputInteger,
+        'skipped_fields': _outputMap,
+        'failed': {
+          'type': 'object',
+          'additionalProperties': _outputObject(
+            {'count': _outputInteger, 'sample_paths': _outputStrings},
+            ['count', 'sample_paths'],
+          ),
+        },
+      },
+      ['dry_run'],
+    ),
+    'Remove' => (
+      <String, dynamic>{
+        'path': _outputString,
+        'removed': _outputBoolean,
+        'missing': _outputBoolean,
+      },
+      ['removed'],
+    ),
+    'GraphSearch' => (
+      <String, dynamic>{
+        'start_entity_type': _outputString,
+        'start_entity_id': _outputString,
+        'total_relations': _outputInteger,
+        'layers': {
+          'type': 'array',
+          'items': _outputObject(
+            {'depth': _outputInteger, 'relations': _outputMaps},
+            ['depth', 'relations'],
+          ),
+        },
+      },
+      ['start_entity_type', 'start_entity_id', 'total_relations', 'layers'],
+    ),
+    'AskUser' => (
+      <String, dynamic>{
+        'answers': {
+          'type': 'array',
+          'items': _outputObject(
+            {
+              'question_id': _outputString,
+              'selected_options': _outputStrings,
+              'answer': _outputString,
+            },
+            ['question_id'],
+          ),
+        },
+        'cancelled': _outputBoolean,
+        'resolution': _outputString,
+        'unanswered_question_ids': _outputStrings,
+        'message': _outputString,
+      },
+      ['cancelled'],
+    ),
+    'SpawnAgent' => (
+      <String, dynamic>{
+        'session_id': _outputString,
+        'run_id': _outputString,
+        'status': _outputString,
+        'output': _outputString,
+      },
+      ['session_id'],
+    ),
+    'SendAgentMessage' || 'StopAgent' => (
+      <String, dynamic>{
+        'session_id': _outputString,
+        'accepted': _outputBoolean,
+        'status': _outputString,
+        'run_id': _outputString,
+      },
+      ['session_id', 'accepted'],
+    ),
+    'AgentSkill' => (<String, dynamic>{'content': _outputString}, ['content']),
+    'SuggestNextAction' => (<String, dynamic>{}, <String>[]),
+    'TodoWrite' => (
+      <String, dynamic>{
+        'todos': {
+          'type': 'array',
+          'items': _outputObject(
+            {
+              'id': _outputString,
+              'content': _outputString,
+              'status': _outputString,
+              'priority': _outputString,
+            },
+            ['id', 'content', 'status', 'priority'],
+          ),
+        },
+        'summary': _outputString,
+      },
+      ['todos', 'summary'],
+    ),
+    // Run 的命名空间独立定义业务返回；这里描述共有执行状态和异步回执。
+    'Run' => (
+      <String, dynamic>{
+        'output': <String, dynamic>{},
+        'run_id': _outputString,
+        'status': _outputString,
+        'background': _outputBoolean,
+        'result': _outputMap,
+        'exit_code': _outputInteger,
+        'has_more': _outputBoolean,
+        'next_offset': {
+          'type': ['integer', 'null'],
+        },
+      },
+      <String>[],
+    ),
+    _ => throw StateError('Missing builtin output schema: $name'),
+  };
+  return {
+    'type': 'object',
+    'anyOf': [
+      _outputObject(
+        {
+          'ok': _outputTrue,
+          'hint': {
+            'type': ['string', 'null'],
+          },
+          ...properties,
+        },
+        ['ok', ...required],
+      ),
+      _outputObject(
+        {
+          'ok': _outputFalse,
+          'error_code': _outputString,
+          'error': _outputString,
+          'hint': {
+            'type': ['string', 'null'],
+          },
+          'cancelled': _outputBoolean,
+          'skipped': _outputBoolean,
+          'rejected': _outputBoolean,
+        },
+        ['ok'],
+      ),
+    ],
+  };
 }

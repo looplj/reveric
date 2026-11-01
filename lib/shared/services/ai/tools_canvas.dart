@@ -771,7 +771,7 @@ mixin _AiToolManagerCanvasMixin on _AiToolManagerBase {
     var resolvedName = canvas.name;
     final updated = <String>[];
     try {
-      if (hasName) {
+      if (hasName && fields['name'] != canvas.name) {
         final newName = fields['name'] as String;
         await _contentService.canvasService.renameCanvas(
           canvasId: canvas.id,
@@ -780,7 +780,7 @@ mixin _AiToolManagerCanvasMixin on _AiToolManagerBase {
         resolvedName = newName;
         updated.add('name');
       }
-      if (hasDescription) {
+      if (hasDescription && fields['description'] != canvas.description) {
         await _contentService.canvasService.updateCanvasDescription(
           canvasId: canvas.id,
           description: fields['description'] as String,
@@ -799,7 +799,7 @@ mixin _AiToolManagerCanvasMixin on _AiToolManagerBase {
     return {
       'ok': true,
       'path': _canvasResourcePath(resolvedName),
-      'updated': true,
+      'updated': updated.isNotEmpty,
       'fields': updated,
       if (resolvedName != canvas.name)
         'hint':
@@ -857,7 +857,9 @@ mixin _AiToolManagerCanvasMixin on _AiToolManagerBase {
         );
         movedTo = placement.position;
         adjusted = placement.adjusted;
-        updated.add(hasGrid ? 'col/row' : 'x/y');
+        if (movedTo.dx != node.x || movedTo.dy != node.y) {
+          updated.add(hasGrid ? 'col/row' : 'x/y');
+        }
       }
       await _contentService.canvasService.updateNode(
         nodeId: nodeId,
@@ -885,7 +887,18 @@ mixin _AiToolManagerCanvasMixin on _AiToolManagerBase {
           'color',
           'content',
         ])
-          if (fields.containsKey(field)) field,
+          if (fields.containsKey(field) &&
+              switch (field) {
+                'type' => fields[field] != node.type,
+                'ref_type' => fields[field] != node.refType,
+                'ref_id' => fields[field] != node.refId,
+                'title' => fields[field] != node.title,
+                'content' => fields[field] != node.content,
+                'color' =>
+                  canvasStyleWithColor(node.style, color) != node.style,
+                _ => false,
+              })
+            field,
       ]);
     } on CanvasServiceException catch (e) {
       return _canvasError(
@@ -905,7 +918,7 @@ mixin _AiToolManagerCanvasMixin on _AiToolManagerBase {
     return {
       'ok': true,
       'path': path,
-      'updated': true,
+      'updated': updated.isNotEmpty,
       'fields': updated,
       if (hasGrid || hasExplicit) ...{
         'x': movedTo.dx,

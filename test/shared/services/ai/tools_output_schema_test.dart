@@ -11,6 +11,8 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/services/ai/codemode/tool.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
+import 'package:reveric/shared/services/ai/tool_catalog.dart';
+import 'package:reveric/shared/services/mcp/runtime.dart';
 import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
@@ -36,6 +38,8 @@ void main() {
       content,
       workingOverlayService: overlay,
       sessionId: 'test',
+      skillLoader: (_) async => null,
+      suggestNextActionCallback: (_, _) {},
     )..registerAllTools();
   });
   tearDown(() async {
@@ -53,8 +57,160 @@ void main() {
     final target = manager ?? tools;
     final result = await target.executeTool(name: name, input: input);
     expect(result['ok'], ok, reason: '$name $input: $result');
+    final definition = target.buildToolDefs().singleWhere(
+      (tool) => tool.name == name,
+    );
+    expect(
+      _accepts(definition.outputSchema!, result),
+      isTrue,
+      reason: '$name output schema: $result',
+    );
     return result;
   }
+
+  test(
+    'builtin definitions expose output schemas through describeTool',
+    () async {
+      final runtime = McpRuntime(
+        connect: (_) => throw StateError('No MCP connection expected'),
+      );
+      addTearDown(runtime.close);
+      final catalog = AgentToolCatalog(
+        runtime: runtime,
+        builtins: () => [...tools.buildToolDefs(), codemodeToolDef],
+      );
+      for (final definition in [...tools.buildToolDefs(), codemodeToolDef]) {
+        expect(definition.outputSchema, isNotNull, reason: definition.name);
+        final described = await catalog.describeTool(definition.name);
+        expect(
+          described['outputSchema'],
+          definition.outputSchema,
+          reason: definition.name,
+        );
+      }
+    },
+  );
+
+  test(
+    'Write no-op semantics agree across resource kinds and arrays',
+    () async {
+      for (final (collection, fields, field, value)
+          in <(String, Map<String, dynamic>, String, Object)>[
+            ('volumes', {'title': '卷'}, 'title', '新卷'),
+            ('characters', {'name': '角色'}, 'name', '新角色'),
+            ('foreshadowing', {'title': '伏笔'}, 'title', '新伏笔'),
+            ('skills', {'title': '技能'}, 'content', '新内容'),
+            ('lore', {'title': '世界'}, 'content', '新世界'),
+            ('canvas', {'name': '画布'}, 'description', '新说明'),
+          ]) {
+        final created = await call('Create', {
+          'path': collection,
+          'fields': fields,
+        });
+        final input = {'path': '${created['path']}/$field', 'value': value};
+        expect(
+          (await call('Write', input))['updated'],
+          isTrue,
+          reason: collection,
+        );
+        expect(
+          (await call('Write', input))['updated'],
+          isFalse,
+          reason: collection,
+        );
+        expect((await call('Read', {'path': input['path']}))['value'], value);
+      }
+      final locationId = await content.locationsService.createLocation(
+        name: '地点',
+        type: 'world',
+      );
+      final locationInput = {
+        'path': 'locations/$locationId/name',
+        'value': '新地点',
+      };
+      expect((await call('Write', locationInput))['updated'], isTrue);
+      expect((await call('Write', locationInput))['updated'], isFalse);
+      final character = await call('Create', {
+        'path': 'characters',
+        'fields': {'name': '数组角色'},
+      });
+      for (final field in ['tags', 'aliases']) {
+        final input = {
+          'path': '${character['path']}/$field',
+          'value': ['甲', '乙'],
+        };
+        expect((await call('Write', input))['updated'], isTrue);
+        expect((await call('Write', input))['updated'], isFalse);
+      }
+      final chapter = await call('Create', {
+        'path': 'chapters',
+        'fields': {'title': '分析'},
+      });
+      for (final (field, value) in <(String, Object)>[
+        ('tension', 5),
+        ('emotion', ['tense']),
+        (
+          'events',
+          [
+            {'title': '事件', 'summary': '经过'},
+          ],
+        ),
+      ]) {
+        final input = {'path': '${chapter['path']}/$field', 'value': value};
+        expect((await call('Write', input))['updated'], isTrue);
+        expect((await call('Write', input))['updated'], isFalse);
+      }
+    },
+  );
+
+  test(
+    'Write reports actual changes when repeating the same chapter value',
+    () async {
+      final chapter = await call('Create', {
+        'path': 'chapters',
+        'fields': {'title': '原题'},
+      });
+      final path = '${chapter['path']}/title';
+      final changed = await call('Write', {'path': path, 'value': '新题'});
+      expect(changed['updated'], isTrue);
+      expect((await call('Read', {'path': path}))['value'], '新题');
+      final unchanged = await call('Write', {'path': path, 'value': '新题'});
+      expect(unchanged['updated'], isFalse);
+      expect((await call('Read', {'path': path}))['value'], '新题');
+    },
+  );
+
+  test('Grep exposes continuation after head_limit and terminates', () async {
+    final chapter = await call('Create', {
+      'path': 'chapters',
+      'fields': {'title': '检索', 'content': '命中甲\n命中乙\n命中丙\n命中丁\n命中戊'},
+    });
+    final input = {
+      'path': '${chapter['path']}/content',
+      'pattern': '命中',
+      'head_limit': 2,
+    };
+    final first = await call('Grep', input);
+    expect(first['truncated'], isTrue);
+    expect(first['has_more'], isTrue);
+    expect(first['next_offset'], 2);
+    final second = await call('Grep', {
+      ...input,
+      'offset': first['next_offset'],
+    });
+    expect(second['next_offset'], 4);
+    final last = await call('Grep', {
+      ...input,
+      'offset': second['next_offset'],
+    });
+    expect(last['has_more'], isFalse);
+    expect(last['truncated'], isFalse);
+    expect(last, isNot(contains('next_offset')));
+    final text = '${first['text']}${second['text']}${last['text']}';
+    for (final suffix in ['甲', '乙', '丙', '丁', '戊']) {
+      expect('命中$suffix'.allMatches(text), hasLength(1));
+    }
+  });
 
   test(
     'read contracts are independent of content kind and stored data',
@@ -83,6 +239,66 @@ void main() {
       });
       for (final entry in contracts.entries) {
         expect(await call('Read', {'path': entry.key}), entry.value);
+      }
+    },
+  );
+
+  test(
+    'listing next_offset traverses every chapter once and terminates',
+    () async {
+      final paths = <String>[];
+      for (var i = 0; i < 5; i++) {
+        final created = await call('Create', {
+          'path': 'chapters',
+          'fields': {'title': '分页 $i'},
+        });
+        paths.add(created['path'] as String);
+      }
+      final contract = await call('Read', {'path': '/_schema/chapters'});
+      final operation = (contract['operation_contracts'] as List)
+          .cast<Map>()
+          .singleWhere(
+            (op) => op['tool'] == 'Read' && op['target'] == 'listing',
+          );
+      final properties =
+          operation['result']['output_schema']['properties'] as Map;
+      expect(properties, contains('next_offset'));
+      expect(properties, isNot(contains('offset')));
+
+      final seen = <String>[];
+      var offset = 0;
+      var pages = 0;
+      while (true) {
+        final page = await call('Read', {
+          'path': 'chapters',
+          'sort': 'chapter_num',
+          'offset': offset,
+          'limit': 2,
+        });
+        expect(page, isNot(contains('offset')));
+        seen.addAll((page['entries'] as List).map((e) => e['path'] as String));
+        pages++;
+        if (page['has_more'] == false) {
+          expect(page, isNot(contains('next_offset')));
+          break;
+        }
+        expect(page['next_offset'], greaterThan(offset));
+        expect(pages, lessThan(3));
+        offset = page['next_offset'] as int;
+      }
+      expect(pages, 3);
+      expect(seen, paths);
+
+      for (final input in [
+        {'path': 'chapters', 'offset': 5},
+        {'path': 'chapters', 'offset': 100},
+        {'path': 'chapters?chapter_num=999'},
+      ]) {
+        final empty = await call('Read', input);
+        expect(empty['entries'], isEmpty);
+        expect(empty['has_more'], isFalse);
+        expect(empty, isNot(contains('offset')));
+        expect(empty, isNot(contains('next_offset')));
       }
     },
   );
@@ -259,14 +475,18 @@ void main() {
       }, manager: script);
       final tail = await call('Read', {
         'path': castPath,
-        'offset': 2,
+        'offset': cast['next_offset'],
         'limit': 2,
       }, manager: script);
       expect(cast['value'], hasLength(2));
       expect(cast['total'], 3);
       expect(cast['has_more'], isTrue);
+      expect(cast['next_offset'], 2);
+      expect(cast, isNot(contains('offset')));
       expect(tail['value'], hasLength(1));
       expect(tail['has_more'], isFalse);
+      expect(tail, isNot(contains('next_offset')));
+      expect(tail, isNot(contains('offset')));
       expect(cast, isNot(contains('entries')));
       expect(
         [

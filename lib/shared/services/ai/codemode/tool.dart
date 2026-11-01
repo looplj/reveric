@@ -49,6 +49,37 @@ const codemodeToolDef = ToolDef(
       '列表条目缺字段时，按条目 path 读取详情。依赖的字段缺失时停止相关操作并报告，不要猜默认值。\n'
       '- text(value) 和 return 添加输出，对象直接传入，合计上限 128 KiB；其余中间结果不进入对话。'
       '捕获或跳过的失败要在输出中列出。',
+  outputSchema: {
+    'type': 'object',
+    'properties': {
+      'ok': {'type': 'boolean'},
+      'output': {'type': 'array', 'items': {}},
+      'return_value': {},
+      'call_count': {'type': 'integer'},
+      'completed_count': {'type': 'integer'},
+      'failed_count': {'type': 'integer'},
+      'diagnostics': {'type': 'object'},
+      'completed_operations': {
+        'type': 'array',
+        'items': {'type': 'object'},
+      },
+      'uncertain_operations': {
+        'type': 'array',
+        'items': {'type': 'object'},
+      },
+      'pending_operations': {
+        'type': 'array',
+        'items': {'type': 'object'},
+      },
+      'error_code': {'type': 'string'},
+      'error': {'type': 'string'},
+      'tool_error': {'type': 'object'},
+      'js_error_message': {'type': 'string'},
+      'cancelled': {'type': 'boolean'},
+    },
+    'required': ['ok'],
+    'additionalProperties': true,
+  },
   inputSchema: {
     'type': 'object',
     'properties': {

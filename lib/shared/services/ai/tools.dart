@@ -5032,66 +5032,79 @@ class AiToolManager extends _AiToolManagerBase
     final defs = <ToolDef>[
       ToolDef(
         name: runToolName,
+        outputSchema: _builtinToolOutputSchema(runToolName),
         description: _runDescription,
         inputSchema: _runInputSchema,
       ),
       ToolDef(
         name: 'Read',
+        outputSchema: _builtinToolOutputSchema('Read'),
         description: _readDescription,
         inputSchema: _readInputSchema,
       ),
       ToolDef(
         name: 'Glob',
+        outputSchema: _builtinToolOutputSchema('Glob'),
         description: _globDescription,
         inputSchema: _globInputSchema,
       ),
       ToolDef(
         name: 'Grep',
+        outputSchema: _builtinToolOutputSchema('Grep'),
         description: _grepDescription,
         inputSchema: _grepInputSchema,
       ),
       ToolDef(
         name: 'Create',
+        outputSchema: _builtinToolOutputSchema('Create'),
         description: _createDescription,
         inputSchema: _createInputSchema,
       ),
       ToolDef(
         name: 'Write',
+        outputSchema: _builtinToolOutputSchema('Write'),
         description: _writeDescription,
         inputSchema: _writeInputSchema,
       ),
       ToolDef(
         name: 'Edit',
+        outputSchema: _builtinToolOutputSchema('Edit'),
         description: _editDescription,
         inputSchema: _editInputSchema,
       ),
       ToolDef(
         name: 'Replace',
+        outputSchema: _builtinToolOutputSchema('Replace'),
         description: _replaceDescription,
         inputSchema: _replaceInputSchema,
       ),
       ToolDef(
         name: 'Remove',
+        outputSchema: _builtinToolOutputSchema('Remove'),
         description: _removeDescription,
         inputSchema: _removeInputSchema,
       ),
       ToolDef(
         name: 'AskUser',
+        outputSchema: _builtinToolOutputSchema('AskUser'),
         description: _askUserDescription,
         inputSchema: _askUserInputSchema,
       ),
       ToolDef(
         name: 'SpawnAgent',
+        outputSchema: _builtinToolOutputSchema('SpawnAgent'),
         description: _spawnAgentDescription,
         inputSchema: _spawnAgentInputSchema,
       ),
       ToolDef(
         name: sendAgentMessageToolName,
+        outputSchema: _builtinToolOutputSchema(sendAgentMessageToolName),
         description: _sendAgentMessageDescription,
         inputSchema: _sendAgentMessageInputSchema,
       ),
       ToolDef(
         name: stopAgentToolName,
+        outputSchema: _builtinToolOutputSchema(stopAgentToolName),
         description: _stopAgentDescription,
         inputSchema: _stopAgentInputSchema,
       ),
@@ -5100,6 +5113,7 @@ class AiToolManager extends _AiToolManagerBase
       defs.add(
         ToolDef(
           name: skillToolName,
+          outputSchema: _builtinToolOutputSchema(skillToolName),
           description: _skillToolDescription,
           inputSchema: _skillToolInputSchema,
         ),
@@ -5110,6 +5124,7 @@ class AiToolManager extends _AiToolManagerBase
       defs.add(
         ToolDef(
           name: suggestNextActionToolName,
+          outputSchema: _builtinToolOutputSchema(suggestNextActionToolName),
           description: _suggestNextActionDescription,
           inputSchema: buildSuggestNextActionInputSchema(),
         ),
@@ -5119,11 +5134,13 @@ class AiToolManager extends _AiToolManagerBase
     defs.addAll([
       ToolDef(
         name: 'GraphSearch',
+        outputSchema: _builtinToolOutputSchema('GraphSearch'),
         description: _graphSearchDescription,
         inputSchema: _graphSearchInputSchema,
       ),
       ToolDef(
         name: 'TodoWrite',
+        outputSchema: _builtinToolOutputSchema('TodoWrite'),
         description: _todoWriteDescription,
         inputSchema: _todoWriteInputSchema,
       ),

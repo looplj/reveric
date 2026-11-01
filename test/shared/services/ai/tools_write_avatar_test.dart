@@ -349,7 +349,7 @@ void main() {
         name: 'Write',
         input: {'path': '$path/avatar_asset_id', 'value': read['value']},
       );
-      expect(result['updated'], isTrue, reason: '$result');
+      expect(result['updated'], isFalse, reason: '$result');
       expect(result['avatar_asset_id'], assetId);
       expect(
         (await contentService.getCharacterProfileById(

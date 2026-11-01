@@ -225,10 +225,12 @@ Map<String, dynamic> _applyReadOptions(
       entriesKey: sliced,
       'total': total,
     };
-    if (start > 0) out['offset'] = start;
     out['limit'] = effectiveLimit;
     if (rawLimit != effectiveLimit) out['requested_limit'] = rawLimit;
     out['has_more'] = end < total;
+    if (end < total) {
+      out['next_offset'] = end;
+    }
     return out;
   }
 

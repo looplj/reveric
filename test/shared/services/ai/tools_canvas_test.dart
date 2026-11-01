@@ -918,7 +918,7 @@ void main() {
       );
       expect(cleared['updated'], true);
       expect((await read(path))['value'], '');
-      expect((await write(path, value: ''))['updated'], true);
+      expect((await write(path, value: ''))['updated'], false);
       expect((await read(path))['value'], '');
     });
 
@@ -1633,13 +1633,16 @@ void main() {
 
       final page2 = await read('canvas/c/nodes', offset: 2, limit: 2);
       expect(page2['total'], 5);
-      expect(page2['offset'], 2);
+      expect(page2, isNot(contains('offset')));
+      expect(page2['next_offset'], 4);
       expect(page2['limit'], 2);
       expect(page2['has_more'], isTrue);
       expect((page2['entries'] as List), hasLength(2));
 
       final page3 = await read('canvas/c/nodes', offset: 4, limit: 2);
       expect(page3['has_more'], isFalse);
+      expect(page3, isNot(contains('offset')));
+      expect(page3, isNot(contains('next_offset')));
       expect(page3['total'], 5);
       expect((page3['entries'] as List), hasLength(1));
     });
@@ -2215,7 +2218,7 @@ void main() {
         expect((await read('${selfPath(node)}/content'))['value'], '');
         expect(
           (await write('canvas/c', fields: {'description': ''}))['updated'],
-          true,
+          false,
         );
         expect((await write('canvas/c/layout', value: ' AUTO '))['ok'], true);
       },

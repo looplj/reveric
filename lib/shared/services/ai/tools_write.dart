@@ -387,17 +387,35 @@ mixin _AiToolManagerWriteMixin
     }
     // 作品元数据由宿主一次保存，避免逐字段更新覆盖同批次的其他字段。
     // tags 的逗号分隔文本在持久化边界转换为标签列表。
+    final current = await _readProfile(parseAiToolPath('profile'));
+    if (current.containsKey('error')) {
+      return current;
+    }
     final directWrites = <String, dynamic>{};
     final changedFields = <String>[];
     for (final entry in fields.entries) {
       final nextValue = entry.value as String;
-      directWrites[entry.key] = entry.key == 'tags'
+      if (entry.key != 'tags' && current[entry.key] == nextValue) {
+        continue;
+      }
+      final normalized = entry.key == 'tags'
           ? nextValue
                 .split(',')
                 .map((tag) => tag.trim())
                 .where((tag) => tag.isNotEmpty)
                 .toList()
           : nextValue;
+      if (entry.key == 'tags') {
+        final oldTags = (current['tags'] as String? ?? '')
+            .split(',')
+            .map((tag) => tag.trim())
+            .where((tag) => tag.isNotEmpty)
+            .toList();
+        if (const DeepCollectionEquality().equals(oldTags, normalized)) {
+          continue;
+        }
+      }
+      directWrites[entry.key] = normalized;
       changedFields.add(entry.key);
     }
     if (directWrites.isNotEmpty) {
@@ -425,6 +443,14 @@ mixin _AiToolManagerWriteMixin
       );
     }
 
+    final current = await _contentService.getCurrentStateSnapshot();
+    if (current?.content == snapshotContent) {
+      return {
+        'path': 'story_state',
+        'updated': false,
+        'fields': const <String>[],
+      };
+    }
     await _contentService.writeCurrentStateSnapshot(content: snapshotContent);
     return {
       'path': 'story_state',
@@ -531,8 +557,14 @@ mixin _AiToolManagerWriteMixin
         if (result['ok'] == false) {
           return result;
         }
+        if (result['updated'] != true) {
+          continue;
+        }
       } else {
         final text = value as String;
+        if ((originalText[name] ?? '') == text) {
+          continue;
+        }
         await _stageTextChange(
           resourcePath: 'chapters/$id/$name',
           resourceType: 'chapters',
@@ -552,7 +584,7 @@ mixin _AiToolManagerWriteMixin
     }
     return {
       'path': parsed.displayPath,
-      'updated': field != null || changedFields.isNotEmpty,
+      'updated': changedFields.isNotEmpty,
       if (field == null) 'fields': changedFields,
       if (updatedContent != null)
         'content_word_counts': _chapterWordCount(updatedContent),
@@ -566,9 +598,13 @@ mixin _AiToolManagerWriteMixin
     Object? value,
   ) async {
     final path = 'chapters/$id/$field';
+    final chapter = await _contentService.getChapterById(id);
     switch (field) {
       case 'tension':
         final tension = value as int?;
+        if (chapter?.tension == tension) {
+          return {'path': path, 'updated': false, 'value': tension};
+        }
         await _contentService.updateChapterAnalysis(
           chapterId: id,
           tension: tension,
@@ -577,6 +613,12 @@ mixin _AiToolManagerWriteMixin
         return {'path': path, 'updated': true, 'value': tension};
       case 'emotion':
         final emotion = (value as List).cast<String>();
+        if (const DeepCollectionEquality().equals(
+          chapter?.emotion ?? const [],
+          emotion,
+        )) {
+          return {'path': path, 'updated': false, 'value': emotion};
+        }
         await _contentService.updateChapterAnalysis(
           chapterId: id,
           emotion: emotion,
@@ -593,6 +635,12 @@ mixin _AiToolManagerWriteMixin
                 'state_change': event['state_change'],
             },
         ];
+        if (const DeepCollectionEquality().equals(
+          chapter?.events ?? const [],
+          events,
+        )) {
+          return {'path': path, 'updated': false, 'count': events.length};
+        }
         await _contentService.updateChapterAnalysis(
           chapterId: id,
           events: events,
@@ -623,7 +671,7 @@ mixin _AiToolManagerWriteMixin
     final changedFields = <String>[];
     for (final name in parsed._resource!.schema.writeFields) {
       final value = fields[name] as String?;
-      if (value == null) {
+      if (value == null || (originalText[name] ?? '') == value) {
         continue;
       }
       await _stageTextChange(
@@ -641,7 +689,7 @@ mixin _AiToolManagerWriteMixin
     }
     return {
       'path': parsed.displayPath,
-      'updated': parsed.hasField || changedFields.isNotEmpty,
+      'updated': changedFields.isNotEmpty,
       if (!parsed.hasField) 'fields': changedFields,
     };
   }
@@ -690,6 +738,7 @@ mixin _AiToolManagerWriteMixin
       }
     }
 
+    final changedFields = <String>[];
     final avatarAssetId = fields['avatar_asset_id'] as String?;
     if (fields.containsKey('avatar_asset_id')) {
       final error = await _avatarAssetError(
@@ -715,25 +764,36 @@ mixin _AiToolManagerWriteMixin
           );
         }
         await validateFirstAppearance();
-        if (fields.containsKey('avatar_asset_id')) {
+        final values = _characterProfileValues(current);
+        changedFields.addAll(
+          fields.keys.where(
+            (name) => name == 'tags'
+                ? !const DeepCollectionEquality().equals(
+                    values[name],
+                    fields[name],
+                  )
+                : _encodeCharacterWorkingValue(name, values[name]) !=
+                      _encodeCharacterWorkingValue(name, fields[name]),
+          ),
+        );
+        if (changedFields.contains('avatar_asset_id')) {
           await _contentService.updateCharacterAvatarAndPhotos(
             entryId: id,
             avatarAssetId: avatarAssetId ?? '',
           );
         }
-        if (fields.containsKey('tags')) {
+        if (changedFields.contains('tags')) {
           await _contentService.updateCharacterTags(
             entryId: id,
             tags: (fields['tags'] as List).cast<String>(),
           );
         }
-        final values = _characterProfileValues(current);
         await _stageTextChangesAtomically(
           changes: [
             for (final name in parsed._resource!.schema.writeFields)
               if (name != 'avatar_asset_id' &&
                   name != 'tags' &&
-                  fields.containsKey(name))
+                  changedFields.contains(name))
                 WorkingTextChangeRequest(
                   resourcePath: 'characters/$id/$name',
                   resourceType: 'characters',
@@ -761,9 +821,8 @@ mixin _AiToolManagerWriteMixin
     return {
       'id': id,
       if (field != null) 'path': parsed.displayPath,
-      'updated': field != null || fields.isNotEmpty,
-      if (field == null || field == 'avatar_asset_id')
-        'fields': fields.keys.toList(),
+      'updated': changedFields.isNotEmpty,
+      if (field == null || field == 'avatar_asset_id') 'fields': changedFields,
       if (field == 'avatar_asset_id')
         'avatar_asset_id': avatarAssetId?.isEmpty == true
             ? null
@@ -815,11 +874,16 @@ mixin _AiToolManagerWriteMixin
       return duplicateTitleError;
     }
 
+    final changedFields = <String>[];
     try {
       await _withWorkingChangeTransaction(() async {
         final changes = <WorkingTextChangeRequest>[];
         final current = _foreshadowingValues(existing);
         for (final entry in fields.entries) {
+          if ((current[entry.key] ?? '') == (entry.value ?? '')) {
+            continue;
+          }
+          changedFields.add(entry.key);
           changes.add(
             WorkingTextChangeRequest(
               resourcePath: 'foreshadowing/$id/${entry.key}',
@@ -849,8 +913,8 @@ mixin _AiToolManagerWriteMixin
     return {
       'id': id,
       'path': 'foreshadowing/$id${field == null ? "" : "/$field"}',
-      'updated': fields.isNotEmpty,
-      'fields': fields.keys.toList(),
+      'updated': changedFields.isNotEmpty,
+      'fields': changedFields,
     };
   }
 
@@ -938,8 +1002,8 @@ mixin _AiToolManagerWriteMixin
       }
     }
 
-    final changedFields = fieldsToWrite.keys.toList(growable: false);
-    final stageOrder = changedFields.toList();
+    final changedFields = <String>[];
+    final stageOrder = fieldsToWrite.keys.toList();
     void moveBefore(String fieldName, String beforeField) {
       stageOrder.remove(fieldName);
       stageOrder.insert(stageOrder.indexOf(beforeField), fieldName);
@@ -971,6 +1035,10 @@ mixin _AiToolManagerWriteMixin
         'type' => finalType,
         _ => fieldsToWrite[fieldName]!,
       };
+      if ((current ?? '') == valueToWrite) {
+        continue;
+      }
+      changedFields.add(fieldName);
       changes.add(
         WorkingTextChangeRequest(
           resourcePath: 'locations/$id/$fieldName',
@@ -1051,6 +1119,9 @@ mixin _AiToolManagerWriteMixin
         'category' => resolvedExisting.category,
         _ => throw StateError('Unsupported normalized item field: $fieldName'),
       };
+      if (currentValue == nextValue) {
+        continue;
+      }
       await _stageTextChange(
         resourcePath: '$collection/$id/$fieldName',
         resourceType: collection,
@@ -1120,7 +1191,7 @@ mixin _AiToolManagerWriteMixin
     final changedFields = <String>[];
     for (final name in parsed._resource.schema.writeFields) {
       final value = fields[name] as String?;
-      if (value == null) {
+      if (value == null || (current[name] ?? '') == value) {
         continue;
       }
       await _stageTextChange(
@@ -1138,7 +1209,7 @@ mixin _AiToolManagerWriteMixin
     }
     return {
       'path': parsed.displayPath,
-      'updated': field != null || changedFields.isNotEmpty,
+      'updated': changedFields.isNotEmpty,
       if (field == null) 'fields': changedFields,
     };
   }

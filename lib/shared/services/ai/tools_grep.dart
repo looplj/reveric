@@ -202,12 +202,24 @@ mixin _AiToolManagerGrepMixin on _AiToolManagerResourceSearchSupportMixin {
     }
 
     final paged = _applyGrepPagination(results, input);
-    final truncated = matchTruncated || searchTruncated || paths.truncated;
+    final offset = (_parseIntArgument(input['offset']) ?? 0).clamp(
+      0,
+      results.length,
+    );
+    final nextOffset = offset + paged.length;
+    final hasMore = nextOffset < results.length;
+    final truncated =
+        hasMore || matchTruncated || searchTruncated || paths.truncated;
+    final pagination = <String, dynamic>{
+      'has_more': hasMore,
+      if (hasMore) 'next_offset': nextOffset,
+    };
     if (paged.isEmpty) {
       return {
         'ok': true,
         'text': 'No results found.',
         'truncated': truncated,
+        ...pagination,
         'scanned_paths': paths.scannedPaths,
         'scan_limit': _resourcePathScanBudget,
         'scan_truncated': paths.truncated,
@@ -227,6 +239,7 @@ mixin _AiToolManagerGrepMixin on _AiToolManagerResourceSearchSupportMixin {
       'ok': true,
       'text': text,
       'truncated': truncated,
+      ...pagination,
       'scanned_paths': paths.scannedPaths,
       'scan_limit': _resourcePathScanBudget,
       'scan_truncated': paths.truncated,
