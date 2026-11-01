@@ -52,19 +52,12 @@ Future<void> showCodemodeDetail(
   title: localizedToolName(context, block.toolName),
   databasePath: databasePath,
   novelId: novelId,
-  footer: Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      if (block.nestedCalls.isNotEmpty) ...[
-        AiToolStepList.codemode(
-          block: block,
-          databasePath: databasePath,
-          novelId: novelId,
-        ),
-        const SizedBox(height: RevericSpacing.lg),
-      ],
-      _CodemodeScript(block: block, databasePath: databasePath),
-    ],
+  scrollContentBuilder: (controller) => AiToolStepList.codemode(
+    block: block,
+    databasePath: databasePath,
+    novelId: novelId,
+    scrollController: controller,
+    footer: _CodemodeScript(block: block, databasePath: databasePath),
   ),
 );
 

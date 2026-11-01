@@ -28,8 +28,8 @@ class AgentRoundDetailDialog extends ConsumerStatefulWidget {
   final String? databasePath;
   final String? novelId;
 
-  /// 置于过程与输出之后的附加内容，例如批量处理的脚本。
-  final Widget? footer;
+  /// 内容自持滚动时复用对话框的滚动条与控制器。
+  final Widget Function(ScrollController controller)? scrollContentBuilder;
 
   const AgentRoundDetailDialog({
     super.key,
@@ -37,7 +37,7 @@ class AgentRoundDetailDialog extends ConsumerStatefulWidget {
     this.title,
     this.databasePath,
     this.novelId,
-    this.footer,
+    this.scrollContentBuilder,
   });
 
   static Future<void> show(
@@ -46,7 +46,7 @@ class AgentRoundDetailDialog extends ConsumerStatefulWidget {
     String? title,
     String? databasePath,
     String? novelId,
-    Widget? footer,
+    Widget Function(ScrollController controller)? scrollContentBuilder,
   }) {
     return showDialog(
       context: context,
@@ -55,7 +55,7 @@ class AgentRoundDetailDialog extends ConsumerStatefulWidget {
         title: title,
         databasePath: databasePath,
         novelId: novelId,
-        footer: footer,
+        scrollContentBuilder: scrollContentBuilder,
       ),
     );
   }
@@ -120,62 +120,60 @@ class _AgentRoundDetailDialogState
           child: Scrollbar(
             controller: _scrollController,
             thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: _scrollController,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (hasProcess)
-                    // 与主对话「执行过程」同一套步骤行，推理与工具按时序交错。
-                    AiToolStepList(
-                      blocks: processBlocks,
-                      databasePath: widget.databasePath,
-                      novelId: widget.novelId,
-                      isStreamingTail: !widget.runState.isComplete,
-                    ),
-                  if (hasOutput) ...[
-                    if (hasProcess) const SizedBox(height: RevericSpacing.x2l),
-                    _sectionHeader(
-                      icon: RevericIcons.text_snippet_outlined,
-                      label: context.t(
-                        widget.runState.isComplete
-                            ? LocaleKeys.aiFinalOutputSection
-                            : LocaleKeys.aiCurrentOutputSection,
-                      ),
-                      colors: colors,
-                      typo: typo,
-                    ),
-                    const SizedBox(height: RevericSpacing.sm),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(RevericSpacing.md),
-                      decoration: BoxDecoration(
-                        color: colors.surface,
-                        borderRadius: BorderRadius.circular(
-                          RevericRadius.large,
-                        ),
-                      ),
-                      child: SelectionArea(
-                        child: GptMarkdown(
-                          widget.runState.accumulatedText,
-                          style: typo.ui.copyWith(
-                            color: colors.textPrimary,
-                            height: 1.6,
+            child: widget.scrollContentBuilder != null
+                ? widget.scrollContentBuilder!(_scrollController)
+                : SingleChildScrollView(
+                    controller: _scrollController,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasProcess)
+                          // 与主对话「执行过程」同一套步骤行，推理与工具按时序交错。
+                          AiToolStepList(
+                            blocks: processBlocks,
+                            databasePath: widget.databasePath,
+                            novelId: widget.novelId,
+                            isStreamingTail: !widget.runState.isComplete,
                           ),
-                          codeBuilder: buildMarkdownCodeBlock,
-                        ),
-                      ),
+                        if (hasOutput) ...[
+                          if (hasProcess)
+                            const SizedBox(height: RevericSpacing.x2l),
+                          _sectionHeader(
+                            icon: RevericIcons.text_snippet_outlined,
+                            label: context.t(
+                              widget.runState.isComplete
+                                  ? LocaleKeys.aiFinalOutputSection
+                                  : LocaleKeys.aiCurrentOutputSection,
+                            ),
+                            colors: colors,
+                            typo: typo,
+                          ),
+                          const SizedBox(height: RevericSpacing.sm),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(RevericSpacing.md),
+                            decoration: BoxDecoration(
+                              color: colors.surface,
+                              borderRadius: BorderRadius.circular(
+                                RevericRadius.large,
+                              ),
+                            ),
+                            child: SelectionArea(
+                              child: GptMarkdown(
+                                widget.runState.accumulatedText,
+                                style: typo.ui.copyWith(
+                                  color: colors.textPrimary,
+                                  height: 1.6,
+                                ),
+                                codeBuilder: buildMarkdownCodeBlock,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                  if (widget.footer case final footer?) ...[
-                    if (hasProcess || hasOutput)
-                      const SizedBox(height: RevericSpacing.lg),
-                    footer,
-                  ],
-                ],
-              ),
-            ),
+                  ),
           ),
         ),
       ),

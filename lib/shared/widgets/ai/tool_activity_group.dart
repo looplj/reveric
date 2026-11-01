@@ -229,6 +229,10 @@ class _CountPill extends StatelessWidget {
 /// 推理与工具调用的步骤列表（左侧时间线 + 可就地展开的步骤行）。
 /// 主对话在 [AiToolActivityGroup] 里使用，详情弹窗直接复用。
 class AiToolStepList extends ConsumerWidget {
+  static const _timelineLeft = 8.25;
+  static const _timelineEndInset = 17.0;
+  static const _timelineWidth = 1.5;
+
   const AiToolStepList({
     super.key,
     required this.blocks,
@@ -236,13 +240,17 @@ class AiToolStepList extends ConsumerWidget {
     this.novelId,
     this.isStreamingTail = false,
     this.isCompactingContext = false,
-  }) : _nestedCalls = const [];
+  }) : _nestedCalls = const [],
+       scrollController = null,
+       footer = null;
 
   AiToolStepList.codemode({
     super.key,
     required AiToolCallBlock block,
     this.databasePath,
     this.novelId,
+    this.scrollController,
+    this.footer,
   }) : blocks = codemodeNestedBlocks(block),
        _nestedCalls = block.nestedCalls,
        isStreamingTail =
@@ -250,6 +258,8 @@ class AiToolStepList extends ConsumerWidget {
            block.status == AiToolCallStatus.running,
        isCompactingContext = false;
 
+  final ScrollController? scrollController;
+  final Widget? footer;
   final List<AiNestedToolCall> _nestedCalls;
   final List<AiMessageBlock> blocks;
   final String? databasePath;
@@ -260,9 +270,8 @@ class AiToolStepList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
     final lastIndex = blocks.length - 1;
-    final lastBlock = blocks[lastIndex];
+    final lastBlock = blocks.isEmpty ? null : blocks[lastIndex];
     // 仅当尾部是已成功的 tool call 时显示「继续思考」loading —— 此时 LLM 已
     // 完成全部工具，正在产出后续 text/thinking。尾部为 thinking 时由该步骤
     // 自身的 running 态表达，不重复显示。
@@ -273,14 +282,61 @@ class AiToolStepList extends ConsumerWidget {
         aiDisplayStatus(lastBlock) == AiToolCallStatus.success;
     final showTailStatus = showContinuation || isCompactingContext;
 
+    if (scrollController != null) {
+      return ListView.builder(
+        shrinkWrap: true,
+        controller: scrollController,
+        padding: EdgeInsets.zero,
+        itemCount:
+            blocks.length +
+            (showContinuation ? 1 : 0) +
+            (footer == null ? 0 : 1),
+        itemBuilder: (context, index) {
+          if (index == blocks.length && showContinuation) {
+            return _buildContinuation(context);
+          }
+          if (index >= blocks.length) {
+            return Padding(
+              padding: const EdgeInsets.only(top: RevericSpacing.lg),
+              child: footer,
+            );
+          }
+          final block = blocks[index];
+          return Stack(
+            key: ValueKey(block.id),
+            children: [
+              if (blocks.length > 1)
+                Positioned(
+                  left: _timelineLeft,
+                  top: index == 0 ? _timelineEndInset : 0,
+                  bottom: index == lastIndex ? _timelineEndInset : 0,
+                  child: Container(
+                    width: _timelineWidth,
+                    color: colors.borderSubtle,
+                  ),
+                ),
+              _buildStepRow(
+                block,
+                isLast: index == lastIndex,
+                nestedCall: _nestedCalls[index],
+              ),
+            ],
+          );
+        },
+      );
+    }
+    if (blocks.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Stack(
       children: [
         if (blocks.length > 1)
           Positioned(
-            left: 8.25,
-            top: 17,
-            bottom: showTailStatus ? 50 : 17,
-            child: Container(width: 1.5, color: colors.borderSubtle),
+            left: _timelineLeft,
+            top: _timelineEndInset,
+            bottom: showTailStatus ? 50 : _timelineEndInset,
+            child: Container(width: _timelineWidth, color: colors.borderSubtle),
           ),
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -291,24 +347,7 @@ class AiToolStepList extends ConsumerWidget {
                 isLast: index == lastIndex,
                 nestedCall: _nestedCalls.isEmpty ? null : _nestedCalls[index],
               ),
-            if (showContinuation)
-              Container(
-                margin: const EdgeInsets.only(top: RevericSpacing.xs),
-                constraints: const BoxConstraints(minHeight: 32),
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.only(left: 26),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AiTypingIndicator(colors: colors),
-                    const SizedBox(width: RevericSpacing.sm),
-                    Text(
-                      context.t(LocaleKeys.aiThinking),
-                      style: typo.uiSmall.copyWith(color: colors.textMuted),
-                    ),
-                  ],
-                ),
-              ),
+            if (showContinuation) _buildContinuation(context),
             if (isCompactingContext)
               Container(
                 margin: const EdgeInsets.only(top: RevericSpacing.xs),
@@ -320,6 +359,28 @@ class AiToolStepList extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildContinuation(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    return Container(
+      margin: const EdgeInsets.only(top: RevericSpacing.xs),
+      constraints: const BoxConstraints(minHeight: 32),
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.only(left: 26),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AiTypingIndicator(colors: colors),
+          const SizedBox(width: RevericSpacing.sm),
+          Text(
+            context.t(LocaleKeys.aiThinking),
+            style: typo.uiSmall.copyWith(color: colors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 
@@ -368,6 +429,21 @@ class _ToolStepRow extends ConsumerStatefulWidget {
 class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
   bool _expanded = false;
   AiToolCallBlock? _expandedBlock;
+  bool _restoredExpansion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_restoredExpansion && widget.nestedCall != null) {
+      _restoredExpansion = true;
+      _expanded =
+          PageStorage.maybeOf(
+            context,
+          )?.readState(context, identifier: widget.block.id) ==
+          true;
+      _expandedBlock = _expanded ? _loadNestedDetails() : null;
+    }
+  }
 
   AiToolCallBlock? _loadNestedDetails() {
     final call = widget.nestedCall;
@@ -394,6 +470,11 @@ class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
     setState(() {
       _expanded = !_expanded;
       _expandedBlock = _expanded ? _loadNestedDetails() : null;
+      if (widget.nestedCall != null) {
+        PageStorage.maybeOf(
+          context,
+        )?.writeState(context, _expanded, identifier: widget.block.id);
+      }
     });
   }
 

@@ -22,6 +22,7 @@ import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/ai/agent_round_detail_dialog.dart';
 import 'package:reveric/shared/widgets/ai/tool_activity_group.dart';
+import 'package:reveric/shared/widgets/ai/chat/typing_indicator.dart';
 import 'package:reveric/shared/widgets/ai/tools/codemode_detail_dialog.dart';
 import 'package:reveric/shared/widgets/ai/tools/tool_detail_body.dart';
 import 'package:reveric/shared/widgets/ai/tools/tool_card_descriptor.dart';
@@ -33,6 +34,127 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+
+  for (final width in [390.0, 1000.0]) {
+    testWidgets(
+      'lazy batch continuation follows task and last call status at $width',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        for (final (status, childStatus, count, visible) in [
+          (AiToolCallStatus.pending, AiNestedToolStatus.success, 1, true),
+          (AiToolCallStatus.running, AiNestedToolStatus.success, 1, true),
+          (AiToolCallStatus.success, AiNestedToolStatus.success, 1, false),
+          (AiToolCallStatus.error, AiNestedToolStatus.success, 1, false),
+          (AiToolCallStatus.cancelled, AiNestedToolStatus.success, 1, false),
+          (AiToolCallStatus.running, AiNestedToolStatus.running, 1, false),
+          (AiToolCallStatus.running, AiNestedToolStatus.error, 1, false),
+          (AiToolCallStatus.running, AiNestedToolStatus.success, 0, false),
+        ]) {
+          final block = _block(status: status, count: count);
+          final fixture = block.copyWith(
+            nestedCalls: [
+              for (final call in block.nestedCalls)
+                call.copyWith(status: childStatus),
+            ],
+          );
+          await tester.pumpWidget(
+            _wrap(
+              Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showCodemodeDetail(context, block: fixture),
+                  child: const Text('Open batch'),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Open batch'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          final indicator = _inDialog(find.byType(AiTypingIndicator));
+          expect(indicator, visible ? findsOneWidget : findsNothing);
+          expect(
+            _inDialog(find.text('Thinking...')),
+            visible ? findsOneWidget : findsNothing,
+          );
+          if (visible) {
+            expect(
+              tester.getBottomLeft(indicator).dy,
+              lessThan(tester.getTopLeft(_inDialog(find.text('Script'))).dy),
+            );
+          }
+          await tester.tap(find.text('Close'));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+  }
+
+  for (final count in [0, 1]) {
+    testWidgets('short batch dialog stays compact with $count calls', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(AiToolActivityGroup(blocks: [_block(count: count)])),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Batch task'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(_inDialog(find.byType(AiToolStepList))).height,
+        lessThan(150),
+      );
+      expect(_inDialog(find.text('Script')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final width in [390.0, 1000.0]) {
+    testWidgets(
+      '566 calls are lazy and restore expanded rows at width $width',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(
+          _wrap(AiToolActivityGroup(blocks: [_block(count: 566)])),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Batch task'));
+        await tester.pumpAndSettle();
+        expect(
+          _inDialog(find.text('Read')).evaluate().length,
+          inExclusiveRange(0, 60),
+        );
+        await tester.tap(_inDialog(find.text('Read')).first);
+        await tester.pumpAndSettle();
+        expect(find.byType(AiToolDetailBody), findsOneWidget);
+        final scrollable = tester.state<ScrollableState>(
+          _inDialog(find.byType(Scrollable)).first,
+        );
+        scrollable.position.jumpTo(5000);
+        await tester.pumpAndSettle();
+        expect(find.byType(AiToolDetailBody), findsNothing);
+        expect(_inDialog(find.text('Read')).evaluate().length, lessThan(60));
+        scrollable.position.jumpTo(0);
+        await tester.pumpAndSettle();
+        expect(find.byType(AiToolDetailBody), findsOneWidget);
+        expect(
+          tester
+              .widget<AiToolDetailBody>(find.byType(AiToolDetailBody))
+              .block
+              .callId,
+          'read-0',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final width in [390.0, 1000.0]) {
     testWidgets('child header remains stable while toggling at width $width', (
@@ -307,7 +429,10 @@ void main() {
     await tester.tap(find.text('Batch task'));
     await tester.pumpAndSettle();
     expect(_inDialog(find.byType(AiToolStepList)), findsOneWidget);
-    expect(_inDialog(find.text('Read')), findsNWidgets(20));
+    expect(
+      _inDialog(find.text('Read')).evaluate().length,
+      inInclusiveRange(1, 20),
+    );
     expect(find.text('return "fixture source";'), findsNothing);
     await tester.scrollUntilVisible(
       find.text('Script'),

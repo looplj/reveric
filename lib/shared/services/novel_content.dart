@@ -823,9 +823,10 @@ class NovelContentService {
         await (_database.delete(
           _database.chapters,
         )..where((table) => table.id.equals(chapterId))).go();
+        // 删除与顺序修复一起提交，订阅者只观察完整的新树。
+        await _database.chapterDao.repairOrphanChapterParents();
+        await _database.chapterDao.compactSiblingOrders(existing.parentId);
       });
-      await _database.chapterDao.repairOrphanChapterParents();
-      await _database.chapterDao.compactSiblingOrders(existing.parentId);
       await _syncNovelWordCount();
     } catch (e, st) {
       _log.error(

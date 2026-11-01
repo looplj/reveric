@@ -58,6 +58,82 @@ void main() {
     await db.close();
   });
 
+  test('chapter collection labels do not subscribe to the tree', () async {
+    var treeReads = 0;
+    final container = ProviderContainer.test(
+      overrides: [
+        chapterTreeProvider('labels').overrideWith((ref) {
+          treeReads++;
+          return Stream.value(<Chapter>[]);
+        }),
+        novelContentServiceProvider('labels').overrideWithValue(contentService),
+      ],
+    );
+    for (final path in ['chapters', 'volumes']) {
+      final provider = toolResolvedResourceProvider((
+        novelId: 'work',
+        databasePath: 'labels',
+        path: path,
+      ));
+      final subscription = container.listen(provider, (_, _) {});
+      final label = await container.read(provider.future);
+      expect(label!.collection, path);
+      subscription.close();
+    }
+    expect(treeReads, 0);
+  });
+
+  test(
+    'chapter labels ignore body changes but follow rename and numbering',
+    () async {
+      final stream = StreamController<List<Chapter>>();
+      addTearDown(stream.close);
+      final container = ProviderContainer.test(
+        overrides: [
+          chapterTreeProvider('labels').overrideWith((ref) => stream.stream),
+          novelContentServiceProvider(
+            'labels',
+          ).overrideWithValue(contentService),
+        ],
+      );
+      final provider = toolResolvedResourceProvider((
+        novelId: 'work',
+        databasePath: 'labels',
+        path: 'chapters/chapter',
+      ));
+      var changes = 0;
+      container.listen(provider, (_, _) {
+        changes++;
+      });
+      Chapter node(String title, int number, int words) => Chapter.fromViewRow({
+        'id': 'chapter',
+        'type': nodeTypeChapter,
+        'sibling_order': number,
+        'chapter_num': number,
+        'title': title,
+        'word_count': words,
+      });
+      stream.add([node('Before', 1, 10)]);
+      expect((await container.read(provider.future))!.resourceTitle, 'Before');
+      final initialChanges = changes;
+      stream.add([node('Before', 1, 20)]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await container.pump();
+      expect(changes, initialChanges);
+      stream.add([node('After', 2, 20)]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await container.pump();
+      final updated = await container.read(provider.future);
+      expect(updated!.resourceTitle, 'After');
+      expect(updated.chapterNum, 2);
+      expect(changes, greaterThan(initialChanges));
+      stream.add([]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await container.pump();
+      expect((await container.read(provider.future))!.resourceTitle, 'chapter');
+    },
+  );
+
   for (final entry in const {
     'skills': 'skill',
     'items': 'item',

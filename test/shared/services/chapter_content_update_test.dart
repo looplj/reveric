@@ -6,6 +6,8 @@
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
@@ -45,6 +47,74 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test(
+    'deleting among 566 chapters publishes one complete reordered tree',
+    () async {
+      await database.batch((batch) {
+        for (var i = 1; i < 566; i++) {
+          batch.insert(
+            database.chapters,
+            ChaptersCompanion.insert(
+              id: 'chapter_$i',
+              type: nodeTypeChapter,
+              siblingOrder: i + 1,
+              content: Value('正文' * 1000),
+            ),
+          );
+        }
+      });
+      final snapshots = <List<Chapter>>[];
+      final initial = Completer<void>();
+      final afterDeletion = Completer<List<Chapter>>();
+      final subscription = database.chapterDao.watchTree().listen((nodes) {
+        snapshots.add(nodes);
+        if (!initial.isCompleted) {
+          initial.complete();
+        } else if (!afterDeletion.isCompleted) {
+          afterDeletion.complete(nodes);
+        }
+      });
+      addTearDown(subscription.cancel);
+      await initial.future;
+      reads.statements.clear();
+      reads.maxBodyRows = 0;
+      final watch = Stopwatch()..start();
+      await service.deleteChapter('chapter_10');
+      final deletedSnapshot = await afterDeletion.future;
+      watch.stop();
+      final ordered = deletedSnapshot.toList()
+        ..sort((a, b) => a.siblingOrder.compareTo(b.siblingOrder));
+      expect(ordered.length, 565);
+      expect(ordered.any((c) => c.id == 'chapter_10'), isFalse);
+      expect(
+        ordered.map((c) => c.siblingOrder),
+        List.generate(565, (i) => i + 1),
+      );
+      // 已收到删除后的快照；短窗口仅检查是否还有多余发射。
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      debugPrint(
+        'delete among 566: ${watch.elapsedMilliseconds} ms; tree emissions=${snapshots.length - 1}; max body rows=${reads.maxBodyRows}',
+      );
+      expect(snapshots, hasLength(2));
+      expect(reads.maxBodyRows, lessThanOrEqualTo(1));
+    },
+  );
+
+  test('sorting failure rolls back the chapter deletion', () async {
+    await database.chapterDao.insert(
+      ChaptersCompanion.insert(
+        id: 'next',
+        type: nodeTypeChapter,
+        siblingOrder: 2,
+      ),
+    );
+    reads.failSorting = true;
+    await expectLater(service.deleteChapter('chapter'), throwsStateError);
+    reads.failSorting = false;
+    expect(await service.getChapterById('chapter'), isNotNull);
+    expect((await service.getChapterById('next'))!.siblingOrder, 2);
+  });
 
   test('partial save reads once without computing chapter numbers', () async {
     await service.updateChapterContentPartial(
@@ -208,6 +278,30 @@ class _ReadRecorder extends QueryInterceptor {
   final statements = <String>[];
   var elapsedMicros = 0;
   var maxBodyRows = 0;
+  bool failSorting = false;
+
+  @override
+  Future<void> runBatched(
+    QueryExecutor executor,
+    BatchedStatements statements,
+  ) {
+    if (failSorting) {
+      throw StateError('injected sorting failure');
+    }
+    return executor.runBatched(statements);
+  }
+
+  @override
+  Future<int> runUpdate(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    if (failSorting && statement.contains('sibling_order')) {
+      throw StateError('injected sorting failure');
+    }
+    return executor.runUpdate(statement, args);
+  }
 
   @override
   Future<List<Map<String, Object?>>> runSelect(

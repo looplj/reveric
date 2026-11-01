@@ -399,13 +399,32 @@ class ChapterDao {
 
   /// 将同一父级下所有节点的 sibling_order 重新编号为 1, 2, 3, ...
   Future<void> compactSiblingOrders(String? parentId) async {
-    final siblings = await getSiblings(parentId);
-    for (var i = 0; i < siblings.length; i++) {
-      final newOrder = i + 1;
-      if (siblings[i].siblingOrder != newOrder) {
-        await updateSiblingOrder(siblings[i].id, newOrder);
+    final siblings = await _db
+        .customSelect(
+          'SELECT id, sibling_order FROM chapter_nodes '
+          'WHERE deleted_at = 0 AND '
+          '${parentId == null ? 'parent_id IS NULL' : 'parent_id = ?'} '
+          'ORDER BY sibling_order ASC',
+          variables: parentId == null ? [] : [Variable.withString(parentId)],
+        )
+        .get();
+    final now = DateTime.now();
+    await _db.batch((batch) {
+      for (var i = 0; i < siblings.length; i++) {
+        final row = siblings[i];
+        final newOrder = i + 1;
+        if (row.read<int>('sibling_order') != newOrder) {
+          batch.update(
+            _db.chapters,
+            ChaptersCompanion(
+              siblingOrder: Value(newOrder),
+              updatedAt: Value(now),
+            ),
+            where: (table) => table.id.equals(row.read<String>('id')),
+          );
+        }
       }
-    }
+    });
   }
 
   /// 将 parent_id 指向无效卷（已删或不存在）的章节/番外移回根级。

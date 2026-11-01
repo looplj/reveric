@@ -23,6 +23,7 @@
 //   assets/translations/en/relation.json
 //   assets/translations/zh-CN/relation.json
 import 'package:flutter/widgets.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:reveric/shared/entity_graph/labels.dart';
@@ -68,6 +69,35 @@ class AiToolResolvedResource {
   final String? subResourceTitle;
   final String? field;
   final Map<String, String> queryParameters;
+
+  // 解析结果按实际展示字段比较，正文、字数和更新时间变化不刷新工具行。
+  List<Object?> get _displayFields => [
+    collection,
+    resourceTitle,
+    workTitle,
+    isUnavailableWork,
+    showCollection,
+    resourceMeta,
+    ordinals,
+    isListing,
+    chapterNum,
+    volumeNum,
+    subCollection,
+    subResourceTitle,
+    field,
+    queryParameters,
+  ];
+
+  @override
+  bool operator ==(Object other) =>
+      other is AiToolResolvedResource &&
+      const DeepCollectionEquality().equals(
+        _displayFields,
+        other._displayFields,
+      );
+
+  @override
+  int get hashCode => const DeepCollectionEquality().hash(_displayFields);
 
   String displayLabel(BuildContext context) {
     final parts = <String>[
@@ -203,47 +233,54 @@ final toolResolvedResourceProvider =
         return null;
       }
 
+      final idOrName = parsed.resourceIdOrName;
+      AiToolResolvedResource fallback() => AiToolResolvedResource(
+        collection: parsed.collection,
+        resourceTitle: idOrName ?? '',
+        field: parsed.field,
+        queryParameters: parsed.queryParameters,
+      );
+      if (parsed.collection == 'chapters' || parsed.collection == 'volumes') {
+        final identity = _splitIdentityQueryParams(
+          parsed.collection,
+          parsed.queryParameters,
+        );
+        // 集合标签与树无关；带章号、卷号或标题的查询仍需解析实际节点。
+        if (idOrName == null &&
+            identity.chapterNum == null &&
+            identity.volumeNum == null &&
+            identity.title == null) {
+          return fallback();
+        }
+        return ref.watch(
+          chapterTreeProvider(params.databasePath).selectAsync((nodes) {
+            if (parsed.collection == 'chapters') {
+              if (idOrName != null) {
+                final chapter = _findNodeById(nodes, idOrName);
+                if (chapter != null && chapter.isChapter) {
+                  return _chapterResolvedResource(parsed, chapter);
+                }
+              } else {
+                return _resolveChapterQuery(nodes, parsed) ?? fallback();
+              }
+            } else {
+              if (idOrName != null) {
+                final volume = _findNodeById(nodes, idOrName);
+                if (volume != null && volume.isVolume) {
+                  return _volumeResolvedResource(parsed, volume);
+                }
+              } else {
+                return _resolveVolumeQuery(nodes, parsed) ?? fallback();
+              }
+            }
+            return fallback();
+          }),
+        );
+      }
+
       final service = ref.watch(
         novelContentServiceProvider(params.databasePath),
       );
-      final idOrName = parsed.resourceIdOrName;
-
-      // 章节/卷标签只需 title / chapter_num / volume_num / type，这些字段已随
-      // chapterTreeProvider（watchTree，不含正文）常驻内存。改为对内存树查表，
-      // 避免每张工具卡各自 getChapterById/getChapters 触发昂贵的 `chapters` VIEW
-      // 物化（详见 ChapterDao.watchContentById），否则会在单 DB isolate 上堵住
-      // 编辑器的正文查询。用 watch 而非 read：新建/改名章节时树重发 → 解析自动
-      // 自愈；重跑仅为内存查表，成本可忽略。
-      if (parsed.collection == 'chapters' || parsed.collection == 'volumes') {
-        final nodes = await ref.watch(
-          chapterTreeProvider(params.databasePath).future,
-        );
-        if (parsed.collection == 'chapters') {
-          if (idOrName != null) {
-            final chapter = _findNodeById(nodes, idOrName);
-            if (chapter != null && chapter.isChapter) {
-              return _chapterResolvedResource(parsed, chapter);
-            }
-          } else {
-            final queryResolved = _resolveChapterQuery(nodes, parsed);
-            if (queryResolved != null) {
-              return queryResolved;
-            }
-          }
-        } else {
-          if (idOrName != null) {
-            final volume = _findNodeById(nodes, idOrName);
-            if (volume != null && volume.isVolume) {
-              return _volumeResolvedResource(parsed, volume);
-            }
-          } else {
-            final queryResolved = _resolveVolumeQuery(nodes, parsed);
-            if (queryResolved != null) {
-              return queryResolved;
-            }
-          }
-        }
-      }
 
       if (parsed.collection == 'clips' && idOrName != null) {
         final shot = await StoryboardService(
@@ -361,12 +398,7 @@ final toolResolvedResourceProvider =
         );
       }
 
-      return AiToolResolvedResource(
-        collection: parsed.collection,
-        resourceTitle: idOrName ?? '',
-        field: parsed.field,
-        queryParameters: parsed.queryParameters,
-      );
+      return fallback();
     });
 
 const _screenplayCollections = {'seasons', 'episodes', 'scenes', 'beats'};
