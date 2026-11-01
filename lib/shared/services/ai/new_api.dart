@@ -1,4 +1,4 @@
-// 职责: 查询 New API 模型协议并为通用部署和品牌渠道装配四类生成客户端。
+// 职责: 获取 New API 模型目录，并按模型名路由聊天协议、装配各类生成客户端。
 // 关联文件:
 //   lib/shared/models/new_api.dart
 //   lib/shared/services/ai/provider_initializer.dart
@@ -129,15 +129,8 @@ class NewApiClient {
     TraceHeadersProvider? traceHeadersProvider,
     String? cacheKeyUserId,
   }) async {
-    final catalog = await models(httpClient: httpClient);
-    final metadata = catalog.where((entry) => entry.id == model).firstOrNull;
-    if (metadata == null) {
-      throw StateError(
-        'New API model is not available to this API key: $model',
-      );
-    }
     final root = config.effectiveBaseUrl.replaceFirst(RegExp(r'/v1$'), '');
-    return switch (metadata.chatProtocol) {
+    return switch (NewApiChatProtocol.forModel(model)) {
       NewApiChatProtocol.responses => OpenAIResponsesClient(
         apiKey: config.effectiveApiKey,
         baseUrl: config.effectiveBaseUrl,

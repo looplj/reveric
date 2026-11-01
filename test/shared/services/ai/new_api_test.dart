@@ -4,7 +4,6 @@
 //   lib/shared/services/ai/provider_initializer.dart
 //   lib/shared/models/new_api.dart
 import 'dart:convert';
-import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -131,7 +130,7 @@ void main() {
     ('my-writer', '/v1/chat/completions', NewApiChatProtocol.openai),
   ]) {
     test(
-      '$model uses advertised $protocol without rewriting model ID',
+      '$model uses $protocol without model discovery or rewriting model ID',
       () async {
         var calls = 0;
         final initializer = AiProviderInitializer(
@@ -139,12 +138,7 @@ void main() {
           chatModel: model,
           httpClient: MockClient((request) async {
             calls++;
-            if (request.method == 'GET') {
-              expect(request.url.path, '/v1/models');
-              return _json({
-                'data': [_model(model, _allChat)],
-              });
-            }
+            expect(request.method, 'POST');
             expect(request.url.path, path);
             final body = jsonDecode(request.body) as Map;
             if (protocol != NewApiChatProtocol.gemini) {
@@ -219,43 +213,41 @@ void main() {
         );
         addTearDown(initializer.dispose);
         final client = await initializer.initialize();
+        expect(calls, 0);
         await client.chat(
           messages: [AgentMessage.user(id: 'user', content: 'hello')],
         );
         expect(await initializer.initialize(), same(client));
-        expect(calls, 2);
+        expect(calls, 1);
       },
     );
   }
 
   test(
-    'protocol selection uses metadata for aliases and restricted gateways',
+    'protocol selection follows model names including prefixes and aliases',
     () {
-      expect(
-        NewApiModel(id: 'renamed', endpointTypes: {'anthropic'}).chatProtocol,
-        NewApiChatProtocol.anthropic,
-      );
-      expect(
-        NewApiModel(
-          id: 'claude-sonnet-4-6',
-          endpointTypes: {'openai'},
-        ).chatProtocol,
-        NewApiChatProtocol.openai,
-      );
-      expect(
-        () => NewApiModel(id: 'missing', endpointTypes: {}).chatProtocol,
-        throwsUnsupportedError,
-      );
+      for (final (model, protocol) in [
+        ('vendor/CLAUDE-sonnet-4-6', NewApiChatProtocol.anthropic),
+        ('vendor/GEMINI-3.1-pro-preview', NewApiChatProtocol.gemini),
+        ('vendor/GPT-5.4', NewApiChatProtocol.responses),
+        ('o1', NewApiChatProtocol.responses),
+        ('o3-mini', NewApiChatProtocol.responses),
+        ('o4-mini', NewApiChatProtocol.responses),
+        ('renamed', NewApiChatProtocol.openai),
+        ('other-model', NewApiChatProtocol.openai),
+      ]) {
+        expect(NewApiChatProtocol.forModel(model), protocol, reason: model);
+      }
     },
   );
+
   test(
-    'concurrent initialization shares metadata request and disposal prevents resurrection',
+    'concurrent initialization shares client and disposal prevents resurrection without HTTP',
     () async {
-      final response = Completer<http.Response>();
       var calls = 0;
-      final transport = MockClient((_) {
+      final transport = MockClient((_) async {
         calls++;
-        return response.future;
+        throw StateError('Initialization must not make HTTP requests');
       });
       addTearDown(transport.close);
       final initializer = AiProviderInitializer(
@@ -268,40 +260,31 @@ void main() {
       final expectation = expectLater(first, throwsStateError);
       expect(second, same(first));
       initializer.dispose();
-      response.complete(
-        _json({
-          'data': [
-            _model('writer', ['openai']),
-          ],
-        }),
-      );
       await expectation;
-      expect(calls, 1);
+      expect(calls, 0);
       expect(initializer.isInitialized, false);
     },
   );
 
-  test(
-    'failed discovery never issues a generation request or hides diagnostics',
-    () async {
-      var calls = 0;
-      final transport = MockClient((request) async {
-        calls++;
-        expect(request.method, 'GET');
-        return http.Response('{"error":{"message":"invalid test-key"}}', 401);
-      });
-      await expectLater(
-        NewApiClient(_provider()).chat(model: 'writer', httpClient: transport),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.toString(),
-            'diagnostic',
-            allOf(contains('401'), isNot(contains('test-key'))),
-          ),
+  test('explicit model discovery preserves failure diagnostics', () async {
+    var calls = 0;
+    final transport = MockClient((request) async {
+      calls++;
+      expect(request.method, 'GET');
+      expect(request.url.path, '/v1/models');
+      return http.Response('{"error":{"message":"invalid test-key"}}', 401);
+    });
+    addTearDown(transport.close);
+    await expectLater(
+      NewApiClient(_provider()).models(httpClient: transport),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.toString(),
+          'diagnostic',
+          allOf(contains('401'), isNot(contains('test-key'))),
         ),
-      );
-      expect(calls, 1);
-      transport.close();
-    },
-  );
+      ),
+    );
+    expect(calls, 1);
+  });
 }

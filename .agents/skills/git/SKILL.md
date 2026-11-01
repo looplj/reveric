@@ -1,9 +1,49 @@
 ---
 name: git
-description: "Git 操作规范与指南：rebase 冲突处理、DB migration 版本冲突解决、工作流程。适用于 rebase、merge、DB migration 版本号冲突等场景。"
+description: "Git 提交与历史操作规范。用于创建或修改 commit message、关联和关闭 issue，以及 rebase、merge 与 DB migration 版本冲突处理。"
 ---
 
 # Git 规范
+
+## Commit message
+
+### 写什么
+
+- 先看 `git diff --cached` 和近期提交，按实际暂存内容写消息；不要只复述用户请求，也不要将未暂存的改动写进提交。
+- 标题沿用仓库的 `type(scope): summary` 风格，scope 可省略。常用 type 为 `fix`、`feat`、`refactor`、`test`、`docs`、`chore`；按改动目的选择，不把行为修复写成 refactor。语言跟随用户要求或近期提交。
+- 标题说明具体行为变化，如 `fix: keep tool results together before sending images`，避免 `fix bug`、`update code` 等无信息标题。
+- 简单改动只需标题。需要正文时，空一行后说明触发条件、根因和修复后的行为；只保留有助于理解改动的取舍和验证结果，不罗列文件名或排查过程。
+- 验证只写实际执行的结果，区分测试、真实接口和真机验证；不能把 mock 测试写成接口验证，也不能把 macOS 上的路径测试写成 Windows 真机验证。
+
+### Issue 引用不能漏
+
+- 任务来自 issue 时，提交前回看该 issue 的仓库、编号和解决范围。已完整解决且用户没有要求保持打开时，在消息末尾单独一行写 `Fixes #123`；不要等用户提醒才补。
+- 部分修复、仅诊断或只补测试时，使用 `Refs #123` 并说明尚未解决的部分，不提前关闭整个 issue。没有关联 issue 时不添加引用。
+- 跨仓库引用写 `Fixes owner/repo#123`；关闭多个 issue 时逐条写完整引用，避免仓库或编号歧义。
+- GitHub 在包含关闭引用的提交进入远端默认分支后才自动关闭 issue。本地 commit、amend 或推送到非默认分支，不代表 issue 已关闭。不要假定默认分支名；报告关闭状态前实际核对。
+- 用户只要求 commit 时，不因此擅自 push、merge、发表评论或调用 `gh issue close`。补充关闭引用和直接修改 issue 状态是不同操作。
+
+参考：[GitHub 官方的 issue 关闭引用规则](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)。
+
+完整修复的消息示例（编号替换为实际 issue）：
+
+```text
+fix: keep tool results together before sending images
+
+Image messages interrupted parallel tool results and caused the provider
+to reject subsequent requests. Defer images until the full batch is emitted.
+
+Verified the rejected and accepted layouts against the provider API,
+and added request serialization regression tests.
+
+Fixes #123
+```
+
+### 写入和补漏
+
+- 多行消息优先写入临时文件，用 `git commit -F` 读取，保留真实换行；避免 shell 插值改变反引号、变量或正文。
+- 提交后用 `git log -1 --format=%B` 核对标题、正文和 issue 引用，并检查工作区状态。汇报提交 hash 和是否已推送，不将本地提交描述成已发布或已关闭 issue。
+- 补写消息前核对当前 HEAD 和远端状态。确认是本任务的最新、未推送提交，且修订已获授权时，可 amend；不要顺带收入新暂存内容。已推送的提交不为补一句引用自行重写历史或 force push，按用户已授权的 PR／issue 流程补充关联。
 
 ## Rebase 冲突处理规则
 
