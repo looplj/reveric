@@ -1,18 +1,20 @@
 // 职责: 展示插件任务的持久化状态和用量，并控制暂停、恢复、运行与取消。
 // 关联文件:
-//   lib/shared/widgets/settings/plugins/row.dart
+//   lib/shared/widgets/settings/plugins/detail_page.dart
 //   lib/shared/services/plugins/tasks.dart
 //   lib/shared/database/daos/plugin_task_dao.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/plugin.json
+//   assets/translations/zh-CN/plugin.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+//   .agents/rules/design-system.md
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:intl/intl.dart';
+import '../../../components/reveric_badge.dart';
 import '../../../components/reveric_button.dart';
 import '../../../database/app_database.dart';
 import '../../../localization/app_localization.dart';
@@ -20,6 +22,8 @@ import '../../../localization/locale_keys.dart';
 import '../../../logger/app_logger.dart';
 import '../../../services/plugins/host.dart';
 import '../../../theme/theme.dart';
+import '../settings_section_widgets.dart';
+import 'overview.dart';
 
 final _log = AppLogger.forModule('PluginTaskSettings');
 
@@ -39,24 +43,30 @@ class PluginTasksPanel extends HookWidget {
     );
     final snapshot = useStream(stream);
     final rows = snapshot.data;
-    if (rows == null || rows.isEmpty) {
-      return snapshot.hasError
-          ? Text(context.t(LocaleKeys.settingsPluginsSaveFailed))
-          : const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(top: RevericSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            context.t(LocaleKeys.settingsPluginsTasks),
-            style: RevericTheme.typographyOf(context).uiSemibold,
-          ),
-          for (final row in rows)
-            _TaskRow(key: ValueKey('task-${row.taskId}'), host: host, row: row),
-        ],
-      ),
+    final typo = RevericTheme.typographyOf(context);
+    final colors = RevericTheme.colorsOf(context);
+    return SettingsSection(
+      titleKey: LocaleKeys.pluginTasks,
+      child: snapshot.hasError
+          ? Text(
+              context.t(LocaleKeys.pluginLoadFailed),
+              style: typo.uiSmall.copyWith(color: colors.warningText),
+            )
+          : rows == null
+          ? const LinearProgressIndicator()
+          : SettingsCard(
+              padding: EdgeInsets.zero,
+              children: [
+                for (final (index, row) in rows.indexed) ...[
+                  if (index > 0) const SettingsRowDivider(),
+                  _TaskRow(
+                    key: ValueKey('task-${row.taskId}'),
+                    host: host,
+                    row: row,
+                  ),
+                ],
+              ],
+            ),
     );
   }
 }
@@ -89,9 +99,7 @@ class _TaskRow extends HookWidget {
         );
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(context.t(LocaleKeys.settingsPluginsSaveFailed)),
-            ),
+            SnackBar(content: Text(context.t(LocaleKeys.pluginSaveFailed))),
           );
         }
       } finally {
@@ -106,82 +114,112 @@ class _TaskRow extends HookWidget {
         : pending
         ? 'running'
         : row.lastStatus;
-    final stateKey = switch (state) {
-      'running' => LocaleKeys.settingsPluginsTaskRunning,
-      'success' => LocaleKeys.settingsPluginsTaskSuccess,
-      'failed' => LocaleKeys.settingsPluginsTaskFailed,
-      'retrying' => LocaleKeys.settingsPluginsTaskRetrying,
-      'cancelled' => LocaleKeys.settingsPluginsTaskCancelled,
-      'interrupted' => LocaleKeys.settingsPluginsTaskInterrupted,
-      'removed' => LocaleKeys.settingsPluginsTaskRemoved,
-      _ => LocaleKeys.settingsPluginsTaskReady,
+    final (stateKey, stateColor) = switch (state) {
+      'running' => (LocaleKeys.pluginTaskRunning, colors.accent),
+      'success' => (LocaleKeys.pluginTaskSuccess, colors.success),
+      'failed' => (LocaleKeys.pluginFailed, colors.warningText),
+      'retrying' => (LocaleKeys.pluginTaskRetrying, colors.accentAmber),
+      'cancelled' => (LocaleKeys.pluginTaskCancelled, colors.textMuted),
+      'interrupted' => (LocaleKeys.pluginTaskInterrupted, colors.textMuted),
+      'removed' => (LocaleKeys.pluginTaskRemoved, colors.textSubtle),
+      _ => (LocaleKeys.pluginTaskReady, colors.textMuted),
     };
     final errorKey = switch (row.lastErrorCode) {
-      'model_not_configured' => LocaleKeys.settingsPluginsTaskModelMissing,
-      'permission_denied' => LocaleKeys.settingsPluginsNeedsPermission,
-      'task_timeout' ||
-      'plugin_timeout' => LocaleKeys.settingsPluginsResourceLimit,
+      'model_not_configured' => LocaleKeys.pluginTaskModelMissing,
+      'model_not_found' => LocaleKeys.pluginTaskModelNotFound,
+      'permission_denied' => LocaleKeys.pluginTaskPermissionMissing,
+      'task_timeout' || 'plugin_timeout' => LocaleKeys.pluginResourceLimit,
       null || 'cancelled' || 'interrupted' => null,
-      _ => LocaleKeys.settingsPluginsTaskFailed,
+      _ => LocaleKeys.pluginTaskFailed,
     };
+    final schedule = [
+      // 插件关闭时调度器已移除任务定义，持久化的下次时间不会触发，不再显示。
+      if (available && row.enabled)
+        context.t(
+          LocaleKeys.pluginTaskNext,
+          namedArgs: {'date': date(row.nextDueAt)},
+        ),
+      if (row.lastFinishedAt != null)
+        context.t(
+          LocaleKeys.pluginTaskFinished,
+          namedArgs: {'date': date(row.lastFinishedAt!)},
+        ),
+    ].join(' · ');
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: RevericSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: RevericSpacing.lg,
+        vertical: RevericSpacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            definition?.title.resolve(Localizations.localeOf(context)) ??
-                row.taskId,
-            style: typo.uiSemibold,
-          ),
-          Text(
-            context.t(stateKey),
-            style: typo.uiSmall.copyWith(color: colors.textSecondary),
-          ),
-          if (!row.enabled && !removed)
-            Text(
-              context.t(LocaleKeys.settingsPluginsTaskPaused),
-              style: typo.uiSmall,
-            ),
-          if (!removed && row.enabled)
-            Text(
-              context.t(
-                LocaleKeys.settingsPluginsTaskNext,
-                namedArgs: {'date': date(row.nextDueAt)},
+          Wrap(
+            spacing: RevericSpacing.sm,
+            runSpacing: RevericSpacing.xxs,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                definition?.title.resolve(Localizations.localeOf(context)) ??
+                    row.taskId,
+                style: typo.uiSemibold.copyWith(color: colors.textPrimary),
               ),
-              style: typo.uiSmall,
+              RevericBadge(label: context.t(stateKey), color: stateColor),
+              if (!row.enabled && !removed)
+                RevericBadge(
+                  label: context.t(LocaleKeys.pluginTaskPaused),
+                  color: colors.textMuted,
+                ),
+            ],
+          ),
+          if (schedule.isNotEmpty) ...[
+            const SizedBox(height: RevericSpacing.xxs),
+            Text(
+              schedule,
+              style: typo.uiSmall.copyWith(color: colors.textMuted),
             ),
-          if (row.lastFinishedAt != null)
+          ],
+          if (row.lastSummary?.isNotEmpty == true) ...[
+            const SizedBox(height: RevericSpacing.xs),
+            Text(
+              row.lastSummary!,
+              style: typo.ui.copyWith(color: colors.textSecondary),
+            ),
+          ],
+          if (errorKey != null) ...[
+            const SizedBox(height: RevericSpacing.xs),
+            PluginNotice(message: context.t(errorKey)),
+          ],
+          if (row.lastUsage != null) ...[
+            const SizedBox(height: RevericSpacing.xxs),
             Text(
               context.t(
-                LocaleKeys.settingsPluginsTaskFinished,
-                namedArgs: {'date': date(row.lastFinishedAt!)},
-              ),
-              style: typo.uiSmall,
-            ),
-          if (row.lastSummary?.isNotEmpty == true)
-            Text(row.lastSummary!, style: typo.ui),
-          if (errorKey != null)
-            Text(
-              context.t(errorKey),
-              style: typo.uiSmall.copyWith(color: colors.warningText),
-            ),
-          if (row.lastUsage != null)
-            Text(
-              context.t(
-                LocaleKeys.settingsPluginsTaskUsage,
+                LocaleKeys.pluginTaskUsage,
                 namedArgs: {
                   'calls': '${row.lastUsage!['calls'] ?? 0}',
                   'input': '${row.lastUsage!['input_tokens'] ?? 0}',
                   'output': '${row.lastUsage!['output_tokens'] ?? 0}',
                 },
               ),
-              style: typo.uiSmall,
+              style: typo.uiSmall.copyWith(color: colors.textMuted),
             ),
-          if (!removed)
+          ],
+          if (!removed) ...[
+            const SizedBox(height: RevericSpacing.sm),
             Wrap(
               spacing: RevericSpacing.sm,
+              runSpacing: RevericSpacing.xs,
               children: [
+                RevericButton.secondary(
+                  key: ValueKey('task-run-${row.taskId}'),
+                  icon: RevericIcons.play_arrow,
+                  label: context.t(LocaleKeys.commonRunNow),
+                  size: RevericButtonSize.compact,
+                  onPressed: busy.value || pending || !available
+                      ? null
+                      : () => act(
+                          () => host.tasks.runNow(row.pluginId, row.taskId),
+                        ),
+                ),
                 RevericButton.text(
                   key: ValueKey('task-toggle-${row.taskId}'),
                   label: context.t(
@@ -189,7 +227,8 @@ class _TaskRow extends HookWidget {
                         ? LocaleKeys.commonPause
                         : LocaleKeys.commonResume,
                   ),
-                  onPressed: busy.value
+                  size: RevericButtonSize.compact,
+                  onPressed: busy.value || !available
                       ? null
                       : () => act(
                           () => host.tasks.setEnabled(
@@ -199,19 +238,11 @@ class _TaskRow extends HookWidget {
                           ),
                         ),
                 ),
-                RevericButton.text(
-                  key: ValueKey('task-run-${row.taskId}'),
-                  label: context.t(LocaleKeys.commonRunNow),
-                  onPressed: busy.value || pending || !available
-                      ? null
-                      : () => act(
-                          () => host.tasks.runNow(row.pluginId, row.taskId),
-                        ),
-                ),
                 if (pending)
                   RevericButton.text(
                     key: ValueKey('task-cancel-${row.taskId}'),
                     label: context.t(LocaleKeys.commonCancel),
+                    size: RevericButtonSize.compact,
                     onPressed: busy.value
                         ? null
                         : () => act(
@@ -220,6 +251,7 @@ class _TaskRow extends HookWidget {
                   ),
               ],
             ),
+          ],
         ],
       ),
     );

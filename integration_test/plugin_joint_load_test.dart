@@ -16,6 +16,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/models/plugin/manifest.dart';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
+import 'package:reveric/shared/services/plugins/ai.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
 import 'package:reveric/shared/services/plugins/ui_session.dart';
@@ -92,24 +94,7 @@ c.tools.register({name:'JointTool',description:'Fixture SQL',inputSchema:{type:'
         registry: PluginRegistry(hostToolNames: {}),
         packages: () async => packages,
         applicationSupport: () async => root,
-        taskAi: (request, cancellation) async {
-          final done = Completer<void>();
-          aiWaits.add(done);
-          final unlink = cancellation.onCancel(() {
-            if (!done.isCompleted) {
-              done.completeError(StateError('Cancelled'));
-            }
-          });
-          try {
-            await done.future;
-            return (
-              text: '[]',
-              usage: <String, dynamic>{'input_tokens': 5, 'output_tokens': 2},
-            );
-          } finally {
-            unlink();
-          }
-        },
+        ai: _JointAi(aiWaits),
       );
       final pages = <PluginUiSession>[];
       var peakRss = 0;
@@ -124,6 +109,8 @@ c.tools.register({name:'JointTool',description:'Fixture SQL',inputSchema:{type:'
           );
           await host.start();
           await host.confirmPermissions('reveric.memory');
+          // Memory 默认关闭，测试需要先开启。
+          await host.setEnabled('reveric.memory', true);
           await host.confirmPermissions('test.joint');
           expect(
             fjs.UiSession.resourceCounts().values.every(
@@ -259,4 +246,39 @@ c.tools.register({name:'JointTool',description:'Fixture SQL',inputSchema:{type:'
     },
     timeout: const Timeout(Duration(minutes: 2)),
   );
+}
+
+/// 任务 AI 调用挂起到测试放行，用于覆盖等待与取消。
+class _JointAi implements PluginAiApi {
+  _JointAi(this.waits);
+  final List<Completer<void>> waits;
+
+  @override
+  List<Map<String, dynamic>> listModels() => const [];
+
+  @override
+  Future<PluginAiResult> generate(
+    PluginAiRequest request,
+    AgentCancellationToken cancellation,
+  ) async {
+    final done = Completer<void>();
+    waits.add(done);
+    final unlink = cancellation.onCancel(() {
+      if (!done.isCompleted) {
+        done.completeError(StateError('Cancelled'));
+      }
+    });
+    try {
+      await done.future;
+      return (
+        text: '[]',
+        finishReason: 'stop',
+        providerId: 'test',
+        model: 'test',
+        usage: <String, dynamic>{'input_tokens': 5, 'output_tokens': 2},
+      );
+    } finally {
+      unlink();
+    }
+  }
 }

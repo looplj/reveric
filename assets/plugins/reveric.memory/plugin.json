@@ -12,10 +12,25 @@
   "author": "Reveric",
   "pluginApiVersion": "^1",
   "main": "dist/index.js",
-  "defaultEnabled": true,
+  "defaultEnabled": false,
   "permissions": [
     "ai.generateText"
   ],
+  "settings": {
+    "fields": {
+      "organizeModel": {
+        "type": "model",
+        "title": {
+          "zh-CN": "整理所用模型",
+          "en": "Model for organizing"
+        },
+        "description": {
+          "zh-CN": "后台整理记忆时调用的聊天模型；不选择则使用默认聊天模型。",
+          "en": "Chat model used to organize memories in the background. Uses the default chat model when not set."
+        }
+      }
+    }
+  },
   "database": {
     "version": 1,
     "migrations": [

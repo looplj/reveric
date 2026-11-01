@@ -65,6 +65,9 @@ void main() {
           find.byKey(const ValueKey('plugin-details-reveric.web')),
         );
         await tester.pumpAndSettle();
+        // 详情页的工具列表默认折叠。
+        await tester.tap(find.text('Tools (2)'));
+        await tester.pumpAndSettle();
         expect(find.text('WebSearch'), findsOneWidget);
         expect(find.text('WebFetch'), findsOneWidget);
         await tester.tap(

@@ -4,8 +4,8 @@
 //   lib/shared/services/plugins/ui_session.dart
 //   assets/plugin_preview/counter.js
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/plugin.json
+//   assets/translations/zh-CN/plugin.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -35,9 +35,7 @@ Future<void> showPluginUiPreview(BuildContext context) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: Text(context.t(LocaleKeys.settingsPluginsPreviewTitle)),
-          ),
+          appBar: AppBar(title: Text(context.t(LocaleKeys.pluginPreviewTitle))),
           body: const SafeArea(top: false, child: PluginUiPreviewPanel()),
         ),
       ),
@@ -49,9 +47,7 @@ Future<void> showPluginUiPreview(BuildContext context) async {
         width: 1040,
         title: Row(
           children: [
-            Expanded(
-              child: Text(context.t(LocaleKeys.settingsPluginsPreviewTitle)),
-            ),
+            Expanded(child: Text(context.t(LocaleKeys.pluginPreviewTitle))),
             RevericIconButton(
               icon: RevericIcons.close,
               tooltip: context.t(LocaleKeys.commonClose),

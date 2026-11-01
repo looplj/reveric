@@ -1,4 +1,4 @@
-// 职责: 验证正式插件设置页在三平台保存凭据、隐藏原文并在重新展开后恢复配置。
+// 职责: 验证插件详情页在三平台保存凭据、隐藏原文、重新进入后恢复配置，并在桌面离开前确认未保存输入。
 // 关联文件:
 //   lib/shared/widgets/settings/plugins/config_panel.dart
 //   lib/shared/services/plugins/host.dart
@@ -18,12 +18,14 @@ import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/models/plugin/manifest.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
+import 'package:reveric/desktop/widgets/settings/settings_plugins_section.dart';
 import '../../../services/plugins/host_test.dart' show FakeExecutor;
 import '../plugins_section_test.dart' show wrapPluginSettings;
 
 Future<(AppDatabase, PluginHostService)> _pumpDeepSeek(
   WidgetTester tester, {
   TargetPlatform platform = TargetPlatform.macOS,
+  Widget? child,
 }) async {
   final db = AppDatabase.forTest(NativeDatabase.memory());
   final manifest = PluginManifest.fromJson(
@@ -51,7 +53,11 @@ Future<(AppDatabase, PluginHostService)> _pumpDeepSeek(
   );
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  await tester.pumpWidget(wrapPluginSettings(host, platform: platform));
+  await tester.pumpWidget(
+    child == null
+        ? wrapPluginSettings(host, platform: platform)
+        : wrapPluginSettings(host, platform: platform, child: child),
+  );
   await tester.pumpAndSettle();
   return (db, host);
 }
@@ -107,8 +113,8 @@ void main() {
           ),
           'fixture-secret',
         );
-        await tester.ensureVisible(details);
-        await tester.tap(details);
+        // 返回列表后重新进入详情，凭据只显示为已设置。
+        await tester.tap(find.byTooltip('Back'));
         await tester.pumpAndSettle();
         await tester.tap(details);
         await tester.runAsync(
@@ -167,24 +173,31 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('collapsing keeps unsaved input', (tester) async {
-    await _pumpDeepSeek(tester);
-    final details = find.byKey(_details);
-    await tester.tap(details);
+  testWidgets('leaving desktop details with unsaved input asks first', (
+    tester,
+  ) async {
+    await _pumpDeepSeek(tester, child: const PluginsDesktopSettingsSection());
+    await tester.tap(find.byKey(_details));
     await _settle(tester);
     await tester.enterText(find.byType(TextField), 'draft-key');
-    await tester.pumpAndSettle();
+    await _settle(tester);
 
-    await tester.tap(details);
+    await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
-    expect(find.byType(TextField), findsNothing);
-    await tester.tap(details);
+    expect(find.text('Discard'), findsOneWidget);
+    await tester.tap(find.text('Cancel').last);
     await tester.pumpAndSettle();
-
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       'draft-key',
     );
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(_details), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });

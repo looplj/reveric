@@ -88,6 +88,8 @@ void main() {
         );
         await host.start();
         await host.confirmPermissions('reveric.memory');
+        // Memory 默认关闭，测试需要先开启。
+        await host.setEnabled('reveric.memory', true);
         final dispatcher = PluginAgentToolDispatcher(
           inner: RequestInner(),
           host: host,

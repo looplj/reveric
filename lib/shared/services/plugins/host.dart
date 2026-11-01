@@ -53,6 +53,7 @@ class PluginStatus {
     this.error,
     this.source = 'bundled',
     this.needsConfig = false,
+    this.modelSelections = const {},
   });
   final String id, path, source;
   final PluginManifest? manifest;
@@ -62,6 +63,9 @@ class PluginStatus {
 
   /// 必填配置未填写；此时不能开启插件。
   bool needsConfig;
+
+  /// 各 `model` 配置项已保存的模型；界面据此提示已被删除或停用的模型。
+  Map<String, PluginModelSelection> modelSelections;
   PluginPromptDiagnostic? promptDiagnostic;
 }
 
@@ -793,6 +797,30 @@ class PluginHostService {
   final _recoveryErrors = <String, Object>{};
 
   Future<void> validatePackage(PluginPackage package) async {
+    final tools = await _candidateTools(
+      package.manifest,
+      package.code,
+      package.source,
+    );
+    for (final view in package.manifest.pages) {
+      await readPackageText(
+        package,
+        view.source,
+        maxBytes: view.isTsx ? 2 * 1024 * 1024 : 1024 * 1024,
+      );
+    }
+    registry.validate(package.manifest.id, tools);
+  }
+
+  /// 安装预览：只执行候选包的 apply 读取工具声明，不登记、不保留任何状态。
+  Future<List<PluginTool>> previewTools(PluginManifest manifest, String code) =>
+      _candidateTools(manifest, code, 'local');
+
+  Future<List<PluginTool>> _candidateTools(
+    PluginManifest manifest,
+    String code,
+    String source,
+  ) async {
     // Candidate code must not replace resident registrations or consume their
     // shared execution/memory budget, even if apply fails or never returns.
     final validationRuntime = PluginBusinessRuntime();
@@ -801,31 +829,12 @@ class PluginHostService {
       final executor =
           _executorFactoryOverride?.call(call, () {}) ??
           PluginRuntime(hostCall: call, business: validationRuntime);
-      final definitions = await executor.activate(
-        package.manifest,
-        package.code,
-      );
-      final tools = <PluginTool>[];
-      for (final view in package.manifest.pages) {
-        await readPackageText(
-          package,
-          view.source,
-          maxBytes: view.isTsx ? 2 * 1024 * 1024 : 1024 * 1024,
-        );
-      }
-      for (final definition in definitions) {
-        if (definition['kind'] == null) {
-          tools.add(
-            PluginTool(
-              package.manifest.id,
-              package.manifest.name,
-              package.source,
-              definition,
-            ),
-          );
-        }
-      }
-      registry.validate(package.manifest.id, tools);
+      final definitions = await executor.activate(manifest, code);
+      return [
+        for (final definition in definitions)
+          if (definition['kind'] == null)
+            PluginTool(manifest.id, manifest.name, source, definition),
+      ];
     } finally {
       await validationRuntime.dispose();
     }
@@ -1098,6 +1107,7 @@ class PluginHostService {
         enabled: row.enabled,
         source: package.source,
         needsConfig: await _missingRequiredKey(manifest) != null,
+        modelSelections: await _modelSelections(manifest),
       );
       ordered.add((package, row.createdAt));
     }
@@ -1270,6 +1280,7 @@ class PluginHostService {
       manifest: package.manifest,
       enabled: row.enabled,
       needsConfig: await _missingRequiredKey(package.manifest) != null,
+      modelSelections: await _modelSelections(package.manifest),
     );
     await _activate(id);
   }
@@ -1355,6 +1366,16 @@ class PluginHostService {
     return null;
   }
 
+  Future<Map<String, PluginModelSelection>> _modelSelections(
+    PluginManifest manifest,
+  ) async => {
+    for (final field in manifest.settings)
+      if (field.type == PluginSettingType.model)
+        field.key: ?pluginModelSelection(
+          await readPluginSetting(dao, manifest.id, field),
+        ),
+  };
+
   PluginManifest _manifest(String pluginId) =>
       _packages[pluginId]?.manifest ??
       (throw StateError('Unknown plugin: $pluginId'));
@@ -1378,6 +1399,7 @@ class PluginHostService {
       );
       final status = _statuses[pluginId]!;
       status.needsConfig = await _missingRequiredKey(manifest) != null;
+      status.modelSelections = await _modelSelections(manifest);
       if (disabled) {
         status.enabled = false;
         await _activate(pluginId);

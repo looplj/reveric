@@ -138,7 +138,14 @@ void main() {
         tester.widget<RevericSwitch>(find.byType(RevericSwitch)).onChanged,
         isNull,
       );
-      expect(find.byType(EditableText), findsNothing);
+      // 移动端列表自带搜索框；这里只验证配置面板没有可编辑项。
+      expect(
+        find.descendant(
+          of: find.byType(ProviderConfigPanel),
+          matching: find.byType(EditableText),
+        ),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
@@ -217,63 +224,65 @@ void main() {
     }),
   );
 
-  testWidgets('mobile swipe confirms deletion and cancel preserves the row', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(390, 844));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final settings = _Settings();
-    final container = ProviderContainer(
-      overrides: [appSettingsProvider.overrideWith(() => settings)],
-    );
-    addTearDown(container.dispose);
-    await tester.runAsync(() => container.read(appSettingsProvider.future));
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: _wrap(
-          Consumer(
-            builder: (context, ref, _) {
-              final configs = ref
-                  .watch(appSettingsProvider)
-                  .requireValue
-                  .aiSettings
-                  .allConfigs;
-              return MobileProviderList(
-                configs: configs,
+  testWidgets(
+    'mobile swipe confirms deletion and cancel preserves the row',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final settings = _Settings();
+      final container = ProviderContainer(
+        overrides: [appSettingsProvider.overrideWith(() => settings)],
+      );
+      addTearDown(container.dispose);
+      await tester.runAsync(() => container.read(appSettingsProvider.future));
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: _wrap(
+            Consumer(
+              builder: (context, ref, _) {
+                final configs = ref
+                    .watch(appSettingsProvider)
+                    .requireValue
+                    .aiSettings
+                    .allConfigs;
+                return MobileProviderList(
+                  configs: configs,
 
-                selectedId: null,
-                onSelect: (_) {},
-                onAddCustom: () {},
-              );
-            },
+                  selectedId: null,
+                  onSelect: (_) {},
+                  onAddCustom: () {},
+                );
+              },
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(RevericSlidableDelete), findsNWidgets(2));
-    final row = find.byKey(const ValueKey('deepseek'));
-    await tester.drag(row, const Offset(-250, 0));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete'));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(settings.deleted, isEmpty);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(row, findsOneWidget);
-    expect(settings.deleted, isEmpty);
-    await tester.drag(row, const Offset(-250, 0));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
-    await tester.pumpAndSettle();
-    expect(settings.deleted, ['deepseek']);
-    expect(row, findsNothing);
-    expect(find.byKey(const ValueKey('openai')), findsOneWidget);
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
-  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(RevericSlidableDelete), findsNWidgets(2));
+      final row = find.byKey(const ValueKey('deepseek'));
+      await tester.drag(row, const Offset(-250, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(settings.deleted, isEmpty);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(row, findsOneWidget);
+      expect(settings.deleted, isEmpty);
+      await tester.drag(row, const Offset(-250, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+      expect(settings.deleted, ['deepseek']);
+      expect(row, findsNothing);
+      expect(find.byKey(const ValueKey('openai')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
 }

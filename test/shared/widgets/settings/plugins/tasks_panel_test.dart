@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
+import 'package:reveric/shared/components/reveric_button.dart';
 import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/models/plugin/manifest.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
@@ -57,88 +58,104 @@ void main() {
     TargetPlatform.macOS,
     TargetPlatform.android,
   ]) {
-    testWidgets('task controls persist on ${platform.name}', (tester) async {
-      final db = AppDatabase.forTest(NativeDatabase.memory());
-      final host = PluginHostService(
-        dao: db.pluginDao,
-        registry: PluginRegistry(hostToolNames: {}),
-        packages: () async {
-          final plugin = package();
-          return [
-            PluginPackage(
-              plugin.path,
-              PluginManifest.fromJson({
-                ...plugin.manifest.json,
-                'tasks': {
-                  'organize': {
-                    'title': 'Organize memories',
-                    'intervalMinutes': 60,
+    testWidgets(
+      'task controls persist on ${platform.name}',
+      (tester) async {
+        final db = AppDatabase.forTest(NativeDatabase.memory());
+        final host = PluginHostService(
+          dao: db.pluginDao,
+          registry: PluginRegistry(hostToolNames: {}),
+          packages: () async {
+            final plugin = package();
+            return [
+              PluginPackage(
+                plugin.path,
+                PluginManifest.fromJson({
+                  ...plugin.manifest.json,
+                  'tasks': {
+                    'organize': {
+                      'title': 'Organize memories',
+                      'intervalMinutes': 60,
+                    },
                   },
-                },
-              }),
-              plugin.code,
-            ),
-          ];
-        },
-        executorFactory: (call, stop) => _TaskExecutor(),
-        platform: 'macos',
-      );
-      await tester.runAsync(host.start);
-      addTearDown(() async {
-        await host.dispose();
-        await db.close();
-      });
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(360, 900);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      Future<void> settleData() async {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)),
+                }),
+                plugin.code,
+              ),
+            ];
+          },
+          executorFactory: (call, stop) => _TaskExecutor(),
+          platform: 'macos',
         );
-        await tester.pumpAndSettle();
-      }
+        await tester.runAsync(host.start);
+        addTearDown(() async {
+          await host.dispose();
+          await db.close();
+        });
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(360, 900);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        Future<void> settleData() async {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 40)),
+          );
+          await tester.pumpAndSettle();
+        }
 
-      await tester.pumpWidget(wrapPluginSettings(host, platform: platform));
-      await settleData();
-      await tester.tap(find.byKey(const ValueKey('plugin-details-test.web')));
-      await settleData();
-      expect(find.text('Organize memories'), findsOneWidget);
-      Future<void> tap(String key) async {
-        final target = find.byKey(ValueKey(key));
-        await tester.ensureVisible(target);
-        await tester.tap(target);
+        await tester.pumpWidget(wrapPluginSettings(host, platform: platform));
         await settleData();
-      }
+        await tester.tap(find.byKey(const ValueKey('plugin-details-test.web')));
+        await settleData();
+        expect(find.text('Organize memories'), findsOneWidget);
+        Future<void> tap(String key) async {
+          final target = find.byKey(ValueKey(key));
+          await tester.ensureVisible(target);
+          await tester.tap(target);
+          await settleData();
+        }
 
-      await tap('task-toggle-organize');
-      expect(
-        (await db.pluginTaskDao.get('test.web', 'organize'))!.enabled,
-        false,
-      );
-      expect(find.text('Paused'), findsOneWidget);
-      await tap('task-run-organize');
-      expect(host.tasks.running('test.web', 'organize'), true);
-      await tap('task-cancel-organize');
-      expect(
-        (await db.pluginTaskDao.get('test.web', 'organize'))!.lastStatus,
-        'cancelled',
-      );
-      expect(
-        (await db.pluginTaskDao.get('test.web', 'organize'))!.enabled,
-        false,
-      );
-      tester.view.physicalSize = const Size(1000, 900);
-      await tester.pumpAndSettle();
-      await tap('task-toggle-organize');
-      expect(
-        (await db.pluginTaskDao.get('test.web', 'organize'))!.enabled,
-        true,
-      );
-      expect(find.textContaining('Last finished:'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pumpAndSettle();
-    }, timeout: const Timeout(Duration(seconds: 30)));
+        await tap('task-toggle-organize');
+        expect(
+          (await db.pluginTaskDao.get('test.web', 'organize'))!.enabled,
+          false,
+        );
+        expect(find.text('Paused'), findsOneWidget);
+        await tap('task-run-organize');
+        expect(host.tasks.running('test.web', 'organize'), true);
+        await tap('task-cancel-organize');
+        expect(
+          (await db.pluginTaskDao.get('test.web', 'organize'))!.lastStatus,
+          'cancelled',
+        );
+        expect(
+          (await db.pluginTaskDao.get('test.web', 'organize'))!.enabled,
+          false,
+        );
+        tester.view.physicalSize = const Size(1000, 900);
+        await tester.pumpAndSettle();
+        await tap('task-toggle-organize');
+        expect(
+          (await db.pluginTaskDao.get('test.web', 'organize'))!.enabled,
+          true,
+        );
+        expect(find.textContaining('Last finished:'), findsOneWidget);
+        expect(find.textContaining('Next run:'), findsOneWidget);
+        await tap('plugin-toggle-test.web');
+        expect(host.tasks.definition('test.web', 'organize'), isNull);
+        expect(find.textContaining('Next run:'), findsNothing);
+        expect(
+          tester
+              .widget<RevericButton>(
+                find.byKey(const ValueKey('task-toggle-organize')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    );
   }
 }

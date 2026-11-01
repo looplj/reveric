@@ -106,6 +106,7 @@ Future<List<PluginConfigSubmission>> _pump(
   Set<String> savedSecrets = const {},
   Object? failWith,
   PluginActionRunner? onAction,
+  ValueNotifier<bool>? dirty,
 }) async {
   final submissions = <PluginConfigSubmission>[];
   addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -123,6 +124,7 @@ Future<List<PluginConfigSubmission>> _pump(
         },
         actions: _actions,
         onAction: onAction,
+        dirty: dirty,
       ),
     ),
   );
@@ -140,6 +142,7 @@ String _noLength(int length) => '';
 String _noRange(num? min, num? max) => '';
 String _noField(String field) => '';
 String _noResult(String action, String result) => '';
+String _gone(String model) => '$model (gone)';
 
 void main() {
   setUp(() => rootBundle.clear());
@@ -423,6 +426,8 @@ void main() {
       actionFailed: 'fail',
       actionRequires: _noField,
       actionResult: _noResult,
+      modelDefault: '',
+      modelUnavailable: _noField,
     );
     expect(pluginActionResultText((ok: true, code: 'x'), strings), 'ok');
     expect(
@@ -465,5 +470,116 @@ void main() {
       ).issues['apiKey'],
       PluginSettingIssue.missing,
     );
+  });
+
+  test('model fields offer configured models and keep a removed one', () {
+    final fields = parsePluginSettingFields({
+      'model': {'type': 'model', 'title': 'Model'},
+    });
+    const strings = PluginConfigStrings(
+      save: '',
+      saved: '',
+      saveFailed: '',
+      clear: '',
+      required: '',
+      secretSavedHint: '',
+      secretClearHint: '',
+      requiredSecretClearHint: '',
+      invalidInteger: '',
+      invalidNumber: '',
+      maxLength: _noLength,
+      range: _noRange,
+      actionSucceeded: '',
+      actionUnauthorized: '',
+      actionNetwork: '',
+      actionTimeout: '',
+      actionFailed: '',
+      actionRequires: _noField,
+      actionResult: _noResult,
+      modelDefault: 'Default model',
+      modelUnavailable: _gone,
+    );
+    final messages = buildPluginConfigMessages(
+      fields: fields,
+      values: {
+        'model': {'providerId': 'old', 'model': 'retired'},
+      },
+      savedSecrets: const {},
+      strings: strings,
+      locale: const Locale('en'),
+      modelOptions: const [
+        (
+          selection: (providerId: 'openai', model: 'gpt-5'),
+          label: 'OpenAI · GPT-5',
+        ),
+      ],
+    );
+    final surface = messages.single['createSurface'] as Map<String, Object?>;
+    final picker = (surface['components'] as List).cast<Map>().firstWhere(
+      (component) => component['id'] == 'field_model',
+    );
+    expect(
+      [for (final option in picker['options'] as List) option['label']],
+      ['Default model', 'OpenAI · GPT-5', 'retired (gone)'],
+    );
+
+    final data = surface['dataModel'] as Map<String, Object?>;
+    final saved = (data['settings'] as Map)['model'] as List;
+    expect(
+      readPluginConfigSubmission(
+        fields: fields,
+        data: data,
+      ).submission.settings,
+      {
+        'model': {'providerId': 'old', 'model': 'retired'},
+      },
+    );
+    expect(saved, hasLength(1));
+    // 选回「跟随默认」即清空配置。
+    expect(
+      readPluginConfigSubmission(
+        fields: fields,
+        data: {
+          'settings': {
+            'model': [''],
+          },
+        },
+      ).submission.settings,
+      {'model': null},
+    );
+  });
+
+  testWidgets('dirty follows unsaved input and resets after saving', (
+    tester,
+  ) async {
+    final dirty = ValueNotifier(false);
+    addTearDown(dirty.dispose);
+    await _pump(tester, dirty: dirty);
+    expect(dirty.value, false);
+    await tester.enterText(_field('Max results'), '7');
+    await tester.pumpAndSettle();
+    expect(dirty.value, true);
+    await tester.enterText(_field('API Key'), 'secret');
+    await tester.pumpAndSettle();
+    await _save(tester);
+    expect(dirty.value, false);
+  });
+
+  testWidgets('dirty resets after saving settings without secrets', (
+    tester,
+  ) async {
+    final dirty = ValueNotifier(false);
+    addTearDown(dirty.dispose);
+    final submissions = await _pump(
+      tester,
+      savedSecrets: {'apiKey'},
+      dirty: dirty,
+    );
+    await tester.enterText(_field('Max results'), '7');
+    await tester.pumpAndSettle();
+    expect(dirty.value, true);
+    await _save(tester);
+    expect(submissions.single.secrets, isEmpty);
+    expect(dirty.value, false);
   });
 }

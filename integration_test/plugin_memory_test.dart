@@ -91,6 +91,8 @@ void main() {
         await tester.runAsync(() async {
           await host.start();
           await host.confirmPermissions('reveric.memory');
+          // Memory 默认关闭，测试需要先开启。
+          await host.setEnabled('reveric.memory', true);
           page = await host.openTsxView(
             host.views.single,
             workId: null,

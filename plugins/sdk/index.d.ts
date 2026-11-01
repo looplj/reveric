@@ -367,7 +367,12 @@ export interface PluginStorage {
 
 /** Values of plugin.json `settings.fields` fields that are not secrets. */
 export interface PluginSettings {
-  /** Resolves the saved value, else the declared default, else null. */
+  /**
+   * Resolves the saved value, else the declared default, else null.
+   * A `model` field resolves to `{ providerId, model }`, which can be spread
+   * into `ai.generateText`; null means the user's default chat model. A model
+   * the user later removed fails with `model_not_found`.
+   */
   get(key: string): Promise<Json | null>;
 }
 

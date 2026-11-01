@@ -140,6 +140,46 @@ void main() {
       }
     },
   );
+  for (final code in pluginTaskNonRetryableCodes) {
+    test('$code fails without retrying until the normal period', () async {
+      var calls = 0;
+      final scheduler = PluginTaskScheduler(
+        dao: db.pluginTaskDao,
+        canRun: (_) => true,
+        autoTick: false,
+        clock: () => now,
+        jitter: () => Duration.zero,
+        run: (def, run, cancellation) async {
+          calls++;
+          throw PluginHostError(code, 'needs user action');
+        },
+      );
+      try {
+        await scheduler.initialize();
+        await scheduler.register('a', [task('a', 'one')]);
+        await scheduler.start();
+        await scheduler.runNow('a', 'one');
+        await until(
+          () async =>
+              !scheduler.pending('a', 'one') &&
+              (await db.pluginTaskDao.get('a', 'one'))!.attempt == 1,
+        );
+        final row = (await db.pluginTaskDao.get('a', 'one'))!;
+        expect(row.lastStatus, 'failed');
+        expect(row.lastErrorCode, code);
+        expect(
+          row.nextDueAt.toUtc(),
+          now.toUtc().add(const Duration(hours: 1)),
+        );
+        // 1 分钟后的重试时间点不会再次执行。
+        now = now.add(const Duration(minutes: 1));
+        await scheduler.tick();
+        expect(calls, 1);
+      } finally {
+        await scheduler.dispose();
+      }
+    });
+  }
   test(
     'manual run preserves pause and cancellation/background do not schedule failure retries',
     () async {

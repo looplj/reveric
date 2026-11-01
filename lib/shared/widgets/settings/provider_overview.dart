@@ -22,21 +22,20 @@ import 'providers/registry.dart';
 
 final _log = AppLogger.forModule('ProviderConfig');
 
+/// 已支持类型的模型能力摘要；不支持的类型由列表中的徽标说明，不再重复。
 String providerCapabilitySummary(BuildContext context, AiProvider config) =>
-    !config.isTypeSupported
-    ? context.t(LocaleKeys.settingsProviderUnsupportedBadge)
-    : config.supportedModelKinds
-          .map(
-            (kind) => context.t(switch (kind) {
-              AiModelKind.chat => LocaleKeys.settingsProviderChatModelsLabel,
-              AiModelKind.image => LocaleKeys.settingsProviderImageModelsLabel,
-              AiModelKind.video => LocaleKeys.settingsProviderVideoModelsLabel,
-              AiModelKind.audio => LocaleKeys.settingsProviderAudioModelsLabel,
-              AiModelKind.embedding =>
-                LocaleKeys.settingsProviderEmbeddingModelsLabel,
-            }),
-          )
-          .join(' · ');
+    config.supportedModelKinds
+        .map(
+          (kind) => context.t(switch (kind) {
+            AiModelKind.chat => LocaleKeys.settingsProviderChatModelsLabel,
+            AiModelKind.image => LocaleKeys.settingsProviderImageModelsLabel,
+            AiModelKind.video => LocaleKeys.settingsProviderVideoModelsLabel,
+            AiModelKind.audio => LocaleKeys.settingsProviderAudioModelsLabel,
+            AiModelKind.embedding =>
+              LocaleKeys.settingsProviderEmbeddingModelsLabel,
+          }),
+        )
+        .join(' · ');
 
 class ProviderOverview extends StatelessWidget {
   const ProviderOverview({super.key, required this.config});

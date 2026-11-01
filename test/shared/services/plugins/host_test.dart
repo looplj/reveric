@@ -661,4 +661,64 @@ void main() {
       await db.close();
     }
   });
+
+  test(
+    'model settings are tracked so the UI can flag removed models',
+    () async {
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      addTearDown(db.close);
+      final host = PluginHostService(
+        dao: db.pluginDao,
+        registry: PluginRegistry(hostToolNames: {}),
+        packages: () async => [
+          package(
+            settings: {
+              'model': {'type': 'model', 'title': 'Model'},
+            },
+          ),
+        ],
+        executorFactory: (call, stop) => FakeExecutor(),
+        platform: 'macos',
+      );
+      addTearDown(host.dispose);
+      await host.start();
+      expect(host.statuses.single.modelSelections, isEmpty);
+      await host.saveConfig(
+        'test.web',
+        settings: {
+          'model': {'providerId': 'openai', 'model': 'gpt-5'},
+        },
+        secrets: const {},
+      );
+      expect(host.statuses.single.modelSelections, {
+        'model': (providerId: 'openai', model: 'gpt-5'),
+      });
+      await host.saveConfig(
+        'test.web',
+        settings: {'model': null},
+        secrets: const {},
+      );
+      expect(host.statuses.single.modelSelections, isEmpty);
+    },
+  );
+
+  test('install preview reads tools without registering them', () async {
+    final db = AppDatabase.forTest(NativeDatabase.memory());
+    addTearDown(db.close);
+    final host = PluginHostService(
+      dao: db.pluginDao,
+      registry: PluginRegistry(hostToolNames: {}),
+      packages: () async => [],
+      executorFactory: (call, stop) => FakeExecutor(),
+      platform: 'macos',
+    );
+    addTearDown(host.dispose);
+    await host.start();
+    final candidate = package(id: 'test.candidate').manifest;
+    final tools = await host.previewTools(candidate, '');
+    expect(tools.map((tool) => tool.name), ['WebSearch', 'WebFetch']);
+    expect(tools.every((tool) => tool.pluginId == 'test.candidate'), true);
+    expect(host.registry.effectiveTools, isEmpty);
+    expect(host.statuses, isEmpty);
+  });
 }

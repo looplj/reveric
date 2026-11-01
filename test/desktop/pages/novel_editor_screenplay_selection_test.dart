@@ -39,6 +39,7 @@ import 'package:reveric/shared/providers/production_media.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 import 'package:reveric/shared/widgets/screenplay/director_shell.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,9 +50,20 @@ const _workId = 'screenplay-selection-test';
 const _path = 'memory:desktop-screenplay-selection';
 
 void main() {
+  late Directory supportRoot;
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
+    // 页头的深度任务按钮会读取应用目录，需要先初始化存储路径。
+    supportRoot = await Directory.systemTemp.createTemp(
+      'screenplay-selection-',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (_) async => supportRoot.path,
+        );
+    await RevericPaths.initialize();
     await PromptTemplateService.loadAll();
     for (final font in {
       'LXGWWenKai': 'LXGWWenKai',
@@ -63,6 +75,14 @@ void main() {
           )..addFont(rootBundle.load('assets/fonts/${font.value}-Regular.ttf')))
           .load();
     }
+  });
+  tearDownAll(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+    await supportRoot.delete(recursive: true);
   });
   setUp(() => rootBundle.clear());
 

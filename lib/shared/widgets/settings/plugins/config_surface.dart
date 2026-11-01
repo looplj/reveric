@@ -34,6 +34,8 @@ class PluginConfigStrings {
     required this.actionFailed,
     required this.actionRequires,
     required this.actionResult,
+    required this.modelDefault,
+    required this.modelUnavailable,
   });
 
   final String save;
@@ -65,7 +67,23 @@ class PluginConfigStrings {
 
   /// 结果行的文案：在结果前标明是哪个操作。
   final String Function(String action, String result) actionResult;
+
+  /// `model` 字段未选择时的选项：跟随默认聊天模型。
+  final String modelDefault;
+
+  /// 已保存但不在当前可用模型中的选项文案。
+  final String Function(String model) modelUnavailable;
 }
+
+/// `model` 字段可选的一个聊天模型；[label] 已含供应商名称。
+typedef PluginConfigModelOption = ({
+  PluginModelSelection selection,
+  String label,
+});
+
+/// `model` 字段在页面数据中的取值；空串表示跟随默认聊天模型。
+String _modelValue(PluginModelSelection selection) =>
+    jsonEncode({'providerId': selection.providerId, 'model': selection.model});
 
 /// 一次保存提交的内容。
 class PluginConfigSubmission {
@@ -157,11 +175,32 @@ Map<String, Object?> pluginConfigValidity({
 Map<String, Object?> _fieldComponent(
   PluginSettingField field,
   PluginConfigStrings strings,
-  Locale locale,
-) {
+  Locale locale, {
+  required List<PluginConfigModelOption> modelOptions,
+  required Object? value,
+}) {
   final id = _fieldId(field.key);
   final checks = _checksOf(field, strings);
   return switch (field.type) {
+    PluginSettingType.model => {
+      'id': id,
+      'component': 'ChoicePicker',
+      'label': field.title.resolve(locale),
+      'options': [
+        {'label': strings.modelDefault, 'value': ''},
+        for (final option in modelOptions)
+          {'label': option.label, 'value': _modelValue(option.selection)},
+        // 已保存的模型被删除后仍列出并标明不可用，避免界面静默显示成默认模型。
+        if (pluginModelSelection(value) case final saved?
+            when !modelOptions.any((option) => option.selection == saved))
+          {
+            'label': strings.modelUnavailable(saved.model),
+            'value': _modelValue(saved),
+          },
+      ],
+      'value': _path(_valuePath(field)),
+      'checks': checks,
+    },
     PluginSettingType.boolean => {
       'id': id,
       'component': 'Switch',
@@ -311,7 +350,7 @@ String pluginActionResultText(
 
 /// 生成配置表单的 A2UI 消息。[values] 为已保存的普通配置，
 /// [savedSecrets] 为已保存凭据的字段名；凭据原文不进入页面数据。
-/// 清单中可本地化的文案按 [locale] 取值。
+/// 清单中可本地化的文案按 [locale] 取值；`model` 字段从 [modelOptions] 中选择。
 /// 保存与 [actions] 的按钮同处字段之后的操作栏；结果由表单在界面下方显示。
 List<Map<String, Object?>> buildPluginConfigMessages({
   required List<PluginSettingField> fields,
@@ -320,6 +359,7 @@ List<Map<String, Object?>> buildPluginConfigMessages({
   required PluginConfigStrings strings,
   required Locale locale,
   List<PluginAction> actions = const [],
+  List<PluginConfigModelOption> modelOptions = const [],
 }) {
   final settings = <String, Object?>{};
   final secrets = <String, Object?>{};
@@ -339,6 +379,9 @@ List<Map<String, Object?>> buildPluginConfigMessages({
         settings[field.key] = value is bool && value;
       case PluginSettingType.select:
         settings[field.key] = [if (value is String) value];
+      case PluginSettingType.model:
+        final selection = pluginModelSelection(value);
+        settings[field.key] = [selection == null ? '' : _modelValue(selection)];
       case _:
         settings[field.key] = value == null ? '' : '$value';
     }
@@ -361,7 +404,15 @@ List<Map<String, Object?>> buildPluginConfigMessages({
             'desc_${field.key}',
         ],
       })
-      ..add(_fieldComponent(field, strings, locale));
+      ..add(
+        _fieldComponent(
+          field,
+          strings,
+          locale,
+          modelOptions: modelOptions,
+          value: values[field.key],
+        ),
+      );
     if (field.isSecret) {
       components
         ..add(
@@ -518,6 +569,11 @@ readPluginConfigSubmission({
         value = raw is bool ? raw : false;
       case PluginSettingType.select:
         value = raw is List && raw.isNotEmpty ? raw.first : null;
+      case PluginSettingType.model:
+        final selected = raw is List && raw.isNotEmpty ? raw.first : null;
+        value = selected is String && selected.isNotEmpty
+            ? jsonDecode(selected)
+            : null;
       case PluginSettingType.integer:
         final text = '${raw ?? ''}'.trim();
         value = text.isEmpty ? null : int.tryParse(text);

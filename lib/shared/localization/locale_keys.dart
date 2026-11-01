@@ -2128,7 +2128,7 @@ abstract final class LocaleKeys {
   static const commonExport = 'common.export';
   static const commonPlay = 'common.play';
   static const commonRevoke = 'common.revoke';
-  static const settingsPluginsPermissions = 'settings.plugins_permissions';
+  static const commonGrant = 'common.grant';
   static const commonInstall = 'common.install';
   static const commonUninstall = 'common.uninstall';
   static const commonCancel = 'common.cancel';
@@ -3666,6 +3666,103 @@ abstract final class LocaleKeys {
   static const onboardingModelDefaultsTitle = 'onboarding.model_defaults_title';
   static const onboardingModelDefaultsDescription =
       'onboarding.model_defaults_description';
+  // ── plugin ────────────────────────────────────────
+  static const pluginDescription = 'plugin.description';
+  static const pluginEmpty = 'plugin.empty';
+  static const pluginBundled = 'plugin.bundled';
+  static const pluginLocal = 'plugin.local';
+  static const pluginDisabled = 'plugin.disabled';
+  static const pluginUnsupported = 'plugin.unsupported';
+  static const pluginActivating = 'plugin.activating';
+  static const pluginAvailable = 'plugin.available';
+  static const pluginFailed = 'plugin.failed';
+  static const pluginAuthor = 'plugin.author';
+  static const pluginNoTools = 'plugin.no_tools';
+  static const pluginOverridden = 'plugin.overridden';
+  static const pluginLoadFailed = 'plugin.load_failed';
+  static const pluginSaveFailed = 'plugin.save_failed';
+  static const pluginNeedsConfig = 'plugin.needs_config';
+  static const pluginConfigRequired = 'plugin.config_required';
+  static const pluginInvalid = 'plugin.invalid';
+  static const pluginApiMismatch = 'plugin.api_mismatch';
+  static const pluginConflict = 'plugin.conflict';
+  static const pluginResourceLimit = 'plugin.resource_limit';
+  static const pluginActivationFailed = 'plugin.activation_failed';
+  static const pluginConfigSecretSavedHint = 'plugin.config_secret_saved_hint';
+  static const pluginConfigSecretClearHint = 'plugin.config_secret_clear_hint';
+  static const pluginConfigRequiredSecretClearHint =
+      'plugin.config_required_secret_clear_hint';
+  static const pluginActionSucceeded = 'plugin.action_succeeded';
+  static const pluginActionUnauthorized = 'plugin.action_unauthorized';
+  static const pluginActionNetwork = 'plugin.action_network';
+  static const pluginActionTimeout = 'plugin.action_timeout';
+  static const pluginActionFailed = 'plugin.action_failed';
+  static const pluginActionRequires = 'plugin.action_requires';
+  static const pluginActionResult = 'plugin.action_result';
+  static const pluginNoNewPermissions = 'plugin.no_new_permissions';
+  static const pluginInstallFailed = 'plugin.install_failed';
+  static const pluginNeedsPermission = 'plugin.needs_permission';
+  static const pluginUninstallConfirm = 'plugin.uninstall_confirm';
+  static const pluginPermissions = 'plugin.permissions';
+  static const pluginPreviewTitle = 'plugin.preview_title';
+  static const pluginPreviewDescription = 'plugin.preview_description';
+  static const pluginViewFailed = 'plugin.view_failed';
+  static const pluginPromptSkipped = 'plugin.prompt_skipped';
+  static const pluginTasks = 'plugin.tasks';
+  static const pluginTaskRunning = 'plugin.task_running';
+  static const pluginTaskSuccess = 'plugin.task_success';
+  static const pluginTaskFailed = 'plugin.task_failed';
+  static const pluginTaskRetrying = 'plugin.task_retrying';
+  static const pluginTaskCancelled = 'plugin.task_cancelled';
+  static const pluginTaskInterrupted = 'plugin.task_interrupted';
+  static const pluginTaskRemoved = 'plugin.task_removed';
+  static const pluginTaskReady = 'plugin.task_ready';
+  static const pluginTaskPaused = 'plugin.task_paused';
+  static const pluginTaskNext = 'plugin.task_next';
+  static const pluginTaskFinished = 'plugin.task_finished';
+  static const pluginTaskUsage = 'plugin.task_usage';
+  static const pluginTaskModelMissing = 'plugin.task_model_missing';
+  static const pluginAiPermission = 'plugin.ai_permission';
+  static const pluginConfigModelDefault = 'plugin.config_model_default';
+  static const pluginConfigModelUnavailable = 'plugin.config_model_unavailable';
+  static const pluginGrantAndInstall = 'plugin.grant_and_install';
+  static const pluginGrantOnInstall = 'plugin.grant_on_install';
+  static const pluginModelUnavailable = 'plugin.model_unavailable';
+  static const pluginPackageInvalid = 'plugin.package_invalid';
+  static const pluginPages = 'plugin.pages';
+  static const pluginPermissionAiTitle = 'plugin.permission_ai_title';
+  static const pluginPermissionChaptersReadTitle =
+      'plugin.permission_chapters_read_title';
+  static const pluginPermissionChaptersRead = 'plugin.permission_chapters_read';
+  static const pluginPermissionChaptersWriteTitle =
+      'plugin.permission_chapters_write_title';
+  static const pluginPermissionChaptersWrite =
+      'plugin.permission_chapters_write';
+  static const pluginPermissionCharactersReadTitle =
+      'plugin.permission_characters_read_title';
+  static const pluginPermissionCharactersRead =
+      'plugin.permission_characters_read';
+  static const pluginPermissionCharactersWriteTitle =
+      'plugin.permission_characters_write_title';
+  static const pluginPermissionCharactersWrite =
+      'plugin.permission_characters_write';
+  static const pluginPermissionUnknownTitle = 'plugin.permission_unknown_title';
+  static const pluginPermissionUnknown = 'plugin.permission_unknown';
+  static const pluginPermissionNew = 'plugin.permission_new';
+  static const pluginPermissionRequired = 'plugin.permission_required';
+  static const pluginPreviewNoTools = 'plugin.preview_no_tools';
+  static const pluginPreviewToolsFailed = 'plugin.preview_tools_failed';
+  static const pluginRevokeConfirm = 'plugin.revoke_confirm';
+  static const pluginSettings = 'plugin.settings';
+  static const pluginTaskIntervalMinutes = 'plugin.task_interval_minutes';
+  static const pluginTaskIntervalHours = 'plugin.task_interval_hours';
+  static const pluginTaskIntervalDays = 'plugin.task_interval_days';
+  static const pluginTaskModelNotFound = 'plugin.task_model_not_found';
+  static const pluginTaskPermissionMissing = 'plugin.task_permission_missing';
+  static const pluginToolsCount = 'plugin.tools_count';
+  static const pluginUnreviewed = 'plugin.unreviewed';
+  static const pluginVersionUpgrade = 'plugin.version_upgrade';
+  static const pluginUnsavedChangesMessage = 'plugin.unsaved_changes_message';
   // ── reading ────────────────────────────────────────
   static const readingTitle = 'reading.title';
   static const readingLibraryTitle = 'reading.library_title';
@@ -3849,60 +3946,7 @@ abstract final class LocaleKeys {
   static const roleplaySessionTitleFmt = 'roleplay.session_title_fmt';
   static const roleplaySpeakingFmt = 'roleplay.speaking_fmt';
   static const roleplayStart = 'roleplay.start';
-  static const settingsPluginsChoosePackage = 'settings.plugins_choose_package';
-  static const settingsPluginsNewPermissions =
-      'settings.plugins_new_permissions';
-  static const settingsPluginsNoNewPermissions =
-      'settings.plugins_no_new_permissions';
-  static const settingsPluginsInstallFailed = 'settings.plugins_install_failed';
-  static const settingsPluginsNeedsPermission =
-      'settings.plugins_needs_permission';
-  static const settingsPluginsUninstallConfirm =
-      'settings.plugins_uninstall_confirm';
-  static const settingsPluginsPreviewTitle = 'settings.plugins_preview_title';
-  static const settingsPluginsPreviewDescription =
-      'settings.plugins_preview_description';
-  static const settingsPluginsPromptSkipped = 'settings.plugins_prompt_skipped';
-  static const settingsPluginsViewFailed = 'settings.plugins_view_failed';
   static const settingsPlugins = 'settings.plugins';
-  static const settingsPluginsDescription = 'settings.plugins_description';
-  static const settingsPluginsEmpty = 'settings.plugins_empty';
-  static const settingsPluginsBundled = 'settings.plugins_bundled';
-  static const settingsPluginsLocal = 'settings.plugins_local';
-  static const settingsPluginsDisabled = 'settings.plugins_disabled';
-  static const settingsPluginsUnsupported = 'settings.plugins_unsupported';
-  static const settingsPluginsActivating = 'settings.plugins_activating';
-  static const settingsPluginsAvailable = 'settings.plugins_available';
-  static const settingsPluginsFailed = 'settings.plugins_failed';
-  static const settingsPluginsAuthor = 'settings.plugins_author';
-  static const settingsPluginsAiPermission = 'settings.plugins_ai_permission';
-  static const settingsPluginsTasks = 'settings.plugins_tasks';
-  static const settingsPluginsTaskRunning = 'settings.plugins_task_running';
-  static const settingsPluginsTaskSuccess = 'settings.plugins_task_success';
-  static const settingsPluginsTaskFailed = 'settings.plugins_task_failed';
-  static const settingsPluginsTaskRetrying = 'settings.plugins_task_retrying';
-  static const settingsPluginsTaskCancelled = 'settings.plugins_task_cancelled';
-  static const settingsPluginsTaskInterrupted =
-      'settings.plugins_task_interrupted';
-  static const settingsPluginsTaskRemoved = 'settings.plugins_task_removed';
-  static const settingsPluginsTaskReady = 'settings.plugins_task_ready';
-  static const settingsPluginsTaskPaused = 'settings.plugins_task_paused';
-  static const settingsPluginsTaskNext = 'settings.plugins_task_next';
-  static const settingsPluginsTaskFinished = 'settings.plugins_task_finished';
-  static const settingsPluginsTaskUsage = 'settings.plugins_task_usage';
-  static const settingsPluginsTaskModelMissing =
-      'settings.plugins_task_model_missing';
-  static const settingsPluginsTools = 'settings.plugins_tools';
-  static const settingsPluginsNoTools = 'settings.plugins_no_tools';
-  static const settingsPluginsOverridden = 'settings.plugins_overridden';
-  static const settingsPluginsLoadFailed = 'settings.plugins_load_failed';
-  static const settingsPluginsSaveFailed = 'settings.plugins_save_failed';
-  static const settingsPluginsInvalid = 'settings.plugins_invalid';
-  static const settingsPluginsApiMismatch = 'settings.plugins_api_mismatch';
-  static const settingsPluginsConflict = 'settings.plugins_conflict';
-  static const settingsPluginsResourceLimit = 'settings.plugins_resource_limit';
-  static const settingsPluginsActivationFailed =
-      'settings.plugins_activation_failed';
   static const settingsMcp = 'settings.mcp';
   static const settingsMcpRevocationFailed = 'settings.mcp_revocation_failed';
   static const settingsMcpCallbackExpired = 'settings.mcp_callback_expired';
@@ -3960,24 +4004,6 @@ abstract final class LocaleKeys {
   static const settingsMcpCallback = 'settings.mcp_callback';
   static const settingsMcpUnknown = 'settings.mcp_unknown';
   // ── settings ────────────────────────────────────────
-  static const settingsPluginsNeedsConfig = 'settings.plugins_needs_config';
-  static const settingsPluginsConfigRequired =
-      'settings.plugins_config_required';
-  static const settingsPluginConfigSecretSavedHint =
-      'settings.plugin_config_secret_saved_hint';
-  static const settingsPluginConfigSecretClearHint =
-      'settings.plugin_config_secret_clear_hint';
-  static const settingsPluginConfigRequiredSecretClearHint =
-      'settings.plugin_config_required_secret_clear_hint';
-  static const settingsPluginActionSucceeded =
-      'settings.plugin_action_succeeded';
-  static const settingsPluginActionUnauthorized =
-      'settings.plugin_action_unauthorized';
-  static const settingsPluginActionNetwork = 'settings.plugin_action_network';
-  static const settingsPluginActionTimeout = 'settings.plugin_action_timeout';
-  static const settingsPluginActionFailed = 'settings.plugin_action_failed';
-  static const settingsPluginActionRequires = 'settings.plugin_action_requires';
-  static const settingsPluginActionResult = 'settings.plugin_action_result';
   static const settingsAddCustomProvider = 'settings.add_custom_provider';
   static const settingsAddCustomProviderNameHint =
       'settings.add_custom_provider_name_hint';

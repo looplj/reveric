@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {create,update,search,prompt,resolveSuggestion,suggestions} from '../src/data';
 import {organize} from '../src/organize';
 import type {PluginSqlite,TaskContext,Json} from '../../sdk/index';
-function fixture() {
+function fixture(settings:Record<string,Json>={}) {
  const raw=new DatabaseSync(':memory:');
  raw.exec(readFileSync('memory/migrations/001.sql','utf8'));
  const sqlite:PluginSqlite={
@@ -15,8 +15,9 @@ function fixture() {
  };
  const storage=new Map<string,Json>();
  let calls=0;
- const context={runId:'run',trigger:'manual',scheduledAt:1,sqlite,storage:{get:async(k:string)=>storage.get(k)??null,set:async(k:string,v:Json)=>{storage.set(k,v);}},ai:{generateText:async({prompt}:{prompt:string})=>{calls++;return {text:JSON.stringify(JSON.parse(prompt).map((r:Record<string,unknown>)=>({...r,content:'Refined '+r.content})))}}}} as unknown as TaskContext;
- return {raw,sqlite,context,get calls(){return calls;}};
+ const models:unknown[]=[];
+ const context={runId:'run',trigger:'manual',scheduledAt:1,sqlite,storage:{get:async(k:string)=>storage.get(k)??null,set:async(k:string,v:Json)=>{storage.set(k,v);}},settings:{get:async(k:string)=>settings[k]??null},ai:{generateText:async({prompt,providerId,model}:{prompt:string,providerId?:string,model?:string})=>{calls++;models.push(providerId===undefined?null:{providerId,model});return {text:JSON.stringify(JSON.parse(prompt).map((r:Record<string,unknown>)=>({...r,content:'Refined '+r.content})))}}}} as unknown as TaskContext;
+ return {raw,sqlite,context,models,get calls(){return calls;}};
 }
 test('scope, optimistic updates, disable/remove and prompt share committed data',async()=>{
  const f=fixture();try{
@@ -65,4 +66,15 @@ test('full-entry prompt budget and twenty-memory task batch',async()=>{
   await organize(f.context);assert.equal(rawCount(f.raw,'suggestions'),25);
   await organize(f.context);assert.equal(f.calls,2);
  }finally{f.raw.close();}
+});
+test('organize uses the configured model, else the default chat model',async()=>{
+ const chosen=fixture({organizeModel:{providerId:'openai',model:'gpt-5'}});
+ const fallback=fixture();
+ try{
+  await create(chosen.sqlite,'a',{content:'Original',category:'fact'});
+  await create(fallback.sqlite,'a',{content:'Original',category:'fact'});
+  await organize(chosen.context);await organize(fallback.context);
+  assert.deepEqual(chosen.models,[{providerId:'openai',model:'gpt-5'}]);
+  assert.deepEqual(fallback.models,[null]);
+ }finally{chosen.raw.close();fallback.raw.close();}
 });

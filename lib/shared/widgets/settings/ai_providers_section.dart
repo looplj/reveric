@@ -412,14 +412,16 @@ class ProviderListItem extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: RevericSpacing.xxs),
-                    Text(
-                      showcase?.listTagline?.call(context) ??
-                          providerCapabilitySummary(context, config),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: typo.uiTiny.copyWith(color: colors.textMuted),
-                    ),
+                    if (config.isTypeSupported) ...[
+                      const SizedBox(height: RevericSpacing.xxs),
+                      Text(
+                        showcase?.listTagline?.call(context) ??
+                            providerCapabilitySummary(context, config),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: typo.uiTiny.copyWith(color: colors.textMuted),
+                      ),
+                    ],
                     if (!config.isTypeSupported || !config.isBuiltin) ...[
                       const SizedBox(height: RevericSpacing.xxs),
                       RevericBadge(

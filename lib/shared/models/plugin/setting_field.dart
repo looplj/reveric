@@ -14,6 +14,28 @@ enum PluginSettingType {
   boolean,
   select,
   secret,
+
+  /// 从用户已配置的聊天模型中选择；值为 `{providerId, model}`，未设置时跟随默认聊天模型。
+  model,
+}
+
+/// `model` 字段保存的模型；可直接作为 `ai.generateText` 的 providerId / model。
+typedef PluginModelSelection = ({String providerId, String model});
+
+/// 读取 `model` 字段的值；格式不符时返回 null。
+PluginModelSelection? pluginModelSelection(Object? value) {
+  if (value is! Map) {
+    return null;
+  }
+  final providerId = value['providerId'];
+  final model = value['model'];
+  if (providerId is! String ||
+      providerId.isEmpty ||
+      model is! String ||
+      model.isEmpty) {
+    return null;
+  }
+  return (providerId: providerId, model: model);
 }
 
 /// `select` 字段的一个选项。
@@ -46,7 +68,7 @@ class PluginSettingField {
   final PluginText? description;
   final bool required;
 
-  /// 已按字段类型校验过的默认值；`secret` 没有默认值。
+  /// 已按字段类型校验过的默认值；`secret`、`model` 没有默认值。
   final Object? defaultValue;
 
   /// `string`、`text` 的最大字符数。
@@ -153,7 +175,9 @@ PluginSettingField _parseField(Object? key, Object? json) {
   if (defaultValue == null) {
     return field;
   }
+  // 模型取决于用户自己的 AI 设置，清单无法给出可用的默认值。
   if (type == PluginSettingType.secret ||
+      type == PluginSettingType.model ||
       validatePluginSettingValue(field, defaultValue) != null) {
     throw FormatException('settings.$key.default is invalid');
   }
@@ -244,5 +268,10 @@ PluginSettingIssue? validatePluginSettingValue(
       return field.options.any((option) => option.value == value)
           ? null
           : PluginSettingIssue.unknown_option;
+    case PluginSettingType.model:
+      // 只校验格式；模型是否仍可用随 AI 设置变化，由调用与界面提示处理。
+      return pluginModelSelection(value) == null
+          ? PluginSettingIssue.wrong_type
+          : null;
   }
 }

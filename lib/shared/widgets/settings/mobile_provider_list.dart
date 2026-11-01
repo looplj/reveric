@@ -220,14 +220,16 @@ class _MobileProviderRow extends StatelessWidget {
                       ],
                     ],
                   ),
-                  const SizedBox(height: RevericSpacing.xxs),
-                  Text(
-                    showcase?.listTagline?.call(context) ??
-                        providerCapabilitySummary(context, config),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: typo.uiSmall.copyWith(color: colors.textMuted),
-                  ),
+                  if (config.isTypeSupported) ...[
+                    const SizedBox(height: RevericSpacing.xxs),
+                    Text(
+                      showcase?.listTagline?.call(context) ??
+                          providerCapabilitySummary(context, config),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: typo.uiSmall.copyWith(color: colors.textMuted),
+                    ),
+                  ],
                 ],
               ),
             ),

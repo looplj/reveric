@@ -107,5 +107,6 @@
   "common.uninstall": "Uninstall",
   "common.revoke": "Revoke",
   "common.resume": "Resume",
-  "common.run_now": "Run now"
+  "common.run_now": "Run now",
+  "common.grant": "Grant"
 }

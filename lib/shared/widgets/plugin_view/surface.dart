@@ -3,8 +3,8 @@
 //   lib/shared/services/plugins/ui_session.dart
 //   lib/shared/widgets/plugin_view/tree_view.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/plugin.json
+//   assets/translations/zh-CN/plugin.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/design-system.md
@@ -88,7 +88,7 @@ class _SurfaceBody extends HookWidget {
     );
     if (error != null) {
       return RevericPlaceholder.error(
-        title: context.t(LocaleKeys.settingsPluginsViewFailed),
+        title: context.t(LocaleKeys.pluginViewFailed),
       );
     }
     if (!ready) {

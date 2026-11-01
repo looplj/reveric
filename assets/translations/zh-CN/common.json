@@ -107,5 +107,6 @@
   "common.uninstall": "卸载",
   "common.revoke": "撤销",
   "common.resume": "恢复",
-  "common.run_now": "立即运行"
+  "common.run_now": "立即运行",
+  "common.grant": "授权"
 }

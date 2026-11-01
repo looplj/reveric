@@ -51,6 +51,7 @@ class MergingAssetLoader extends AssetLoader {
     'monologue',
     'name_assistant',
     'onboarding',
+    'plugin',
     'relation',
     'relation_dialog',
     'reading',

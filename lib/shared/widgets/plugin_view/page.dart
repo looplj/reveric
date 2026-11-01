@@ -8,8 +8,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/plugin.json
+//   assets/translations/zh-CN/plugin.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/desktop-window-frame.md
@@ -199,7 +199,7 @@ _PluginPageState _usePluginPage(
   Widget content;
   if (failed.value) {
     content = RevericPlaceholder.error(
-      title: context.t(LocaleKeys.settingsPluginsViewFailed),
+      title: context.t(LocaleKeys.pluginViewFailed),
     );
   } else if (session == null) {
     content = const Center(child: CircularProgressIndicator());
@@ -482,7 +482,7 @@ class _A2uiPageBody extends HookWidget {
           Padding(
             padding: const EdgeInsets.all(RevericSpacing.md),
             child: Text(
-              context.t(LocaleKeys.settingsPluginsViewFailed),
+              context.t(LocaleKeys.pluginViewFailed),
               style: RevericTheme.typographyOf(
                 context,
               ).ui.copyWith(color: RevericTheme.colorsOf(context).warningText),

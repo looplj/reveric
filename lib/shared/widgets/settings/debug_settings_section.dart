@@ -9,7 +9,9 @@
 //   lib/shared/localization/locale_keys.dart
 //   lib/shared/theme/theme.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/plugin.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/plugin.json
 //   lib/shared/widgets/a2ui/preview/preview_panel.dart
 //   assets/translations/en/a2ui.json
 //   assets/translations/zh-CN/a2ui.json
@@ -296,10 +298,8 @@ class DebugSettingsSection extends HookConsumerWidget {
           ),
           const SizedBox(height: RevericSpacing.xl),
           _DebugActionCard(
-            title: context.t(LocaleKeys.settingsPluginsPreviewTitle),
-            description: context.t(
-              LocaleKeys.settingsPluginsPreviewDescription,
-            ),
+            title: context.t(LocaleKeys.pluginPreviewTitle),
+            description: context.t(LocaleKeys.pluginPreviewDescription),
             action: RevericButton.secondary(
               label: context.t(LocaleKeys.commonOpen),
               onPressed: () => showPluginUiPreview(context),

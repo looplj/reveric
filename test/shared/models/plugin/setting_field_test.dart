@@ -216,4 +216,61 @@ void main() {
       );
     });
   });
+
+  group('model fields', () {
+    final field = parsePluginSettingFields({
+      'organizeModel': {'type': 'model', 'title': 'Model'},
+    }).single;
+
+    test('parse without a default and hold a provider/model pair', () {
+      expect(field.type, PluginSettingType.model);
+      expect(field.defaultValue, isNull);
+      expect(
+        validatePluginSettingValue(field, {
+          'providerId': 'openai',
+          'model': 'gpt-5',
+        }),
+        isNull,
+      );
+      expect(validatePluginSettingValue(field, null), isNull);
+      expect(pluginModelSelection({'providerId': 'openai', 'model': 'gpt-5'}), (
+        providerId: 'openai',
+        model: 'gpt-5',
+      ));
+    });
+
+    test('a manifest cannot pick a default model', () {
+      expect(
+        () => parsePluginSettingFields({
+          'm': {
+            'type': 'model',
+            'title': 'Model',
+            'default': {'providerId': 'openai', 'model': 'gpt-5'},
+          },
+        }),
+        throwsFormatException,
+      );
+    });
+
+    test('rejects values that are not a complete pair', () {
+      for (final value in [
+        'openai::gpt-5',
+        {'providerId': 'openai'},
+        {'providerId': '', 'model': 'gpt-5'},
+        {'providerId': 'openai', 'model': 5},
+      ]) {
+        expect(
+          validatePluginSettingValue(field, value),
+          PluginSettingIssue.wrong_type,
+        );
+      }
+      final required = parsePluginSettingFields({
+        'm': {'type': 'model', 'title': 'Model', 'required': true},
+      }).single;
+      expect(
+        validatePluginSettingValue(required, null),
+        PluginSettingIssue.missing,
+      );
+    });
+  });
 }

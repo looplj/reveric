@@ -15,6 +15,14 @@ import 'runtime.dart';
 
 final _log = AppLogger.forModule('PluginTasks');
 
+/// Host API 错误码中，只有用户改配置或授权后才会恢复的失败；重试只会得到同样结果。
+const pluginTaskNonRetryableCodes = {
+  'model_not_configured',
+  'model_not_found',
+  'permission_denied',
+  'database_not_declared',
+};
+
 typedef PluginTaskResult = ({String? summary, Map<String, dynamic>? usage});
 
 class PluginTaskExecutionError extends PluginHostError {
@@ -370,12 +378,16 @@ class PluginTaskScheduler {
           usage = error.usage;
         }
         if (execution.cancelReason == null) {
-          status = execution.attempt <= 3 ? 'retrying' : 'failed';
           errorCode = error is PluginHostError
               ? error.code
               : error is PluginExecutionError
               ? error.code
               : 'task_failed';
+          status =
+              execution.attempt <= 3 &&
+                  !pluginTaskNonRetryableCodes.contains(errorCode)
+              ? 'retrying'
+              : 'failed';
           _log.error(
             'Task failed plugin=${execution.definition.pluginId} task=${execution.definition.id} run=${execution.run.runId}',
             error: error,

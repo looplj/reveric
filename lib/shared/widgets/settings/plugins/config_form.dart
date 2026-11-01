@@ -10,8 +10,8 @@
 //   assets/translations/zh-CN/common.json
 //   assets/translations/en/form.json
 //   assets/translations/zh-CN/form.json
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/plugin.json
+//   assets/translations/zh-CN/plugin.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/i18n.md
@@ -19,6 +19,7 @@
 //   .agents/rules/design-system.md
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -59,6 +60,15 @@ class _Status {
   final String? inputs;
 }
 
+/// 已保存配置的比较基准；保存成功后更新，用于判断是否有未保存的输入。
+class _Baseline {
+  _Baseline(this.settings);
+  String settings;
+}
+
+String _encodeSettings(PluginConfigSubmission submission) =>
+    jsonEncode(submission.settings);
+
 /// 插件配置表单。插件未启用时也可展示；凭据原文不回显，只显示是否已设置。
 ///
 /// [fields] 应保持同一实例，字段声明变化（如插件更新）时传入新实例会重建表单。
@@ -71,6 +81,8 @@ class PluginConfigForm extends HookWidget {
     required this.onSave,
     this.actions = const [],
     this.onAction,
+    this.modelOptions = const [],
+    this.dirty,
   });
 
   final List<PluginSettingField> fields;
@@ -86,6 +98,12 @@ class PluginConfigForm extends HookWidget {
   final List<PluginAction> actions;
   final PluginActionRunner? onAction;
 
+  /// `model` 字段可选的聊天模型。
+  final List<PluginConfigModelOption> modelOptions;
+
+  /// 有尚未保存的输入时为 true，供离开确认使用。
+  final ValueNotifier<bool>? dirty;
+
   List<PluginAction> get _actions => onAction == null ? const [] : actions;
 
   @override
@@ -97,12 +115,24 @@ class PluginConfigForm extends HookWidget {
     final onActionRef = useRef(onAction);
     onActionRef.value = onAction;
     final actions = _actions;
+    // 可选模型变化时重建表单；同一列表内容的新实例不重建，避免丢失输入。
+    final modelSignature = [
+      for (final option in modelOptions)
+        '${option.selection.providerId}::${option.selection.model}:${option.label}',
+    ].join('\n');
     final status = useMemoized(() => ValueNotifier<_Status?>(null), [
       fields,
       actions,
       locale,
+      modelSignature,
     ]);
     useEffect(() => status.dispose, [status]);
+    final baseline = useMemoized(() => _Baseline(''), [
+      fields,
+      actions,
+      locale,
+      modelSignature,
+    ]);
     final session = useMemoized(() {
       late final A2uiSurfaceSession session;
       session = A2uiSurfaceSession.load(
@@ -114,6 +144,7 @@ class PluginConfigForm extends HookWidget {
           strings: strings,
           locale: locale,
           actions: actions,
+          modelOptions: modelOptions,
         ),
         onAction: (event) => switch (event.name) {
           clearSecretEvent => _clearSecret(session, event, strings, status),
@@ -122,6 +153,7 @@ class PluginConfigForm extends HookWidget {
             event: event,
             strings: strings,
             status: status,
+            baseline: baseline,
             onSave: onSaveRef.value,
           ),
           runActionEvent => _runAction(
@@ -135,8 +167,14 @@ class PluginConfigForm extends HookWidget {
           _ => Future.value(const <A2uiDataUpdate>[]),
         },
       );
+      baseline.settings = _encodeSettings(
+        readPluginConfigSubmission(
+          fields: fields,
+          data: session.dataSnapshot(),
+        ).submission,
+      );
       return session;
-    }, [fields, actions, locale]);
+    }, [fields, actions, locale, modelSignature]);
     // 页面数据每次变化后在 Dart 侧重算字段规则与操作可用性，写入 /valid、/actionReady
     // 供 checks 引用，并清除输入已变化的操作结果；写入会再触发一次，结果不变即停止。
     useEffect(() {
@@ -153,7 +191,7 @@ class PluginConfigForm extends HookWidget {
         // 不在数据通知回调内同步写页面数据。
         scheduleMicrotask(() {
           scheduled = false;
-          _refreshDerived(session, status);
+          _refreshDerived(session, status, baseline);
         });
       });
       return subscription.unsubscribe;
@@ -187,6 +225,7 @@ class PluginConfigForm extends HookWidget {
   void _refreshDerived(
     A2uiSurfaceSession session,
     ValueNotifier<_Status?> status,
+    _Baseline baseline,
   ) {
     if (session.isDisposed) {
       return;
@@ -194,6 +233,7 @@ class PluginConfigForm extends HookWidget {
     final data = session.dataSnapshot();
     final root = data is Map ? data : const {};
     final actions = _actions;
+    _updateDirty(data, baseline);
     final validity = pluginConfigValidity(fields: fields, data: data);
     final readiness = pluginActionReadiness(
       fields: fields,
@@ -219,6 +259,20 @@ class PluginConfigForm extends HookWidget {
     if (updates.isNotEmpty) {
       session.applyDataUpdates(updates);
     }
+  }
+
+  void _updateDirty(Object? data, _Baseline baseline) {
+    final notifier = dirty;
+    if (notifier == null) {
+      return;
+    }
+    final submission = readPluginConfigSubmission(
+      fields: fields,
+      data: data,
+    ).submission;
+    notifier.value =
+        submission.secrets.isNotEmpty ||
+        _encodeSettings(submission) != baseline.settings;
   }
 
   /// 用页面当前输入执行操作；结果返回前输入已变化时不显示，避免结果对应旧输入。
@@ -312,6 +366,7 @@ class PluginConfigForm extends HookWidget {
     required A2uiActionEvent event,
     required PluginConfigStrings strings,
     required ValueNotifier<_Status?> status,
+    required _Baseline baseline,
     required PluginConfigSaver onSave,
   }) async {
     final (:submission, :issues) = readPluginConfigSubmission(
@@ -354,7 +409,11 @@ class PluginConfigForm extends HookWidget {
         ),
       ]);
     }
+    baseline.settings = _encodeSettings(submission);
     status.value = _Status(strings.saved, ok: true);
+    // 没有凭据更新时页面数据不变，不会触发重算，这里先按新基准刷新；
+    // 凭据草稿随下面的更新清空，届时再重算一次。
+    _updateDirty(session.dataSnapshot(), baseline);
     return updates;
   }
 }
@@ -411,12 +470,16 @@ PluginConfigStrings _strings(BuildContext context) {
     namedArgs: {'max': '{max}'},
   );
   final actionRequiresTemplate = context.t(
-    LocaleKeys.settingsPluginActionRequires,
+    LocaleKeys.pluginActionRequires,
     namedArgs: {'field': '{field}'},
   );
   final actionResultTemplate = context.t(
-    LocaleKeys.settingsPluginActionResult,
+    LocaleKeys.pluginActionResult,
     namedArgs: {'action': '{action}', 'result': '{result}'},
+  );
+  final modelUnavailableTemplate = context.t(
+    LocaleKeys.pluginConfigModelUnavailable,
+    namedArgs: {'model': '{model}'},
   );
 
   String rangeText(num? min, num? max) {
@@ -432,24 +495,27 @@ PluginConfigStrings _strings(BuildContext context) {
     saveFailed: context.t(LocaleKeys.commonSaveFailed),
     clear: context.t(LocaleKeys.commonClear),
     required: context.t(LocaleKeys.formRequired),
-    secretSavedHint: context.t(LocaleKeys.settingsPluginConfigSecretSavedHint),
-    secretClearHint: context.t(LocaleKeys.settingsPluginConfigSecretClearHint),
+    secretSavedHint: context.t(LocaleKeys.pluginConfigSecretSavedHint),
+    secretClearHint: context.t(LocaleKeys.pluginConfigSecretClearHint),
     requiredSecretClearHint: context.t(
-      LocaleKeys.settingsPluginConfigRequiredSecretClearHint,
+      LocaleKeys.pluginConfigRequiredSecretClearHint,
     ),
     invalidInteger: context.t(LocaleKeys.formInvalidInteger),
     invalidNumber: context.t(LocaleKeys.formInvalidNumber),
     maxLength: (length) => maxLengthTemplate.replaceAll('{length}', '$length'),
     range: rangeText,
-    actionSucceeded: context.t(LocaleKeys.settingsPluginActionSucceeded),
-    actionUnauthorized: context.t(LocaleKeys.settingsPluginActionUnauthorized),
-    actionNetwork: context.t(LocaleKeys.settingsPluginActionNetwork),
-    actionTimeout: context.t(LocaleKeys.settingsPluginActionTimeout),
-    actionFailed: context.t(LocaleKeys.settingsPluginActionFailed),
+    actionSucceeded: context.t(LocaleKeys.pluginActionSucceeded),
+    actionUnauthorized: context.t(LocaleKeys.pluginActionUnauthorized),
+    actionNetwork: context.t(LocaleKeys.pluginActionNetwork),
+    actionTimeout: context.t(LocaleKeys.pluginActionTimeout),
+    actionFailed: context.t(LocaleKeys.pluginActionFailed),
     actionRequires: (field) =>
         actionRequiresTemplate.replaceAll('{field}', field),
     actionResult: (action, result) => actionResultTemplate
         .replaceAll('{action}', action)
         .replaceAll('{result}', result),
+    modelDefault: context.t(LocaleKeys.pluginConfigModelDefault),
+    modelUnavailable: (model) =>
+        modelUnavailableTemplate.replaceAll('{model}', model),
   );
 }
