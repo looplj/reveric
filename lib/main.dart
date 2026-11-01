@@ -1,4 +1,4 @@
-// 职责: 应用入口 — 初始化基础设施，显示启动 loading，数据初始化结束后挂载桌面/移动端业务界面。
+// 职责: 应用入口 — 初始化基础设施，显示启动状态与设置加载失败重试，初始化结束后挂载桌面/移动端业务界面。
 // 关联文件:
 //   lib/desktop/pages/home.dart
 //   lib/shared/providers/settings_providers.dart
@@ -12,6 +12,9 @@
 //   lib/shared/logger/app_logger.dart
 //   lib/shared/logger/flutter_error_logger.dart
 //   lib/shared/logger/startup_failure_reporter.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 import 'shared/providers/plugin_providers.dart';
 import 'shared/providers/mcp_providers.dart';
 import 'dart:async';
@@ -30,10 +33,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'desktop/pages/home.dart';
+import 'desktop/widgets/desktop_window_frame.dart';
 import 'shared/widgets/app_startup_gate.dart';
 import 'shared/widgets/file_workspace_startup_gate.dart';
 import 'desktop/widgets/activation_failure_app.dart';
 import 'shared/widgets/brand_loader.dart';
+import 'shared/components/reveric_button.dart';
+import 'shared/components/reveric_placeholder.dart';
+import 'shared/localization/locale_keys.dart';
 import 'desktop/widgets/settings/settings_dialog.dart';
 import 'desktop/pages/onboarding.dart';
 import 'mobile/app.dart';
@@ -502,12 +509,25 @@ class MyApp extends ConsumerWidget {
       },
       error: (error, stack) {
         _log.error('MyApp: settings error', error: error, stackTrace: stack);
+        final failure = Center(
+          child: RevericPlaceholder.error(
+            title: tr(LocaleKeys.commonLoadFailed),
+            action: RevericButton.primary(
+              label: tr(LocaleKeys.commonRetry),
+              onPressed: () => ref.invalidate(appSettingsNotifierProvider),
+            ),
+          ),
+        );
         return _buildApp(
           context: context,
           themeMode: themeMode,
           themeData: RevericThemeData.classic,
           darkThemeData: RevericThemeData.classicDark,
-          home: const _LoadingScreen(),
+          home: Scaffold(
+            body: _isDesktopPlatform
+                ? DesktopWindowFrame(child: failure)
+                : failure,
+          ),
           uiTextScale: uiTextScale,
         );
       },

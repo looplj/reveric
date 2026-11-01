@@ -145,8 +145,8 @@ class NetworkProxy {
     final config = NetworkProxy(
       mode: NetworkProxyMode.values.byName(json['mode'] as String),
       url: json['url'] as String,
-      username: json['username'] as String,
-      password: json['password'] as String,
+      username: json['username'] as String? ?? '',
+      password: json['password'] as String? ?? '',
     );
     if (!config.isValid) {
       throw const FormatException('Invalid network proxy configuration');

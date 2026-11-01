@@ -13,6 +13,37 @@ import 'package:reveric/shared/models/network_proxy.dart';
 import 'package:reveric/shared/services/proxy_client.dart';
 
 void main() {
+  test('stored proxy without credentials retains its route', () {
+    for (final mode in NetworkProxyMode.values) {
+      final decoded = NetworkProxy.decode(
+        jsonEncode({'mode': mode.name, 'url': 'http://127.0.0.1:7890'}),
+      );
+      expect(decoded.mode, mode);
+      expect(decoded.url, 'http://127.0.0.1:7890');
+      expect(decoded.username, isEmpty);
+      expect(decoded.password, isEmpty);
+      expect(decoded.isValid, true);
+    }
+  });
+
+  test('stored proxy still rejects malformed or incomplete credentials', () {
+    for (final credentials in [
+      {'username': 'user'},
+      {'password': 'secret'},
+      {'username': 42, 'password': 'secret'},
+    ]) {
+      expect(
+        () => NetworkProxy.decode(
+          jsonEncode({
+            'mode': 'custom',
+            'url': 'http://127.0.0.1:7890',
+            ...credentials,
+          }),
+        ),
+        throwsA(anything),
+      );
+    }
+  });
   test('defaults retain environment mode and custom addresses validate', () {
     expect(const NetworkProxy().mode, NetworkProxyMode.environment);
     for (final url in [
