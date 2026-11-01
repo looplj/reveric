@@ -364,8 +364,25 @@ class OpenAiClient implements ProviderClient {
   List<openai.ChatMessage> convertMessages(List<AgentMessage> messages) {
     preflightProviderHistory(messages, ProviderHistoryPolicy.openAiChat);
     final out = <openai.ChatMessage>[];
+    final deferredImages = <openai.ChatMessage>[];
+    var pendingResults = 0;
     for (final msg in messages) {
-      out.addAll(_convertOne(msg));
+      pendingResults += msg.blocks.whereType<ToolCallBlock>().length;
+      final resultCount = msg.blocks.whereType<ToolResultBlock>().length;
+      for (final converted in _convertOne(msg)) {
+        if (resultCount > 0 && converted.role == 'user') {
+          // Text-only tool endpoints receive images after every result in the
+          // assistant's batch, so image turns cannot interrupt call/result pairs.
+          deferredImages.add(converted);
+        } else {
+          out.add(converted);
+        }
+      }
+      pendingResults -= resultCount;
+      if (pendingResults == 0) {
+        out.addAll(deferredImages);
+        deferredImages.clear();
+      }
     }
     return out;
   }

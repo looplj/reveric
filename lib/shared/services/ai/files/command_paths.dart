@@ -1,4 +1,4 @@
-// 职责: 将文件命令路径解析到当前作品目录并阻止相对路径越界。
+// 职责: 将作品相对路径和当前作品的存储引用解析到作品目录，并阻止相对路径越界。
 // 关联文件:
 //   lib/shared/services/ai/files/session_files.dart
 //   lib/shared/utils/storage_paths.dart
@@ -41,7 +41,18 @@ class CommandPaths {
         'Relative paths cannot contain .. or a drive prefix.',
       );
     }
-    return p.normalize(p.join(base, p.joinAll(syntax.split(path))));
+    var parts = syntax.split(syntax.normalize(path));
+    if (parts.first == 'file_workspaces') {
+      // Attachments retain application-root references for persistence. Resolve
+      // only this work's prefix here; other works must use explicit access paths.
+      if (parts.length < 2 || parts[1] != files.novelId) {
+        throw const FormatException(
+          'Stored file references must belong to the current work.',
+        );
+      }
+      parts = parts.skip(2).toList();
+    }
+    return p.normalize(p.join(base, p.joinAll(parts)));
   }
 
   /// Check each existing ancestor before traversing it, including the work root.

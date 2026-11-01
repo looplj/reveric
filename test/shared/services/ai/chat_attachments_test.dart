@@ -2,6 +2,7 @@
 // 关联文件:
 //   lib/shared/services/ai/chat_attachments.dart
 //   lib/shared/services/ai/agent_message_mapping.dart
+//   lib/shared/services/ai/files/command_paths.dart
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -13,6 +14,8 @@ import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/services/ai/chat_attachments.dart';
 import 'package:reveric/shared/services/ai/agent_message_mapping.dart';
+import 'package:reveric/shared/services/ai/files/command_paths.dart';
+import 'package:reveric/shared/services/ai/files/session_files.dart';
 
 void main() {
   late Directory root;
@@ -83,6 +86,26 @@ void main() {
       String describe(MessageBlock b) =>
           b is TextBlock ? b.text : (b as ImageBlock).data;
       expect(restored.blocks.map(describe), live.map(describe));
+      // The exact path advertised to the model must work as a file-command
+      // input, both on the first send and after restoring persisted attachments.
+      final files = SessionFiles(root: root.path, novelId: 'work');
+      for (final hydrated in [live, restored.blocks]) {
+        final paths = hydrated
+            .whereType<TextBlock>()
+            .expand(
+              (block) => RegExp(r' path="([^"]+)"').allMatches(block.text),
+            )
+            .map((match) => match.group(1)!)
+            .toList();
+        expect(paths, hasLength(2));
+        for (var i = 0; i < paths.length; i++) {
+          final saved = stored.whereType<AiAttachmentBlock>().elementAt(i);
+          expect(
+            (await CommandPaths(files).resolve(paths[i])).path,
+            (await files.resolve(saved.path)).path,
+          );
+        }
+      }
       expect(live.map((b) => b.runtimeType), [
         TextBlock,
         TextBlock,
