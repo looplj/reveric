@@ -90,7 +90,6 @@ Stream<String> _decoded(File file) async* {
 Future<Map<String, dynamic>> readTextPage(
   File file,
   Map<String, dynamic> options, {
-  required String identity,
   MediaCancellation? cancellation,
 }) async {
   const maximum = 64 * 1024;
@@ -109,12 +108,6 @@ Future<Map<String, dynamic>> readTextPage(
     final value = jsonDecode(utf8.decode(base64Url.decode(continuation)));
     if (value is! Map || value['line'] is! int || value['skip'] is! int) {
       throw const FormatException('Invalid continuation');
-    }
-    if (value['identity'] != identity) {
-      throw const ToolOperationException(
-        'conflict',
-        'The file changed; start reading again.',
-      );
     }
     offset = value['line'];
     skip = value['skip'] as int;
@@ -142,9 +135,7 @@ Future<Map<String, dynamic>> readTextPage(
     'next_offset': line,
     if (partial)
       'continuation': base64Url.encode(
-        utf8.encode(
-          jsonEncode({'identity': identity, 'line': line, 'skip': position}),
-        ),
+        utf8.encode(jsonEncode({'line': line, 'skip': position})),
       ),
   };
   await for (final chunk in _decoded(file)) {

@@ -9,7 +9,7 @@ import '../../../utils/random_id.dart';
 import '../../../utils/storage_paths.dart';
 
 class SessionFiles {
-  SessionFiles({String? root, this.novelId}) : _root = root;
+  SessionFiles({this._root, this.novelId});
   final String? novelId;
   final String? _root;
   String get root => Directory(

@@ -88,8 +88,6 @@ class FileReader {
       final page = await readTextPage(
         copy,
         options,
-        identity:
-            '${source.path}:$size:${originalStat.modified.microsecondsSinceEpoch}',
         cancellation: cancellation,
       );
       result.addAll(page);
@@ -143,6 +141,7 @@ class FileReader {
         cancellation: cancellation,
       );
       final info = jsonDecode(output) as Map<String, dynamic>;
+      (info['format'] as Map<String, dynamic>?)?.remove('filename');
       final streams = (info['streams'] as List).whereType<Map>();
       if (!streams.any((s) => s['codec_type'] == kind)) {
         throw const FormatException(

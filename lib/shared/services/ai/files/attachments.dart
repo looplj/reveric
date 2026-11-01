@@ -27,22 +27,15 @@ Map<String, dynamic> commandFileResult(
     throw const FormatException('File command results require a current work.');
   }
   final workspace = RevericPaths.fileWorkspaceDirectory(id);
-  final workspaceRoot = '${p.posix.dirname(workspace)}/';
   final absoluteWorkspace = p.join(files.root, workspace);
-  String reference(String path, {bool storedPath = true}) {
+  String reference(String path) {
     if (p.posix.isWithin(workspace, path)) {
       return p.posix.relative(path, from: workspace);
-    }
-    if (path.startsWith(workspaceRoot)) {
-      return p.join(files.root, p.joinAll(p.posix.split(path)));
     }
     if (p.isAbsolute(path) && p.isWithin(absoluteWorkspace, path)) {
       return p.posix.joinAll(
         p.split(p.relative(path, from: absoluteWorkspace)),
       );
-    }
-    if (storedPath && !p.isAbsolute(path)) {
-      return p.join(files.root, p.joinAll(p.posix.split(path)));
     }
     return path;
   }
@@ -58,7 +51,7 @@ Map<String, dynamic> commandFileResult(
     }
     for (final key in ['source_file_path', 'result_file_path']) {
       if (value[key] case final String path) {
-        result[key] = reference(path, storedPath: key != 'source_file_path');
+        result[key] = reference(path);
       }
     }
     return result;

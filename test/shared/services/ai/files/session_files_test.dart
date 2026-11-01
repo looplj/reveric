@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
-import 'package:reveric/shared/models/tool_permission.dart';
 import 'package:reveric/shared/services/ai/agent_message_mapping.dart';
 import 'package:reveric/shared/services/ai/files/attachments.dart';
 import 'package:reveric/shared/services/ai/files/reader.dart';
@@ -195,7 +194,7 @@ void main() {
       var options = <String, dynamic>{};
       var attempts = 0;
       while (true) {
-        final page = await readTextPage(source, options, identity: 'stable');
+        final page = await readTextPage(source, options);
         expect(
           utf8.encode(page['text'] as String).length,
           lessThanOrEqualTo(65536),
@@ -210,13 +209,6 @@ void main() {
         expect(++attempts, lessThan(20));
       }
       expect(result.toString(), original);
-      final first = await readTextPage(source, {}, identity: 'old');
-      expect(
-        () => readTextPage(source, {
-          'continuation': first['continuation'],
-        }, identity: 'changed'),
-        throwsA(isA<ToolOperationException>()),
-      );
     },
   );
 
