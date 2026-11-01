@@ -1,0 +1,13 @@
+# Cloudflare Pages 响应头。资源文件名不带 hash，缓存一天；字体和 cineview 只在升级时变动，缓存一个月
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/assets/*
+  Cache-Control: public, max-age=86400
+
+/fonts/*
+  Cache-Control: public, max-age=2592000
+
+/vendor/*
+  Cache-Control: public, max-age=2592000

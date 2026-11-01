@@ -303,3 +303,25 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             dist/**/*.apk
+
+  # 三个平台都打包成功后，用本次 tag 的版本构建官网并部署到 Cloudflare Pages。
+  # 手动只打单个平台时，其余打包 job 被跳过，这里也随之跳过；需要时手动运行 Website workflow。
+  deploy-website:
+    needs: [package-macos, package-windows, package-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build website
+        env:
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: node site/build.mjs --version "$TAG_NAME"
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site/dist --project-name=reveric-site --branch=unstable

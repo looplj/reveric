@@ -267,3 +267,27 @@ plugins: ## 构建内置插件并更新 assets 产物
 
 plugins-test: ## 验证内置插件类型和逻辑
 	cd plugins && npm ci && node build.mjs --test
+
+# 官网：字体源文件和 fonttools 虚拟环境缓存在 site/.cache，首次运行时下载
+SITE_CACHE := site/.cache
+SITE_VENV := $(SITE_CACHE)/venv
+SITE_FONT_SRC := $(SITE_CACHE)/NotoSerifSC.ttf
+SITE_FONT_URL := https://github.com/google/fonts/raw/main/ofl/notoserifsc/NotoSerifSC%5Bwght%5D.ttf
+
+.PHONY: site-fonts site-build site-deploy
+$(SITE_VENV):
+	python3 -m venv $(SITE_VENV)
+	$(SITE_VENV)/bin/pip install -q fonttools brotli
+
+$(SITE_FONT_SRC):
+	@mkdir -p $(SITE_CACHE)
+	curl -fL -o $(SITE_FONT_SRC) "$(SITE_FONT_URL)"
+
+site-fonts: $(SITE_VENV) $(SITE_FONT_SRC) ## 按官网用字重新裁剪字体子集
+	$(SITE_VENV)/bin/python site/scripts/subset_fonts.py $(SITE_FONT_SRC)
+
+site-build: site-fonts ## 构建官网到 site/dist（版本取最新正式 tag）
+	node site/build.mjs
+
+site-deploy: site-build ## 构建并部署官网到 Cloudflare Pages
+	npx wrangler pages deploy site/dist --project-name=reveric-site --branch=unstable --commit-dirty=true

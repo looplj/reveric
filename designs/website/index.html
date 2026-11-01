@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>幻界 Reveric — Agent Native 的 AI 创作工作台</title>
+<meta name="description" content="小说、剧本、画布、导演台、剪辑，都是智能体的工具。一句话，从原著走到成片。免费下载，完全开源，支持 macOS、Windows、Android。">
+<link rel="canonical" href="https://reveric.app/">
+<link rel="icon" href="assets/icon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<meta name="theme-color" content="#0A0B0E">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://reveric.app/">
+<meta property="og:title" content="幻界 Reveric — Agent Native 的 AI 创作工作台">
+<meta property="og:description" content="小说、剧本、画布、导演台、剪辑，都是智能体的工具。一句话，从原著走到成片。">
+<meta property="og:image" content="https://reveric.app/assets/still_kick.webp">
+<meta name="twitter:card" content="summary_large_image">
+<script>(function(s){if(s&&s('selector(:has(*))')&&s('width:1lh')&&s('color:color-mix(in srgb,red,red)'))document.documentElement.classList.add('cv-js')})(window.CSS&&CSS.supports);</script>
+<link rel="stylesheet" href="vendor/cineview/cineview.css">
+<script type="module" src="vendor/cineview/cineview.js"></script>
+<link rel="preload" href="fonts/NotoSerifSC-subset.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="landing.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#top"><img src="assets/icon-180.png" alt="" width="40" height="40">幻界 Reveric</a>
+  <nav class="topnav">
+    <a href="#run">工作方式</a>
+    <a href="#models">模型</a>
+    <a href="#download">下载</a>
+    <a href="https://github.com/looplj/reveric" rel="noopener">GitHub ↗</a>
+  </nav>
+</header>
+
+<cv-stage design-width="1920" id="stage">
+
+  <!-- ============ SC.01 片头 ============ -->
+  <cv-scene id="top" class="sc cover" preload>
+    <div class="bar bar-top" aria-hidden="true"></div>
+    <cv-animate class="cover-still" fx="push(1.06, 1)" on="clock" duration="9000">
+      <img src="assets/still_kick.webp" alt="用 Reveric 生成的短剧成片画面" width="1280" height="720">
+    </cv-animate>
+    <div class="cover-scrim" aria-hidden="true"></div>
+    <div class="cover-copy">
+      <cv-animate fx="rise(soft)" on="clock" duration="700"><p class="kicker">AGENT NATIVE · AI 创作工作台</p></cv-animate>
+      <cv-animate fx="rise(soft)" on="clock" delay="120" duration="800">
+        <h1 class="cover-title"><span class="zh">幻界</span><span class="en">Reveric</span></h1>
+      </cv-animate>
+      <cv-animate fx="rise(soft)" on="clock" delay="260" duration="800">
+        <p class="cover-sub">小说、剧本、画布、导演台、剪辑，都是智能体的工具。<br><span>一句话，从原著走到成片。</span></p>
+      </cv-animate>
+      <cv-animate fx="fade" on="clock" delay="420" duration="600">
+        <p class="cmd"><span class="cmd-p" aria-hidden="true">›</span><span class="cmd-text" id="cmd">把第一卷改编成短剧，做出第一集的成片</span><span class="caret" aria-hidden="true"></span></p>
+      </cv-animate>
+      <cv-animate fx="fade" on="clock" delay="560" duration="600">
+        <div class="ctas">
+          <a class="btn" id="primary-dl" href="#download">免费下载 <small data-version>v0.6.1</small></a>
+          <span class="alts" id="alt-dl"><a href="#download">macOS</a><a href="#download">Windows</a><a href="#download">Android</a></span>
+          <a class="gh-hero" href="https://github.com/looplj/reveric" rel="noopener"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>在 GitHub 上 Star</a>
+        </div>
+      </cv-animate>
+    </div>
+    <div class="bar bar-bottom mono" aria-hidden="true"><span>SC.01 片头</span><span>WINDOWS · MACOS · ANDROID</span><span>00:00:00:00</span></div>
+  </cv-scene>
+
+  <!-- ============ SC.02 一条指令跑完全程（定住的场景） ============ -->
+  <cv-scene id="run" class="sc run" zone>
+    <cv-animate class="anchor" duration="6000" aria-hidden="true"></cv-animate>
+
+    <div class="slate mono" aria-hidden="true">
+      <span><b>SC.02</b>&nbsp;&nbsp;一条指令跑完全程</span>
+      <span class="slate-swap">
+        <cv-animate fx="keyframes(swap-first)" at="0% 17%" duration="200">TASK 01 / 06</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="16% 34%" duration="200">TASK 02 / 06</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="33% 51%" duration="200">TASK 03 / 06</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="50% 67%" duration="200">TASK 04 / 06</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="66% 84%" duration="200">TASK 05 / 06</cv-animate>
+        <cv-animate fx="keyframes(swap-last)" at="83% 100%" duration="200">TASK 06 / 06</cv-animate>
+      </span>
+      <span class="slate-swap">
+        <cv-animate fx="keyframes(swap-first)" at="0% 17%" duration="200">00:00:42:10</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="16% 34%" duration="200">00:06:18:02</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="33% 51%" duration="200">00:12:04:08</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="50% 67%" duration="200">00:23:51:16</cv-animate>
+        <cv-animate fx="keyframes(swap)" at="66% 84%" duration="200">00:41:17:02</cv-animate>
+        <cv-animate fx="keyframes(swap-last)" at="83% 100%" duration="200">00:47:30:00</cv-animate>
+      </span>
+    </div>
+
+    <div class="run-grid">
+      <div class="run-copy">
+        <h2 class="h2">一句话，<br>智能体自己走完六步</h2>
+        <p class="run-cmd"><span class="cmd-p">›</span>把第一卷改编成短剧，做出第一集的成片</p>
+        <ol class="steps">
+          <li class="step">
+            <cv-animate class="step-on" fx="keyframes(lit-first)" at="0% 17%" duration="200"><span class="mark" aria-hidden="true"></span></cv-animate>
+            <span class="n mono">01<cv-animate class="done" fx="keyframes(on)" at="17% 100%" duration="200" aria-hidden="true"><span>✓</span></cv-animate></span><span class="t">读原著</span><em class="m mono">文本模型</em>
+            <cv-animate class="d" fx="keyframes(swap-first)" at="0% 17%" duration="200"><span>检索章节与设定，梳理人物和主线</span></cv-animate>
+          </li>
+          <li class="step">
+            <cv-animate class="step-on" fx="keyframes(lit)" at="16% 34%" duration="200"><span class="mark" aria-hidden="true"></span></cv-animate>
+            <span class="n mono">02<cv-animate class="done" fx="keyframes(on)" at="34% 100%" duration="200" aria-hidden="true"><span>✓</span></cv-animate></span><span class="t">改编剧本</span><em class="m mono">文本模型</em>
+            <cv-animate class="d" fx="keyframes(swap)" at="16% 34%" duration="200"><span>对照原著拆分剧集与场次，写对白和动作</span></cv-animate>
+          </li>
+          <li class="step">
+            <cv-animate class="step-on" fx="keyframes(lit)" at="33% 51%" duration="200"><span class="mark" aria-hidden="true"></span></cv-animate>
+            <span class="n mono">03<cv-animate class="done" fx="keyframes(on)" at="51% 100%" duration="200" aria-hidden="true"><span>✓</span></cv-animate></span><span class="t">拆分镜</span><em class="m mono">文本模型</em>
+            <cv-animate class="d" fx="keyframes(swap)" at="33% 51%" duration="200"><span>按场次铺分镜节点，逐镜写提示词</span></cv-animate>
+          </li>
+          <li class="step">
+            <cv-animate class="step-on" fx="keyframes(lit)" at="50% 67%" duration="200"><span class="mark" aria-hidden="true"></span></cv-animate>
+            <span class="n mono">04<cv-animate class="done" fx="keyframes(on)" at="67% 100%" duration="200" aria-hidden="true"><span>✓</span></cv-animate></span><span class="t">生成素材</span><em class="m mono">图像 · 视频模型</em>
+            <cv-animate class="d" fx="keyframes(swap)" at="50% 67%" duration="200"><span>角色定妆、参考图、视频片段</span></cv-animate>
+          </li>
+          <li class="step">
+            <cv-animate class="step-on" fx="keyframes(lit)" at="66% 84%" duration="200"><span class="mark" aria-hidden="true"></span></cv-animate>
+            <span class="n mono">05<cv-animate class="done" fx="keyframes(on)" at="84% 100%" duration="200" aria-hidden="true"><span>✓</span></cv-animate></span><span class="t">剪辑</span><em class="m mono">剪辑台工具</em>
+            <cv-animate class="d" fx="keyframes(swap)" at="66% 84%" duration="200"><span>素材上轨、分割修剪、加字幕</span></cv-animate>
+          </li>
+          <li class="step">
+            <cv-animate class="step-on" fx="keyframes(lit-last)" at="83% 100%" duration="200"><span class="mark" aria-hidden="true"></span></cv-animate>
+            <span class="n mono">06</span><span class="t">成片</span><em class="m mono">视觉模型</em>
+            <cv-animate class="d" fx="keyframes(swap-last)" at="83% 100%" duration="200"><span>渲染预览，抽帧检查画面</span></cv-animate>
+          </li>
+        </ol>
+      </div>
+
+      <div class="run-figure">
+        <div class="win">
+          <cv-animate class="shot" fx="keyframes(swap-first)" at="0% 17%" duration="200">
+            <img src="assets/s1_novel.webp" alt="小说编辑器：章节列表、正文和右侧的智能体面板" loading="lazy">
+          </cv-animate>
+          <cv-animate class="shot shot-adapt" fx="keyframes(swap)" at="16% 34%" duration="200">
+            <img class="adapt-main" src="assets/s2_screenplay.webp" alt="剧本编辑器：按场次排好的剧本" loading="lazy">
+            <img class="adapt-source" src="assets/s2_source.webp" alt="对照用的原著窗口" loading="lazy">
+          </cv-animate>
+          <cv-animate class="shot" fx="keyframes(swap)" at="33% 51%" duration="200">
+            <img src="assets/s3_canvas.webp" alt="画布：角色定妆、生成素材和按场次排开的分镜节点" loading="lazy">
+          </cv-animate>
+          <cv-animate class="shot shot-zoom" fx="keyframes(swap)" at="50% 67%" duration="200">
+            <img src="assets/s3_canvas.webp" alt="画布上生成的参考图与视频片段" loading="lazy">
+          </cv-animate>
+          <cv-animate class="shot" fx="keyframes(swap)" at="66% 84%" duration="200">
+            <img src="assets/s6_editing.webp" alt="剪辑台：预览画面与六轨时间线" loading="lazy">
+          </cv-animate>
+          <cv-animate class="shot shot-still" fx="keyframes(swap-last)" at="83% 100%" duration="200">
+            <img src="assets/still_blade.webp" alt="用 Reveric 生成的第一集成片画面" loading="lazy">
+            <span class="still-tag mono">▶ 第一集 · 成片预览</span>
+          </cv-animate>
+        </div>
+        <div class="reel" aria-hidden="true">
+          <cv-animate class="reel-seg" fx="wipe(left)" at="0% 16%" duration="200"><span></span></cv-animate>
+          <cv-animate class="reel-seg" fx="wipe(left)" at="16% 33%" duration="200"><span></span></cv-animate>
+          <cv-animate class="reel-seg" fx="wipe(left)" at="33% 50%" duration="200"><span></span></cv-animate>
+          <cv-animate class="reel-seg" fx="wipe(left)" at="50% 66%" duration="200"><span></span></cv-animate>
+          <cv-animate class="reel-seg" fx="wipe(left)" at="66% 83%" duration="200"><span></span></cv-animate>
+          <cv-animate class="reel-seg" fx="wipe(left)" at="83% 98%" duration="200"><span></span></cv-animate>
+        </div>
+        <div class="reel-labels mono" aria-hidden="true"><span>小说</span><span>剧本</span><span>画布</span><span>素材</span><span>剪辑</span><span>成片</span></div>
+      </div>
+    </div>
+  </cv-scene>
+
+  <!-- ============ SC.03 为什么是 Agent Native ============ -->
+  <cv-scene id="agent" class="sc agent">
+    <div class="sec-head">
+      <p class="label mono"><b>SC.03</b>&nbsp;&nbsp;AGENT NATIVE</p>
+      <cv-animate fx="rise(soft)" duration="700"><h2 class="h2">模块就是工具，<br>过程全程可见</h2></cv-animate>
+    </div>
+    <div class="agent-grid">
+      <ol class="points">
+        <li><cv-animate fx="rise(soft)" duration="700">
+          <span class="n mono">01</span>
+          <h3>每个模块都开放给智能体</h3>
+          <p>小说、剧本、画布、导演台、剪辑台都以工具形式提供。智能体自己拆解任务、按顺序执行、检查结果。</p>
+        </cv-animate></li>
+        <li><cv-animate fx="rise(soft)" delay="120" duration="700">
+          <span class="n mono">02</span>
+          <h3>读完整部作品再动手</h3>
+          <p>按需检索章节、设定和人物，不用每次重新交代上下文，角色和画面前后保持一致。</p>
+        </cv-animate></li>
+        <li><cv-animate fx="rise(soft)" delay="240" duration="700">
+          <span class="n mono">03</span>
+          <h3>任务和改动摆在眼前</h3>
+          <p>任务列表、执行过程、改动记录全程可见，不满意随时回滚。多个智能体分工协作，Skill 与 MCP 还能继续扩展它的能力。</p>
+        </cv-animate></li>
+      </ol>
+      <cv-animate class="agent-figure" fx="reveal(left, soft)" on="enter(partial)" duration="1000">
+        <div class="win"><img src="assets/s8_chat.webp" alt="智能体对话：用户让它把第二场的样品都生成并剪一段，右侧是实时更新的任务列表" loading="lazy"></div>
+      </cv-animate>
+    </div>
+  </cv-scene>
+
+  <!-- ============ SC.04 你也可以亲自上手（横向胶片） ============ -->
+  <cv-scene id="studio" class="sc studio" track="x">
+    <div class="studio-lead">
+      <p class="label mono"><b>SC.04</b>&nbsp;&nbsp;STUDIO</p>
+      <h2 class="h2">每一步，<br>你也能亲手接管</h2>
+      <p class="lead">智能体用的工具，就是你用的工作台。哪一步想自己来，随时接过去。</p>
+    </div>
+    <figure class="frame">
+      <div class="frame-img"><img src="assets/s1_novel.webp" alt="小说编辑器" loading="lazy"></div>
+      <figcaption><span class="mono">01</span><b>小说</b>章节、设定库、关系图谱</figcaption>
+    </figure>
+    <figure class="frame">
+      <div class="frame-img"><img src="assets/s2_screenplay.webp" alt="剧本编辑器" loading="lazy"></div>
+      <figcaption><span class="mono">02</span><b>剧本</b>对照原著改编，拆分剧集与场次</figcaption>
+    </figure>
+    <figure class="frame">
+      <div class="frame-img"><img src="assets/s3_canvas.webp" alt="无限画布" loading="lazy"></div>
+      <figcaption><span class="mono">03</span><b>画布</b>分镜节点、提示词、生图生视频</figcaption>
+    </figure>
+    <figure class="frame">
+      <div class="frame-img"><img src="assets/s5_director.webp" alt="3D 导演台" loading="lazy"></div>
+      <figcaption><span class="mono">04</span><b>导演台</b>3D 布景、机位、运镜预演</figcaption>
+    </figure>
+    <figure class="frame">
+      <div class="frame-img"><img src="assets/s6_editing.webp" alt="多轨剪辑台" loading="lazy"></div>
+      <figcaption><span class="mono">05</span><b>剪辑</b>6 轨时间线，直接导出成片</figcaption>
+    </figure>
+  </cv-scene>
+
+  <!-- ============ SC.05 模型自选 ============ -->
+  <cv-scene id="models" class="sc models">
+    <div class="sec-head">
+      <p class="label mono"><b>SC.05</b>&nbsp;&nbsp;LOCAL FIRST</p>
+      <cv-animate fx="rise(soft)" duration="700"><h2 class="h2">本地优先，<br>模型由你决定</h2></cv-animate>
+      <p class="lead">作品只保存在你自己的设备上。模型用你自己的 Key：直连各家官方接口，或者接入 NewAPI 等聚合网关和自建服务，兼容 OpenAI 与 Anthropic 协议。</p>
+    </div>
+    <div class="model-groups">
+      <cv-animate fx="rise(soft)" duration="700"><div class="group"><h3 class="mono">文本与推理</h3><p>Claude · GPT · Gemini · DeepSeek · GLM · Qwen · Kimi</p></div></cv-animate>
+      <cv-animate fx="rise(soft)" delay="100" duration="700"><div class="group"><h3 class="mono">图像生成</h3><p>Seedream · GPT&nbsp;Image · Gemini&nbsp;Image · Qwen&nbsp;Image</p></div></cv-animate>
+      <cv-animate fx="rise(soft)" delay="200" duration="700"><div class="group"><h3 class="mono">视频生成</h3><p>Seedance · MiniMax&nbsp;H3 · Wan · Kling</p></div></cv-animate>
+    </div>
+  </cv-scene>
+
+  <!-- ============ SC.06 片尾 ============ -->
+  <cv-scene id="download" class="sc ending">
+    <div class="ending-body">
+      <cv-animate fx="rise(soft)" duration="700"><h2 class="ending-title">免费下载，完全开源</h2></cv-animate>
+      <p class="lead">当前版本 <span class="mono" data-version>v0.6.1</span> · <a data-release-notes href="https://github.com/looplj/reveric/releases/tag/v0.6.1" rel="noopener">更新日志 ↗</a></p>
+      <div class="dl-cards">
+        <a class="dl" data-os="mac" href="https://github.com/looplj/reveric/releases/download/v0.6.1/reveric-0.6.1-macos-arm64.dmg">
+          <span class="dl-os">macOS</span><span class="dl-meta mono">Apple Silicon · .dmg</span><span class="dl-go">下载 ↓</span>
+        </a>
+        <a class="dl" data-os="win" href="https://github.com/looplj/reveric/releases/download/v0.6.1/reveric-0.6.1-windows-setup.exe">
+          <span class="dl-os">Windows</span><span class="dl-meta mono">64 位安装包 · .exe</span><span class="dl-go">下载 ↓</span>
+        </a>
+        <a class="dl" data-os="android" href="https://github.com/looplj/reveric/releases/download/v0.6.1/reveric-android-arm64-v8a-v0.6.1.apk">
+          <span class="dl-os">Android</span><span class="dl-meta mono">arm64 · .apk</span><span class="dl-go">下载 ↓</span>
+        </a>
+      </div>
+      <a class="gh" href="https://github.com/looplj/reveric" rel="noopener">
+        <span class="mono">GITHUB</span><b>looplj/reveric</b><span>欢迎 Star 与贡献 ↗</span>
+      </a>
+    </div>
+    <footer class="bar bar-bottom mono">
+      <span>SC.06 片尾 · © 幻界 Reveric</span>
+      <span><a href="mailto:bababaa261@gmail.com">商业授权</a></span>
+    </footer>
+  </cv-scene>
+
+</cv-stage>
+
+<script src="landing.js"></script>
+</body>
+</html>

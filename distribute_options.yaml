@@ -1,5 +1,5 @@
 output: dist/
-artifact_name: '{{name}}-{{build_name}}{{#has_build_number}}+{{build_number}}{{/has_build_number}}{{#is_profile}}-{{build_mode}}{{/is_profile}}-{{platform}}{{#channel}}-{{channel}}{{/channel}}{{#is_installer}}-setup{{/is_installer}}.{{ext}}'
+artifact_name: '{{name}}-{{build_name}}{{#is_profile}}-{{build_mode}}{{/is_profile}}-{{platform}}{{#channel}}-{{channel}}{{/channel}}{{#is_installer}}-setup{{/is_installer}}.{{ext}}'
 releases:
   - name: release
     jobs:

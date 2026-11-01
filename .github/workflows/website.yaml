@@ -1,0 +1,28 @@
+name: Website
+
+# 在 Actions 页面手动运行，用于改文案或补打平台后重新部署；版本号取最新正式 tag。
+# 发版时的部署由 Package workflow 的 deploy-website job 完成。
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: website
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build website
+        run: node site/build.mjs
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site/dist --project-name=reveric-site --branch=unstable

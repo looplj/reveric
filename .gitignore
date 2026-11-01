@@ -83,5 +83,9 @@ dist/
 *.keystore
 *.jks
 
-# 商业授权介绍材料，仅本地保留
 designs/pitch/
+
+site/screenshots/
+
+.wrangler/
+site/.cache/
