@@ -4843,10 +4843,6 @@ abstract final class LocaleKeys {
       'settings.backup_page_description';
   static const settingsObjectStorageProvider =
       'settings.object_storage_provider';
-  static const settingsObjectStorageProviderS3 =
-      'settings.object_storage_provider_s3';
-  static const settingsObjectStorageProviderS3Hint =
-      'settings.object_storage_provider_s3_hint';
   static const settingsObjectStorageEndpoint =
       'settings.object_storage_endpoint';
   static const settingsObjectStorageEndpointHint =
@@ -4889,6 +4885,32 @@ abstract final class LocaleKeys {
       'settings.object_storage_upload_failed';
   static const settingsObjectStorageReadFailed =
       'settings.object_storage_read_failed';
+  static const settingsObjectStorageVendorAliyun =
+      'settings.object_storage_vendor_aliyun';
+  static const settingsObjectStorageVendorTencent =
+      'settings.object_storage_vendor_tencent';
+  static const settingsObjectStorageVendorCloudflare =
+      'settings.object_storage_vendor_cloudflare';
+  static const settingsObjectStorageVendorAws =
+      'settings.object_storage_vendor_aws';
+  static const settingsObjectStorageVendorCustom =
+      'settings.object_storage_vendor_custom';
+  static const settingsObjectStorageVendorCustomHint =
+      'settings.object_storage_vendor_custom_hint';
+  static const settingsObjectStorageCreateBucket =
+      'settings.object_storage_create_bucket';
+  static const settingsObjectStorageAccountId =
+      'settings.object_storage_account_id';
+  static const settingsObjectStorageAccountIdHint =
+      'settings.object_storage_account_id_hint';
+  static const settingsObjectStorageRegionHintAliyun =
+      'settings.object_storage_region_hint_aliyun';
+  static const settingsObjectStorageRegionHintTencent =
+      'settings.object_storage_region_hint_tencent';
+  static const settingsObjectStorageBucketHintTencent =
+      'settings.object_storage_bucket_hint_tencent';
+  static const settingsObjectStorageInvalidIdentifier =
+      'settings.object_storage_invalid_identifier';
   static const settingsThemeClassic = 'settings.theme_classic';
   static const settingsThemeClassicDescription =
       'settings.theme_classic_description';

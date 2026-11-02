@@ -1,4 +1,4 @@
-// 职责: 对象存储连接配置建模 — 服务类型、S3 兼容连接参数的规范化、校验与 JSON 编解码。
+// 职责: 对象存储连接配置建模 — 服务类型、服务商预设推导、S3 兼容连接参数的规范化、校验与 JSON 编解码。
 // 关联文件:
 //   lib/shared/services/object_storage/service.dart
 //   lib/shared/providers/object_storage.dart
@@ -11,6 +11,62 @@ import 'dart:convert';
 
 /// 对象存储服务类型；新增服务时在这里加值，并在 service 中接入对应客户端。
 enum ObjectStorageProvider { s3 }
+
+/// 设置界面的服务商预设：只决定 Endpoint、Region 与路径风格如何推导，
+/// 持久化仍是通用 S3 配置，加载时按 Endpoint 反推。
+enum ObjectStorageVendor {
+  aliyun,
+  tencent,
+  cloudflare,
+  aws,
+  custom;
+
+  static const cloudflareRegion = 'auto';
+
+  /// 预设服务按此格式校验 Region / Account ID，避免拼出非法 Endpoint。
+  static final _identifier = RegExp(r'^[a-z0-9][a-z0-9-]*$');
+  static final _cloudflareEndpoint = RegExp(
+    r'^https://([a-z0-9]+)\.r2\.cloudflarestorage\.com$',
+  );
+
+  /// 预设服务的寻址方式由服务商决定：阿里云、腾讯云要求虚拟主机风格。
+  bool get pathStyle => this == cloudflare;
+
+  /// [identifier] 对 Cloudflare 是 Account ID，其余预设是 Region；
+  /// 自定义服务或格式非法时返回 null。
+  String? endpointFor(String identifier) {
+    if (!_identifier.hasMatch(identifier)) {
+      return null;
+    }
+    return switch (this) {
+      aliyun => 'https://s3.oss-$identifier.aliyuncs.com',
+      tencent => 'https://cos.$identifier.myqcloud.com',
+      cloudflare => 'https://$identifier.r2.cloudflarestorage.com',
+      aws => 'https://s3.$identifier.amazonaws.com',
+      custom => null,
+    };
+  }
+
+  /// 按已保存配置反推预设及其 Region / Account ID；未配置时默认阿里云。
+  static (ObjectStorageVendor, String) detect(ObjectStorageConfig config) {
+    if (config.endpoint.isEmpty) {
+      return (aliyun, '');
+    }
+    final account = _cloudflareEndpoint.firstMatch(config.endpoint)?.group(1);
+    if (account != null &&
+        config.region == cloudflareRegion &&
+        config.pathStyle) {
+      return (cloudflare, account);
+    }
+    for (final vendor in [aliyun, tencent, aws]) {
+      if (!config.pathStyle &&
+          vendor.endpointFor(config.region) == config.endpoint) {
+        return (vendor, config.region);
+      }
+    }
+    return (custom, '');
+  }
+}
 
 enum ObjectStorageConfigIssue {
   invalid_endpoint,

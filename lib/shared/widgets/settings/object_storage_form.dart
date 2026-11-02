@@ -1,4 +1,4 @@
-// 职责: 对象存储连接表单 — 编辑 S3 兼容配置，测试连接通过后保存；桌面设置页与生成前的配置弹窗共用。
+// 职责: 对象存储连接表单 — 按服务商预设编辑 S3 兼容配置，测试连接通过后保存；桌面设置页与生成前的配置弹窗共用。
 // 关联文件:
 //   lib/shared/models/object_storage_config.dart
 //   lib/shared/services/object_storage/service.dart
@@ -18,20 +18,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../components/dialog_feedback.dart';
 import '../../components/reveric_button.dart';
 import '../../components/reveric_select.dart';
 import '../../components/reveric_switch.dart';
 import '../../form/form.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
+import '../../logger/app_logger.dart';
 import '../../models/object_storage_config.dart';
 import '../../providers/object_storage.dart';
 import '../../services/object_storage/service.dart';
 import '../../theme/theme.dart';
 
 enum ObjectStorageField implements FieldSchema {
-  provider,
+  vendor,
+  accountId,
   endpoint,
   region,
   bucket,
@@ -44,6 +48,8 @@ enum ObjectStorageField implements FieldSchema {
   @override
   List<Validator<dynamic>>? get validators => null;
 }
+
+final _log = AppLogger.forModule('ObjectStorage');
 
 /// 宽度足够时短字段两两并排；生成前的配置弹窗较窄，退回单列。
 const double _twoColumnMinWidth = 560;
@@ -63,22 +69,34 @@ class ObjectStorageForm extends HookConsumerWidget {
     final saving = useState(false);
     final feedback = useState<(String, bool)?>(null);
     final obscureSecret = useState(true);
+    final (initialVendor, initialIdentifier) = ObjectStorageVendor.detect(
+      config,
+    );
+    final initialCustom = initialVendor == ObjectStorageVendor.custom;
     // 可选项改过默认值时默认展开，避免用户以为配置丢失。
     final advancedOpen = useState(
       config.keyPrefix != ObjectStorageConfig.defaultKeyPrefix ||
           config.publicBaseUrl.isNotEmpty ||
-          config.pathStyle,
+          (initialCustom && config.pathStyle),
     );
     final form = useForm<ObjectStorageField>(
       initialValues: <ObjectStorageField, dynamic>{
-        ObjectStorageField.provider: config.provider,
-        ObjectStorageField.endpoint: config.endpoint,
-        ObjectStorageField.region: config.region,
+        ObjectStorageField.vendor: initialVendor,
+        ObjectStorageField.accountId:
+            initialVendor == ObjectStorageVendor.cloudflare
+            ? initialIdentifier
+            : '',
+        ObjectStorageField.endpoint: initialCustom ? config.endpoint : '',
+        ObjectStorageField.region: switch (initialVendor) {
+          ObjectStorageVendor.custom => config.region,
+          ObjectStorageVendor.cloudflare => '',
+          _ => initialIdentifier,
+        },
         ObjectStorageField.bucket: config.bucket,
         ObjectStorageField.accessKeyId: config.accessKeyId,
         ObjectStorageField.secretAccessKey: config.secretAccessKey,
         ObjectStorageField.keyPrefix: config.keyPrefix,
-        ObjectStorageField.pathStyle: config.pathStyle,
+        ObjectStorageField.pathStyle: initialCustom && config.pathStyle,
         ObjectStorageField.publicBaseUrl: config.publicBaseUrl,
       },
       keys: <Object?>[config.encode()],
@@ -86,6 +104,12 @@ class ObjectStorageForm extends HookConsumerWidget {
 
     String text(ObjectStorageField field) =>
         form.getValue<String>(field)?.trim() ?? '';
+    final vendor =
+        form.getValue<ObjectStorageVendor>(ObjectStorageField.vendor) ??
+        initialVendor;
+    final identifierField = vendor == ObjectStorageVendor.cloudflare
+        ? ObjectStorageField.accountId
+        : ObjectStorageField.region;
 
     Future<void> save() async {
       if (saving.value) {
@@ -93,17 +117,38 @@ class ObjectStorageForm extends HookConsumerWidget {
       }
       feedback.value = null;
       form.clearForcedErrors();
+      final custom = vendor == ObjectStorageVendor.custom;
+      final identifier = text(identifierField).toLowerCase();
+      final endpoint = custom
+          ? text(ObjectStorageField.endpoint)
+          : vendor.endpointFor(identifier);
+      if (endpoint == null) {
+        form.setError(
+          identifierField,
+          context.t(
+            identifier.isEmpty
+                ? LocaleKeys.commonRequired
+                : LocaleKeys.settingsObjectStorageInvalidIdentifier,
+          ),
+        );
+        return;
+      }
       final next = ObjectStorageConfig(
-        provider:
-            form.getValue<ObjectStorageProvider>(ObjectStorageField.provider) ??
-            ObjectStorageProvider.s3,
-        endpoint: text(ObjectStorageField.endpoint),
-        region: text(ObjectStorageField.region),
+        provider: config.provider,
+        endpoint: endpoint,
+        region: switch (vendor) {
+          ObjectStorageVendor.custom => text(ObjectStorageField.region),
+          ObjectStorageVendor.cloudflare =>
+            ObjectStorageVendor.cloudflareRegion,
+          _ => identifier,
+        },
         bucket: text(ObjectStorageField.bucket),
         accessKeyId: text(ObjectStorageField.accessKeyId),
         secretAccessKey: text(ObjectStorageField.secretAccessKey),
         keyPrefix: text(ObjectStorageField.keyPrefix),
-        pathStyle: form.getValue<bool>(ObjectStorageField.pathStyle) ?? false,
+        pathStyle: custom
+            ? form.getValue<bool>(ObjectStorageField.pathStyle) ?? false
+            : vendor.pathStyle,
         publicBaseUrl: text(ObjectStorageField.publicBaseUrl),
       ).normalized();
       final issue = next.validate();
@@ -234,51 +279,101 @@ class ObjectStorageForm extends HookConsumerWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (ObjectStorageProvider.values.length > 1)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: RevericSpacing.md),
-                  child:
-                      HookedFormField<
-                        ObjectStorageField,
-                        ObjectStorageProvider
-                      >(
-                        fieldHook: ObjectStorageField.provider,
-                        builder: (value, onChanged, _) => RevericSelect(
-                          value: value,
-                          label: context.t(
-                            LocaleKeys.settingsObjectStorageProvider,
-                          ),
-                          enabled: !saving.value,
-                          items: [
-                            RevericSelectItem(
-                              value: ObjectStorageProvider.s3,
+              Padding(
+                padding: const EdgeInsets.only(bottom: RevericSpacing.md),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child:
+                          HookedFormField<
+                            ObjectStorageField,
+                            ObjectStorageVendor
+                          >(
+                            fieldHook: ObjectStorageField.vendor,
+                            notifyOnChange: true,
+                            builder: (value, onChanged, _) => RevericSelect(
+                              key: const ValueKey(
+                                'object_storage_vendor_select',
+                              ),
+                              value: value,
                               label: context.t(
-                                LocaleKeys.settingsObjectStorageProviderS3,
+                                LocaleKeys.settingsObjectStorageProvider,
                               ),
-                              subtitle: context.t(
-                                LocaleKeys.settingsObjectStorageProviderS3Hint,
-                              ),
+                              enabled: !saving.value,
+                              items: [
+                                for (final item in ObjectStorageVendor.values)
+                                  RevericSelectItem(
+                                    value: item,
+                                    label: context.t(_vendorLabelKey(item)),
+                                    subtitle: item == ObjectStorageVendor.custom
+                                        ? context.t(
+                                            LocaleKeys
+                                                .settingsObjectStorageVendorCustomHint,
+                                          )
+                                        : null,
+                                  ),
+                              ],
+                              onChanged: (v) {
+                                form.clearForcedErrors(notify: false);
+                                // 各服务商的 Region 取值互不通用，切换后重新填写。
+                                if (v != value) {
+                                  form.updateValue<String>(
+                                    ObjectStorageField.region,
+                                    '',
+                                    notify: false,
+                                  );
+                                }
+                                onChanged?.call(v);
+                              },
                             ),
-                          ],
-                          onChanged: (v) => onChanged?.call(v),
+                          ),
+                    ),
+                    if (_createBucketUrl(vendor) case final url?) ...[
+                      const SizedBox(width: RevericSpacing.md),
+                      RevericButton.secondary(
+                        key: const ValueKey('object_storage_create_bucket'),
+                        label: context.t(
+                          LocaleKeys.settingsObjectStorageCreateBucket,
                         ),
+                        onPressed: () => _openCreateBucket(context, url),
                       ),
+                    ],
+                  ],
                 ),
-              field(
-                ObjectStorageField.endpoint,
-                LocaleKeys.settingsObjectStorageEndpoint,
-                hintKey: LocaleKeys.settingsObjectStorageEndpointHint,
-                url: true,
               ),
-              pair(
+              if (vendor == ObjectStorageVendor.custom)
                 field(
-                  ObjectStorageField.region,
-                  LocaleKeys.settingsObjectStorageRegion,
-                  helperKey: LocaleKeys.settingsObjectStorageRegionHint,
+                  ObjectStorageField.endpoint,
+                  LocaleKeys.settingsObjectStorageEndpoint,
+                  hintKey: LocaleKeys.settingsObjectStorageEndpointHint,
+                  url: true,
                 ),
+              pair(
+                vendor == ObjectStorageVendor.cloudflare
+                    ? field(
+                        ObjectStorageField.accountId,
+                        LocaleKeys.settingsObjectStorageAccountId,
+                        helperKey:
+                            LocaleKeys.settingsObjectStorageAccountIdHint,
+                      )
+                    : field(
+                        ObjectStorageField.region,
+                        LocaleKeys.settingsObjectStorageRegion,
+                        helperKey: switch (vendor) {
+                          ObjectStorageVendor.aliyun =>
+                            LocaleKeys.settingsObjectStorageRegionHintAliyun,
+                          ObjectStorageVendor.tencent =>
+                            LocaleKeys.settingsObjectStorageRegionHintTencent,
+                          _ => LocaleKeys.settingsObjectStorageRegionHint,
+                        },
+                      ),
                 field(
                   ObjectStorageField.bucket,
                   LocaleKeys.settingsObjectStorageBucket,
+                  helperKey: vendor == ObjectStorageVendor.tencent
+                      ? LocaleKeys.settingsObjectStorageBucketHintTencent
+                      : null,
                 ),
               ),
               pair(
@@ -318,45 +413,47 @@ class ObjectStorageForm extends HookConsumerWidget {
                           url: true,
                         ),
                       ),
-                      HookedFormField<ObjectStorageField, bool>(
-                        fieldHook: ObjectStorageField.pathStyle,
-                        builder: (value, onChanged, _) => Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    context.t(
-                                      LocaleKeys.settingsObjectStoragePathStyle,
+                      if (vendor == ObjectStorageVendor.custom)
+                        HookedFormField<ObjectStorageField, bool>(
+                          fieldHook: ObjectStorageField.pathStyle,
+                          builder: (value, onChanged, _) => Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      context.t(
+                                        LocaleKeys
+                                            .settingsObjectStoragePathStyle,
+                                      ),
+                                      style: typo.uiSemibold.copyWith(
+                                        color: colors.textPrimary,
+                                      ),
                                     ),
-                                    style: typo.uiSemibold.copyWith(
-                                      color: colors.textPrimary,
+                                    const SizedBox(height: RevericSpacing.xxs),
+                                    Text(
+                                      context.t(
+                                        LocaleKeys
+                                            .settingsObjectStoragePathStyleHint,
+                                      ),
+                                      style: typo.uiSmall.copyWith(
+                                        color: colors.textMuted,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: RevericSpacing.xxs),
-                                  Text(
-                                    context.t(
-                                      LocaleKeys
-                                          .settingsObjectStoragePathStyleHint,
-                                    ),
-                                    style: typo.uiSmall.copyWith(
-                                      color: colors.textMuted,
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: RevericSpacing.lg),
-                            RevericSwitch(
-                              value: value ?? false,
-                              onChanged: saving.value
-                                  ? null
-                                  : (v) => onChanged?.call(v),
-                            ),
-                          ],
+                              const SizedBox(width: RevericSpacing.lg),
+                              RevericSwitch(
+                                value: value ?? false,
+                                onChanged: saving.value
+                                    ? null
+                                    : (v) => onChanged?.call(v),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -402,6 +499,52 @@ String _failureKey(ObjectStorageFailure failure) => switch (failure) {
   ObjectStorageFailure.invalid_configuration =>
     LocaleKeys.settingsObjectStorageSaveFailed,
 };
+
+String _vendorLabelKey(ObjectStorageVendor vendor) => switch (vendor) {
+  ObjectStorageVendor.aliyun => LocaleKeys.settingsObjectStorageVendorAliyun,
+  ObjectStorageVendor.tencent => LocaleKeys.settingsObjectStorageVendorTencent,
+  ObjectStorageVendor.cloudflare =>
+    LocaleKeys.settingsObjectStorageVendorCloudflare,
+  ObjectStorageVendor.aws => LocaleKeys.settingsObjectStorageVendorAws,
+  ObjectStorageVendor.custom => LocaleKeys.settingsObjectStorageVendorCustom,
+};
+
+String? _createBucketUrl(ObjectStorageVendor vendor) => switch (vendor) {
+  ObjectStorageVendor.aliyun =>
+    'https://www.aliyun.com/product/oss?userCode=8r0xgvta',
+  ObjectStorageVendor.tencent => 'https://curl.qcloud.com/dSLNpBe5',
+  ObjectStorageVendor.cloudflare =>
+    'https://dash.cloudflare.com/?to=/:account/r2/new',
+  ObjectStorageVendor.aws =>
+    'https://s3.console.aws.amazon.com/s3/bucket/create',
+  ObjectStorageVendor.custom => null,
+};
+
+Future<void> _openCreateBucket(BuildContext context, String url) async {
+  try {
+    if (await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication)) {
+      return;
+    }
+    _log.warning('URL launch returned false: $url');
+  } catch (error, stackTrace) {
+    _log.error(
+      'Failed to open bucket creation page: $url',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+  if (!context.mounted) {
+    return;
+  }
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: DialogToast(
+        variant: DialogToastVariant.error,
+        child: Text(context.t(LocaleKeys.commonOpenLinkFailed)),
+      ),
+    ),
+  );
+}
 
 /// 可选配置的折叠开关，与字段左缘对齐。
 class _AdvancedToggle extends StatelessWidget {

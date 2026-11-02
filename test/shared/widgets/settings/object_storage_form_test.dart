@@ -1,4 +1,4 @@
-// 职责: 验证对象存储表单的字段校验、折叠字段的错误回填，以及仅在连接测试通过后才保存配置并通知调用方。
+// 职责: 验证对象存储表单的服务商预设推导、字段校验、折叠字段的错误回填，以及仅在连接测试通过后才保存配置并通知调用方。
 // 关联文件:
 //   lib/shared/widgets/settings/object_storage_form.dart
 //   lib/shared/services/object_storage/service.dart
@@ -64,15 +64,89 @@ void main() {
   ) async {
     final service = _FakeService(database);
     await tester.pumpWidget(
-      _wrap(service, const ObjectStorageForm(config: ObjectStorageConfig())),
+      _wrap(service, const ObjectStorageForm(config: _customConfig)),
     );
     await tester.pumpAndSettle();
 
+    await fill(tester, 'endpoint', '');
     await submit(tester);
 
     expect(find.text('Enter a valid HTTP or HTTPS URL.'), findsOneWidget);
     expect(service.tested, isEmpty);
     expect(service.saved, isEmpty);
+  });
+
+  testWidgets('derives the endpoint from the region for preset vendors', (
+    tester,
+  ) async {
+    final service = _FakeService(database);
+    await tester.pumpWidget(
+      _wrap(service, const ObjectStorageForm(config: ObjectStorageConfig())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('object_storage_endpoint_field')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('object_storage_create_bucket')),
+      findsOneWidget,
+    );
+
+    await fill(tester, 'bucket', 'media');
+    await fill(tester, 'accessKeyId', 'ak');
+    await fill(tester, 'secretAccessKey', 'sk');
+    await submit(tester);
+    expect(find.text('Required'), findsOneWidget);
+    expect(service.tested, isEmpty);
+
+    await fill(tester, 'region', 'cn hangzhou');
+    await submit(tester);
+    expect(find.text('Use only letters, digits and hyphens.'), findsOneWidget);
+    expect(service.tested, isEmpty);
+
+    await fill(tester, 'region', 'CN-Hangzhou');
+    await submit(tester);
+
+    final saved = service.saved.single;
+    expect(saved.endpoint, 'https://s3.oss-cn-hangzhou.aliyuncs.com');
+    expect(saved.region, 'cn-hangzhou');
+    expect(saved.pathStyle, isFalse);
+  });
+
+  testWidgets('restores Cloudflare R2 from a saved config', (tester) async {
+    final service = _FakeService(database);
+    await tester.pumpWidget(
+      _wrap(
+        service,
+        const ObjectStorageForm(
+          config: ObjectStorageConfig(
+            endpoint: 'https://abc123.r2.cloudflarestorage.com',
+            region: 'auto',
+            bucket: 'media',
+            accessKeyId: 'ak',
+            secretAccessKey: 'sk',
+            pathStyle: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cloudflare R2'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('object_storage_region_field')),
+      findsNothing,
+    );
+
+    await fill(tester, 'accountId', 'def456');
+    await submit(tester);
+
+    final saved = service.saved.single;
+    expect(saved.endpoint, 'https://def456.r2.cloudflarestorage.com');
+    expect(saved.region, 'auto');
+    expect(saved.pathStyle, isTrue);
   });
 
   testWidgets('saves only after the connection test passes', (tester) async {
@@ -82,10 +156,7 @@ void main() {
     await tester.pumpWidget(
       _wrap(
         service,
-        ObjectStorageForm(
-          config: const ObjectStorageConfig(),
-          onSaved: () => savedCalls++,
-        ),
+        ObjectStorageForm(config: _customConfig, onSaved: () => savedCalls++),
       ),
     );
     await tester.pumpAndSettle();
@@ -118,7 +189,7 @@ void main() {
   ) async {
     final service = _FakeService(database);
     await tester.pumpWidget(
-      _wrap(service, const ObjectStorageForm(config: ObjectStorageConfig())),
+      _wrap(service, const ObjectStorageForm(config: _customConfig)),
     );
     await tester.pumpAndSettle();
 
@@ -147,6 +218,9 @@ void main() {
     expect(service.tested, isEmpty);
   });
 }
+
+/// 无法匹配任何服务商预设的 Endpoint，表单按自定义服务展示。
+const _customConfig = ObjectStorageConfig(endpoint: 'https://s3.example.com');
 
 Widget _wrap(ObjectStorageService service, Widget child) {
   return ProviderScope(

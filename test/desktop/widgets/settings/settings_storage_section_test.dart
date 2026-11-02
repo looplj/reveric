@@ -1,4 +1,4 @@
-// 职责: 验证桌面存储页将本地存储与 S3 合并展示，选择目录后即时迁移并重新载入。
+// 职责: 验证桌面存储页将本地存储与对象存储合并展示，选择目录后即时迁移并重新载入。
 // 关联文件:
 //   lib/desktop/widgets/settings/settings_storage_section.dart
 //   lib/shared/widgets/file_workspace_startup_gate.dart
@@ -132,7 +132,7 @@ void main() {
       await _until(tester, () => current.evaluate().isNotEmpty);
       expect(find.byType(ObjectStorageForm), findsOneWidget);
       expect(find.text('Local storage'), findsOneWidget);
-      expect(find.text('S3 object storage'), findsOneWidget);
+      expect(find.text('Object storage'), findsOneWidget);
       expect(find.text('Restore from File'), findsNothing);
 
       final choose = find.byKey(const ValueKey('file_workspace_choose'));
