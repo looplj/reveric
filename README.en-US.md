@@ -25,7 +25,7 @@
   <a href="#download--installation">Download</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#developer-guide">Developer Guide</a> •
-  <a href="#community--feedback">Feedback</a> •
+  <a href="#feedback--community">Feedback &amp; Community</a> •
   <a href="#license">License</a>
 </p>
 
@@ -292,12 +292,20 @@ make build-windows-release # Windows release bundle
 
 ---
 
-## Community & Feedback
+## Feedback & Community
 
-Encountering an issue or have an idea for a feature?
+### Feedback
 
-- File bug reports or submit feature requests on [GitHub Issues](https://github.com/looplj/reveric/issues).
-- Learn about AI and share experiences in the [LINUX DO community](https://linux.do/).
+Found a bug or have a feature request? Open an issue on [GitHub Issues](https://github.com/looplj/reveric/issues).
+
+### AI Fiction & Short Drama Community
+
+- [LINUX DO community](https://linux.do/): learn about AI and share creative experience
+- [QQ group](https://qm.qq.com/q/Ap8pfOWHDO) (924148054): discuss AI fiction and short drama creation, share tips
+
+<p>
+  <a href="https://qm.qq.com/q/Ap8pfOWHDO"><img src="assets/images/qq-group.jpg" alt="QQ group QR code" width="240"/></a>
+</p>
 
 ---
 
@@ -311,6 +319,6 @@ Licensed under the [AGPLv3](./LICENSE). See [NOTICES](./NOTICES) for additional 
 
 **Reveric | 幻界** · An agent that creates alongside you
 
-[Home](https://github.com/looplj/reveric) • [Releases](https://github.com/looplj/reveric/releases) • [Issues](https://github.com/looplj/reveric/issues)
+[Home](https://github.com/looplj/reveric) • [Releases](https://github.com/looplj/reveric/releases) • [Issues](https://github.com/looplj/reveric/issues) • [QQ Group](https://qm.qq.com/q/Ap8pfOWHDO)
 
 </div>

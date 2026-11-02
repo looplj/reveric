@@ -4978,9 +4978,8 @@ abstract final class LocaleKeys {
   static const settingsAboutFeedback = 'settings.about_feedback';
   static const settingsAboutFeedbackDescription =
       'settings.about_feedback_description';
-  static const settingsAboutOpenIssues = 'settings.about_open_issues';
-  static const settingsAboutOpenIssuesFailed =
-      'settings.about_open_issues_failed';
+  static const settingsAboutJoinQqGroup = 'settings.about_join_qq_group';
+  static const settingsAboutQqOpenFailed = 'settings.about_qq_open_failed';
   static const settingsAboutOpenSource = 'settings.about_open_source';
   static const settingsAboutOpenSourceDescription =
       'settings.about_open_source_description';

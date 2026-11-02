@@ -16,8 +16,12 @@ const appVersion = '0.6.1';
 /// 为空表示本构建不接匿名诊断：不上报，也不展示 opt-in 入口。
 const anonymousReportingBaseUrl = '';
 
-/// 公开仓库地址；关于页与反馈的 GitHub Issue 都指向这里。
+/// 公开仓库地址，供关于页展示项目主页。
 const revericGitHubRepoUrl = 'https://github.com/looplj/reveric';
+
+/// QQ 交流群官方邀请链接。
+const revericQqGroupJoinUrl = 'https://qm.qq.com/q/Ap8pfOWHDO';
+const revericQqGroupNumber = '924148054';
 
 /// 技能广场只读取公开链接目录，导入沿用各来源平台的现有流程。
 const revericSkillsCatalogUrl =

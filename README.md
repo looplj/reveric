@@ -25,7 +25,7 @@
   <a href="#下载安装">下载安装</a> •
   <a href="#快速开始">快速开始</a> •
   <a href="#开发者指南">开发者指南</a> •
-  <a href="#问题反馈">问题反馈</a> •
+  <a href="#反馈与交流">反馈与交流</a> •
   <a href="#许可证">许可证</a>
 </p>
 
@@ -292,12 +292,20 @@ make build-windows-release # 构建 Windows 客户端
 
 ---
 
-## 问题反馈
+## 反馈与交流
 
-如果你在使用中遇到了问题，或对新功能有独到想法，欢迎参与交流：
+### 问题反馈
 
-- 提交缺陷报告或需求建议：[GitHub Issues](https://github.com/looplj/reveric/issues)
-- 学 AI、交流经验：[LINUX DO 社区](https://linux.do/)
+遇到缺陷或有功能建议，请提交到 [GitHub Issues](https://github.com/looplj/reveric/issues)。
+
+### AI 小说 / 短剧交流
+
+- [LINUX DO 社区](https://linux.do/)：学 AI、交流创作经验
+- [QQ 群](https://qm.qq.com/q/Ap8pfOWHDO)（群号：924148054）：交流 AI 小说与短剧创作、分享使用心得
+
+<p>
+  <a href="https://qm.qq.com/q/Ap8pfOWHDO"><img src="assets/images/qq-group.jpg" alt="QQ 群二维码" width="240"/></a>
+</p>
 
 ---
 
@@ -311,6 +319,6 @@ make build-windows-release # 构建 Windows 客户端
 
 **Reveric | 幻界** · 让智能体成为你的创作搭档
 
-[主页](https://github.com/looplj/reveric) • [发行版](https://github.com/looplj/reveric/releases) • [问题反馈](https://github.com/looplj/reveric/issues)
+[主页](https://github.com/looplj/reveric) • [发行版](https://github.com/looplj/reveric/releases) • [问题反馈](https://github.com/looplj/reveric/issues) • [QQ 群](https://qm.qq.com/q/Ap8pfOWHDO)
 
 </div>

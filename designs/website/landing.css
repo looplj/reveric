@@ -61,6 +61,26 @@ img { display: block; max-width: 100%; }
 .topnav { display: flex; gap: calc(44 * var(--u)); font: 400 calc(17 * var(--u)) / 1 var(--font-mono); letter-spacing: .08em; }
 .topnav a { color: var(--ink-mute); text-decoration: none; transition: color .2s; }
 .topnav a:hover { color: var(--ink); }
+/* QQ 群：悬停/聚焦时在链接下方弹出二维码 */
+.qq-nav { position: relative; }
+.qq-pop {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  padding-top: calc(18 * var(--u));
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, calc(-6 * var(--u)));
+  transition: opacity .2s, transform .2s, visibility .2s;
+}
+.qq-pop img {
+  width: calc(220 * var(--u));
+  min-width: 160px;
+  height: auto;
+  border-radius: calc(10 * var(--u));
+  box-shadow: 0 calc(12 * var(--u)) calc(40 * var(--u)) rgba(0, 0, 0, .5);
+}
+.qq-nav:hover .qq-pop, .qq-nav:focus-within .qq-pop { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
 
 /* ---------- 通用 ---------- */
 .sc { position: relative; background: var(--ground); }
@@ -306,7 +326,9 @@ img { display: block; max-width: 100%; }
   .brand { font-size: 16px; gap: 10px; }
   .brand img { width: 28px; height: 28px; border-radius: 7px; }
   .topnav { gap: 16px; font-size: 12px; }
-  .topnav a:nth-child(-n+2) { display: none; }
+  .topnav > a:nth-child(-n+2) { display: none; }
+  .qq-pop { left: auto; right: 0; transform: translateY(-6px); }
+  .qq-nav:hover .qq-pop, .qq-nav:focus-within .qq-pop { transform: none; }
   .bar { font-size: 11px; }
   .cover .bar-bottom span:nth-child(2) { display: none; }
   .label { font-size: 12px; }
