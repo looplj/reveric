@@ -23,7 +23,7 @@ precompiled_binaries:
     - tool/check_frb_codegen.sh
     - tool/check_frb_content_hash.dart
   build_recipe:
-    rust_toolchain: '1.97.1'
+    rust_toolchain: '1.99.1'
     flutter_version: '3.49.0-0.1.pre'
     xcode_version: '26.2'
     sdk_versions:

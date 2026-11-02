@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 BINARIES = ROOT / 'third/fjs/darwin/fjs/Binaries'
 ARCHIVE = BINARIES / 'fjs.xcframework.zip'
 RECORD = BINARIES / 'reveric-build.json'
-RUST = '1.97.1'
+RUST = '1.99.1'
 TARGETS = ['aarch64-apple-ios', 'aarch64-apple-ios-sim',
            'aarch64-apple-darwin']
 

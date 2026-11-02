@@ -62,9 +62,9 @@ void main() {
     testRunCommandOverride = (args) {
       commands.add(args.arguments);
       if (args.arguments.first == 'which') {
-        return TestRunCommandResult(stdout: '/rustup/1.97.1/bin/rustc\n');
+        return TestRunCommandResult(stdout: '/rustup/1.99.1/bin/rustc\n');
       }
-      expect(args.environment?['RUSTC'], '/rustup/1.97.1/bin/rustc');
+      expect(args.environment?['RUSTC'], '/rustup/1.99.1/bin/rustc');
       return TestRunCommandResult();
     };
     final options = CargokitCrateOptions.load(manifestDir: '../../libfjs');
@@ -87,12 +87,12 @@ void main() {
     expect(
         commands
             .where((args) => args.first == 'run')
-            .every((args) => args[1] == '1.97.1'),
+            .every((args) => args[1] == '1.99.1'),
         isTrue);
     expect(
         commands
             .where((args) => args.first == 'which')
-            .every((args) => args[2] == '1.97.1'),
+            .every((args) => args[2] == '1.99.1'),
         isTrue);
   });
 }

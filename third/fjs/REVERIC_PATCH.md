@@ -99,7 +99,7 @@ own capability review first.
 Reveric pins FJS 3.3.1 and flutter_rust_bridge 2.12.0, with a local path override.
 Root `cargokit_options.yaml` disables upstream binary download. Apple archives
 are ignored build artifacts and must be generated from this source. The local
-CargoKit recipe retains Rust 1.97.1 and labels Flutter 3.49.0-0.1.pre and Apple
+CargoKit recipe retains Rust 1.99.1 and labels Flutter 3.49.0-0.1.pre and Apple
 Xcode/SDK 26.2 instead of upstream's older labels. The Flutter label is
 informational: Flutter only hosts the build tool and dart-sys ships its own
 Dart API headers, so upgrading Flutter does not require rebuilding the archive.
@@ -108,8 +108,8 @@ Build with any Flutter SDK as `FLUTTER_ROOT` for the upstream script (the projec
 FVM SDK when present), then run native integration tests against the app target:
 
 ```sh
-cargo +1.97.1 test --locked --manifest-path third/fjs/libfjs/Cargo.toml codemode_ -- --test-threads=1
-cargo +1.97.1 test --locked --manifest-path third/fjs/libfjs/Cargo.toml engine_close_ -- --test-threads=1
+cargo +1.99.1 test --locked --manifest-path third/fjs/libfjs/Cargo.toml codemode_ -- --test-threads=1
+cargo +1.99.1 test --locked --manifest-path third/fjs/libfjs/Cargo.toml engine_close_ -- --test-threads=1
 sh third/fjs/tool/build_fjs_xcframework.sh
 timeout 900 fvm flutter test integration_test/codemode_native_test.dart -d macos
 ```
@@ -138,7 +138,7 @@ machine-level cache keyed by the identity below. `third/fjs/tool/artifact.py` re
 source hashes (including patch, Cargo.lock, version and builder),
 Rust/compiler identity, host architecture, three Apple arm64 targets (macOS; iOS device and simulator) and Xcode/SDKs.
 A cache entry is accepted only when identity and SHA-256 match. Its local CargoKit
-generation manifest must identify Rust 1.97.1 and the same archive checksum.
+generation manifest must identify Rust 1.99.1 and the same archive checksum.
 `--verify-app APP` compares packaged macOS framework UUIDs with that archive;
 actual native boundary tests remain required separately.
 
