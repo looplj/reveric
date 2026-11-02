@@ -83,3 +83,5 @@
 需要采用已有结果时，Write 片段的 `adopted_asset_id`，使用 `Run assets list/read` 或生成记录返回的真实 asset id；设为 null 会清除当前采用结果。外部文件先导入成资产，再采用返回的 id。生成完成后仍须核对实际采用状态，不能把任务完成当成已采用；遇到 `action_required` 或 `submission_unknown` 先查记录并说明状态，不重复提交生成命令。
 
 交付区分配置已保存、任务已提交、结果已生成、结果已采用。仅写提示词时不发起生成，失败或取消不宣称成片完成。
+
+参考素材上传因 `reference_storage` 失败时，按「系统管理」的 `references/settings.md` 打开存储设置，由用户完成配置后再继续；不要据此更换渠道或删除参考输入。

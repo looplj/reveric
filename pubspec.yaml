@@ -225,6 +225,7 @@ flutter:
     - assets/bundled_skills/management/references/subagents.md
     - assets/bundled_skills/management/references/themes.md
     - assets/bundled_skills/management/references/providers.md
+    - assets/bundled_skills/management/references/settings.md
     - assets/bundled_skills/canvas-composition/SKILL.md
     - assets/bundled_skills/canvas-composition/references/story-structure.md
     - assets/bundled_skills/canvas-composition/references/branching-story.md

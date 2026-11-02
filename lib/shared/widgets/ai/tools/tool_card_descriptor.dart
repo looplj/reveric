@@ -10,6 +10,8 @@
 //   assets/translations/zh-CN/production.json
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/settings.json
+//   assets/translations/zh-CN/settings.json
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
 //   assets/translations/en/history.json
@@ -95,6 +97,7 @@ String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
     return context.t(actionKey);
   }
   return switch (parsed?.topLevel) {
+    'settings' => context.t(LocaleKeys.settingsTitle),
     'assets' => context.t(LocaleKeys.aiToolRunAssets),
     'mcp' => context.t(LocaleKeys.aiToolRunMcp),
     'providers' => context.t(LocaleKeys.aiToolRunProviders),
@@ -114,6 +117,7 @@ String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
 }
 
 const _runActionKeys = <(String, String), String>{
+  ('settings', 'open'): LocaleKeys.commonOpen,
   ('production', 'capture-panorama'):
       LocaleKeys.aiToolRunProductionCapturePanorama,
   ('production', 'derive-view'): LocaleKeys.aiToolRunProductionDeriveView,
@@ -819,6 +823,26 @@ String? _runReferenceTarget(AiToolCallBlock block, ParsedRunCommand parsed) {
 String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
   final parsed = ParsedRunCommand.fromBlock(block);
   final topLevel = parsed?.topLevel;
+  if (topLevel == 'settings') {
+    final section = parsed?.option('section');
+    final key = switch (section) {
+      'general' => LocaleKeys.settingsGeneral,
+      'appearance' => LocaleKeys.settingsAppearance,
+      'editor' => LocaleKeys.settingsFonts,
+      'reading' => LocaleKeys.settingsReading,
+      'ai_agents' => LocaleKeys.settingsAiAgents,
+      'providers' => LocaleKeys.settingsProviders,
+      'usage' => LocaleKeys.settingsUsage,
+      'mcp' => LocaleKeys.settingsMcp,
+      'plugins' => LocaleKeys.settingsPlugins,
+      'backup' => LocaleKeys.settingsBackup,
+      'about' => LocaleKeys.settingsAbout,
+      'remote' => LocaleKeys.settingsRemote,
+      'storage' => LocaleKeys.settingsStorage,
+      _ => LocaleKeys.settingsTitle,
+    };
+    return context.t(key);
+  }
   if (topLevel == 'mcp') {
     return switch (parsed?.subcommand) {
       'list' => parsed?.option('server'),
@@ -1154,6 +1178,7 @@ String? localizedRunHelpTopic(BuildContext context, String? topic) {
     return null;
   }
   return switch (value) {
+    'settings' => context.t(LocaleKeys.settingsTitle),
     'mcp' => context.t(LocaleKeys.aiToolRunMcp),
     'providers' => context.t(LocaleKeys.aiToolRunProviders),
     'agent-skills' => context.t(LocaleKeys.aiToolRunAgentSkills),

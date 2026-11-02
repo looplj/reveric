@@ -71,7 +71,15 @@ Future<void> showMobileAboutPage(BuildContext context) {
   );
 }
 
-/// 从首页资料入口打开现有账户详情页。
+/// 打开移动端已有设置分区；不增加隐藏的桌面入口或调试入口。
+Future<void> showMobileSettingsPage(BuildContext context, String section) {
+  final item = SettingsPage._navigableItems.firstWhere(
+    (item) => item.id == section,
+  );
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(builder: (_) => _SettingsDetailPage(item: item)),
+  );
+}
 
 /// 设置页面导航项
 class _SettingsNavItem {
@@ -161,6 +169,24 @@ class SettingsPage extends HookConsumerWidget {
     labelKey: LocaleKeys.settingsAbout,
     icon: RevericIcons.help_outline,
   );
+  static const _navigableItems = [
+    _generalItem,
+    _appearanceItem,
+    _editorItem,
+    _readingItem,
+    _providersItem,
+    _aiAgentsItem,
+    _usageItem,
+    _mcpItem,
+    _pluginsItem,
+    _backupItem,
+    _aboutItem,
+  ];
+
+  static Set<String> get navigableSections => {
+    for (final item in _navigableItems) item.id,
+  };
+
   static const _debugNavItem = _SettingsNavItem(
     id: 'debug',
     labelKey: LocaleKeys.settingsDebug,

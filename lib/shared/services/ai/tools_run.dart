@@ -224,6 +224,16 @@ mixin _AiToolManagerRunMixin
         await _productionStyleService(),
       ).run(spec.subcommand, options),
     ),
+    'settings': _RunCommandDefinition(
+      session: true,
+      subcommands: const {'open': RunPermission.none()},
+      codemode: const {
+        'open': _RunCodemodeAccess.denied(
+          'Open settings through a direct Run call.',
+        ),
+      },
+      (spec, options, _) => _runSettingsCommand(options),
+    ),
     'providers': _RunCommandDefinition(
       codemode: const {
         'list': _RunCodemodeAccess.read(),
@@ -660,6 +670,29 @@ mixin _AiToolManagerRunMixin
     return EditingToolHost(
       await build(),
     ).run(subcommand, options, context, manager, _activeRunCallId ?? '');
+  }
+
+  Future<Map<String, dynamic>> _runSettingsCommand(
+    Map<String, dynamic> options,
+  ) async {
+    final section = options['section'];
+    if (options.length != 1 ||
+        section is! String ||
+        section.isEmpty ||
+        section == 'debug') {
+      throw const FormatException(
+        'settings open requires a non-empty section; debug is not supported.',
+      );
+    }
+    final open = operationHost?.openSettings;
+    if (open == null) {
+      throw const ToolOperationException(
+        'unavailable',
+        'Settings navigation requires an application session.',
+      );
+    }
+    open(section);
+    return {'ok': true};
   }
 
   Future<Map<String, dynamic>> _runProductionCommand(
@@ -2030,7 +2063,7 @@ const _operationRunCommands = {
   'ffmpeg',
 };
 
-const _sessionRunCommands = {'files', 'operations'};
+const _sessionRunCommands = {'files', 'operations', 'settings'};
 
 String get _operationHelpLines =>
     '''  assets          List, read, view and certify this work's media assets.
@@ -2042,7 +2075,8 @@ String get _operationHelpLines =>
 ''';
 
 String get _sessionHelpLines =>
-    '''  files           Read local files; list or remove managed files with glob patterns. Load AgentSkill "${bundledControlRunCommandToCallName['files']}".
+    '''  settings        Open application settings for the user. Load AgentSkill "系统管理".
+  files           Read local files; list or remove managed files with glob patterns. Load AgentSkill "${bundledControlRunCommandToCallName['files']}".
   operations      List, read, wait for, or cancel session operations. Load AgentSkill "${bundledControlRunCommandToCallName['operations']}".
 ''';
 

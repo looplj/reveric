@@ -84,6 +84,7 @@ const Map<String, String> bundledControlRunCommandToCallName = {
   'agent-skills': '系统管理',
   'subagents': '系统管理',
   'themes': '系统管理',
+  'settings': '系统管理',
   'stagings': '剧本工具使用规范',
   'styles': '剧本工具使用规范',
   'production': '剧本工具使用规范',
@@ -134,6 +135,7 @@ const List<_BundledControlSkillSpec> _bundledControlSkillSpecs = [
       'assets/bundled_skills/management/references/subagents.md',
       'assets/bundled_skills/management/references/themes.md',
       'assets/bundled_skills/management/references/providers.md',
+      'assets/bundled_skills/management/references/settings.md',
     ],
   ),
   // 画布使用通用资源工具；构图方法按场景附件加载。

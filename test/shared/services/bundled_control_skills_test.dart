@@ -229,6 +229,7 @@ void main() {
             'references/agent-rules.md',
             'references/agent-skills.md',
             'references/providers.md',
+            'references/settings.md',
             'references/skill-design.md',
             'references/subagents.md',
             'references/themes.md',

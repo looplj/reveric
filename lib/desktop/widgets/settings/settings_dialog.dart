@@ -161,6 +161,11 @@ class SettingsDialog extends HookConsumerWidget {
     ),
   ];
 
+  /// Agent 导航只接受正常展示的分区，排除调试入口。
+  static Set<String> get navigableSections => {
+    for (final item in _baseNavItems) item.id,
+  };
+
   static const _debugNavItem = _SettingsNavItem(
     id: 'debug',
     labelKey: LocaleKeys.settingsDebug,
@@ -371,10 +376,14 @@ class SettingsDialog extends HookConsumerWidget {
                 color: isSelected ? colors.textPrimary : colors.textSecondary,
               ),
               const SizedBox(width: RevericSpacing.sm),
-              Text(
-                context.t(item.labelKey),
-                style: (isSelected ? typo.uiSemibold : typo.ui).copyWith(
-                  color: isSelected ? colors.textPrimary : colors.textSecondary,
+              Expanded(
+                child: Text(
+                  context.t(item.labelKey),
+                  style: (isSelected ? typo.uiSemibold : typo.ui).copyWith(
+                    color: isSelected
+                        ? colors.textPrimary
+                        : colors.textSecondary,
+                  ),
                 ),
               ),
             ],

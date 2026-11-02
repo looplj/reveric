@@ -1415,6 +1415,7 @@ void main() {
               'ffmpeg',
               'files',
               'operations',
+              'settings',
             }.contains(command),
           );
         final help = await toolManager.executeTool(
@@ -1499,6 +1500,7 @@ void main() {
           'ffmpeg',
           'files',
           'operations',
+          'settings',
         ];
         final operations = ToolOperationManager(
           ownerSessionId: 'owner',
@@ -1515,7 +1517,8 @@ void main() {
           toolManager.operationHost = host;
           final hidden = await run({'command': 'help'});
           for (final command in commands) {
-            if (host != null && {'files', 'operations'}.contains(command)) {
+            if (host != null &&
+                {'files', 'operations', 'settings'}.contains(command)) {
               expect(hidden['output'], contains('\n  $command '));
               final directed = await run({
                 'command': 'help',

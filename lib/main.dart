@@ -18,6 +18,7 @@
 import 'shared/providers/plugin_providers.dart';
 import 'shared/providers/mcp_providers.dart';
 import 'dart:async';
+import 'settings_navigation_host.dart';
 import 'shared/providers/depth.dart';
 import 'dart:io';
 import 'dart:ui' show AppExitResponse;
@@ -648,6 +649,10 @@ class MyApp extends ConsumerWidget {
                     children: [
                       ?child,
                       const AppLifecycleWatcher(),
+                      SettingsNavigationHost(
+                        navigatorKey: SystemTrayService().navigatorKey,
+                        mobile: _isMobilePlatform,
+                      ),
                       if (home is MobileApp || home is NovelHomePage)
                         UpdateReminder(
                           mobile: _isMobilePlatform,

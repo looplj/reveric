@@ -56,6 +56,12 @@ void main() {
                 (e) => e.messageKey,
                 'message',
                 LocaleKeys.productionReferenceStorageNotConnected,
+              )
+              .having((e) => e.field, 'field', 'reference_storage')
+              .having(
+                (e) => e.detail,
+                'application storage diagnosis',
+                'Application object storage is not configured for reference uploads.',
               ),
         ),
       );

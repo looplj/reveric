@@ -3,6 +3,8 @@
 //   lib/shared/widgets/ai/tools/tool_card_descriptor.dart
 //   lib/shared/services/ai/tools_run.dart
 //   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/settings.json
+//   assets/translations/zh-CN/settings.json
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
 // 遵循的 Rules:
@@ -19,6 +21,7 @@ import 'package:reveric/shared/widgets/ai/tools/tool_card_descriptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _commands = <String, List<String>>{
+  'settings': ['open'],
   'files': [
     'list',
     'read-text',
@@ -138,6 +141,7 @@ void main() {
           }
         }
         for (final action in [
+          ('settings', 'open', '打开', 'Open'),
           ('files', 'read-text', '读取文本', 'Read text'),
           ('files', 'view-image', '查看图片', 'View image'),
           ('files', 'read-video-metadata', '读取视频元数据', 'Read video metadata'),
@@ -167,6 +171,33 @@ void main() {
           );
           expect(localizedToolCallTitle(context, restored), expected);
         }
+
+        for (final (section, zh, en) in [
+          ('general', '通用', 'General'),
+          ('appearance', '外观', 'Appearance'),
+          ('editor', '编辑器', 'Editor'),
+          ('reading', '阅读', 'Reading'),
+          ('ai_agents', 'AI 助手', 'AI Assistant'),
+          ('providers', 'AI 供应商', 'AI Providers'),
+          ('usage', 'AI 用量', 'AI Usage'),
+          ('mcp', 'MCP', 'MCP'),
+          ('plugins', '插件', 'Plugins'),
+          ('backup', '备份', 'Backup'),
+          ('about', '关于', 'About'),
+          ('remote', '远程控制', 'Remote Control'),
+          ('storage', '存储', 'Storage'),
+        ]) {
+          final block = _run('settings', 'open', options: {'section': section});
+          final verb = locale.languageCode == 'zh' ? '打开' : 'Open';
+          final target = locale.languageCode == 'zh' ? zh : en;
+          expect(localizedToolCallTitle(context, block), verb);
+          expect(toolRowTarget(context, block, null), target);
+          expect(toolHeaderSubtitle(context, block, null), '$verb $target');
+        }
+        expect(
+          toolRowTarget(context, _run('help', 'settings'), null),
+          locale.languageCode == 'zh' ? '设置' : 'Settings',
+        );
 
         for (final operation in _commands['themes']!) {
           final block = _run('themes', operation);
@@ -273,5 +304,6 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
     },
+    timeout: const Timeout(Duration(seconds: 40)),
   );
 }

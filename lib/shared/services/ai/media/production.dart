@@ -49,9 +49,14 @@ class _DraftCompletionPreview {
 /// Session-bound operations. Approval-gated commands use [operations] on every platform;
 /// media commands are registered only when [media] is true.
 class ToolOperationHost {
-  const ToolOperationHost(this.operations, {this.media = true, this.production})
-    : assert(media || production == null);
+  const ToolOperationHost(
+    this.operations, {
+    this.media = true,
+    this.production,
+    this.openSettings,
+  }) : assert(media || production == null);
   final ToolOperationManager operations;
+  final void Function(String section)? openSettings;
 
   /// The host provides production, editing, ffmpeg and local file commands.
   final bool media;
@@ -287,7 +292,7 @@ class ProductionToolHost {
     } on VideoException catch (error) {
       throw ToolOperationException(
         error.field ?? error.code.name,
-        error.toString(),
+        [error.toString(), ?error.detail].join('\n'),
       );
     }
   }
@@ -638,7 +643,7 @@ class ProductionToolHost {
         if (task != null) ...await summary(task),
         'ok': false,
         'error_code': error.field ?? error.code.name,
-        'error': error.toString(),
+        'error': [error.toString(), ?error.detail].join('\n'),
       };
     } on StoryboardException catch (error) {
       throw ToolOperationException(

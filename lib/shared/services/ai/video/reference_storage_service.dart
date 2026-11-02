@@ -42,6 +42,8 @@ class ReferenceStorageService {
         VideoErrorCode.configuration_required,
         field: 'reference_storage',
         messageKey: LocaleKeys.productionReferenceStorageNotConnected,
+        detail:
+            'Application object storage is not configured for reference uploads.',
       );
     }
     final info = await probe(file.path);

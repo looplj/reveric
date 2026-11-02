@@ -71,6 +71,7 @@ import '../../providers/tool_operations.dart';
 import '../../providers/codemode_provider.dart';
 import '../../providers/ai_mode_processing.dart';
 import '../system_notification_service.dart';
+import '../../providers/settings_navigation.dart';
 import 'pending_ask_user.dart';
 import '../../providers/canvas_providers.dart' show canvasAiActivityProvider;
 import '../../providers/map_agent_providers.dart';
@@ -636,6 +637,7 @@ class ChatTurnRunner {
     final media = container.read(mediaOperationsSupportedProvider);
     toolManager.operationHost = ToolOperationHost(
       operationRuntime.operations,
+      openSettings: container.read(settingsNavigationProvider).open,
       media: media,
       production: !media || operationDatabasePath == null
           ? null
