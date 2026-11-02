@@ -1294,21 +1294,6 @@ abstract final class LocaleKeys {
   static const aiFeedbackTitle = 'ai.feedback_title';
   static const aiFeedbackDescription = 'ai.feedback_description';
   static const aiFeedbackPlaceholder = 'ai.feedback_placeholder';
-  static const aiFeedbackSubmitIssue = 'ai.feedback_submit_issue';
-  static const aiFeedbackIssueTitle = 'ai.feedback_issue_title';
-  static const aiFeedbackIssueBody = 'ai.feedback_issue_body';
-  static const aiFeedbackOpenIssueFailed = 'ai.feedback_open_issue_failed';
-  static const aiFeedbackDiagnosticsTitle = 'ai.feedback_diagnostics_title';
-  static const aiFeedbackDiagnosticsDescription =
-      'ai.feedback_diagnostics_description';
-  static const aiFeedbackExport = 'ai.feedback_export';
-  static const aiFeedbackExporting = 'ai.feedback_exporting';
-  static const aiFeedbackExportSaved = 'ai.feedback_export_saved';
-  static const aiFeedbackExportFailed = 'ai.feedback_export_failed';
-  static const aiFeedbackSendEmail = 'ai.feedback_send_email';
-  static const aiFeedbackEmailSubject = 'ai.feedback_email_subject';
-  static const aiFeedbackEmailBody = 'ai.feedback_email_body';
-  static const aiFeedbackOpenEmailFailed = 'ai.feedback_open_email_failed';
   static const aiFeedbackSession = 'ai.feedback_session';
   static const aiFeedbackModel = 'ai.feedback_model';
   static const aiFeedbackMessages = 'ai.feedback_messages';
@@ -6152,4 +6137,20 @@ abstract final class LocaleKeys {
   static const directorPresetLowAngle = 'director.preset_low_angle';
   static const directorPresetBird = 'director.preset_bird';
   static const directorPresetDutch = 'director.preset_dutch';
+  static const aiFeedbackUpload = 'ai.feedback_upload';
+  static const aiFeedbackUploading = 'ai.feedback_uploading';
+  static const aiFeedbackSuccess = 'ai.feedback_success';
+  static const aiFeedbackFailed = 'ai.feedback_failed';
+  static const settingsAboutUploadLogs = 'settings.about_upload_logs';
+  static const settingsAboutUploadLogsDescription =
+      'settings.about_upload_logs_description';
+  static const settingsAboutUploadingLogs = 'settings.about_uploading_logs';
+  static const settingsAboutUploadLogsConfirmTitle =
+      'settings.about_upload_logs_confirm_title';
+  static const settingsAboutUploadLogsConfirmDescription =
+      'settings.about_upload_logs_confirm_description';
+  static const settingsAboutUploadLogsSuccess =
+      'settings.about_upload_logs_success';
+  static const settingsAboutUploadLogsFailed =
+      'settings.about_upload_logs_failed';
 }

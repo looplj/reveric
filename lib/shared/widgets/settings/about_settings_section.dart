@@ -1,8 +1,9 @@
-// 职责: 展示应用版本、更新检查、本地日志、GitHub 问题反馈与开源署名入口，供桌面和移动端设置使用。
+// 职责: 展示应用版本、更新检查、本地日志与诊断上传、GitHub 问题反馈与开源署名入口，供桌面和移动端设置使用。
 // 关联文件:
 //   lib/shared/components/reveric_button.dart
 //   lib/shared/providers/update_providers.dart
 //   lib/shared/logger/log_manager.dart
+//   lib/shared/widgets/settings/diagnostics_upload_button.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
@@ -10,6 +11,7 @@
 //   .agents/rules/hooks.md
 
 import 'dart:io';
+import 'diagnostics_upload_button.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -29,7 +31,7 @@ import '../../theme/theme.dart';
 
 final _log = AppLogger.forModule('AboutSettings');
 
-/// 关于设置 section：版本、更新、本地日志、GitHub 问题反馈和开源署名。
+/// 关于设置 section：版本、更新、本地日志与诊断上传、GitHub 问题反馈和开源署名。
 class AboutSettingsSection extends HookConsumerWidget {
   const AboutSettingsSection({super.key, this.compact = false});
 
@@ -84,6 +86,20 @@ class AboutSettingsSection extends HookConsumerWidget {
             _buildOpenApplicationDirectoryButton(context, colors, typo),
             SizedBox(height: sectionGap),
           ],
+          _buildSectionTitle(
+            context,
+            typo,
+            colors,
+            LocaleKeys.settingsAboutUploadLogs,
+          ),
+          SizedBox(height: descriptionGap),
+          Text(
+            context.t(LocaleKeys.settingsAboutUploadLogsDescription),
+            style: _descriptionStyle(typo, colors),
+          ),
+          SizedBox(height: actionGap),
+          const DiagnosticsUploadButton(),
+          SizedBox(height: sectionGap),
           _buildSectionTitle(
             context,
             typo,

@@ -671,5 +671,12 @@
   "settings.mcp_client_required": "客户端注册失败，请检查 client ID 以及服务是否支持此注册方式。",
   "settings.mcp_callback_rejected": "授权回调未通过校验，请检查已注册的回调地址并重新登录。",
   "settings.plugins": "插件",
-  "settings.usage_source_plugin": "插件"
+  "settings.usage_source_plugin": "插件",
+  "settings.about_upload_logs": "上传诊断日志",
+  "settings.about_upload_logs_description": "上传应用日志和诊断数据，帮助我们排查问题。",
+  "settings.about_uploading_logs": "正在上传日志...",
+  "settings.about_upload_logs_confirm_title": "上传诊断日志？",
+  "settings.about_upload_logs_confirm_description": "将上传应用日志和崩溃记录，用于排查问题。",
+  "settings.about_upload_logs_success": "日志上传成功。",
+  "settings.about_upload_logs_failed": "上传失败，请重试。"
 }

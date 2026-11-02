@@ -26,7 +26,7 @@ const revericSkillsCatalogUrl =
 /// AGPLv3 第 7 条附加条款要求修改版保留的作者署名，与 NOTICES 保持一致，不做本地化。
 const revericAttribution = 'Based on Reveric by looplj.';
 
-/// 接收私下反馈的邮箱；诊断文件含作品内容，只通过邮件而非公开 Issue 发送。
+/// 接收用户通过邮件私下发送的反馈与诊断文件。
 const revericFeedbackEmail = 'bababaa261@gmail.com';
 
 /// 产品线编码，通过 X-Product-Code 请求头发送给匿名诊断接收端。
@@ -37,3 +37,6 @@ final revericApiHeaders = <String, String>{
   'Content-Type': 'application/json',
   'X-Product-Code': revericProductCode,
 };
+
+/// 用户主动提交日志与会话的诊断后端，与匿名事件上报独立。
+const diagnosticsBaseUrl = 'https://diagnostics.reveric.app';

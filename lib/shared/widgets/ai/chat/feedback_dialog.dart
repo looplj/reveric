@@ -1,10 +1,10 @@
-// 职责: AI 聊天反馈弹窗 — 跳转公开 GitHub Issue，并在本机导出诊断文件供邮件私下发送
+// 职责: 展示聊天诊断上传确认，并提交问题描述与当前会话记录。
 // 关联文件:
 //   lib/shared/components/reveric_dialog.dart
 //   lib/shared/components/reveric_button.dart
 //   lib/shared/providers/ai_providers.dart
 //   lib/shared/providers/novel_providers.dart
-//   lib/shared/services/diagnostics_export_orchestrator.dart
+//   lib/shared/providers/upload_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
@@ -13,22 +13,19 @@
 // 遵循的 Rules:
 //   .agents/rules/i18n.md
 //   .agents/rules/error-handling.md
-//   .agents/rules/file-access.md
 import 'dart:io';
+import 'dart:convert';
+import '../../../providers/upload_providers.dart';
 
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import 'package:reveric/shared/app_config.dart'
-    show appVersion, revericFeedbackEmail, revericGitHubRepoUrl;
+import 'package:reveric/shared/app_config.dart' show appVersion;
 import 'package:reveric/shared/localization/app_localization.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/logger/app_logger.dart';
-import 'package:reveric/shared/logger/log_manager.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
-import 'package:reveric/shared/services/diagnostics_export_orchestrator.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import '../../../components/dialog_feedback.dart';
 import '../../../components/reveric_dialog.dart';
@@ -44,47 +41,51 @@ Future<void> showAiChatFeedbackDialog({
   required String? novelId,
   required String? databasePath,
 }) async {
-  final colors = RevericTheme.colorsOf(context);
-  final typo = RevericTheme.typographyOf(context);
-
-  final dialogWidth = MediaQuery.sizeOf(context).width.clamp(280.0, 400.0) - 48;
-
-  await showRevericDialog<void>(
+  final uploaded = await showRevericDialog<bool>(
     context: context,
     builder: (dialogContext) {
       return _AiChatFeedbackDialog(
         dialogContext: dialogContext,
-        colors: colors,
-        typo: typo,
-        dialogWidth: dialogWidth,
         loadContext: () => _loadFeedbackContext(
           ref: ref,
           sessionState: sessionState,
           novelId: novelId,
           databasePath: databasePath,
         ),
-        sessionState: sessionState,
+        ref: ref,
       );
     },
   );
+  if (uploaded != true || !context.mounted) {
+    return;
+  }
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: DialogToast(
+            variant: DialogToastVariant.success,
+            child: Text(context.t(LocaleKeys.aiFeedbackSuccess)),
+          ),
+        ),
+      );
+  });
 }
 
 class _AiChatFeedbackDialog extends StatefulWidget {
   const _AiChatFeedbackDialog({
     required this.dialogContext,
-    required this.colors,
-    required this.typo,
-    required this.dialogWidth,
     required this.loadContext,
-    required this.sessionState,
+    required this.ref,
   });
 
   final BuildContext dialogContext;
-  final RevericColors colors;
-  final RevericTypography typo;
-  final double dialogWidth;
   final Future<Map<String, dynamic>> Function() loadContext;
-  final AiChatSessionState sessionState;
+  final WidgetRef ref;
 
   @override
   State<_AiChatFeedbackDialog> createState() => _AiChatFeedbackDialogState();
@@ -92,7 +93,7 @@ class _AiChatFeedbackDialog extends StatefulWidget {
 
 class _AiChatFeedbackDialogState extends State<_AiChatFeedbackDialog> {
   late final TextEditingController _descriptionController;
-  bool _isExporting = false;
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -106,119 +107,42 @@ class _AiChatFeedbackDialogState extends State<_AiChatFeedbackDialog> {
     super.dispose();
   }
 
-  Map<String, String> _environmentArgs() => {
-    'description': _descriptionController.text.trim(),
-    'version': appVersion,
-    'platform': Platform.operatingSystem,
-    'model': widget.sessionState.model ?? '-',
-  };
-
-  /// 公开 Issue 只带用户描述与环境信息，不带会话标题和消息。
-  Future<void> _openIssue() async {
-    final description = _descriptionController.text.trim();
-    final summary = description.split('\n').first;
-    final uri = Uri.parse('$revericGitHubRepoUrl/issues/new').replace(
-      queryParameters: {
-        'title': context.t(
-          LocaleKeys.aiFeedbackIssueTitle,
-          namedArgs: {
-            'summary': summary.length > 60
-                ? '${summary.substring(0, 60)}…'
-                : summary,
-          },
-        ),
-        'body': context.t(
-          LocaleKeys.aiFeedbackIssueBody,
-          namedArgs: _environmentArgs(),
-        ),
-      },
-    );
-    await _launch(uri, LocaleKeys.aiFeedbackOpenIssueFailed);
-  }
-
-  Future<void> _openEmail() async {
-    // mailto 的 query 需按 RFC 6068 百分号编码；queryParameters 会把空格编成 `+`。
-    final subject = Uri.encodeComponent(
-      context.t(LocaleKeys.aiFeedbackEmailSubject),
-    );
-    final body = Uri.encodeComponent(
-      context.t(LocaleKeys.aiFeedbackEmailBody, namedArgs: _environmentArgs()),
-    );
-    final uri = Uri.parse(
-      'mailto:$revericFeedbackEmail?subject=$subject&body=$body',
-    );
-    await _launch(
-      uri,
-      LocaleKeys.aiFeedbackOpenEmailFailed,
-      failureArgs: {'email': revericFeedbackEmail},
-    );
-  }
-
-  Future<void> _launch(
-    Uri uri,
-    String failureKey, {
-    Map<String, String>? failureArgs,
-  }) async {
-    try {
-      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        return;
-      }
-      _log.warning('launch returned false scheme=${uri.scheme}');
-    } catch (error, stackTrace) {
-      _log.error(
-        'launch failed scheme=${uri.scheme}',
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
-    if (mounted) {
-      _showToast(
-        context.t(failureKey, namedArgs: failureArgs),
-        DialogToastVariant.error,
-      );
-    }
-  }
-
-  Future<void> _export() async {
-    if (_isExporting) {
+  Future<void> _upload() async {
+    if (_isUploading) {
       return;
     }
-    setState(() => _isExporting = true);
-    final savedMessage = context.t(LocaleKeys.aiFeedbackExportSaved);
-    final failedMessage = context.t(LocaleKeys.aiFeedbackExportFailed);
-    final sessionId = widget.sessionState.sessionId;
+    setState(() => _isUploading = true);
     try {
-      final feedback = {
+      final service = widget.ref.read(anonymousUploadServiceProvider);
+      final payload = {
         ...await widget.loadContext(),
         'description': _descriptionController.text.trim(),
         'app_version': appVersion,
         'platform': Platform.operatingSystem,
       };
-      final stamp = DateTime.now()
-          .toUtc()
-          .toIso8601String()
-          .replaceAll(RegExp(r'[^0-9]'), '')
-          .substring(0, 14);
-      final status = await DiagnosticsExportOrchestrator().export(
-        feedback: feedback,
-        logPath: LogManager.instance.logFilePath,
-        fileName: 'reveric_diagnostics_$stamp.zip',
+      await service.upload(
+        namespace: 'diagnostics',
+        fileBytes: utf8.encode(jsonEncode(payload)),
+        contentType: 'application/json',
       );
-      if (mounted && status == DiagnosticsExportStatus.saved) {
-        _showToast(savedMessage, DialogToastVariant.success);
+      if (mounted) {
+        Navigator.of(context).pop(true);
       }
     } catch (error, stackTrace) {
       _log.error(
-        'collect or export feedback failed sessionId=$sessionId',
+        'Upload feedback failed',
         error: error,
         stackTrace: stackTrace,
       );
       if (mounted) {
-        _showToast(failedMessage, DialogToastVariant.error);
+        _showToast(
+          context.t(LocaleKeys.aiFeedbackFailed),
+          DialogToastVariant.error,
+        );
       }
     } finally {
       if (mounted) {
-        setState(() => _isExporting = false);
+        setState(() => _isUploading = false);
       }
     }
   }
@@ -233,13 +157,15 @@ class _AiChatFeedbackDialogState extends State<_AiChatFeedbackDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = widget.colors;
-    final typo = widget.typo;
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final dialogWidth =
+        MediaQuery.sizeOf(context).width.clamp(280.0, 400.0) - 48;
 
     return RevericDialog.panel(
       title: Text(context.t(LocaleKeys.aiFeedbackTitle)),
       content: SizedBox(
-        width: widget.dialogWidth,
+        width: dialogWidth,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,69 +177,31 @@ class _AiChatFeedbackDialogState extends State<_AiChatFeedbackDialog> {
             const SizedBox(height: RevericSpacing.lg),
             RevericTextField(
               controller: _descriptionController,
+              enabled: !_isUploading,
               multiline: true,
               minLines: 3,
               maxLines: 6,
               hintText: context.t(LocaleKeys.aiFeedbackPlaceholder),
             ),
-            const SizedBox(height: RevericSpacing.xl),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(RevericSpacing.lg),
-              decoration: BoxDecoration(
-                color: colors.surfaceDim,
-                borderRadius: BorderRadius.circular(RevericRadius.medium),
-                border: Border.all(color: colors.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.t(LocaleKeys.aiFeedbackDiagnosticsTitle),
-                    style: typo.uiSemibold.copyWith(color: colors.textPrimary),
-                  ),
-                  const SizedBox(height: RevericSpacing.xxs),
-                  Text(
-                    context.t(LocaleKeys.aiFeedbackDiagnosticsDescription),
-                    style: typo.uiSmall.copyWith(color: colors.textMuted),
-                  ),
-                  const SizedBox(height: RevericSpacing.md),
-                  Wrap(
-                    spacing: RevericSpacing.md,
-                    runSpacing: RevericSpacing.sm,
-                    children: [
-                      RevericButton.secondary(
-                        label: context.t(
-                          _isExporting
-                              ? LocaleKeys.aiFeedbackExporting
-                              : LocaleKeys.aiFeedbackExport,
-                        ),
-                        loading: _isExporting,
-                        onPressed: _export,
-                        size: RevericButtonSize.compact,
-                      ),
-                      RevericButton.text(
-                        label: context.t(LocaleKeys.aiFeedbackSendEmail),
-                        onPressed: _openEmail,
-                        size: RevericButtonSize.compact,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
-      width: widget.dialogWidth + RevericSpacing.x4l * 2,
+      width: dialogWidth + RevericSpacing.x4l * 2,
       actions: [
         RevericButton.secondary(
-          label: context.t(LocaleKeys.commonClose),
-          onPressed: () => Navigator.of(widget.dialogContext).pop(),
+          label: context.t(LocaleKeys.commonCancel),
+          onPressed: _isUploading
+              ? null
+              : () => Navigator.of(widget.dialogContext).pop(),
         ),
         RevericButton.primary(
-          label: context.t(LocaleKeys.aiFeedbackSubmitIssue),
-          onPressed: _openIssue,
+          label: context.t(
+            _isUploading
+                ? LocaleKeys.aiFeedbackUploading
+                : LocaleKeys.aiFeedbackUpload,
+          ),
+          loading: _isUploading,
+          onPressed: _upload,
         ),
       ],
     );

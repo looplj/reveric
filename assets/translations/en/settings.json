@@ -671,5 +671,12 @@
   "settings.mcp_client_required": "Client registration failed. Check the client ID and whether the provider supports this registration.",
   "settings.mcp_callback_rejected": "Authorization could not validate the callback. Check the registered callback address and sign in again.",
   "settings.plugins": "Plugins",
-  "settings.usage_source_plugin": "Plugins"
+  "settings.usage_source_plugin": "Plugins",
+  "settings.about_upload_logs": "Upload Diagnostic Logs",
+  "settings.about_upload_logs_description": "Upload app logs and diagnostic data to help us identify issues.",
+  "settings.about_uploading_logs": "Uploading logs...",
+  "settings.about_upload_logs_confirm_title": "Upload diagnostic logs?",
+  "settings.about_upload_logs_confirm_description": "Uploads app logs and crash reports for troubleshooting.",
+  "settings.about_upload_logs_success": "Logs uploaded successfully.",
+  "settings.about_upload_logs_failed": "Upload failed. Please try again."
 }
