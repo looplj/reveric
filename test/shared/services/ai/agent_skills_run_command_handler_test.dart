@@ -514,6 +514,7 @@ void main() {
         {'path': 'references/agent-rules.md'},
         {'path': 'references/agent-skills.md'},
         {'path': 'references/providers.md'},
+        {'path': 'references/settings.md'},
         {'path': 'references/skill-design.md'},
         {'path': 'references/subagents.md'},
         {'path': 'references/themes.md'},

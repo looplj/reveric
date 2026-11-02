@@ -171,8 +171,8 @@ void main() {
       expect(upgraded.name, writing.name);
       expect(upgraded.enabled, isFalse);
       expect(upgraded.sortOrder, writing.sortOrder);
-      expect(upgraded.sourceVersion, '1');
-      expect(upgraded.references, hasLength(15));
+      expect(upgraded.sourceVersion, '2');
+      expect(upgraded.references, hasLength(6));
       final slashSkills = await loadChatSlashSkills(db: setup.database);
       expect(
         slashSkills
