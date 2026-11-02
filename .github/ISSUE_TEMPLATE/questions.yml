@@ -1,0 +1,55 @@
+name: 使用咨询
+description: 咨询 Reveric 的安装、配置或使用方法
+title: "[咨询] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提问前可先查看 [README](https://github.com/looplj/reveric#readme) 和[已有问题](https://github.com/looplj/reveric/issues)。
+
+        请勿公开 API 密钥、私人作品正文或个人信息。
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 问题
+      description: 你想了解什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 场景与已尝试的方法
+      description: 你想完成什么操作？已经尝试过哪些方法？
+      placeholder: 我正在为 AI 聊天配置模型供应商……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 问题分类
+      options:
+        - 安装与更新
+        - 供应商与模型配置
+        - 小说与剧本创作
+        - 画布、导演台与剪辑
+        - AI 聊天、技能与 MCP
+        - 导入、导出与备份
+        - 源码构建
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 版本与平台（如相关）
+      description: 请填写 Reveric 版本及 Windows、macOS 或 Android 系统版本；源码构建请补充提交哈希。
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 模型配置问题可补充供应商和模型 ID，不要填写密钥。

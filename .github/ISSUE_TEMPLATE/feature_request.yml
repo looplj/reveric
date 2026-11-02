@@ -1,0 +1,68 @@
+name: 功能请求
+description: 为 Reveric 提出新功能建议
+title: "[功能] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请搜索[已有问题](https://github.com/looplj/reveric/issues)。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与问题
+      description: 你想完成什么创作任务？目前哪一步无法满足需求？
+      placeholder: 将小说改编成剧本时……
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期望效果
+      description: 描述你希望如何使用这个功能，以及最终得到什么结果，无需提供实现方案。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 功能方向
+      multiple: true
+      options:
+        - 小说创作与作品设定
+        - 剧本改编
+        - 画布与分镜
+        - 3D 导演台
+        - 剪辑与媒体素材
+        - AI 协作与模型支持
+        - 技能与 MCP
+        - 导入、导出与备份
+        - 界面与无障碍
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 期望支持的平台
+      multiple: true
+      options:
+        - Windows
+        - macOS
+        - Android
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 目前的替代办法
+      description: 现在如何完成这项任务？有哪些不便？
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 示例与参考
+      description: 可补充草图、截图或参考链接，请使用示例内容，不要公开私人作品正文。

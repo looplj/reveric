@@ -1,0 +1,72 @@
+name: 优化建议
+description: 改进 Reveric 现有操作体验或性能
+title: "[优化] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请搜索[已有问题](https://github.com/looplj/reveric/issues)。崩溃或结果错误请使用「错误报告」。
+
+        示例和附件请移除私人内容。
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: 优化类型
+      options:
+        - 性能与资源占用
+        - 操作体验与易用性
+        - 布局与无障碍
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: 当前表现与影响
+      description: 请注明页面或功能、操作过程，以及具体哪里慢或不方便。
+      placeholder: 在分镜节点较多的画布中平移时……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望改善
+      description: 怎样能让这项操作更方便或更快？
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Reveric 版本
+      description: 源码构建请补充提交哈希。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      multiple: true
+      options:
+        - Windows
+        - macOS
+        - Android
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurements
+    attributes:
+      label: 环境与观测数据
+      description: 性能问题请补充系统版本、设备、数据规模，以及已有的耗时或 CPU、内存观测值，可提供估算值。
+      placeholder: 章节字数、画布节点数、时间线长度、素材分辨率等……
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 优化思路（选填）
+      description: 如有想法、对比示例或截图，可在此补充。

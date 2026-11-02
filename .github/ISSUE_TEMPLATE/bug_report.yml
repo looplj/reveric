@@ -1,0 +1,105 @@
+name: 错误报告
+description: 报告 Reveric 的崩溃、错误或非预期行为
+title: "[错误] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请搜索[已有问题](https://github.com/looplj/reveric/issues)。
+
+        反馈内容公开。请移除截图和日志中的 API 密钥、未公开的作品正文及个人信息，不要在此上传数据库或完整诊断包。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 出现了什么问题？
+      description: 描述当时的操作和实际发生的情况。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 如果偶尔发生，请描述最近一次的操作和发生频率。
+      placeholder: |
+        1. 打开一部小说
+        2. 选择章节后……
+        3. ……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 你期望发生什么？
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Reveric 版本
+      description: 请填写完整版本号；源码构建请补充提交哈希。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - Windows
+        - macOS
+        - Android
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 系统版本与设备
+      placeholder: 例如：Windows 11（x64）、macOS 15（Apple M2）或 Android 15（Pixel 9）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题模块
+      description: 可多选涉及的模块；无法判断时请选择「其他或不确定」。
+      multiple: true
+      options:
+        - 安装与启动
+        - 小说编辑与作品设定
+        - 剧本编辑
+        - 画布与分镜
+        - 3D 导演台
+        - 剪辑与成片导出
+        - AI 聊天与工具调用
+        - 图片、视频与音频生成
+        - 供应商与模型配置
+        - 技能与 MCP
+        - 导入、导出与备份
+        - 其他或不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: ai-context
+    attributes:
+      label: AI 配置（如相关）
+      description: 请注明供应商、完整模型 ID、接口协议，以及是否经过网关或使用本地模型，不要填写密钥。
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 错误信息、日志或截图
+      description: 请提供移除隐私信息后的相关片段，并注明问题发生的大致时间。
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 新建作品是否也受影响？之前哪个版本正常？重启后是否有变化？
