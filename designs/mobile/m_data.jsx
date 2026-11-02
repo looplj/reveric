@@ -280,6 +280,29 @@ const PROVIDERS = [
   {name:'本地 · Ollama', model:'Qwen2.5 32B', state:'已连接', kind:'ok'},
 ];
 
+/* 添加自定义提供商的可选类型 — 对齐 aiProviderTypeConfigs（移动端不提供 Codex）。
+   kinds = 可用能力，fixed = 固定地址。 */
+const PROVIDER_KIND_LABELS = {chat:'对话', image:'图片', video:'视频', audio:'音频'};
+const PROVIDER_TYPES = [
+  {key:'openai_compatible', name:'OpenAI 兼容', kinds:['chat','image'], note:'大多数中转站与自部署服务'},
+  {key:'anthropic', name:'Anthropic', kinds:['chat']},
+  {key:'gemini', name:'Gemini', kinds:['chat','image']},
+  {key:'openai', name:'OpenAI', kinds:['chat','image']},
+  {key:'minimax', name:'MiniMax', kinds:['video','audio'], note:'兼容 MiniMax 格式的视频接口（如 H3）'},
+  {key:'doubao', name:'Doubao', kinds:['chat','image','video'], note:'兼容方舟格式的视频接口（如 Seedance）'},
+  {key:'qwen', name:'Qwen', kinds:['chat','image','video','audio'], baseUrl:'https://maas.qianwenaiapi.com/compatible-mode/v1'},
+  {key:'agnes', name:'Agnes', kinds:['image','video'], baseUrl:'https://apihub.agnes-ai.com/v1'},
+  {key:'xai', name:'xAI', kinds:['chat','image']},
+  {key:'deepseek', name:'DeepSeek', kinds:['chat']},
+  {key:'moonshot', name:'Moonshot', kinds:['chat']},
+  {key:'zhipu', name:'Zhipu', kinds:['chat']},
+  {key:'openrouter', name:'OpenRouter', kinds:['chat','image','video','audio'], fixed:true, baseUrl:'https://openrouter.ai/api/v1'},
+  {key:'api88', name:'88API', kinds:['chat','image','video','audio'], fixed:true, baseUrl:'https://api.88api.ai/v1'},
+  {key:'atlascloud', name:'AtlasCloud', kinds:['chat','image','video','audio'], fixed:true, baseUrl:'https://api.atlascloud.ai/v1'},
+  {key:'volcengine', name:'火山引擎', kinds:['chat','image','video','audio'], fixed:true, baseUrl:'https://ark.cn-beijing.volces.com/api/v3'},
+  {key:'metaso', name:'秘塔科技', kinds:['video'], fixed:true, baseUrl:'https://metaso.cn/api/minimax'},
+];
+
 /* 主题色板 — 对齐 lib/shared/widgets/settings/appearance_settings_section.dart 的 AppTheme。
    数据来自 ../theme.js（RevericTheme.PALETTES），切换后由 ../themes.css 的 token 生效。 */
 const THEMES = window.RevericTheme.PALETTES;
@@ -471,7 +494,7 @@ Object.assign(window, {
   OUTLINES, OUTLINE_STATUS,
   GRAPH, KIND_META, SECTIONS,
   PRIMARY_AGENT, SUBAGENTS, SKILLS, SHORTCUTS, SESSIONS, AI_MODES,
-  CHAT_MSGS, AGENT_TRACE, PROVIDERS, THEMES, THEME_MODES, LANGUAGES,
+  CHAT_MSGS, AGENT_TRACE, PROVIDERS, PROVIDER_TYPES, PROVIDER_KIND_LABELS, THEMES, THEME_MODES, LANGUAGES,
   NOVEL_AGENT_RULES, NOVEL_AGENT_SKILLS,
   fmt, USAGE,
 });

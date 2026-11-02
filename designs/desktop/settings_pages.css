@@ -45,6 +45,79 @@
   cursor: pointer; font: var(--type-ui-medium-weight) var(--type-ui-small-size)/1 var(--font-sans);
 }
 .sp-prov-add:hover { background: var(--hover); }
+.sp-prov-list__foot { position: relative; }
+.sp-prov-add.is-open { background: var(--selected); }
+.sp-prov-add:disabled { color: var(--text-subtle); cursor: not-allowed; background: transparent; }
+.sp-badge--draft { background: var(--warning-bg); color: var(--warning-text); }
+.sp-status-badge--draft { background: var(--warning-bg); color: var(--warning-text); }
+
+/* 添加自定义 → 类型 popover（RevericPopover），从底部按钮向上展开，可越过列表宽度 */
+.sp-type-pop__backdrop { position: fixed; inset: 0; z-index: 20; }
+.sp-type-pop {
+  position: absolute; left: var(--space-sm); bottom: calc(100% - var(--space-xs)); z-index: 21;
+  width: 320px; max-height: 440px;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--card-border); border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-dialog);
+  overflow: hidden;
+}
+.sp-type-pop-anchor { position: absolute; left: 0; top: 100%; z-index: 21; }
+.sp-type-pop-anchor .sp-type-pop { position: relative; left: 0; bottom: auto; margin-top: var(--space-xxs); }
+.sp-type-pop__head { padding: var(--space-md) var(--space-md) var(--space-xs); display: flex; flex-direction: column; gap: 2px; }
+.sp-type-pop__title { font: var(--type-ui-semibold-weight) var(--type-ui-small-size)/1.3 var(--font-sans); color: var(--text-primary); }
+.sp-type-pop__filters { display: flex; gap: var(--space-xxs); padding: var(--space-xs) var(--space-md) var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+.sp-kind-filter {
+  height: 24px; padding: 0 var(--space-sm);
+  border: 1px solid var(--border-input); border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  font: 400 var(--type-ui-tiny-size)/1 var(--font-sans);
+}
+.sp-kind-filter:hover { background: var(--hover); }
+.sp-kind-filter.is-selected { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.sp-type-pop__list { flex: 1; overflow: auto; padding: var(--space-xs); display: flex; flex-direction: column; gap: 1px; }
+.sp-type-row {
+  display: flex; flex-direction: column; align-items: stretch; gap: 3px;
+  padding: var(--space-sm) var(--space-md);
+  border: 0; border-radius: var(--radius-medium); background: transparent;
+  cursor: pointer; text-align: left;
+}
+.sp-type-row:hover { background: var(--hover); }
+.sp-type-row__main { display: flex; align-items: center; gap: var(--space-sm); }
+.sp-type-row__name { font: var(--type-ui-medium-weight) var(--type-ui-small-size)/1.3 var(--font-sans); color: var(--text-primary); }
+.sp-type-row__fixed { display: inline-flex; align-items: center; gap: 2px; font: 400 var(--type-ui-tiny-size)/1 var(--font-sans); color: var(--text-subtle); }
+.sp-type-row__note { font: 400 var(--type-ui-tiny-size)/1.35 var(--font-sans); color: var(--text-muted); }
+.sp-type-row__kinds { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 1px; }
+.sp-kind-tag {
+  padding: 1px 6px; border-radius: var(--radius-small);
+  background: var(--surface-container); color: var(--text-muted);
+  font: 500 var(--type-ui-tiny-size)/1.35 var(--font-sans);
+}
+.sp-kind-tag.is-hit { background: color-mix(in srgb, var(--accent-amber) 15%, transparent); color: var(--accent-amber); }
+
+/* 草稿态表单 */
+.sp-type-select {
+  width: 100%; display: flex; align-items: center; gap: var(--space-sm);
+  padding: 9px 12px;
+  background: var(--surface-container-high);
+  border: 1px solid var(--border-input); border-radius: var(--radius-medium);
+  cursor: pointer; color: var(--text-primary);
+  font: 400 var(--type-ui-size)/1.3 var(--font-sans);
+}
+.sp-type-select .m-icon { color: var(--text-muted); }
+.sp-fetch-btn:disabled { color: var(--text-subtle); cursor: not-allowed; }
+.sp-collapse-head {
+  display: inline-flex; align-items: center; gap: var(--space-xxs);
+  padding: var(--space-xxs) 0; border: 0; background: transparent; cursor: pointer;
+  font: var(--type-ui-semibold-weight) var(--type-ui-size)/1.3 var(--font-sans); color: var(--text-primary);
+}
+.sp-collapse-head .m-icon { color: var(--text-subtle); }
+
+/* 放弃草稿确认 */
+.sp-leave { padding: var(--space-2xl); display: flex; flex-direction: column; gap: var(--space-md); }
+.sp-leave__title { font: var(--type-ui-semibold-weight) var(--type-ui-size)/1.3 var(--font-sans); color: var(--text-primary); }
+.sp-leave__body { font: 400 var(--type-ui-small-size)/1.55 var(--font-sans); color: var(--text-secondary); }
+.sp-leave__actions { display: flex; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-xs); }
 .sp-prov-divider { width: 1px; background: var(--border); flex: none; }
 .sp-prov-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .sp-prov-head {

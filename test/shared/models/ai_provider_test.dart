@@ -13,6 +13,25 @@ import 'package:reveric/shared/services/production/generate_orchestrator.dart';
 import 'package:reveric/shared/models/video/request.dart';
 
 void main() {
+  test('MiniMax chat uses the Anthropic-compatible entry of its base URL', () {
+    expect(
+      aiProviderTypeConfigs[AiProviderType.minimax]!.supportedModelKinds,
+      containsAll([AiModelKind.chat, AiModelKind.video, AiModelKind.audio]),
+    );
+    for (final (input, expected) in [
+      ('https://api.minimaxi.com', 'https://api.minimaxi.com/anthropic'),
+      ('https://api.minimaxi.com/', 'https://api.minimaxi.com/anthropic'),
+      ('https://api.minimaxi.com/v1', 'https://api.minimaxi.com/anthropic'),
+      (
+        'https://api.minimaxi.com/anthropic',
+        'https://api.minimaxi.com/anthropic',
+      ),
+      ('https://relay.test/minimax', 'https://relay.test/minimax/anthropic'),
+    ]) {
+      expect(minimaxAnthropicBaseUrl(input), expected, reason: input);
+    }
+  });
+
   group('AI settings validation boundaries', () {
     final provider = aiProviderBuiltinById('openai')!.copyWith(
       id: 'custom',

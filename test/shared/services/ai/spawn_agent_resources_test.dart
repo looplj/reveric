@@ -335,7 +335,7 @@ void main() {
       final client = await parent();
       final unavailable = config.copyWith(
         id: 'video-only-provider',
-        type: 'minimax',
+        type: 'metaso',
       );
       final lease = registry.acquire(unavailable);
       await expectLater(

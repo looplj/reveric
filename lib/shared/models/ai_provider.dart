@@ -212,6 +212,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
   AiProviderType.minimax: AiProviderTypeConfig(
     displayName: 'MiniMax',
     modelIdSource: ModelIdSource.open,
+    textModelKinds: _chatOnlyKinds,
     videoProtocol: VideoProtocol.minimax_video_v2,
     audioProtocol: AudioProtocol.minimax_music,
   ),
@@ -250,6 +251,29 @@ String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
 const codexPresetModels = <String>['gpt-6-astra', 'gpt-6-luna', 'gpt-6.1-sol'];
 
 const codexPresetImageModels = <String>['gpt-image-2'];
+
+/// MiniMax 没有公开的模型列表接口，「获取模型」使用这份目录。
+const minimaxPresetChatModels = <String>[
+  'MiniMax-M3',
+  'MiniMax-M2.7',
+  'MiniMax-M2.7-highspeed',
+  'MiniMax-M2.5',
+  'MiniMax-M2.5-highspeed',
+  'MiniMax-M2.1',
+];
+
+/// MiniMax 聊天走官方 Anthropic 兼容入口（`<host>/anthropic`），思考内容以
+/// thinking block 返回；视频、音频仍按原 Base URL 拼 `/v1/...`。
+String minimaxAnthropicBaseUrl(String baseUrl) {
+  var url = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+  if (url.endsWith('/anthropic')) {
+    return url;
+  }
+  if (url.endsWith('/v1')) {
+    url = url.substring(0, url.length - 3);
+  }
+  return '$url/anthropic';
+}
 
 const agnesDefaultBaseUrl = 'https://apihub.agnes-ai.com/v1';
 

@@ -92,9 +92,11 @@ class ModelCatalogMatcher {
   final _patterns =
       <({String prefix, String suffix, ModelCatalogEntry entry})>[];
 
+  /// 目录 key 一律小写；渠道返回的 ID 大小写不一（如 `MiniMax-M3`），按小写匹配。
   ModelCatalogEntry? lookup(String modelId) {
-    final id = modelId.split('/').last.split(':').first;
-    final exact = _exact[modelId] ?? _exact[id];
+    final full = modelId.toLowerCase();
+    final id = full.split('/').last.split(':').first;
+    final exact = _exact[full] ?? _exact[id];
     if (exact != null) {
       return exact;
     }

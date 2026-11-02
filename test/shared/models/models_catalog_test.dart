@@ -138,6 +138,7 @@ void main() {
         'grok-4.7',
         'doubao-seed-2-1-pro-260915',
         'minimax-m3',
+        'MiniMax-M3',
         'mimo-v2.6-pro',
       ]) {
         expect(lookupCatalogImageInput(model), isTrue, reason: model);
@@ -148,6 +149,7 @@ void main() {
         'kimi-k2-thinking',
         'glm-5.2',
         'minimax-m2.7',
+        'MiniMax-M2.7-highspeed',
         'mimo-v2.5-pro',
       ]) {
         expect(lookupCatalogImageInput(model), isFalse, reason: model);

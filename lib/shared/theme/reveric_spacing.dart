@@ -182,6 +182,10 @@ class RevericSizes {
   /// 设置页 AI 供应商列表栏宽。
   static const double settingsProviderListWidth = 200;
 
+  /// 添加自定义供应商的类型选择弹层宽度与最大高度（桌面）。
+  static const double providerTypePickerWidth = 320;
+  static const double providerTypePickerMaxHeight = 440;
+
   /// 季管理桌面弹窗宽度。
   static const double screenplaySeasonManagerWidth = 640;
 

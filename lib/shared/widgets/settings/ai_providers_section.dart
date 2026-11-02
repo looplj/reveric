@@ -1,16 +1,11 @@
-// 职责: 共享 AI provider 设置区 — provider 列表、自定义 provider 弹窗、provider 配置表单（含获取模型）。
+// 职责: 共享 AI provider 设置区 — 桌面两栏 / 移动列表的组合，以及新建自定义供应商的选类型与草稿流程。
 // 关联文件:
-//   lib/shared/components/reveric_dialog.dart
-//   lib/shared/components/reveric_button.dart
-//   lib/shared/providers/settings_providers.dart
-//   lib/shared/models/ai_provider.dart
-//   lib/shared/components/reveric_text_field.dart
-//   lib/shared/localization/ai_provider_localization.dart
-//   lib/shared/components/reveric_select.dart
-//   lib/shared/localization/locale_keys.dart
-//   lib/shared/theme/theme.dart
-//   lib/desktop/widgets/settings/settings_dialog.dart
+//   lib/shared/widgets/settings/provider_config_panel.dart
+//   lib/shared/widgets/settings/provider_draft.dart
+//   lib/shared/widgets/settings/provider_type_picker.dart
 //   lib/shared/widgets/settings/mobile_provider_list.dart
+//   lib/shared/providers/settings_providers.dart
+//   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
 //   assets/translations/en/common.json
@@ -18,6 +13,7 @@
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 //   .agents/rules/hooks.md
+//   .agents/rules/widget-decomposition.md
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -25,42 +21,36 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../components/reveric_badge.dart';
-import '../../components/reveric_search_field.dart';
+import '../../components/reveric_button.dart';
 import '../../components/reveric_icon_button.dart';
-import 'provider_logo.dart';
-import 'provider_overview.dart';
-import 'providers/registry.dart';
 import '../../components/reveric_placeholder.dart';
-import '../../components/reveric_select.dart';
-import '../../components/reveric_text_field.dart';
+import '../../components/reveric_popover.dart';
+import '../../components/reveric_search_field.dart';
 import '../../localization/ai_provider_localization.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../models/ai_provider.dart';
 import '../../providers/settings_providers.dart';
 import '../../theme/theme.dart';
-import '../../utils/random_id.dart';
+import '../unsaved_changes_dialog.dart';
+import 'leave_guard.dart';
 import 'mobile_provider_list.dart';
 import 'provider_config_panel.dart';
-import '../../components/reveric_dialog.dart';
-import '../../components/reveric_button.dart';
+import 'provider_draft.dart';
+import 'provider_logo.dart';
+import 'provider_overview.dart';
+import 'provider_type_picker.dart';
+import 'providers/registry.dart';
 
 /// AI providers section：左侧 provider 列表 + 右侧配置面板（桌面），
 /// 或纯列表 + push 到配置页（移动端及宽度 < 600 的窗口）。
-class AiProvidersSection extends HookConsumerWidget {
+class AiProvidersSection extends ConsumerWidget {
   const AiProvidersSection({super.key});
-
-  /// 「查看套餐」动作（桌面端切设置导航，移动端 push 套餐页）。
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
-    // 移动端调用方普遍不传 onOpenPlans（设置子页无法切换导航），兜底到全屏套餐页，
-    // 否则升级引导里的「查看套餐」点了只会关窗。
-
     final settingsAsync = ref.watch(appSettingsProvider);
-
-    final selectedId = useState<String?>(null);
 
     return settingsAsync.when(
       loading: () => Center(
@@ -78,144 +68,190 @@ class AiProvidersSection extends HookConsumerWidget {
           title: context.t(LocaleKeys.commonLoadFailed),
         ),
       ),
-      data: (settings) => _AiProvidersLoadedView(
-        settings: settings,
-
-        selectedProviderId: selectedId.value,
-
-        onSelectProvider: (id) => selectedId.value = id,
-        onAddCustom: () {
-          _showAddCustomProviderDialog(context, ref).then((newId) {
-            if (newId != null) {
-              selectedId.value = newId;
-            }
-          });
-        },
-      ),
-    );
-  }
-
-  Future<String?> _showAddCustomProviderDialog(
-    BuildContext context,
-    WidgetRef ref,
-  ) {
-    return showRevericDialog<String>(
-      context: context,
-      builder: (ctx) => AddCustomProviderDialog(
-        onAdd: (name, format) async {
-          final id = buildRandomId('prv', length: 6);
-          final config = AiProvider(
-            audioModels: const [],
-            videoModels: format == AiProviderType.metaso
-                ? aiProviderBuiltinById('metaso')!.videoModels
-                : const [],
-            id: id,
-            name: name,
-            builtin: false,
-            type: format.name,
-            enabled: false,
-            apiKey: '',
-            baseUrl: aiProviderTypeConfigs[format]?.fixedBaseUrl == true
-                ? aiProviderFixedBaseUrl(format)
-                : format == AiProviderType.agnes
-                ? agnesDefaultBaseUrl
-                : '',
-            models: const [],
-            imageModels: const [],
-            deletedAt: DateTime.fromMillisecondsSinceEpoch(0),
-            embeddingModels: const [],
-            temperature: 0.7,
-            maxTurns: 512,
-            proxyUrl: '',
-            proxyUsername: '',
-            proxyPassword: '',
-            updatedAt: DateTime.now(),
-          );
-          await ref
-              .read(appSettingsProvider.notifier)
-              .addCustomProvider(config);
-          return id;
-        },
-      ),
+      data: (settings) {
+        final isMobile =
+            defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS;
+        final isDesktop = !isMobile && MediaQuery.sizeOf(context).width >= 600;
+        return isDesktop
+            ? _DesktopProviders(settings: settings)
+            : _MobileProviders(settings: settings);
+      },
     );
   }
 }
 
-class _AiProvidersLoadedView extends StatelessWidget {
+/// 桌面两栏：持有选中项与新建草稿。草稿存在时一定处于选中状态，
+/// 离开草稿（切换供应商、切换设置分区、关闭设置）前先确认。
+class _DesktopProviders extends HookConsumerWidget {
+  const _DesktopProviders({required this.settings});
+
   final AppSettings settings;
 
-  final String? selectedProviderId;
-
-  final ValueChanged<String> onSelectProvider;
-  final VoidCallback onAddCustom;
-
-  const _AiProvidersLoadedView({
-    required this.settings,
-
-    required this.selectedProviderId,
-
-    required this.onSelectProvider,
-    required this.onAddCustom,
-  });
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
+    final selectedId = useState<String?>(null);
+    final draft = useState<AiProvider?>(null);
+    final saving = useState(false);
+    // 丢弃草稿后回到新建前选中的供应商。
+    final returnTo = useRef<String?>(null);
     final allConfigs = settings.aiSettings.allConfigs;
+    final currentDraft = draft.value;
 
     final effectiveSelectedId =
-        allConfigs.any((c) => c.id == selectedProviderId)
-        ? selectedProviderId
-        : (allConfigs.isNotEmpty ? allConfigs.first.id : null);
+        currentDraft?.id ??
+        (allConfigs.any((c) => c.id == selectedId.value)
+            ? selectedId.value
+            : (allConfigs.isNotEmpty ? allConfigs.first.id : null));
 
-    final selectedConfig = effectiveSelectedId != null
+    final selectedConfig = currentDraft == null && effectiveSelectedId != null
         ? settings.aiSettings.findConfigById(effectiveSelectedId)
         : null;
 
-    final isMobile =
-        defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
-    final isDesktop = !isMobile && MediaQuery.sizeOf(context).width >= 600;
-
-    if (isDesktop) {
-      return Row(
-        children: [
-          SizedBox(
-            width: RevericSizes.settingsProviderListWidth,
-            child: ProviderList(
-              configs: allConfigs,
-
-              selectedId: effectiveSelectedId,
-
-              onSelect: onSelectProvider,
-              onAddCustom: onAddCustom,
-            ),
-          ),
-          Container(width: RevericSizes.dividerThickness, color: colors.border),
-          Expanded(
-            child: selectedConfig != null
-                ? ProviderConfigPanel(
-                    key: ValueKey(selectedConfig.id),
-                    providerId: selectedConfig.id,
-                  )
-                : Center(
-                    child: Text(
-                      context.t(LocaleKeys.settingsProviderSelectPlaceholder),
-                      style: RevericTheme.typographyOf(
-                        context,
-                      ).ui.copyWith(color: colors.textMuted),
-                    ),
-                  ),
-          ),
-        ],
-      );
+    Future<bool> saveDraft() async {
+      final pending = draft.value;
+      if (pending == null || saving.value) {
+        return false;
+      }
+      saving.value = true;
+      try {
+        final id = await saveProviderDraft(ref, pending);
+        if (context.mounted) {
+          draft.value = null;
+          selectedId.value = id;
+        }
+        return true;
+      } catch (_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.t(LocaleKeys.commonSaveFailed))),
+          );
+        }
+        return false;
+      } finally {
+        if (context.mounted) {
+          saving.value = false;
+        }
+      }
     }
 
-    // 移动端：分组卡片列表，点击进入配置页。
-    return MobileProviderList(
-      configs: allConfigs,
+    void discardDraft() {
+      draft.value = null;
+      selectedId.value = returnTo.value;
+    }
 
-      selectedId: effectiveSelectedId,
+    Future<bool> confirmLeave() async {
+      final pending = draft.value;
+      if (pending == null) {
+        return true;
+      }
+      if (saving.value) {
+        return false;
+      }
+      final decision = await askLeaveProviderDraft(context, pending);
+      switch (decision) {
+        case null:
+          return false;
+        case UnsavedChangesDecision.discard:
+          draft.value = null;
+          return true;
+        case UnsavedChangesDecision.save:
+          return saveDraft();
+      }
+    }
+
+    final leave = SettingsLeaveScope.maybeOf(context);
+    final leaveGuard = useRef(confirmLeave);
+    leaveGuard.value = confirmLeave;
+    useEffect(() {
+      if (leave == null) {
+        return null;
+      }
+      Future<bool> guard() => leaveGuard.value();
+      leave.register(guard);
+      return () => leave.unregister(guard);
+    }, [leave]);
+
+    return Row(
+      children: [
+        SizedBox(
+          width: RevericSizes.settingsProviderListWidth,
+          child: ProviderList(
+            configs: allConfigs,
+            draft: currentDraft,
+            selectedId: effectiveSelectedId,
+            onSelect: (id) async {
+              if (id == effectiveSelectedId || !await confirmLeave()) {
+                return;
+              }
+              selectedId.value = id;
+            },
+            onAddCustom: (type) {
+              returnTo.value = effectiveSelectedId;
+              draft.value = newProviderDraft(context, type);
+            },
+          ),
+        ),
+        Container(width: RevericSizes.dividerThickness, color: colors.border),
+        Expanded(
+          child: currentDraft != null
+              ? ProviderConfigForm(
+                  key: ValueKey(currentDraft.id),
+                  config: currentDraft,
+                  onChanged: (config) async => draft.value = config,
+                  onChangeType: (type) => draft.value = retypeProviderDraft(
+                    context,
+                    draft.value!,
+                    type,
+                  ),
+                  badge: const ProviderDraftBadge(),
+                  headerActions: [
+                    RevericButton.text(
+                      label: context.t(LocaleKeys.commonDiscard),
+                      onPressed: saving.value ? null : discardDraft,
+                    ),
+                    const SizedBox(width: RevericSpacing.xs),
+                    RevericButton.primary(
+                      label: context.t(LocaleKeys.commonSave),
+                      loading: saving.value,
+                      onPressed: canSaveProviderDraft(currentDraft)
+                          ? saveDraft
+                          : null,
+                    ),
+                  ],
+                )
+              : selectedConfig != null
+              ? ProviderConfigPanel(
+                  key: ValueKey(selectedConfig.id),
+                  providerId: selectedConfig.id,
+                )
+              : Center(
+                  child: Text(
+                    context.t(LocaleKeys.settingsProviderSelectPlaceholder),
+                    style: RevericTheme.typographyOf(
+                      context,
+                    ).ui.copyWith(color: colors.textMuted),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 移动端：分组卡片列表，点击进入配置页；添加先选类型，再进入草稿页。
+class _MobileProviders extends StatelessWidget {
+  const _MobileProviders({required this.settings});
+
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    return MobileProviderList(
+      configs: settings.aiSettings.allConfigs,
+
+      selectedId: null,
 
       onSelect: (id) {
         final config = settings.aiSettings.findConfigById(id);
@@ -231,7 +267,18 @@ class _AiProvidersLoadedView extends StatelessWidget {
           ),
         );
       },
-      onAddCustom: onAddCustom,
+      onAddCustom: () async {
+        final type = await showProviderTypeSheet(context);
+        if (type == null || !context.mounted) {
+          return;
+        }
+        final draft = newProviderDraft(context, type);
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => _ProviderDraftRoute(initial: draft),
+          ),
+        );
+      },
     );
   }
 }
@@ -270,6 +317,97 @@ class _ProviderConfigRoute extends StatelessWidget {
   }
 }
 
+/// 移动端新建页：顶栏「保存」才落库；返回时询问保存、丢弃或继续编辑。
+class _ProviderDraftRoute extends HookConsumerWidget {
+  const _ProviderDraftRoute({required this.initial});
+
+  final AiProvider initial;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final draft = useState(initial);
+    final saving = useState(false);
+
+    Future<void> save() async {
+      if (saving.value) {
+        return;
+      }
+      saving.value = true;
+      try {
+        await saveProviderDraft(ref, draft.value);
+        if (context.mounted) {
+          Navigator.of(context).pop();
+        }
+      } catch (_) {
+        if (context.mounted) {
+          saving.value = false;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.t(LocaleKeys.commonSaveFailed))),
+          );
+        }
+      }
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || saving.value) {
+          return;
+        }
+        final decision = await askLeaveProviderDraft(context, draft.value);
+        if (!context.mounted) {
+          return;
+        }
+        switch (decision) {
+          case null:
+            return;
+          case UnsavedChangesDecision.discard:
+            Navigator.of(context).pop();
+          case UnsavedChangesDecision.save:
+            await save();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: colors.canvas,
+        appBar: AppBar(
+          backgroundColor: colors.surfaceDim,
+          elevation: 0,
+          leading: IconButton(
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            icon: RevericIcon(
+              RevericIcons.arrow_back,
+              color: colors.textPrimary,
+            ),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          title: Text(
+            context.t(LocaleKeys.settingsProviderNewTitle),
+            style: typo.heading2.copyWith(color: colors.textPrimary),
+          ),
+          actions: [
+            RevericButton.text(
+              label: context.t(LocaleKeys.commonSave),
+              loading: saving.value,
+              onPressed: canSaveProviderDraft(draft.value) ? save : null,
+            ),
+            const SizedBox(width: RevericSpacing.sm),
+          ],
+        ),
+        body: ProviderConfigForm(
+          config: draft.value,
+          onChanged: (config) async => draft.value = config,
+          onChangeType: (type) =>
+              draft.value = retypeProviderDraft(context, draft.value, type),
+          badge: const ProviderDraftBadge(),
+          headerActions: const [],
+        ),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Provider List
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,16 +419,21 @@ class ProviderList extends HookWidget {
     required this.selectedId,
     required this.onSelect,
     required this.onAddCustom,
+    this.draft,
   });
   final List<AiProvider> configs;
   final String? selectedId;
   final ValueChanged<String> onSelect;
-  final VoidCallback onAddCustom;
+  final ValueChanged<AiProviderType> onAddCustom;
+
+  /// 未保存的新供应商，固定显示在列表顶部；存在时不能再新建。
+  final AiProvider? draft;
 
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final search = useDebouncedSearch();
+    final draft = this.draft;
     final filtered = configs
         .where(
           (config) =>
@@ -299,6 +442,7 @@ class ProviderList extends HookWidget {
                   .contains(search.query),
         )
         .toList();
+    final items = [?draft, ...filtered];
     return ColoredBox(
       color: colors.surfaceDim,
       child: Column(
@@ -314,16 +458,24 @@ class ProviderList extends HookWidget {
                   ),
                 ),
                 const SizedBox(width: RevericSpacing.xxs),
-                RevericIconButton(
-                  icon: RevericIcons.add,
-                  tooltip: context.t(LocaleKeys.commonAdd),
-                  onPressed: onAddCustom,
+                RevericPopover(
+                  trigger: (context, open, toggle) => RevericIconButton(
+                    icon: RevericIcons.add,
+                    tooltip: context.t(LocaleKeys.settingsAddCustomProvider),
+                    onPressed: draft == null ? toggle : null,
+                  ),
+                  panel: (context, close) => ProviderTypePickerPanel(
+                    onPick: (type) {
+                      close();
+                      onAddCustom(type);
+                    },
+                  ),
                 ),
               ],
             ),
           ),
           Expanded(
-            child: filtered.isEmpty
+            child: items.isEmpty
                 ? Center(
                     child: Text(
                       context.t(LocaleKeys.commonNoResults),
@@ -337,15 +489,39 @@ class ProviderList extends HookWidget {
                       horizontal: RevericSpacing.xs,
                       vertical: RevericSpacing.sm,
                     ),
-                    itemCount: filtered.length,
+                    itemCount: items.length,
                     separatorBuilder: (_, _) =>
                         const SizedBox(height: RevericSpacing.xxs),
                     itemBuilder: (_, i) => ProviderListItem(
-                      config: filtered[i],
-                      isSelected: filtered[i].id == selectedId,
-                      onTap: () => onSelect(filtered[i].id),
+                      config: items[i],
+                      draft: items[i].id == draft?.id,
+                      isSelected: items[i].id == selectedId,
+                      onTap: () => onSelect(items[i].id),
                     ),
                   ),
+          ),
+          Divider(height: RevericSizes.dividerThickness, color: colors.border),
+          Padding(
+            padding: const EdgeInsets.all(RevericSpacing.sm),
+            // 列表底部向上展开类型选择；已有草稿时先保存或放弃。
+            child: RevericPopover(
+              up: true,
+              trigger: (context, open, toggle) => SizedBox(
+                width: double.infinity,
+                child: RevericButton.secondary(
+                  label: context.t(LocaleKeys.settingsAddCustomProvider),
+                  icon: RevericIcons.add,
+                  size: RevericButtonSize.compact,
+                  onPressed: draft == null ? toggle : null,
+                ),
+              ),
+              panel: (context, close) => ProviderTypePickerPanel(
+                onPick: (type) {
+                  close();
+                  onAddCustom(type);
+                },
+              ),
+            ),
           ),
         ],
       ),
@@ -358,6 +534,7 @@ class ProviderListItem extends StatelessWidget {
 
   final bool isSelected;
   final bool locked;
+  final bool draft;
   final VoidCallback onTap;
 
   const ProviderListItem({
@@ -366,6 +543,7 @@ class ProviderListItem extends StatelessWidget {
 
     required this.isSelected,
     this.locked = false,
+    this.draft = false,
     required this.onTap,
   });
 
@@ -422,7 +600,11 @@ class ProviderListItem extends StatelessWidget {
                         style: typo.uiTiny.copyWith(color: colors.textMuted),
                       ),
                     ],
-                    if (!config.isTypeSupported || !config.isBuiltin) ...[
+                    if (draft) ...[
+                      const SizedBox(height: RevericSpacing.xxs),
+                      const ProviderDraftBadge(),
+                    ] else if (!config.isTypeSupported ||
+                        !config.isBuiltin) ...[
                       const SizedBox(height: RevericSpacing.xxs),
                       RevericBadge(
                         label: context.t(
@@ -438,11 +620,13 @@ class ProviderListItem extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: RevericSpacing.xs),
-              ProviderStatusDot(
-                active: config.isValid,
-                size: RevericSizes.statusDotSize,
-              ),
+              if (!draft) ...[
+                const SizedBox(width: RevericSpacing.xs),
+                ProviderStatusDot(
+                  active: config.isValid,
+                  size: RevericSizes.statusDotSize,
+                ),
+              ],
             ],
           ),
         ),
@@ -500,79 +684,6 @@ class ProviderStatusDot extends StatelessWidget {
           color: active ? colors.additionBorder : colors.border,
         ),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Add Custom Provider Dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
-class AddCustomProviderDialog extends HookWidget {
-  final Future<String> Function(String name, AiProviderType format) onAdd;
-
-  const AddCustomProviderDialog({super.key, required this.onAdd});
-
-  @override
-  Widget build(BuildContext context) {
-    final nameController = useTextEditingController();
-    final selectedFormat = useState(AiProviderType.openai_compatible);
-    final isAdding = useState(false);
-    final hasName = useListenableSelector(
-      nameController,
-      () => nameController.text.trim().isNotEmpty,
-    );
-
-    return RevericDialog.panel(
-      title: Text(context.t(LocaleKeys.settingsAddCustomProviderTitle)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          RevericTextField(
-            controller: nameController,
-            autofocus: true,
-            label: context.t(LocaleKeys.settingsAddCustomProviderNameLabel),
-            hintText: context.t(LocaleKeys.settingsAddCustomProviderNameHint),
-          ),
-          const SizedBox(height: RevericSpacing.lg),
-          RevericSelect<AiProviderType>(
-            label: context.t(LocaleKeys.settingsAddCustomProviderTypeLabel),
-            value: selectedFormat.value,
-            items: [
-              for (final format in customAiProviderTypes)
-                if (format != AiProviderType.codex ||
-                    (defaultTargetPlatform != TargetPlatform.android &&
-                        defaultTargetPlatform != TargetPlatform.iOS))
-                  RevericSelectItem<AiProviderType>(
-                    value: format,
-                    label: localizedProviderTypeName(context, format),
-                  ),
-            ],
-            onChanged: (format) => selectedFormat.value = format,
-          ),
-        ],
-      ),
-      actions: [
-        RevericButton.secondary(
-          label: context.t(LocaleKeys.commonCancel),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        RevericButton.primary(
-          label: context.t(LocaleKeys.commonAdd),
-          loading: isAdding.value,
-          onPressed: !hasName
-              ? null
-              : () async {
-                  final name = nameController.text.trim();
-                  isAdding.value = true;
-                  final newId = await onAdd(name, selectedFormat.value);
-                  if (context.mounted) {
-                    Navigator.of(context).pop(newId);
-                  }
-                },
-        ),
-      ],
     );
   }
 }

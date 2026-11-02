@@ -338,18 +338,30 @@ function EditorDetail({onBack}){
   );
 }
 
-/* ---------- AI 提供商 ---------- */
+/* ---------- AI 提供商 ----------
+   添加自定义：右上 + / 底部按钮 → 底部弹层选类型 → 进入未落库的草稿配置页
+   （放弃 / 保存）；保存后才出现在列表里。草稿页返回时确认是否放弃。 */
 function ProvidersScreen({onBack}){
   const [ref, scrolled] = useScrolled();
+  const [list, setList] = useState(PROVIDERS);
+  const [picker, setPicker] = useState(false);
+  const [draft, setDraft] = useState(null);
   const tone = (k)=> k==='ok'?{c:'var(--success)',bg:'color-mix(in srgb, var(--success) 12%, transparent)'}:{c:'var(--warning)',bg:'color-mix(in srgb, var(--warning-text) 12%, transparent)'};
+
+  if (draft) {
+    return <ProviderDraftScreen draft={draft} onDiscard={()=>setDraft(null)}
+      onChangeType={(t)=>setDraft(d=>({...d, type:t, name: d.name===d.type.name ? t.name : d.name}))}
+      onSave={(v)=>{ setList(l=>[...l, {name:v.name, model:v.type.name, state: v.apiKey ? '未添加模型' : '未配置密钥', kind:'warn'}]); setDraft(null); }}/>;
+  }
+
   return (
     <div className="screen fade-in" data-screen-label="providers">
-      <PageHead title="AI 提供商" onBack={onBack} scrolled={scrolled} center right={<IconBtn icon="plus"/>}/>
+      <PageHead title="AI 提供商" onBack={onBack} scrolled={scrolled} center right={<IconBtn icon="plus" ariaLabel="添加自定义提供商" onClick={()=>setPicker(true)}/>}/>
       <div className="viewport" ref={ref} style={{padding:'12px 18px 28px'}}>
         <p style={{margin:'0 0 14px', fontSize:12.5, color:'var(--text-muted)', lineHeight:1.65, padding:'0 4px'}}>
           主笔智能体会从已连接的提供商中，按你设定的优先级选择模型。</p>
         <div className="col gap10">
-          {PROVIDERS.map(p=>{
+          {list.map(p=>{
             const tn = tone(p.kind);
             return (
               <div key={p.name} className="card" style={{padding:'13px 14px', display:'flex', gap:12, alignItems:'center'}}>
@@ -366,11 +378,136 @@ function ProvidersScreen({onBack}){
             );
           })}
         </div>
-        <button className="btn-ghost press"
+        <button className="btn-ghost press" onClick={()=>setPicker(true)}
           style={{width:'100%', height:44, marginTop:14, borderStyle:'dashed', color:'var(--accent-warm)', fontWeight:600}}>
           <I.plus s={16}/>添加自定义提供商
         </button>
       </div>
+      {picker && <ProviderTypeSheet onClose={()=>setPicker(false)}
+        onPick={(t)=>{ setPicker(false); setDraft({type:t, name:t.name}); }}/>}
+    </div>
+  );
+}
+
+function KindTag({k, hit}){
+  return <span style={{padding:'1px 7px', borderRadius:'var(--r-sm)', fontSize:10.5, fontWeight:600,
+    background: hit ? 'color-mix(in srgb, var(--accent-amber) 15%, transparent)' : 'var(--surface-dim)',
+    color: hit ? 'var(--accent-amber)' : 'var(--text-muted)'}}>{PROVIDER_KIND_LABELS[k]}</span>;
+}
+
+/* 类型选择底部弹层：能力筛选 + 每行能力标签 / 固定地址标记 */
+function ProviderTypeSheet({onPick, onClose, current}){
+  const [kind, setKind] = useState('all');
+  const types = PROVIDER_TYPES.filter(t=>kind==='all' || t.kinds.includes(kind));
+  return (
+    <Sheet onClose={onClose} max="80%">
+      <SheetHeader title="选择接口格式"/>
+      <div className="row gap6" style={{padding:'10px 18px', flex:'0 0 auto', overflowX:'auto'}}>
+        {['all','chat','image','video','audio'].map(k=>(
+          <span key={k} className="chip press" onClick={()=>setKind(k)}
+            style={kind===k ? {background:'var(--accent)', color:'var(--on-accent)'} : {border:'1px solid var(--border)', color:'var(--text-secondary)'}}>
+            {k==='all' ? '全部' : PROVIDER_KIND_LABELS[k]}
+          </span>
+        ))}
+      </div>
+      <div style={{flex:1, overflowY:'auto', padding:'0 12px 20px'}}>
+        {types.map(t=>(
+          <div key={t.key} className="press" onClick={()=>onPick(t)}
+            style={{padding:'12px 10px', borderRadius:'var(--r-lg)', display:'flex', alignItems:'center', gap:10,
+              background: current===t.key ? 'var(--surface)' : 'transparent'}}>
+            <div className="col" style={{flex:1, gap:4, minWidth:0}}>
+              <div className="row gap8">
+                <span style={{fontSize:14.5, fontWeight:600, color:'var(--text-primary)'}}>{t.name}</span>
+                {t.fixed && <span className="row gap2" style={{fontSize:10.5, color:'var(--text-subtle)'}}><I.lock s={11}/>固定地址</span>}
+              </div>
+              {t.note && <span style={{fontSize:11.5, color:'var(--text-muted)'}}>{t.note}</span>}
+              <div className="row gap4" style={{flexWrap:'wrap'}}>
+                {t.kinds.map(k=><KindTag key={k} k={k} hit={k===kind}/>)}
+              </div>
+            </div>
+            {current===t.key ? <I.check s={18} c="var(--accent)"/> : <I.chevR s={18} c="var(--text-subtle)"/>}
+          </div>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+/* 草稿配置页：顶栏「放弃 / 保存」；返回键等同放弃并先确认。 */
+function ProviderDraftScreen({draft, onDiscard, onSave, onChangeType}){
+  const [ref, scrolled] = useScrolled();
+  const [name, setName] = useState(draft.name);
+  const [baseUrl, setBaseUrl] = useState(draft.type.baseUrl || '');
+  const [apiKey, setApiKey] = useState('');
+  const [typeSheet, setTypeSheet] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const t = draft.type;
+  useEffect(()=>{ setName(draft.name); setBaseUrl(t.baseUrl || ''); }, [t.key]);
+  const hasKey = !!apiKey.trim();
+  const modelLabels = {chat:'聊天模型', video:'视频模型', audio:'音频模型', image:'图片模型'};
+
+  return (
+    <div className="screen fade-in" data-screen-label="providerDraft">
+      <PageHead title="新建提供商" sub={<span style={{color:'var(--warning-text)'}}>未保存</span>} onBack={()=>setConfirm(true)} scrolled={scrolled} center
+        right={<button className="btn-accent press" disabled={!name.trim()} onClick={()=>onSave({name, baseUrl, apiKey, type:t})}
+          style={{height:32, padding:'0 14px', fontSize:13, marginRight:8, opacity: name.trim() ? 1 : .45}}>保存</button>}/>
+      <div className="viewport" ref={ref} style={{padding:'12px 18px 28px'}}>
+        <Field label="名称">
+          <input className="tinput" value={name} onChange={e=>setName(e.target.value)}/>
+        </Field>
+
+        <Field label="提供商类型" hint="保存后类型不可更改。">
+          <div className="tinput press row gap8" onClick={()=>setTypeSheet(true)} style={{display:'flex', alignItems:'center'}}>
+            <span style={{flex:1, fontSize:14}}>{t.name}</span>
+            <div className="row gap4">{t.kinds.map(k=><KindTag key={k} k={k}/>)}</div>
+            <I.chevR s={16} c="var(--text-subtle)"/>
+          </div>
+        </Field>
+
+        <Field label="基础 URL" hint={t.fixed ? null : (!baseUrl ? '填写服务地址，例如中转站提供的 /v1 地址。' : null)}>
+          {t.fixed
+            ? <div className="tinput row gap8" style={{display:'flex', alignItems:'center', color:'var(--text-muted)', background:'var(--surface-dim)'}}><I.lock s={14}/><span style={{fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.baseUrl}</span></div>
+            : <input className="tinput" value={baseUrl} onChange={e=>setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" style={{fontFamily:'var(--mono)'}}/>}
+        </Field>
+
+        <Field label="API 密钥" hint={!hasKey ? '填写 API Key 后才能启用该提供商。' : null}>
+          <input className="tinput" type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-…"/>
+        </Field>
+
+        {['chat','video','audio','image'].filter(k=>t.kinds.includes(k)).map(k=>(
+          <Field key={k} label={modelLabels[k]}
+            right={<span className="row gap4" style={{fontSize:12, fontWeight:600, color: hasKey ? 'var(--accent)' : 'var(--text-subtle)'}}>获取模型</span>}
+            hint={!hasKey ? '填写 API 密钥后可获取模型列表。' : null}>
+            <div className="card" style={{padding:12, boxShadow:'none'}}>
+              <div style={{fontSize:12, color:'var(--text-muted)', marginBottom:8}}>暂无模型</div>
+              <div className="row gap8">
+                <input className="tinput" placeholder="输入模型 ID" style={{flex:1}}/>
+                <button className="btn-ghost press" style={{height:44, padding:'0 14px'}}>添加</button>
+              </div>
+            </div>
+          </Field>
+        ))}
+
+        <div className="row gap4" style={{fontSize:12.5, fontWeight:600, color:'var(--text-secondary)', padding:'4px 0'}}>
+          代理<I.chevR s={14} c="var(--text-subtle)" style={{transform:'rotate(90deg)'}}/>
+        </div>
+      </div>
+
+      {typeSheet && <ProviderTypeSheet current={t.key} onClose={()=>setTypeSheet(false)}
+        onPick={(nt)=>{ setTypeSheet(false); onChangeType(nt); }}/>}
+
+      {confirm && (
+        <Sheet onClose={()=>setConfirm(false)} max="40%">
+          <div style={{padding:'6px 22px 24px'}}>
+            <div className="display" style={{fontSize:16.5, fontWeight:700, marginBottom:6}}>放弃未保存的提供商？</div>
+            <div style={{fontSize:13, color:'var(--text-muted)', lineHeight:1.6, marginBottom:18}}>「{name || t.name}」尚未保存，离开后填写的内容不会保留。</div>
+            <div className="row gap10">
+              <button className="btn-ghost press" style={{flex:1, height:44}} onClick={()=>setConfirm(false)}>继续编辑</button>
+              <button className="btn-accent press" style={{flex:1, height:44, background:'var(--error)'}} onClick={onDiscard}>放弃</button>
+            </div>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }

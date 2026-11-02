@@ -192,12 +192,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-  test('MiniMax supports only explicitly configured video models', () {
+  test('MiniMax exposes only explicitly configured chat and video models', () {
     final provider = aiProviderBuiltinById('openai')!.copyWith(
       type: 'minimax',
       baseUrl: '',
       apiKey: 'key',
       enabled: true,
+      models: const [],
       videoModels: ['MiniMax-H3'],
     );
     expect(provider.effectiveBaseUrl, 'https://api.minimax.cn');
@@ -206,6 +207,15 @@ void main() {
     expect(provider.availableVideoModels, ['MiniMax-H3']);
     expect(provider.isValid, true);
     expect(AiSettings(providers: [provider]).availableModelOptions, isEmpty);
+
+    final withChat = provider.copyWith(models: ['MiniMax-M3']);
+    expect(withChat.availableModels, ['MiniMax-M3']);
+    expect(
+      AiSettings(
+        providers: [withChat],
+      ).availableModelOptions.map((option) => option.model),
+      ['MiniMax-M3'],
+    );
   });
   test(
     'Qwen and Doubao expose video configuration without built-in video fallback',

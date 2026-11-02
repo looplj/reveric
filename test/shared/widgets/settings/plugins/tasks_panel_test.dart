@@ -62,31 +62,36 @@ void main() {
       'task controls persist on ${platform.name}',
       (tester) async {
         final db = AppDatabase.forTest(NativeDatabase.memory());
-        final host = PluginHostService(
-          dao: db.pluginDao,
-          registry: PluginRegistry(hostToolNames: {}),
-          packages: () async {
-            final plugin = package();
-            return [
-              PluginPackage(
-                plugin.path,
-                PluginManifest.fromJson({
-                  ...plugin.manifest.json,
-                  'tasks': {
-                    'organize': {
-                      'title': 'Organize memories',
-                      'intervalMinutes': 60,
+        // host 要在真实 zone 里构造：它的内部 future 若属于 FakeAsync zone，
+        // runAsync 里的 setEnabled 会一直等不到回调。
+        final host = (await tester.runAsync(
+          () async => PluginHostService(
+            dao: db.pluginDao,
+            registry: PluginRegistry(hostToolNames: {}),
+            packages: () async {
+              final plugin = package();
+              return [
+                PluginPackage(
+                  plugin.path,
+                  PluginManifest.fromJson({
+                    ...plugin.manifest.json,
+                    'tasks': {
+                      'organize': {
+                        'title': 'Organize memories',
+                        'intervalMinutes': 60,
+                      },
                     },
-                  },
-                }),
-                plugin.code,
-              ),
-            ];
-          },
-          executorFactory: (call, stop) => _TaskExecutor(),
-          platform: 'macos',
-        );
-        await tester.runAsync(host.start);
+                  }),
+                  plugin.code,
+                ),
+              ];
+            },
+            executorFactory: (call, stop) => _TaskExecutor(),
+            platform: 'macos',
+          ),
+        ))!;
+        // 只有内置的 reveric.web 首次默认启用，测试插件需要显式启用。
+        await tester.runAsync(() => host.setEnabled('test.web', true));
         addTearDown(() async {
           await host.dispose();
           await db.close();

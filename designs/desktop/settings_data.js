@@ -30,6 +30,32 @@ const PROVIDERS = [
   },
 ];
 
+// ── 自定义提供商可选类型 ────────────────────────────────────────────────────
+// 对齐 lib/shared/models/ai_provider.dart 的 aiProviderTypeConfigs：
+// kinds = supportedModelKinds（embedding 不在选择器里展示），fixed = fixedBaseUrl。
+// baseUrl 是新建草稿时预填的地址（固定地址类型即该地址，只读）。
+const PROVIDER_KIND_LABELS = { chat: "对话", image: "图片", video: "视频", audio: "音频" };
+const PROVIDER_TYPES = [
+  { key: "openai_compatible", name: "OpenAI 兼容", kinds: ["chat", "image"], baseUrl: "", note: "大多数中转站与自部署服务" },
+  { key: "anthropic", name: "Anthropic", kinds: ["chat"], baseUrl: "" },
+  { key: "gemini", name: "Gemini", kinds: ["chat", "image"], baseUrl: "" },
+  { key: "openai", name: "OpenAI", kinds: ["chat", "image"], baseUrl: "" },
+  { key: "minimax", name: "MiniMax", kinds: ["video", "audio"], baseUrl: "", note: "兼容 MiniMax 格式的视频接口（如 H3）" },
+  { key: "doubao", name: "Doubao", kinds: ["chat", "image", "video"], baseUrl: "", note: "兼容方舟格式的视频接口（如 Seedance）" },
+  { key: "qwen", name: "Qwen", kinds: ["chat", "image", "video", "audio"], baseUrl: "https://maas.qianwenaiapi.com/compatible-mode/v1" },
+  { key: "agnes", name: "Agnes", kinds: ["image", "video"], baseUrl: "https://apihub.agnes-ai.com/v1" },
+  { key: "xai", name: "xAI", kinds: ["chat", "image"], baseUrl: "" },
+  { key: "deepseek", name: "DeepSeek", kinds: ["chat"], baseUrl: "" },
+  { key: "moonshot", name: "Moonshot", kinds: ["chat"], baseUrl: "" },
+  { key: "zhipu", name: "Zhipu", kinds: ["chat"], baseUrl: "" },
+  { key: "openrouter", name: "OpenRouter", kinds: ["chat", "image", "video", "audio"], fixed: true, baseUrl: "https://openrouter.ai/api/v1" },
+  { key: "api88", name: "88API", kinds: ["chat", "image", "video", "audio"], fixed: true, baseUrl: "https://api.88api.ai/v1" },
+  { key: "atlascloud", name: "AtlasCloud", kinds: ["chat", "image", "video", "audio"], fixed: true, baseUrl: "https://api.atlascloud.ai/v1" },
+  { key: "volcengine", name: "火山引擎", kinds: ["chat", "image", "video", "audio"], fixed: true, baseUrl: "https://ark.cn-beijing.volces.com/api/v3" },
+  { key: "metaso", name: "秘塔科技", kinds: ["video"], fixed: true, baseUrl: "https://metaso.cn/api/minimax" },
+  { key: "codex", name: "Codex", kinds: ["chat", "image"], fixed: true, desktopOnly: true, baseUrl: "https://chatgpt.com/backend-api/codex" },
+];
+
 // ── Usage ───────────────────────────────────────────────────────────────────
 // 口径全部是词元（token）。
 const USAGE = {
@@ -283,6 +309,6 @@ const SESSION_USAGE = {
 const CURRENT_SESSION_ID = "s1";
 
 Object.assign(window, {
-  PROVIDERS, USAGE, USAGE_DAILY, USAGE_ACTIVITY, ACTIVITY_WEEKS,
+  PROVIDERS, PROVIDER_TYPES, PROVIDER_KIND_LABELS, USAGE, USAGE_DAILY, USAGE_ACTIVITY, ACTIVITY_WEEKS,
   SESSION_USAGE, CURRENT_SESSION_ID,
 });

@@ -1,5 +1,6 @@
-// 职责: 共享 AI provider 配置面板 — 右侧表单（API key / baseUrl / 代理 / 模型 / 温度），含获取模型 API 调用。
+// 职责: 共享 AI provider 配置 — 已保存供应商面板与草稿共用的表单（API key / baseUrl / 代理 / 模型 / 温度），含获取模型 API 调用。
 // 关联文件:
+//   lib/shared/widgets/settings/provider_draft.dart
 //   lib/shared/components/reveric_dialog.dart
 //   lib/shared/components/reveric_button.dart
 //   lib/shared/widgets/settings/ai_providers_section.dart
@@ -54,6 +55,7 @@ import 'provider_actions.dart';
 import 'provider_video_models.dart';
 import 'provider_models_editor.dart';
 import 'provider_audio_models.dart';
+import 'provider_draft.dart';
 import 'proxy_settings_section.dart';
 import 'codex_connection.dart';
 import '../../components/reveric_dialog.dart';
@@ -61,8 +63,8 @@ import '../../components/reveric_button.dart';
 
 final _log = AppLogger.forModule('ProviderModels');
 
-/// AI provider 配置面板（表单）。
-class ProviderConfigPanel extends HookConsumerWidget {
+/// 已保存供应商的配置面板：读取持久化配置，修改即时写回，头部提供启用开关与删除。
+class ProviderConfigPanel extends ConsumerWidget {
   final String providerId;
 
   final VoidCallback? onDeleted;
@@ -76,14 +78,87 @@ class ProviderConfigPanel extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
     final settingsNotifier = ref.read(appSettingsProvider.notifier);
     final config = ref.watch(aiSettingsProvider).findConfigById(providerId);
 
     if (config == null) {
       return const SizedBox.shrink();
     }
+
+    return ProviderConfigForm(
+      config: config,
+      onChanged: settingsNotifier.setAiProviderConfig,
+      badge: StatusBadge(isValid: config.isValid),
+      headerActions: [
+        RevericSwitch(
+          value: config.enabled,
+          onChanged: !config.isTypeSupported || !config.isPlatformSupported
+              ? null
+              : (v) {
+                  final validationMessage = config.enableValidationMessage;
+                  if (v && validationMessage != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: DialogToast(
+                          variant: DialogToastVariant.warning,
+                          child: Text(validationMessage),
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  settingsNotifier.toggleAiProviderEnabled(config.id, v);
+                },
+        ),
+        ProviderActionsMenu(
+          config: config,
+          onDelete: () => _confirmDelete(context, ref, config: config),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref, {
+    required AiProvider config,
+  }) async {
+    final notifier = ref.read(appSettingsProvider.notifier);
+    final deleted = await confirmDeleteProvider(
+      context,
+      config: config,
+      onDelete: () => notifier.removeProvider(config.id),
+    );
+    if (deleted && context.mounted) {
+      onDeleted?.call();
+    }
+  }
+}
+
+/// 供应商配置表单：已保存供应商与新建草稿共用，每次修改都交给 [onChanged]。
+///
+/// [onChangeType] 非空表示草稿：显示「保存后才创建」提示，类型仍可更换。
+class ProviderConfigForm extends HookWidget {
+  const ProviderConfigForm({
+    super.key,
+    required this.config,
+    required this.onChanged,
+    required this.badge,
+    required this.headerActions,
+    this.onChangeType,
+  });
+
+  final AiProvider config;
+  final Future<void> Function(AiProvider config) onChanged;
+  final Widget badge;
+  final List<Widget> headerActions;
+  final ValueChanged<AiProviderType>? onChangeType;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final config = this.config;
 
     final hasFixedBaseUrl = config.isTypeSupported && config.hasFixedBaseUrl;
     final providerName = localizedAiProviderName(context, config);
@@ -202,7 +277,7 @@ class ProviderConfigPanel extends HookConsumerWidget {
         proxyUsername: proxyUsername ?? config.proxyUsername,
         proxyPassword: proxyPassword ?? config.proxyPassword,
       );
-      await settingsNotifier.setAiProviderConfig(nextConfig);
+      await onChanged(nextConfig);
     }
 
     return Column(
@@ -235,7 +310,7 @@ class ProviderConfigPanel extends HookConsumerWidget {
                             color: colors.textPrimary,
                           ),
                         ),
-                        StatusBadge(isValid: config.isValid),
+                        badge,
                       ],
                     ),
                     if (!config.isTypeSupported ||
@@ -264,33 +339,7 @@ class ProviderConfigPanel extends HookConsumerWidget {
                   ],
                 ),
               ),
-
-              RevericSwitch(
-                value: config.enabled,
-                onChanged:
-                    !config.isTypeSupported || !config.isPlatformSupported
-                    ? null
-                    : (v) {
-                        final validationMessage =
-                            config.enableValidationMessage;
-                        if (v && validationMessage != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: DialogToast(
-                                variant: DialogToastVariant.warning,
-                                child: Text(validationMessage),
-                              ),
-                            ),
-                          );
-                          return;
-                        }
-                        settingsNotifier.toggleAiProviderEnabled(config.id, v);
-                      },
-              ),
-              ProviderActionsMenu(
-                config: config,
-                onDelete: () => _confirmDelete(context, ref, config: config),
-              ),
+              ...headerActions,
             ],
           ),
         ),
@@ -312,9 +361,7 @@ class ProviderConfigPanel extends HookConsumerWidget {
                         context,
                         colors,
                         typo,
-                        ref,
                         config,
-                        settingsNotifier,
                         apiKeyController,
                         baseUrlController,
                         nameController,
@@ -336,9 +383,7 @@ class ProviderConfigPanel extends HookConsumerWidget {
     BuildContext context,
     RevericColors colors,
     RevericTypography typo,
-    WidgetRef ref,
     AiProvider config,
-    AppSettingsNotifier settingsNotifier,
     TextEditingController apiKeyController,
     TextEditingController baseUrlController,
     TextEditingController nameController,
@@ -372,14 +417,28 @@ class ProviderConfigPanel extends HookConsumerWidget {
             onChanged: () => saveConfig(name: nameController.text),
           ),
           const SizedBox(height: RevericSpacing.lg),
-          _buildReadOnlyField(
-            context: context,
-            label: context.t(LocaleKeys.settingsProviderTypeLabel),
-            value: localizedProviderTypeName(context, config.typeEnum),
+          if (onChangeType case final onChangeType?)
+            ProviderDraftTypeField(
+              type: config.typeEnum,
+              onChanged: onChangeType,
+            )
+          else
+            _buildReadOnlyField(
+              context: context,
+              label: context.t(LocaleKeys.settingsProviderTypeLabel),
+              value: localizedProviderTypeName(context, config.typeEnum),
+            ),
+          SizedBox(
+            height: onChangeType == null
+                ? RevericSpacing.xs
+                : RevericSpacing.lg,
           ),
-          const SizedBox(height: RevericSpacing.xs),
         ],
-        ProviderOverview(config: config),
+        // 草稿的类型选择框已列出能力标签，概览不再重复能力摘要。
+        ProviderOverview(
+          config: config,
+          showCapabilities: onChangeType == null,
+        ),
         const SizedBox(height: RevericSpacing.x4l),
         if (config.hasFixedBaseUrl)
           _buildReadOnlyField(
@@ -455,7 +514,6 @@ class ProviderConfigPanel extends HookConsumerWidget {
             onChanged: (models) => saveConfig(models: models),
             fetchButton: _buildFetchButton(
               context,
-              ref,
               config,
               config.availableModels,
               (models) => saveConfig(models: models),
@@ -475,7 +533,6 @@ class ProviderConfigPanel extends HookConsumerWidget {
             onChanged: (models) => saveConfig(videoModels: models),
             fetchButton: _buildFetchButton(
               context,
-              ref,
               config,
               config.availableVideoModels,
               (models) => saveConfig(videoModels: models),
@@ -490,7 +547,6 @@ class ProviderConfigPanel extends HookConsumerWidget {
             onChanged: (models) => saveConfig(audioModels: models),
             fetchButton: _buildFetchButton(
               context,
-              ref,
               config,
               config.availableAudioModels,
               (models) => saveConfig(audioModels: models),
@@ -507,7 +563,6 @@ class ProviderConfigPanel extends HookConsumerWidget {
             onChanged: (models) => saveConfig(imageModels: models),
             fetchButton: _buildFetchButton(
               context,
-              ref,
               config,
               config.availableImageModels,
               (models) => saveConfig(imageModels: models),
@@ -524,17 +579,12 @@ class ProviderConfigPanel extends HookConsumerWidget {
             min: 0.0,
             max: 2.0,
             divisions: 20,
-            onChanged: (v) => settingsNotifier.setAiProviderConfig(
-              config.copyWith(temperature: v),
-            ),
+            onChanged: (v) => onChanged(config.copyWith(temperature: v)),
           ),
         ],
         if (config.type == AiProviderType.volcengine.name) ...[
           const SizedBox(height: RevericSpacing.lg),
-          _AssetCredentialsSection(
-            config: config,
-            onChanged: settingsNotifier.setAiProviderConfig,
-          ),
+          _AssetCredentialsSection(config: config, onChanged: onChanged),
         ],
         const SizedBox(height: RevericSpacing.lg),
         _ProxySection(
@@ -549,22 +599,6 @@ class ProviderConfigPanel extends HookConsumerWidget {
         ),
       ],
     );
-  }
-
-  Future<void> _confirmDelete(
-    BuildContext context,
-    WidgetRef ref, {
-    required AiProvider config,
-  }) async {
-    final notifier = ref.read(appSettingsProvider.notifier);
-    final deleted = await confirmDeleteProvider(
-      context,
-      config: config,
-      onDelete: () => notifier.removeProvider(config.id),
-    );
-    if (deleted && context.mounted) {
-      onDeleted?.call();
-    }
   }
 
   Widget _buildReadOnlyField({
@@ -612,17 +646,15 @@ class ProviderConfigPanel extends HookConsumerWidget {
     );
   }
 
-  Widget? _buildFetchButton(
+  /// 未填凭证时保持可见但禁用，避免用户不知道有这个入口。
+  Widget _buildFetchButton(
     BuildContext context,
-    WidgetRef ref,
     AiProvider provider,
     List<String> currentModels,
     ValueChanged<List<String>> onChanged, {
     AiModelKind kind = AiModelKind.chat,
   }) {
-    if (!provider.hasCredentialConfiguration) {
-      return null;
-    }
+    final ready = provider.hasCredentialConfiguration;
     return TextButton.icon(
       icon: RevericIcon(RevericIcons.download, size: 14),
       label: Text(context.t(LocaleKeys.settingsProviderFetchModels)),
@@ -631,19 +663,21 @@ class ProviderConfigPanel extends HookConsumerWidget {
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      onPressed: () async {
-        final selected = await showRevericDialog<Set<String>>(
-          context: context,
-          builder: (ctx) => _FetchModelsDialogContent(
-            config: provider,
-            kind: kind,
-            existingModels: currentModels.toSet(),
-          ),
-        );
-        if (selected != null) {
-          onChanged(selected.toList());
-        }
-      },
+      onPressed: !ready
+          ? null
+          : () async {
+              final selected = await showRevericDialog<Set<String>>(
+                context: context,
+                builder: (ctx) => _FetchModelsDialogContent(
+                  config: provider,
+                  kind: kind,
+                  existingModels: currentModels.toSet(),
+                ),
+              );
+              if (selected != null) {
+                onChanged(selected.toList());
+              }
+            },
     );
   }
 
@@ -790,6 +824,9 @@ Future<List<String>> fetchProviderModels(
   }
   if (config.isCodex && kind == AiModelKind.image) {
     return codexPresetImageModels;
+  }
+  if (config.typeEnum == AiProviderType.minimax && kind == AiModelKind.chat) {
+    return minimaxPresetChatModels;
   }
   // 有预设清单的渠道直接使用清单；其余渠道从接口拉取。
   final imagePresets = kind == AiModelKind.image

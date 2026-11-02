@@ -34,6 +34,21 @@ void main() {
     );
   });
 
+  test('MiniMax chat picker offers its catalog without a request', () async {
+    final provider = aiProviderBuiltinById('openai')!.copyWith(
+      type: AiProviderType.minimax.name,
+      apiKey: 'test-key',
+      baseUrl: '',
+    );
+    await http.runWithClient(
+      () async =>
+          expect(await fetchProviderModels(provider), minimaxPresetChatModels),
+      () => MockClient(
+        (_) async => throw StateError('Unexpected network request'),
+      ),
+    );
+  });
+
   test(
     'image picker offers channel catalogs without fetching chat models',
     () async {

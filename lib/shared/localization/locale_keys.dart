@@ -3990,14 +3990,6 @@ abstract final class LocaleKeys {
   static const settingsMcpUnknown = 'settings.mcp_unknown';
   // ── settings ────────────────────────────────────────
   static const settingsAddCustomProvider = 'settings.add_custom_provider';
-  static const settingsAddCustomProviderNameHint =
-      'settings.add_custom_provider_name_hint';
-  static const settingsAddCustomProviderNameLabel =
-      'settings.add_custom_provider_name_label';
-  static const settingsAddCustomProviderTitle =
-      'settings.add_custom_provider_title';
-  static const settingsAddCustomProviderTypeLabel =
-      'settings.add_custom_provider_type_label';
   static const settingsAi = 'settings.ai';
   static const settingsAiAgentAvatar = 'settings.ai_agent_avatar';
   static const settingsAiAgentAvatarDescription =
@@ -4735,6 +4727,24 @@ abstract final class LocaleKeys {
       'settings.provider_proxy_username_hint';
   static const settingsProviderProxyUsernameLabel =
       'settings.provider_proxy_username_label';
+  static const settingsProviderTypePickerTitle =
+      'settings.provider_type_picker_title';
+  static const settingsProviderTypeFixedUrl =
+      'settings.provider_type_fixed_url';
+  static const settingsProviderKindChat = 'settings.provider_kind_chat';
+  static const settingsProviderKindImage = 'settings.provider_kind_image';
+  static const settingsProviderKindVideo = 'settings.provider_kind_video';
+  static const settingsProviderKindAudio = 'settings.provider_kind_audio';
+  static const settingsProviderTypeNoteOpenaiCompatible =
+      'settings.provider_type_note_openai_compatible';
+  static const settingsProviderTypeNoteMinimax =
+      'settings.provider_type_note_minimax';
+  static const settingsProviderTypeNoteDoubao =
+      'settings.provider_type_note_doubao';
+  static const settingsProviderDraftBadge = 'settings.provider_draft_badge';
+  static const settingsProviderDraftTypeHint =
+      'settings.provider_draft_type_hint';
+  static const settingsProviderNewTitle = 'settings.provider_new_title';
   static const settingsProviderSelectPlaceholder =
       'settings.provider_select_placeholder';
   static const settingsProviderTypeLabel = 'settings.provider_type_label';

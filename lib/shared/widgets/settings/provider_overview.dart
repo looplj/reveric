@@ -38,8 +38,13 @@ String providerCapabilitySummary(BuildContext context, AiProvider config) =>
         .join(' · ');
 
 class ProviderOverview extends StatelessWidget {
-  const ProviderOverview({super.key, required this.config});
+  const ProviderOverview({
+    super.key,
+    required this.config,
+    this.showCapabilities = true,
+  });
   final AiProvider config;
+  final bool showCapabilities;
 
   @override
   Widget build(BuildContext context) {
@@ -53,11 +58,13 @@ class ProviderOverview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          providerCapabilitySummary(context, config),
-          style: typo.uiSemibold.copyWith(color: colors.textPrimary),
-        ),
-        const SizedBox(height: RevericSpacing.sm),
+        if (showCapabilities) ...[
+          Text(
+            providerCapabilitySummary(context, config),
+            style: typo.uiSemibold.copyWith(color: colors.textPrimary),
+          ),
+          const SizedBox(height: RevericSpacing.sm),
+        ],
         Text(
           localizedProviderTypeDescription(context, config.typeEnum),
           style: typo.ui.copyWith(color: colors.textSecondary),

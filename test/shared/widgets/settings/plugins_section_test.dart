@@ -43,14 +43,19 @@ void main() {
       'user can inspect and disable plugin tools on narrow and wide screens (${platform.name})',
       (tester) async {
         final db = AppDatabase.forTest(NativeDatabase.memory());
-        final host = PluginHostService(
-          dao: db.pluginDao,
-          registry: PluginRegistry(hostToolNames: {}),
-          packages: () async => [package()],
-          executorFactory: (call, stop) => FakeExecutor(),
-          platform: 'macos',
-        );
-        await tester.runAsync(host.start);
+        // host 要在真实 zone 里构造：它的内部 future 若属于 FakeAsync zone，
+        // runAsync 里的 setEnabled 会一直等不到回调。
+        final host = (await tester.runAsync(
+          () async => PluginHostService(
+            dao: db.pluginDao,
+            registry: PluginRegistry(hostToolNames: {}),
+            packages: () async => [package()],
+            executorFactory: (call, stop) => FakeExecutor(),
+            platform: 'macos',
+          ),
+        ))!;
+        // 只有内置的 reveric.web 首次默认启用，测试插件需要显式启用。
+        await tester.runAsync(() => host.setEnabled('test.web', true));
         addTearDown(() async {
           await host.dispose();
           await db.close();
@@ -95,14 +100,18 @@ void main() {
     'activation failure shows a useful reason without raw diagnostics',
     (tester) async {
       final db = AppDatabase.forTest(NativeDatabase.memory());
-      final host = PluginHostService(
-        dao: db.pluginDao,
-        registry: PluginRegistry(hostToolNames: {}),
-        packages: () async => [package()],
-        executorFactory: (call, stop) => _InvalidPluginExecutor(),
-        platform: 'macos',
-      );
-      await tester.runAsync(host.start);
+      // host 要在真实 zone 里构造：它的内部 future 若属于 FakeAsync zone，
+      // runAsync 里的 setEnabled 会一直等不到回调。
+      final host = (await tester.runAsync(
+        () async => PluginHostService(
+          dao: db.pluginDao,
+          registry: PluginRegistry(hostToolNames: {}),
+          packages: () async => [package()],
+          executorFactory: (call, stop) => _InvalidPluginExecutor(),
+          platform: 'macos',
+        ),
+      ))!;
+      await tester.runAsync(() => host.setEnabled('test.web', true));
       addTearDown(() async {
         await host.dispose();
         await db.close();
