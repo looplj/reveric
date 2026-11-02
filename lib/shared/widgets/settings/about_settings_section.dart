@@ -4,6 +4,7 @@
 //   lib/shared/providers/update_providers.dart
 //   lib/shared/logger/log_manager.dart
 //   lib/shared/widgets/settings/diagnostics_upload_button.dart
+//   lib/shared/widgets/community_links.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
@@ -12,29 +13,25 @@
 
 import 'dart:io';
 import 'diagnostics_upload_button.dart';
+import '../community_links.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../components/reveric_button.dart';
 import '../../app_config.dart'
     show
         appVersion,
         revericAttribution,
         revericGitHubRepoUrl,
-        revericQqGroupJoinUrl,
         revericQqGroupNumber;
 import '../../components/dialog_feedback.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../logger/log_manager.dart';
-import '../../logger/app_logger.dart';
 import '../../providers/update_providers.dart';
 import '../../services/update.dart';
 import '../../theme/theme.dart';
-
-final _log = AppLogger.forModule('AboutSettings');
 
 /// 关于设置 section：版本、更新、本地日志与诊断上传、QQ 群交流和开源署名。
 class AboutSettingsSection extends HookConsumerWidget {
@@ -122,11 +119,7 @@ class AboutSettingsSection extends HookConsumerWidget {
             typo,
             label:
                 '${context.t(LocaleKeys.settingsAboutJoinQqGroup)} · $revericQqGroupNumber',
-            onTap: () => _openExternalUrl(
-              context,
-              Uri.parse(revericQqGroupJoinUrl),
-              LocaleKeys.settingsAboutQqOpenFailed,
-            ),
+            onTap: () => openQqGroup(context),
           ),
           SizedBox(height: sectionGap),
           _buildSectionTitle(
@@ -153,11 +146,7 @@ class AboutSettingsSection extends HookConsumerWidget {
             colors,
             typo,
             label: revericGitHubRepoUrl,
-            onTap: () => _openExternalUrl(
-              context,
-              Uri.parse(revericGitHubRepoUrl),
-              LocaleKeys.settingsAboutOpenRepositoryFailed,
-            ),
+            onTap: () => openGitHubRepo(context),
           ),
         ],
       ),
@@ -719,37 +708,6 @@ class AboutSettingsSection extends HookConsumerWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openExternalUrl(
-    BuildContext context,
-    Uri uri,
-    String failedKey,
-  ) async {
-    try {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (opened) {
-        return;
-      }
-      _log.warning('URL launch returned false: $uri');
-    } catch (error, stackTrace) {
-      _log.error(
-        'Failed to open URL: $uri',
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
-    if (!context.mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: DialogToast(
-          variant: DialogToastVariant.error,
-          child: Text(context.t(failedKey)),
         ),
       ),
     );

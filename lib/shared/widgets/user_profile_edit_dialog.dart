@@ -6,7 +6,7 @@
 //   lib/shared/providers/settings_providers.dart
 //   lib/shared/utils/storage_paths.dart
 //   lib/shared/utils/avatar_storage.dart
-import 'dart:io';
+//   lib/shared/widgets/user_avatar.dart
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +19,7 @@ import '../providers/settings_providers.dart';
 import '../theme/theme.dart';
 import '../utils/avatar_storage.dart';
 import '../utils/storage_paths.dart';
+import 'user_avatar.dart';
 import '../components/reveric_dialog.dart';
 import '../components/reveric_button.dart';
 
@@ -93,25 +94,14 @@ class UserProfileEditDialog extends HookConsumerWidget {
                     color: colors.surfaceDim,
                     border: Border.all(color: colors.borderInput, width: 2),
                   ),
-                  child: ClipOval(
-                    child: resolvedAvatar != null
-                        ? Image.file(
-                            File(resolvedAvatar),
-                            width: 88,
-                            height: 88,
-                            fit: BoxFit.cover,
-                            cacheWidth: 176,
-                            errorBuilder: (_, _, _) => RevericIcon(
-                              RevericIcons.person,
-                              size: 44,
-                              color: colors.textMuted,
-                            ),
-                          )
-                        : RevericIcon(
-                            RevericIcons.person,
-                            size: 44,
-                            color: colors.textMuted,
-                          ),
+                  // 只让头像跟随昵称输入重建，不牵动输入框。
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: usernameController,
+                    builder: (_, value, _) => UserAvatar(
+                      username: value.text,
+                      imagePath: resolvedAvatar,
+                      size: 84,
+                    ),
                   ),
                 ),
               ),

@@ -77,6 +77,9 @@ const I = {
   pencil:  p => <Ic {...p} d={<><path d="M15.5 5 19 8.5 8.5 19H5v-3.5Z"/><path d="M13.5 7l3.5 3.5"/></>}/>,
   trash:   p => <Ic {...p} d={<><path d="M4.5 6.5h15M9.5 6V4.5h5V6M6.5 6.5l.8 13h9.4l.8-13M10 10.5v5.5M14 10.5v5.5"/></>}/>,
   save:    p => <Ic {...p} d={<><path d="M4.5 5.8c0-.7.6-1.3 1.3-1.3h10.4l3.3 3.3v10.4c0 .7-.6 1.3-1.3 1.3H5.8c-.7 0-1.3-.6-1.3-1.3Z"/><path d="M8 4.5V9h7V4.5M8 19.5V14h8v5.5"/></>}/>,
+  github:  p => <Ic {...p} d={<><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 3.5c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></>}/>,
+  /* QQ 品牌标（Simple Icons, CC0），实心 */
+  qq:      ({s=22, c="currentColor", style}) => <svg width={s} height={s} viewBox="0 0 24 24" fill={c} style={style}><path d="M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.014-.562.014-.836C19.526 4.632 17.351 0 12 0S4.474 4.632 4.474 9.241c0 .274.013.804.014.836l-1.08 2.695a39 39 0 0 0-.802 2.264c-1.021 3.283-.69 4.643-.438 4.673.54.065 2.103-2.472 2.103-2.472 0 1.469.756 3.387 2.394 4.771-.612.188-1.363.479-1.845.835-.434.32-.379.646-.301.778.343.578 5.883.369 7.482.189 1.6.18 7.14.389 7.483-.189.078-.132.132-.458-.301-.778-.483-.356-1.233-.646-1.846-.836 1.637-1.384 2.393-3.302 2.393-4.771 0 0 1.563 2.537 2.103 2.472.251-.03.581-1.39-.438-4.673"/></svg>,
   copy:    p => <Ic {...p} d={<><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 16V6a2 2 0 0 1 2-2h8"/></>}/>,
   eye:     p => <Ic {...p} d={<><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.7"/></>}/>,
   brain:   p => <Ic {...p} d={<><path d="M9.5 4.5A2.7 2.7 0 0 0 6.8 7.2 3.1 3.1 0 0 0 4.5 10.2c0 .9.4 1.8 1 2.4a3.1 3.1 0 0 0 1.3 5.2A2.7 2.7 0 0 0 12 19.3V7.2a2.7 2.7 0 0 0-2.5-2.7Z"/><path d="M14.5 4.5a2.7 2.7 0 0 1 2.7 2.7 3.1 3.1 0 0 1 2.3 3c0 .9-.4 1.8-1 2.4a3.1 3.1 0 0 1-1.3 5.2A2.7 2.7 0 0 1 12 19.3V7.2a2.7 2.7 0 0 1 2.5-2.7Z"/></>}/>,
@@ -279,7 +282,47 @@ function Empty({icon, text, sub}){
   );
 }
 
+/* 默认用户头像（未设置图片时）— 与桌面 Avatar.jsx 同一套规则：
+   取昵称首字，底色从 5 个低饱和色（青 黛 赭 藕 苍）里按昵称哈希挑。
+   ?avatar=ink 远山剪影，?avatar=legacy 现状灰色人像，用于对比。 */
+const USER_AVATAR_TONES = ['#4F8C7C', '#56688C', '#A7714F', '#93708A', '#76875A'];
+const USER_AVATAR_VARIANT = new URLSearchParams(location.search).get('avatar') || 'mono';
+function DefaultUserAvatar({name='Reveric', size=52, variant=USER_AVATAR_VARIANT}){
+  let h = 0;
+  for (const ch of (name || 'Reveric')) h = (h * 31 + ch.codePointAt(0)) & 0x7fffffff;
+  const tone = USER_AVATAR_TONES[h % USER_AVATAR_TONES.length];
+  const ring = `inset 0 0 0 1px color-mix(in srgb, ${tone} 26%, transparent)`;
+  const base = {width:size, height:size, borderRadius:'50%', flex:'none', overflow:'hidden',
+    display:'flex', alignItems:'center', justifyContent:'center'};
+  if (variant === 'legacy') {
+    return <div style={{...base, background:'var(--surface-container)', color:'var(--text-muted)'}}><I.user s={size*0.46}/></div>;
+  }
+  if (variant === 'ink') {
+    const a = 30 + (h % 18), b = 58 + ((h >> 5) % 20);
+    const mix = (pct) => `color-mix(in srgb, ${tone} ${pct}%, var(--surface))`;
+    return (
+      <div style={{...base, background:mix(9), boxShadow:ring}}>
+        <svg viewBox="0 0 100 100" width="100%" height="100%">
+          <circle cx={72 - (h % 14)} cy="30" r="9" fill={mix(30)}/>
+          <path d={`M0 74 L${a} 46 L${a+16} 60 L${b} 38 L100 66 L100 100 L0 100Z`} fill={mix(38)}/>
+          <path d={`M0 86 L${a+10} 64 L${b-4} 80 L${b+14} 68 L100 84 L100 100 L0 100Z`} fill={mix(78)}/>
+        </svg>
+      </div>
+    );
+  }
+  const first = Array.from(name.trim())[0] || 'R';
+  return (
+    <div style={{...base, boxShadow:ring,
+      background:`color-mix(in srgb, ${tone} 20%, var(--surface))`,
+      color:`color-mix(in srgb, ${tone} 72%, var(--text-primary))`,
+      fontFamily:'var(--sans)', fontWeight:600, fontSize:Math.round(size*0.44), lineHeight:1}}>
+      {/[a-z]/i.test(first) ? first.toUpperCase() : first}
+    </div>
+  );
+}
+
 Object.assign(window, {
+  DefaultUserAvatar,
   Ic, I, StatusBar, tint, useScrolled, Cover, StatusChip, StateChip,
   MOBILE_ICON_BUTTON_SIZE, PageHead, IconBtn, Switch, Sheet, SheetHeader, Field, SectionLabel,
   Avatar, EntityIcon, Empty,

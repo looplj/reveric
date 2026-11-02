@@ -28,8 +28,9 @@ back button returns to the library.
 | `index.html`            | Mounts the app, wires CSS and Babel scripts        |
 | `App.jsx`               | Top‑level routing (library ↔ editor)                |
 | `Icon.jsx`              | Phosphor SVG renderer (mask‑recolor pattern)       |
+| `Avatar.jsx`            | Default user avatar (name monogram) + QQ brand mark |
 | `WindowFrame.jsx`       | Desktop traffic‑lights + window padding             |
-| `Sidebar.jsx`           | Left rail: search, collapsible sections, user bar  |
+| `Sidebar.jsx`           | Left rail: sections, community row (QQ / GitHub), profile bar |
 | `LibraryView.jsx`       | Works home: continue-writing hero + mixed shelf     |
 | `NovelCard.jsx`         | Individual novel card with cover                    |
 | `EditorView.jsx`        | Chapter tree + manuscript editor frame              |

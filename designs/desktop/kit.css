@@ -254,6 +254,72 @@ button { font: inherit; color: inherit; }
 .m-sb-user__name { font: 600 var(--type-ui-size)/1.3 var(--font-sans); color: var(--text-primary); }
 .m-sb-user__sub  { font: 400 var(--type-ui-tiny-size)/1.3 var(--font-sans); color: var(--text-muted); }
 
+/* Home sidebar footer — community links + profile bar. */
+.m-sb-foot {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: var(--space-md) var(--space-lg) var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.m-sb-community { display: flex; align-items: center; gap: var(--space-xs); }
+.m-sb-qq {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center;
+  height: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-medium);
+  background: var(--canvas);
+  transition: border-color 120ms ease;
+}
+.m-sb-qq:hover { border-color: var(--border-input); }
+.m-sb-qq__open {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: var(--space-sm);
+  height: 100%;
+  padding: 0 var(--space-sm);
+  background: transparent; border: 0; cursor: pointer;
+  border-radius: var(--radius-medium) 0 0 var(--radius-medium);
+  color: var(--text-primary);
+  font: 500 var(--type-ui-small-size)/1 var(--font-sans);
+}
+.m-sb-qq__open:hover { background: var(--hover); }
+.m-sb-qq__mark {
+  width: 20px; height: 20px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  color: var(--accent-amber);
+}
+.m-sb-qq__label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-sb-qq__copy {
+  flex: none;
+  width: 30px; height: 100%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; cursor: pointer;
+  border-left: 1px solid var(--border-subtle);
+  border-radius: 0 var(--radius-medium) var(--radius-medium) 0;
+  color: var(--text-muted);
+}
+.m-sb-qq__copy:hover { background: var(--hover); color: var(--text-primary); }
+.m-sb-profile {
+  display: flex; align-items: center; gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-sm);
+  background: transparent; border: 0; cursor: pointer;
+  border-radius: var(--radius-medium);
+  text-align: left;
+}
+.m-sb-profile:hover { background: var(--hover); }
+.m-sb-profile__name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 var(--type-ui-size)/1.3 var(--font-sans);
+  color: var(--text-primary);
+}
+.m-sb-profile__go { color: var(--text-subtle); }
+
 /* ---- Avatars ------------------------------------------------------- */
 
 .m-avatar {
@@ -268,6 +334,32 @@ button { font: inherit; color: inherit; }
 }
 .m-avatar--user { background: var(--accent-warm); }
 .m-avatar--brand { background: var(--surface-container-high); color: var(--accent); border: 1px solid var(--border-input); width: 36px; height: 36px; }
+
+/* Default user avatar (no image set) — see Avatar.jsx for variants. */
+.m-uavatar {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  user-select: none;
+}
+.m-uavatar--mono {
+  background: color-mix(in srgb, var(--tone) 20%, var(--surface));
+  color: color-mix(in srgb, var(--tone) 72%, var(--text-primary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 26%, transparent);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: 1;
+}
+.m-uavatar--ink {
+  background: color-mix(in srgb, var(--tone) 9%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 18%, transparent);
+}
+.m-uavatar__sun  { fill: color-mix(in srgb, var(--tone) 30%, var(--surface)); }
+.m-uavatar__far  { fill: color-mix(in srgb, var(--tone) 38%, var(--surface)); }
+.m-uavatar__near { fill: color-mix(in srgb, var(--tone) 78%, var(--surface)); }
+.m-uavatar--legacy { background: var(--surface-container); color: var(--text-muted); }
 
 /* ---- Buttons ------------------------------------------------------- */
 

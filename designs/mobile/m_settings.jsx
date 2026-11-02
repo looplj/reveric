@@ -8,6 +8,13 @@
 function SettingsScreen({onOpen}){
   const [ref, scrolled] = useScrolled();
   const [dream, setDream] = useState(true);
+  const [qqCopied, setQqCopied] = useState(false);
+  const copyQq = (e) => {
+    e.stopPropagation();
+    navigator.clipboard?.writeText('924148054');
+    setQqCopied(true);
+    setTimeout(()=>setQqCopied(false), 1400);
+  };
   const theme = RevericTheme.useTheme();
   const themeValue = (THEMES.find(t=>t.key===theme.palette)||THEMES[0]).label+' · '+
     (THEME_MODES.find(m=>m.key===theme.mode)||THEME_MODES[0]).label;
@@ -36,6 +43,18 @@ function SettingsScreen({onOpen}){
     <div className="screen" data-screen-label="settings">
       <PageHead title="设置" big scrolled={scrolled}/>
       <div className="viewport" ref={ref} style={{padding:'8px 18px 28px'}}>
+        {/* 资料卡：对齐 settings_page.dart _buildProfileCard；未设头像时用昵称首字头像 */}
+        <div className="press" style={{display:'flex', alignItems:'center', gap:12, padding:'12px 14px', marginBottom:22,
+          borderRadius:'var(--r-2xl)', background:'color-mix(in srgb, var(--accent) 6%, transparent)',
+          border:'1px solid color-mix(in srgb, var(--accent) 12%, transparent)'}}>
+          <DefaultUserAvatar name="远山行者" size={52}/>
+          <div className="col" style={{flex:1, gap:2, minWidth:0}}>
+            <span style={{fontSize:18, fontWeight:700, color:'var(--text-primary)'}}>远山行者</span>
+            <span style={{fontSize:12.5, color:'var(--text-muted)'}}>本地资料</span>
+          </div>
+          <I.chevR s={18} c="var(--text-subtle)"/>
+        </div>
+
         <Group title="偏好">
           <Row icon="globe"  iconBg="color-mix(in srgb, var(--text-muted) 12%, transparent)" iconColor="var(--text-muted)" label="语言"   value="中文简体" onClick={()=>onOpen('language')}/>
           <Row icon="palette" iconBg="color-mix(in srgb, var(--accent-warm) 14%, transparent)" iconColor="var(--accent-warm)" label="主题"   value={themeValue} onClick={()=>onOpen('appearance')}/>
@@ -59,6 +78,20 @@ function SettingsScreen({onOpen}){
         <Group title="数据">
           <Row icon="chart" iconBg="color-mix(in srgb, var(--success) 13%, transparent)" iconColor="var(--success)" label="用量统计" value="本月 34.3 万词元" onClick={()=>onOpen('usage')}/>
           <Row icon="archive" iconBg="color-mix(in srgb, var(--text-muted) 12%, transparent)" iconColor="var(--text-muted)" label="存储与备份" value="248 MB"/>
+        </Group>
+
+        <Group title="社区">
+          <Row icon="qq" iconBg="color-mix(in srgb, var(--accent-amber) 14%, transparent)" iconColor="var(--accent-amber)"
+            label="加入 QQ 群"
+            onClick={()=>window.open('https://qm.qq.com/q/Ap8pfOWHDO', '_blank')}
+            right={
+              <span onClick={copyQq} title="复制" style={{display:'inline-flex', padding:4, margin:-4,
+                color: qqCopied ? 'var(--accent-amber)' : 'var(--text-subtle)'}}>
+                {qqCopied ? <I.check s={18}/> : <I.copy s={18}/>}
+              </span>
+            }/>
+          <Row icon="github" iconBg="color-mix(in srgb, var(--text-muted) 12%, transparent)" iconColor="var(--text-secondary)" label="GitHub 开源仓库"
+            onClick={()=>window.open('https://github.com/looplj/reveric', '_blank')} right={<I.chevR s={18} c="var(--text-subtle)"/>}/>
         </Group>
 
         <Group title="系统">

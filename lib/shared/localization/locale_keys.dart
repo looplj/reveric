@@ -4644,6 +4644,7 @@ abstract final class LocaleKeys {
   static const settingsEnglish = 'settings.english';
   static const settingsGeneral = 'settings.general';
   static const settingsGroupAi = 'settings.group_ai';
+  static const settingsGroupCommunity = 'settings.group_community';
   static const settingsGroupData = 'settings.group_data';
   static const settingsGroupPreferences = 'settings.group_preferences';
   static const settingsGroupSystem = 'settings.group_system';
@@ -4989,6 +4990,8 @@ abstract final class LocaleKeys {
   static const settingsAboutFeedbackDescription =
       'settings.about_feedback_description';
   static const settingsAboutJoinQqGroup = 'settings.about_join_qq_group';
+  static const settingsAboutGithubRepository =
+      'settings.about_github_repository';
   static const settingsAboutQqOpenFailed = 'settings.about_qq_open_failed';
   static const settingsAboutOpenSource = 'settings.about_open_source';
   static const settingsAboutOpenSourceDescription =

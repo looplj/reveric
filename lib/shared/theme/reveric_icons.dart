@@ -43,6 +43,7 @@ class RevericIcons {
   const RevericIcons._();
 
   static const String _base = 'assets/icons/phosphor';
+  static const String _brand = 'assets/icons/brand';
 
   static const access_time_outlined = '$_base/clock.svg';
   static const account_tree = '$_base/tree-structure.svg';
@@ -360,4 +361,8 @@ class RevericIcons {
   static const star_half = '$_base/star-half.svg';
   static const speaker_low = '$_base/speaker-low.svg';
   static const speaker_none = '$_base/speaker-none.svg';
+  static const github_logo = '$_base/github-logo.svg';
+
+  /// QQ 品牌标（Simple Icons, CC0），实心图形。
+  static const qq_logo = '$_brand/qq.svg';
 }

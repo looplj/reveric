@@ -279,6 +279,22 @@ color and spacing vocabulary with platform-specific composition:
 | Avatar radius (project) | 18 px |
 | Avatar radius (user, bottom) | 14 px |
 | Divider | `border` (`#E0D8CC`), 1 px |
+| Footer (home) | Divider, community row, then profile bar |
+
+**Community row.** The home sidebar footer leads with a QQ group pill: the QQ
+mark on a 14 % `accentAmber` circle, the localized "Join QQ Group" label, and a
+copy button behind a hairline divider. The group number is not shown; the copy
+button copies it. The
+GitHub repository follows as a plain icon button. Clicking the pill opens the
+invite link, and copying needs its own button. On mobile the same two entries
+form the "Community" group above "System" in Settings.
+
+**Default user avatar.** When no image is set, the avatar shows the first
+character of the nickname (Latin letters uppercased, "R" when blank). It sits on
+a tone from `RevericColors.avatarTones` picked by a stable hash of the
+nickname: 20 % tone over `surface` for the fill, 72 % tone over `textPrimary`
+for the glyph, and a 1 px ring at 26 % tone. The rule lives in
+`lib/shared/widgets/user_avatar.dart`.
 
 ### Editor
 

@@ -76,6 +76,7 @@ import '../widgets/home/library_home_panel.dart';
 import '../widgets/settings/settings_dialog.dart';
 import '../widgets/agent_management/subagent_edit_panel.dart';
 import '../widgets/agent_management/subagent_prompt_edit_panel.dart';
+import '../widgets/community_row.dart';
 import '../widgets/user_profile_bar.dart';
 import '../widgets/update_entry.dart';
 import 'home_management_lists.dart';
@@ -1265,6 +1266,16 @@ class NovelHomePage extends HookConsumerWidget {
             ),
           ),
           const DesktopUpdateEntry(),
+          Divider(height: 1, thickness: 1, color: colors.border),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(
+              RevericSpacing.x2l,
+              RevericSpacing.md,
+              RevericSpacing.x2l,
+              0,
+            ),
+            child: CommunityRow(),
+          ),
           const UserProfileBar(),
         ],
       ),

@@ -202,6 +202,7 @@ flutter:
     - assets/icons/providers/
     - assets/icons/ai_assistant/
     - assets/icons/phosphor/ # Phosphor Icons (MIT), https://github.com/phosphor-icons/core
+    - assets/icons/brand/ # QQ mark from Simple Icons (CC0), https://simpleicons.org
     - assets/icons/collapse.svg
     - assets/images/map.webp
     - assets/images/onboarding-background.webp

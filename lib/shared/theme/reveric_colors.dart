@@ -83,6 +83,17 @@ class RevericColors {
 
   bool get isDark => brightness == Brightness.dark;
 
+  /// 默认用户头像的底色候选：青、黛、赭、藕、苍。按昵称哈希取一个，
+  /// 使用时与 [surface] / [textPrimary] 混合，因此所有主题和深浅模式共用一组。
+  /// Reveric 主色几乎都是墨绿，只用语义色会让不同昵称的头像难以区分。
+  static const avatarTones = [
+    Color(0xFF4F8C7C),
+    Color(0xFF56688C),
+    Color(0xFFA7714F),
+    Color(0xFF93708A),
+    Color(0xFF76875A),
+  ];
+
   /// Reveric — 玉白 · 墨玉：薄荷冷白底托起纯白卡片，近黑墨玉担主操作，
   /// 翡翠（accentAmber）只做 AI、状态与小面积点缀，不做正文色。
   /// The default theme for creative writing.

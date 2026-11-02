@@ -5,10 +5,10 @@
 //   lib/shared/utils/storage_paths.dart
 //   lib/desktop/widgets/settings/settings_dialog.dart
 //   lib/shared/widgets/user_profile_edit_dialog.dart (本地资料编辑)
+//   lib/shared/widgets/user_avatar.dart
 import '../../shared/components/reveric_dialog.dart';
+import '../../shared/widgets/user_avatar.dart';
 import '../../shared/widgets/user_profile_edit_dialog.dart';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -53,11 +53,6 @@ class UserProfileBar extends ConsumerWidget {
           UserProfileBarMode.dense => 22.0,
           UserProfileBarMode.iconOnly => RevericSizes.aiAvatarSm,
         };
-        final avatarIconSize = switch (mode) {
-          UserProfileBarMode.generous => RevericSizes.avatarRadiusLg,
-          UserProfileBarMode.dense => 16.0,
-          UserProfileBarMode.iconOnly => 14.0,
-        };
 
         void openAccount() {
           showRevericDialog<void>(
@@ -66,33 +61,10 @@ class UserProfileBar extends ConsumerWidget {
           );
         }
 
-        final avatar = Container(
-          width: avatarSize,
-          height: avatarSize,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: colors.surfaceContainer,
-          ),
-          child: ClipOval(
-            child: resolvedAvatar != null
-                ? Image.file(
-                    File(resolvedAvatar),
-                    width: avatarSize,
-                    height: avatarSize,
-                    fit: BoxFit.cover,
-                    cacheWidth: (avatarSize * 2).toInt(),
-                    errorBuilder: (_, _, _) => RevericIcon(
-                      RevericIcons.person,
-                      size: avatarIconSize,
-                      color: colors.textMuted,
-                    ),
-                  )
-                : RevericIcon(
-                    RevericIcons.person,
-                    size: avatarIconSize,
-                    color: colors.textMuted,
-                  ),
-          ),
+        final avatar = UserAvatar(
+          username: username,
+          imagePath: resolvedAvatar,
+          size: avatarSize,
         );
 
         if (mode == UserProfileBarMode.iconOnly) {

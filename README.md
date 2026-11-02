@@ -2,23 +2,15 @@
 
 # Reveric | 幻界
 
-### AI Native 桌面创作工作台
-**智能体读懂整部作品，和你一起从小说写到成片**
+### AI Native 桌面创作工作台，读懂整部作品，和你一起从小说写到成片
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/looplj/reveric?color=brightgreen" alt="license"></a>
-  <a href="https://github.com/looplj/reveric/releases/latest"><img src="https://img.shields.io/github/v/release/looplj/reveric?color=brightgreen&include_prereleases" alt="release"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Android-blue" alt="platform">
-  <img src="https://img.shields.io/badge/flutter-3.8%2B-02569B?logo=flutter&logoColor=white" alt="flutter">
-  <img src="https://img.shields.io/badge/storage-SQLite%20Local--First-003B57?logo=sqlite&logoColor=white" alt="sqlite">
+  <a href="https://qm.qq.com/q/Ap8pfOWHDO"><img src="https://img.shields.io/badge/QQ%20%E4%BA%A4%E6%B5%81%E7%BE%A4-924148054-12B7F5?style=for-the-badge&logo=qq&logoColor=white&labelColor=0E7FC9" alt="加入 QQ 交流群" height="40"></a>
 </p>
 
 <p align="center">
   <a href="README.md">简体中文</a> •
-  <a href="README.en-US.md">English</a>
-</p>
-
-<p align="center">
+  <a href="README.en-US.md">English</a> ｜
   <a href="#核心特性">核心特性</a> •
   <a href="#全流程展示">全流程展示</a> •
   <a href="#模型支持">模型支持</a> •
@@ -298,14 +290,17 @@ make build-windows-release # 构建 Windows 客户端
 
 遇到缺陷或有功能建议，请提交到 [GitHub Issues](https://github.com/looplj/reveric/issues)。
 
-### AI 小说 / 短剧交流
+### QQ 交流群
 
-- [LINUX DO 社区](https://linux.do/)：学 AI、交流创作经验
-- [QQ 群](https://qm.qq.com/q/Ap8pfOWHDO)（群号：924148054）：交流 AI 小说与短剧创作、分享使用心得
+扫码或[点击链接](https://qm.qq.com/q/Ap8pfOWHDO)加入（群号：924148054），交流 AI 小说与短剧创作、分享使用心得。
 
 <p>
   <a href="https://qm.qq.com/q/Ap8pfOWHDO"><img src="assets/images/qq-group.jpg" alt="QQ 群二维码" width="240"/></a>
 </p>
+
+### 其他社区
+
+- [LINUX DO 社区](https://linux.do/)：学 AI、交流创作经验
 
 ---
 

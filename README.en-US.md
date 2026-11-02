@@ -2,30 +2,22 @@
 
 # Reveric | 幻界
 
-### AI-Native Desktop Creative Studio
-**An agent that understands your entire work, from the first chapter to the final cut.**
+### An AI-native desktop studio that understands your entire work, from the first chapter to the final cut
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/looplj/reveric?color=brightgreen" alt="license"></a>
-  <a href="https://github.com/looplj/reveric/releases/latest"><img src="https://img.shields.io/github/v/release/looplj/reveric?color=brightgreen&include_prereleases" alt="release"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Android-blue" alt="platform">
-  <img src="https://img.shields.io/badge/flutter-3.8%2B-02569B?logo=flutter&logoColor=white" alt="flutter">
-  <img src="https://img.shields.io/badge/storage-SQLite%20Local--First-003B57?logo=sqlite&logoColor=white" alt="sqlite">
+  <a href="https://qm.qq.com/q/Ap8pfOWHDO"><img src="https://img.shields.io/badge/QQ%20Group-924148054-12B7F5?style=for-the-badge&logo=qq&logoColor=white&labelColor=0E7FC9" alt="Join our QQ group" height="40"></a>
 </p>
 
 <p align="center">
   <a href="README.md">简体中文</a> •
-  <a href="README.en-US.md">English</a>
-</p>
-
-<p align="center">
-  <a href="#core-features">Core Features</a> •
-  <a href="#end-to-end-workflow">Workflow Showcase</a> •
-  <a href="#supported-models">Supported Models</a> •
+  <a href="README.en-US.md">English</a> ｜
+  <a href="#core-features">Features</a> •
+  <a href="#end-to-end-workflow">Workflow</a> •
+  <a href="#supported-models">Models</a> •
   <a href="#download--installation">Download</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#developer-guide">Developer Guide</a> •
-  <a href="#feedback--community">Feedback &amp; Community</a> •
+  <a href="#developer-guide">Contribute</a> •
+  <a href="#feedback--community">Community</a> •
   <a href="#license">License</a>
 </p>
 
@@ -298,14 +290,17 @@ make build-windows-release # Windows release bundle
 
 Found a bug or have a feature request? Open an issue on [GitHub Issues](https://github.com/looplj/reveric/issues).
 
-### AI Fiction & Short Drama Community
+### QQ Group
 
-- [LINUX DO community](https://linux.do/): learn about AI and share creative experience
-- [QQ group](https://qm.qq.com/q/Ap8pfOWHDO) (924148054): discuss AI fiction and short drama creation, share tips
+Scan the QR code or [join via link](https://qm.qq.com/q/Ap8pfOWHDO) (group number: 924148054) to discuss AI fiction and short drama creation and share tips.
 
 <p>
   <a href="https://qm.qq.com/q/Ap8pfOWHDO"><img src="assets/images/qq-group.jpg" alt="QQ group QR code" width="240"/></a>
 </p>
+
+### Other Communities
+
+- [LINUX DO community](https://linux.do/): learn about AI and share creative experience
 
 ---
 

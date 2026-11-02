@@ -1,6 +1,7 @@
 // Home sidebar — mirrors lib/desktop/pages/home.dart _buildSidebar().
 // The desktop home uses one navigation column: search, Works, AI entries,
 // recent sessions, then Settings. Editor-only rails stay in EditorView.
+// Footer: community links (QQ group + GitHub) above the local profile bar.
 
 function SectionGroupHeader({ children }) {
   return <div className="m-sb-group-header">{children}</div>;
@@ -57,6 +58,63 @@ function RecentSessions({ sessions }) {
   );
 }
 
+const QQ_GROUP_NUMBER = "924148054";
+// 与 lib/shared/app_config.dart revericQqGroupJoinUrl / revericGitHubRepoUrl 一致。
+const QQ_GROUP_JOIN_URL = "https://qm.qq.com/q/Ap8pfOWHDO";
+const GITHUB_REPO_URL = "https://github.com/looplj/reveric";
+
+// QQ 群是主入口：带文字，比纯图标更容易被看到；群号只提供复制。GitHub 退为图标按钮。
+function CommunityRow() {
+  const [copied, setCopied] = React.useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(QQ_GROUP_NUMBER);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  };
+
+  return (
+    <div className="m-sb-community">
+      <div className="m-sb-qq">
+        <button
+          type="button"
+          className="m-sb-qq__open"
+          title="打开 QQ 加入交流群"
+          onClick={() => window.open(QQ_GROUP_JOIN_URL, "_blank")}
+        >
+          <span className="m-sb-qq__mark"><QqMark size={14} /></span>
+          <span className="m-sb-qq__label">加入 QQ 群</span>
+        </button>
+        <button
+          type="button"
+          className="m-sb-qq__copy"
+          title={copied ? "已复制到剪贴板" : "复制"}
+          onClick={copy}
+        >
+          <Icon name={copied ? "check" : "copy"} size={14} />
+        </button>
+      </div>
+      <button
+        type="button"
+        className="m-icon-btn"
+        title="GitHub 开源仓库"
+        onClick={() => window.open(GITHUB_REPO_URL, "_blank")}
+      >
+        <Icon name="github-logo" size={16} />
+      </button>
+    </div>
+  );
+}
+
+function ProfileBar({ name }) {
+  return (
+    <button type="button" className="m-sb-profile">
+      <DefaultAvatar name={name} size={32} />
+      <span className="m-sb-profile__name">{name}</span>
+      <Icon name="caret-right" size={16} className="m-sb-profile__go" />
+    </button>
+  );
+}
+
 function Sidebar({ activeContent, onSelect, onOpenSettings }) {
   const sessions = window.REVERIC_DATA.recentSessions;
 
@@ -104,6 +162,10 @@ function Sidebar({ activeContent, onSelect, onOpenSettings }) {
 
         <SectionGroupHeader>设置</SectionGroupHeader>
         <LeafItem icon="gear-six" title="设置" onClick={onOpenSettings} />
+      </div>
+      <div className="m-sb-foot">
+        <CommunityRow />
+        <ProfileBar name="远山行者" />
       </div>
     </aside>
   );
