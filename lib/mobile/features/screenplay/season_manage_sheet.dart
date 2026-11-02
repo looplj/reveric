@@ -13,6 +13,7 @@ Future<void> showMobileScreenplaySeasonManager(
   required Novel novel,
   required String screenplayId,
   required Future<bool> Function() onFlush,
+  String? editSeasonId,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -42,6 +43,7 @@ Future<void> showMobileScreenplaySeasonManager(
             databasePath: novel.contentDatabasePath!,
             screenplayId: screenplayId,
             onFlush: onFlush,
+            editSeasonId: editSeasonId,
           ),
         ),
       ),

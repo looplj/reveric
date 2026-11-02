@@ -159,6 +159,21 @@ class _EpisodePickerSheet extends ConsumerWidget {
               );
             },
             child: Text(context.t(LocaleKeys.screenplayManageSeasons)),
+          )
+        // 单季不显示季层，规划集数从「本季设置」直接进表单。
+        else if (season != null)
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              showMobileScreenplaySeasonManager(
+                context,
+                novel: novel,
+                screenplayId: screenplayId,
+                onFlush: onFlush,
+                editSeasonId: season.id,
+              );
+            },
+            child: Text(context.t(LocaleKeys.screenplayEditSeason)),
           ),
         Expanded(
           child: ListView.builder(

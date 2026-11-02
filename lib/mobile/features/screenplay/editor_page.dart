@@ -262,9 +262,7 @@ class _SectionBar extends StatelessWidget {
             return InkWell(
               onTap: () => onSelected(items[index].$1),
               child: Container(
-                margin: const EdgeInsets.symmetric(
-                  vertical: RevericSpacing.sm,
-                ),
+                margin: const EdgeInsets.symmetric(vertical: RevericSpacing.sm),
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(
                   horizontal: RevericSpacing.sm,
@@ -278,10 +276,9 @@ class _SectionBar extends StatelessWidget {
                 ),
                 child: Text(
                   items[index].$2,
-                  style: RevericTheme.typographyOf(context).uiSemibold
-                      .copyWith(
-                        color: active ? colors.onAccent : colors.textSecondary,
-                      ),
+                  style: RevericTheme.typographyOf(context).uiSemibold.copyWith(
+                    color: active ? colors.onAccent : colors.textSecondary,
+                  ),
                 ),
               ),
             );

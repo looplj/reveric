@@ -7,6 +7,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/editor.json
+//   assets/translations/zh-CN/editor.json
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 //   .agents/rules/design-system.md
@@ -38,10 +40,12 @@ class ScreenplayOverviewRegion extends HookConsumerWidget {
     super.key,
     required this.novel,
     required this.screenplayId,
+    this.onEditNovel,
   });
 
   final Novel novel;
   final String screenplayId;
+  final VoidCallback? onEditNovel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -101,6 +105,7 @@ class ScreenplayOverviewRegion extends HookConsumerWidget {
             children: [
               _OverviewHeader(
                 novel: novel,
+                onEditNovel: onEditNovel,
                 seasonCount: seasons.length,
                 episodeCount: scopedEpisodes.length,
               ),
@@ -195,11 +200,13 @@ ScreenplaySeasonRow? _currentSeason(
 class _OverviewHeader extends StatelessWidget {
   const _OverviewHeader({
     required this.novel,
+    required this.onEditNovel,
     required this.seasonCount,
     required this.episodeCount,
   });
 
   final Novel novel;
+  final VoidCallback? onEditNovel;
   final int seasonCount;
   final int episodeCount;
 
@@ -234,14 +241,31 @@ class _OverviewHeader extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: RevericSpacing.md),
-              Text(
-                novel.title,
-                style: typo.body.copyWith(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w700,
-                  height: 1.25,
-                  color: colors.textPrimary,
-                ),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      novel.title,
+                      style: typo.body.copyWith(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: RevericSpacing.md),
+                  IconButton(
+                    tooltip: context.t(LocaleKeys.editorEditNovelInfo),
+                    onPressed: onEditNovel,
+                    splashRadius: 18,
+                    icon: RevericIcon(
+                      RevericIcons.edit_outlined,
+                      size: 18,
+                      color: colors.textMuted,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

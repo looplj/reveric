@@ -195,10 +195,7 @@ class MobileScreenplayScenesPage extends ConsumerWidget {
                             emotion: scenes[index].emotion,
                           ),
                         ),
-                        const RevericIcon(
-                          RevericIcons.chevron_right,
-                          size: 18,
-                        ),
+                        const RevericIcon(RevericIcons.chevron_right, size: 18),
                       ],
                     ),
                     Text(

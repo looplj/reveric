@@ -255,9 +255,7 @@ class ScreenplayEditingRowState extends State<ScreenplayEditingRow> {
   @override
   Widget build(BuildContext context) {
     final editor = _scope.controller;
-    final color = RevericTheme.colorsOf(
-      context,
-    ).accent.withValues(alpha: 0.22);
+    final color = RevericTheme.colorsOf(context).accent.withValues(alpha: 0.22);
     final valid = index < editor.value.length;
     final start = valid ? editor.startOf(index) : 0;
     final selected = editor.selection;

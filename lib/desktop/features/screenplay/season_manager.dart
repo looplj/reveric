@@ -13,6 +13,7 @@ Future<void> showScreenplaySeasonManager(
   required String databasePath,
   required String screenplayId,
   required Future<bool> Function() onFlush,
+  String? editSeasonId,
 }) {
   return showDialog<void>(
     context: context,
@@ -30,6 +31,7 @@ Future<void> showScreenplaySeasonManager(
             databasePath: databasePath,
             screenplayId: screenplayId,
             onFlush: onFlush,
+            editSeasonId: editSeasonId,
           ),
         ),
       ),

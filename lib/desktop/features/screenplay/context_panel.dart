@@ -253,11 +253,28 @@ class ScreenplayContextPanel extends HookConsumerWidget {
         if (episodes.isNotEmpty) ...[
           _SectionHeader(
             label: context.t(LocaleKeys.screenplayEpisodes),
+            // 单季时季选择器不渲染，集数就是本季设置（规划集数）的入口。
             trailingCount: currentSeason == null
                 ? null
-                : ScreenplayEpisodeCount(
-                    episodeCount: episodes.length,
-                    planned: currentSeason.plannedEpisodeCount,
+                : Tooltip(
+                    message: context.t(LocaleKeys.screenplayEditSeason),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(RevericRadius.small),
+                      onTap: () => unawaited(
+                        showScreenplaySeasonManager(
+                          context,
+                          novelId: novelId,
+                          databasePath: databasePath,
+                          screenplayId: screenplayId,
+                          onFlush: onFlush,
+                          editSeasonId: currentSeason.id,
+                        ),
+                      ),
+                      child: ScreenplayEpisodeCount(
+                        episodeCount: episodes.length,
+                        planned: currentSeason.plannedEpisodeCount,
+                      ),
+                    ),
                   ),
             addTooltip: context.t(LocaleKeys.screenplayAddEpisode),
             onAdd: () => unawaited(addEpisode()),

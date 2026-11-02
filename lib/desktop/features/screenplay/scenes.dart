@@ -380,10 +380,7 @@ class _SceneCard extends StatelessWidget {
               children: [
                 OutlinedButton.icon(
                   onPressed: onOpenScript,
-                  icon: const RevericIcon(
-                    RevericIcons.pencil_simple,
-                    size: 13,
-                  ),
+                  icon: const RevericIcon(RevericIcons.pencil_simple, size: 13),
                   label: Text(context.t(LocaleKeys.screenplayEditScript)),
                 ),
               ],

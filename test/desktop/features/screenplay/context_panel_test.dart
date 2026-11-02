@@ -79,6 +79,17 @@ void main() {
     expect(find.text('Manage seasons'), findsNothing);
     expect(find.text('Add season'), findsOneWidget);
 
+    // 单季时分集标题上的集数直接进本季设置，保存后关闭弹窗。
+    await tester.tap(find.byTooltip('Season settings'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '6');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.text('1/6 eps'), findsOneWidget);
+    expect(find.text('Season 1'), findsNothing);
+
     await service.createSeason(screenplayId: root.id);
     await tester.pumpAndSettle();
 

@@ -68,10 +68,7 @@ class MobileScreenplayHeader extends StatelessWidget {
                           ),
                         ),
                         if (onEpisode != null)
-                          const RevericIcon(
-                            RevericIcons.caret_down,
-                            size: 14,
-                          ),
+                          const RevericIcon(RevericIcons.caret_down, size: 14),
                       ],
                     ),
                   ],

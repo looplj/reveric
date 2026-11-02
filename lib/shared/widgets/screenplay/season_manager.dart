@@ -46,12 +46,17 @@ class ScreenplaySeasonManager extends HookConsumerWidget {
     required this.databasePath,
     required this.screenplayId,
     required this.onFlush,
+    this.editSeasonId,
   });
 
   final String novelId;
   final String databasePath;
   final String screenplayId;
   final Future<bool> Function() onFlush;
+
+  /// 直接打开这一季的设置表单，取消或保存后关闭弹层而不是回到季列表。
+  /// 单季作品不显示季层，规划集数只能从这里进。
+  final String? editSeasonId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -188,7 +193,17 @@ class ScreenplaySeasonManager extends HookConsumerWidget {
       }
     }
 
-    final editedSeason = editing.value;
+    final editedSeason =
+        editing.value ??
+        seasons.where((season) => season.id == editSeasonId).firstOrNull;
+    void closeEdit() {
+      if (editSeasonId != null) {
+        Navigator.of(context).pop();
+      } else {
+        editing.value = null;
+      }
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -253,7 +268,7 @@ class ScreenplaySeasonManager extends HookConsumerWidget {
               key: ValueKey(editedSeason.id),
               season: editedSeason,
               busy: busy.value,
-              onCancel: () => editing.value = null,
+              onCancel: closeEdit,
               onSave: (title, planned) => run(() async {
                 await service.updateSeason(
                   seasonId: editedSeason.id,
@@ -262,7 +277,7 @@ class ScreenplaySeasonManager extends HookConsumerWidget {
                 );
                 if (context.mounted) {
                   FocusScope.of(context).unfocus();
-                  editing.value = null;
+                  closeEdit();
                 }
               }),
             ),
@@ -452,9 +467,7 @@ class ScreenplaySeasonManager extends HookConsumerWidget {
                           },
                         ),
                       );
-                      final radius = BorderRadius.circular(
-                        RevericRadius.large,
-                      );
+                      final radius = BorderRadius.circular(RevericRadius.large);
                       return ReorderableDelayedDragStartListener(
                         key: ValueKey(season.id),
                         index: index,

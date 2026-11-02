@@ -687,6 +687,7 @@ class NovelWorkspacePanel extends ConsumerWidget {
         return ScreenplayOverviewRegion(
           novel: novel,
           screenplayId: screenplayId,
+          onEditNovel: onEditNovel,
         );
       },
     );
