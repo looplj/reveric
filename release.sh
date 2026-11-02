@@ -154,7 +154,7 @@ if [[ "$GITHUB_RELEASE" == true ]]; then
     "git push origin $TAG"
 
   run "创建 GitHub Release ${TAG}" \
-    "gh release create $TAG --title '$TAG' --generate-notes --verify-tag"
+    "gh release create $TAG --title '$TAG' --notes-from-tag --verify-tag"
 fi
 
 popd >/dev/null
