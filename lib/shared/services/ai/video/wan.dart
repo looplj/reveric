@@ -30,8 +30,12 @@ class WanVideoClient extends VideoClient {
       'api/v1/services/aigc/video-generation/video-synthesis';
   @override
   String queryPath(String id) => 'api/v1/tasks/$id';
+
+  /// 仅创建任务需要声明异步；`GET api/v1/tasks/{id}` 属于同步查询接口，
+  /// 携带该头时 workspace 专属 Endpoint 会直接返回
+  /// `403 access_denied: current user api does not support asynchronous calls`。
   @override
-  Map<String, String> get extraHeaders => {'X-DashScope-Async': 'enable'};
+  Map<String, String> get submitHeaders => {'X-DashScope-Async': 'enable'};
   @override
   Map<String, dynamic> encode(
     VideoRequest request,

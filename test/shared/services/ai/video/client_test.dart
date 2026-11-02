@@ -791,6 +791,12 @@ void main() {
           );
           expect(seen.last.url.path, '/proxy/api/v1/tasks/task-1');
           expect(seen.first.headers['X-DashScope-Async'], 'enable');
+          // 查询接口是同步接口，携带异步头会被 workspace Endpoint 403 拒绝。
+          expect(
+            seen.last.headers.containsKey('X-DashScope-Async'),
+            false,
+            reason: '任务查询不得携带异步请求头',
+          );
           expect(body['input']['media'], [
             for (final ref in refs)
               {'type': ref.role.name, 'url': ref.url.toString()},

@@ -45,7 +45,11 @@ abstract class VideoClient {
   String queryPath(String id);
   Uri queryUrl(String id, String modelId) =>
       url(queryPath(Uri.encodeComponent(id)));
-  Map<String, String> get extraHeaders => const {};
+
+  /// 仅创建任务（POST）需要的额外请求头。
+  /// 查询/下载接口不是异步调用入口，携带异步头会被上游判为 403
+  /// access_denied（如 workspace 专属 Endpoint 的 `X-DashScope-Async`）。
+  Map<String, String> get submitHeaders => const {};
   Map<String, dynamic> encode(
     VideoRequest request,
     List<VideoReference> references,
@@ -201,8 +205,11 @@ abstract class VideoClient {
             'Authorization': 'Bearer $apiKey',
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            ...extraHeaders,
           });
+        // 异步头只在创建任务时发送；查询接口携带会被上游判为 403。
+        if (submitting) {
+          request.headers.addAll(submitHeaders);
+        }
         if (body != null) {
           request.body = jsonEncode(body);
         }
