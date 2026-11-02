@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # release.sh — 更新本地版本并创建 tag（可选创建 GitHub Release）
+# 新 tag 的注释包含自上一个版本 tag 以来的提交记录。
 #
 # 用法:
 #   ./release.sh 1.2.3                            本地 commit + tag
@@ -61,6 +62,13 @@ existing_tag_target() {
   git rev-list -n 1 "$TAG" 2>/dev/null || true
 }
 
+create_tag() {
+  printf '\n==> 创建 annotated tag %s，changelog:\n%s\n' "$TAG" "$TAG_NOTES"
+  if [[ "$DRY_RUN" != "--dry-run" ]]; then
+    git tag -a "$TAG" -F - <<< "$TAG_NOTES"
+  fi
+}
+
 # 检查分支
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" != "unstable" ]]; then
@@ -79,6 +87,15 @@ if [[ "$SKIP_TAG" != true ]]; then
       echo "       HEAD -> $HEAD_COMMIT"
       exit 1
     fi
+  else
+    # 在版本更新 commit 之前收集，避免把本次版本号更新列入 changelog。
+    PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2>/dev/null || true)"
+    CHANGELOG_RANGE="HEAD"
+    if [[ -n "$PREVIOUS_TAG" ]]; then
+      CHANGELOG_RANGE="$PREVIOUS_TAG..HEAD"
+    fi
+    CHANGELOG="$(git log --no-merges --format='- %s (%h)' "$CHANGELOG_RANGE")"
+    TAG_NOTES="$(printf '%s\n\nChangelog\n\n%s' "$TAG" "${CHANGELOG:-无新增提交。}")"
   fi
 fi
 
@@ -110,9 +127,6 @@ fi
 
 if [[ "$SKIP_TAG" == true ]]; then
   echo -e "\n==> 已启用 --skip-tag，跳过 tag ${TAG} 检查与创建"
-elif [[ "$DRY_RUN" == "--dry-run" ]]; then
-  run "git tag $TAG" \
-    "git tag $TAG"
 else
   EXISTING_TAG_TARGET="$(existing_tag_target)"
   if [[ -n "$EXISTING_TAG_TARGET" ]]; then
@@ -126,8 +140,7 @@ else
       exit 1
     fi
   else
-    run "git tag $TAG" \
-      "git tag $TAG"
+    create_tag
   fi
 fi
 
