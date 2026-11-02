@@ -242,20 +242,32 @@ A Reveric command executed through the Run tool using JSON fields: `command` nam
 
 ### Remote Interaction
 
-**Remote Channel**:
-A non-desktop entry point into Reveric's agent system, such as WeChat in V1. A Remote Channel is transport-only — it carries messages between the user and the Remote Assistant, and all intelligence lives in the agent. The Remote Channel is not a Chat Subagent and does not delegate to the Chat Orchestrator.
-_Avoid_: bridge, IM adapter, messaging integration, remote chat
+**Remote Access**:
+Access from one of a user's devices to the Works and agent activity held on another of that user's devices. The accessed device retains ownership of its local data; device roles depend on the direction of access rather than whether a device is a phone or a computer.
+_Avoid_: IM Channel, remote desktop, cross-device data synchronization
+
+**Accessed Device**:
+The device in a Remote Access relationship that owns the Works and runs the agent sessions being accessed. Its local data and execution remain authoritative.
+_Avoid_: executing device, owning device, host device, computer (as a role name)
+
+**Accessing Device**:
+The device in a Remote Access relationship that views Works and directs agent sessions held on an Accessed Device. It keeps no offline Work replica.
+_Avoid_: operating device, controller, client device, phone (as a role name)
+
+**IM Channel**:
+A messaging entry point, such as WeChat, that carries messages between the user and the Remote Assistant. An IM Channel is distinct from Remote Access to another device's Works and agent activity.
+_Avoid_: Remote Channel, remote access, bridge
 
 **Remote Assistant**:
-The primary agent behind a Remote Channel entry point, parallel to the Chat Orchestrator (which is behind the desktop chat entry point). The Remote Assistant can list novels, start Jobs, report Job status, and share chapter reviews. In V1 it does not directly read or write novel workspaces — workspace work is delegated to Jobs. It is not a Chat Subagent and is not delegated to by the Chat Orchestrator; it is a separate entry-point agent for remote users.
+The primary agent behind an IM Channel entry point, parallel to the Chat Orchestrator (which is behind the desktop chat entry point). The Remote Assistant can list novels, start Jobs, report Job status, and share chapter reviews. In V1 it does not directly read or write novel workspaces — workspace work is delegated to Jobs. It is not a Chat Subagent and is not delegated to by the Chat Orchestrator; it is a separate entry-point agent for IM users.
 _Avoid_: remote orchestrator, WeChat agent, bridge agent, remote subagent, Assistant (too generic for the glossary)
 
 **Remote Assistant Session**:
-A persistent chat session for one Remote Channel user, cross-novel by design. Distinct from novel-bound chat sessions — the Remote Assistant Session routes work to specific novels via Jobs rather than being bound to one. One Remote Assistant Session per remote user.
+A persistent chat session for one IM Channel user, cross-novel by design. Distinct from novel-bound chat sessions — the Remote Assistant Session routes work to specific novels via Jobs rather than being bound to one. One Remote Assistant Session per IM user.
 _Avoid_: bridge session, wechat session, remote session, unbound session
 
 **Job**:
-A novel-scoped background writing execution started from a **Remote Assistant Session**. Progress and questions return on the Remote Channel.
+A novel-scoped background writing execution started from a **Remote Assistant Session**. Progress and questions return on the IM Channel.
 _Avoid_: Run (for this remote execution), session
 
 ### Workspace Editing
