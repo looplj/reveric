@@ -2629,7 +2629,6 @@ Future<void> _openWorkspaceResource(
       return;
     case NovelWorkspaceSection.screenplay_script:
     case NovelWorkspaceSection.screenplay_outline:
-    case NovelWorkspaceSection.screenplay_beats:
     case NovelWorkspaceSection.screenplay_scenes:
       final provider = screenplayWorkspaceStateControllerProvider(
         novelId,
@@ -2639,8 +2638,6 @@ Future<void> _openWorkspaceResource(
       final section = switch (request.section) {
         NovelWorkspaceSection.screenplay_outline =>
           ScreenplayWorkspaceSection.outline,
-        NovelWorkspaceSection.screenplay_beats =>
-          ScreenplayWorkspaceSection.beats,
         _ => ScreenplayWorkspaceSection.script,
       };
       // 大纲区按集寻址：id 是集 ID，写进 sceneId 会被 reconcile 丢掉。

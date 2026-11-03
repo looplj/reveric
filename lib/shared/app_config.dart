@@ -1,4 +1,4 @@
-// 职责: 应用级别编译期常量（版本号、产品线、匿名上报地址、反馈渠道、匿名诊断公共头）
+// 职责: 应用级别编译期常量（版本号、功能开关、产品线、匿名上报地址、反馈渠道、匿名诊断公共头）
 // 关联文件:
 //   lib/shared/providers/trace_providers.dart
 //   lib/shared/providers/anonymous_reporting_providers.dart
@@ -44,3 +44,9 @@ final revericApiHeaders = <String, String>{
 
 /// 用户主动提交日志与会话的诊断后端，与匿名事件上报独立。
 const diagnosticsBaseUrl = 'https://diagnostics.reveric.app';
+
+/// 构思画布的 UI、工具与内置技能入口；不影响视频制作画布。
+const ideationCanvasEnabled = bool.fromEnvironment(
+  'ENABLE_IDEATION_CANVAS',
+  defaultValue: false,
+);

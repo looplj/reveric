@@ -21,6 +21,14 @@ import 'package:reveric/shared/providers/screenplay_workspace_state_provider.dar
 import 'package:reveric/shared/services/screenplay_service.dart';
 
 void main() {
+  test('unknown section falls back to overview', () {
+    final state = ScreenplayWorkspaceState.fromJson({
+      'section': 'beats',
+      'episodeId': 'ep1',
+    });
+    expect(state.section, ScreenplayWorkspaceSection.overview);
+    expect(state.episodeId, 'ep1');
+  });
   test(
     'scene navigation resolves current hierarchy after a cross-season move and rejects deletion',
     () async {

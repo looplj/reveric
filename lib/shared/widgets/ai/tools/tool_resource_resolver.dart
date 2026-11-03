@@ -401,7 +401,7 @@ final toolResolvedResourceProvider =
       return fallback();
     });
 
-const _screenplayCollections = {'seasons', 'episodes', 'scenes', 'beats'};
+const _screenplayCollections = {'seasons', 'episodes', 'scenes'};
 
 Future<AiToolResolvedResource?> _resolveScreenplayResource(
   Ref ref,
@@ -412,7 +412,6 @@ Future<AiToolResolvedResource?> _resolveScreenplayResource(
   final id = switch (collection) {
     'seasons' => parsed.locator('season_id'),
     'episodes' => parsed.locator('episode_id'),
-    'beats' => parsed.locator('beat_id'),
     'scenes' => parsed.locator('scene_id'),
     _ => null,
   };
@@ -420,20 +419,13 @@ Future<AiToolResolvedResource?> _resolveScreenplayResource(
   String? seasonId = collection == 'seasons' ? id : query['season_id'];
   String? episodeId = collection == 'episodes' ? id : query['episode_id'];
   final sceneId = collection == 'scenes' ? id : query['scene_id'];
-  final beatId = collection == 'beats' ? id : query['beat_id'];
   int? sceneNumber;
-  int? beatNumber;
   String title = '';
   String? detail;
 
   // ref.watch 尽量在 await 之前同步登记：本 provider 是 autoDispose，跨 await 再
   // watch 会在订阅者中途消失时用到已失效的 ref。root 之后的三个 family 都要
   // root.id，没法再往前提，所以集中在下面这一处一次性登记，然后统一 await。
-  final db = ref.watch(novelContentDatabaseProvider(databasePath));
-  // 节拍要先按 ID 查所属集才能订阅该集目录，这一次 DAO 读与 root 并行发起。
-  final beatRowFuture = beatId == null
-      ? null
-      : db.screenplayDao.getBeat(beatId);
   final root = await ref.watch(screenplayRootProvider(databasePath).future);
   if (root == null) {
     return null;
@@ -468,27 +460,6 @@ Future<AiToolResolvedResource?> _resolveScreenplayResource(
     }
     query.remove('scene_id');
   }
-  if (beatId != null) {
-    final row = await beatRowFuture!;
-    if (row == null) {
-      return null;
-    }
-    // 订阅所属集的节拍目录，编号/标题随改名和重排更新。这一处 watch 无法前移：
-    // 目标集要先由上面的 getBeat 查出来。
-    final beats = await ref.watch(
-      screenplayBeatsProvider(databasePath, row.episodeId).future,
-    );
-    final beat = beats.where((entry) => entry.id == beatId).firstOrNull;
-    if (beat == null) {
-      return null;
-    }
-    episodeId ??= beat.episodeId;
-    beatNumber = beat.beatNumber;
-    if (collection == 'beats' && id != null) {
-      title = beat.title;
-    }
-    query.remove('beat_id');
-  }
   final episode = episodes.where((row) => row.id == episodeId).firstOrNull;
   if (episodeId != null && episode == null) {
     return null;
@@ -517,7 +488,6 @@ Future<AiToolResolvedResource?> _resolveScreenplayResource(
       if (season != null) LocaleKeys.screenplaySeason: season.seasonNumber,
       if (episode != null) LocaleKeys.screenplayEpisode: episode.episodeNumber,
       LocaleKeys.screenplayScene: ?sceneNumber,
-      LocaleKeys.aiToolBeatIndexFmt: ?beatNumber,
     },
     field: parsed.field ?? detail,
     queryParameters: query,

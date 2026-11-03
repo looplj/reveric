@@ -5,6 +5,7 @@
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/services/ai/codemode/tool.dart
 
+import 'package:reveric/shared/app_config.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -101,7 +102,8 @@ void main() {
             ('foreshadowing', {'title': '伏笔'}, 'title', '新伏笔'),
             ('skills', {'title': '技能'}, 'content', '新内容'),
             ('lore', {'title': '世界'}, 'content', '新世界'),
-            ('canvas', {'name': '画布'}, 'description', '新说明'),
+            if (ideationCanvasEnabled)
+              ('canvas', {'name': '画布'}, 'description', '新说明'),
           ]) {
         final created = await call('Create', {
           'path': collection,
@@ -306,6 +308,10 @@ void main() {
   test(
     'canvas layout uses value and reports changes without movement counts',
     () async {
+      if (!ideationCanvasEnabled) {
+        await call('Read', {'path': '/canvas'}, ok: false);
+        return;
+      }
       await call('Create', {
         'path': 'canvas',
         'fields': {'name': '空画布'},
@@ -369,10 +375,6 @@ void main() {
         sessionId: 'test',
       )..registerAllTools();
       addTearDown(script.dispose);
-      final beat = await call('Create', {
-        'path': 'beats',
-        'fields': {'episode_id': fixture.episodeId, 'act_number': 1},
-      }, manager: script);
       final scene = await call('Create', {
         'path': 'scenes',
         'fields': {'episode_id': fixture.episodeId},
@@ -385,8 +387,6 @@ void main() {
         'seasons/${fixture.seasonId}/title',
         'episodes/${fixture.episodeId}/title',
         'episodes/${fixture.episodeId}/outline',
-        '${beat['path']}/title',
-        '${beat['path']}/description',
         '${scene['path']}/title',
         '${scene['path']}/synopsis',
         '${element['path']}/text',
@@ -434,18 +434,6 @@ void main() {
         }, manager: script))['updated'],
         isTrue,
       );
-      final movedBeat = await call('Write', {
-        'path': beat['path'],
-        'fields': {'act_number': 2},
-      }, manager: script);
-      expect(movedBeat['updated'], isTrue);
-      expect(
-        (await call('Read', {
-          'path': beat['path'],
-        }, manager: script))['act_number'],
-        2,
-      );
-
       final characters = <String>[];
       for (final name in ['甲', '乙', '丙']) {
         final character = await call('Create', {
@@ -830,33 +818,34 @@ void main() {
   test(
     'canvas and screenplay Edit share counts without echoing input all',
     () async {
-      await call('Create', {
-        'path': 'canvas',
-        'fields': {'name': '测试'},
-      });
-      final node = await call('Create', {
-        'path': 'canvas/测试/nodes',
-        'fields': {'type': 'sticky', 'content': '旧旧'},
-      });
-      final canvasEdit = await call('Edit', {
-        'path': '${node['path']}/content',
-        'old_text': '旧',
-        'new_text': '新',
-        'all': true,
-      });
-      expect(canvasEdit['match_count'], 2);
-      expect(canvasEdit['edited'], isTrue);
-      final canvasUnchanged = await call('Edit', {
-        'path': '${node['path']}/content',
-        'old_text': '新',
-        'new_text': '新',
-        'all': true,
-      });
-      expect(canvasUnchanged['edited'], isFalse);
-      expect(canvasEdit.containsKey('updated'), isFalse);
-      expect(canvasEdit.containsKey('replacements'), isFalse);
-      expect(canvasEdit.containsKey('all'), isFalse);
-
+      if (ideationCanvasEnabled) {
+        await call('Create', {
+          'path': 'canvas',
+          'fields': {'name': '测试'},
+        });
+        final node = await call('Create', {
+          'path': 'canvas/测试/nodes',
+          'fields': {'type': 'sticky', 'content': '旧旧'},
+        });
+        final canvasEdit = await call('Edit', {
+          'path': '${node['path']}/content',
+          'old_text': '旧',
+          'new_text': '新',
+          'all': true,
+        });
+        expect(canvasEdit['match_count'], 2);
+        expect(canvasEdit['edited'], isTrue);
+        final canvasUnchanged = await call('Edit', {
+          'path': '${node['path']}/content',
+          'old_text': '新',
+          'new_text': '新',
+          'all': true,
+        });
+        expect(canvasUnchanged['edited'], isFalse);
+        expect(canvasEdit.containsKey('updated'), isFalse);
+        expect(canvasEdit.containsKey('replacements'), isFalse);
+        expect(canvasEdit.containsKey('all'), isFalse);
+      }
       final fixture = await ScreenplayService(db).createInitialStructure();
       final manager = AiToolManager(
         content,
@@ -896,14 +885,6 @@ void main() {
       expect(schema['required'], contains('value'));
       expect(_accepts(schema, read), isTrue);
 
-      final beat = await call('Create', {
-        'path': 'beats',
-        'fields': {
-          'episode_id': fixture.episodeId,
-          'act_number': 1,
-          'description': '旧旧',
-        },
-      }, manager: manager);
       final scene = await call('Create', {
         'path': 'scenes',
         'fields': {
@@ -917,7 +898,6 @@ void main() {
         'fields': {'type': 'action', 'text': '旧旧'},
       }, manager: manager);
       for (final path in [
-        '${beat['path']}/description',
         '${scene['path']}/title',
         '${scene['path']}/synopsis',
         '${element['path']}/text',

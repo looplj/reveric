@@ -889,9 +889,7 @@ class _ReferenceChip extends StatelessWidget {
       NovelWorkspaceSection.screenplay_script => RevericIcons.movie_outlined,
       NovelWorkspaceSection.screenplay_outline =>
         RevericIcons.list_alt_outlined,
-      NovelWorkspaceSection.screenplay_beats => RevericIcons.timeline_outlined,
-      NovelWorkspaceSection.screenplay_scenes =>
-        RevericIcons.category_outlined,
+      NovelWorkspaceSection.screenplay_scenes => RevericIcons.category_outlined,
       _ => RevericIcons.description_outlined,
     };
 

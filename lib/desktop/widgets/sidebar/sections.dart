@@ -150,7 +150,7 @@ extension _LeftSidebarSections on _LeftSidebarState {
           },
         );
       case NovelWorkspaceSection.canvas:
-        if (widget.databasePath == null) {
+        if (!ideationCanvasEnabled || widget.databasePath == null) {
           return const SizedBox.shrink();
         }
         return CanvasListPanel(
@@ -172,7 +172,6 @@ extension _LeftSidebarSections on _LeftSidebarState {
       // 剧本四个 section 共用一棵季 / 集 / 场次树，切 rail 不换中栏。
       case NovelWorkspaceSection.screenplay_script:
       case NovelWorkspaceSection.screenplay_outline:
-      case NovelWorkspaceSection.screenplay_beats:
       case NovelWorkspaceSection.storyboard:
       case NovelWorkspaceSection.screenplay_scenes:
         return _buildScreenplaySectionPanel(context);

@@ -6,6 +6,8 @@
 //   lib/shared/providers/workspace_navigation_provider.dart
 //   lib/shared/services/canvas_service.dart
 
+import '../app_config.dart';
+
 extension NovelWorkspaceSectionX on NovelWorkspaceSection {
   bool get isReadOnly => switch (this) {
     NovelWorkspaceSection.overview ||
@@ -34,7 +36,6 @@ extension NovelWorkspaceSectionX on NovelWorkspaceSection {
     NovelWorkspaceSection.screenplay_script => 'screenplay_scenes',
     // 大纲区编辑的是集大纲，itemId 是集 ID，不是场次 ID。
     NovelWorkspaceSection.screenplay_outline => 'screenplay_episodes',
-    NovelWorkspaceSection.screenplay_beats => 'screenplay_beats',
     NovelWorkspaceSection.screenplay_scenes => 'screenplay_scenes',
     NovelWorkspaceSection.storyboard => 'production_clips',
   };
@@ -48,7 +49,6 @@ extension NovelWorkspaceSectionX on NovelWorkspaceSection {
     final isScreenplayResource =
         this == NovelWorkspaceSection.screenplay_script ||
         this == NovelWorkspaceSection.screenplay_outline ||
-        this == NovelWorkspaceSection.screenplay_beats ||
         this == NovelWorkspaceSection.screenplay_scenes;
     if (isScreenplayResource &&
         screenplayItemId != null &&
@@ -58,7 +58,6 @@ extension NovelWorkspaceSectionX on NovelWorkspaceSection {
         NovelWorkspaceSection.screenplay_script => '/scenes/$escaped/elements',
         NovelWorkspaceSection.screenplay_outline =>
           '/episodes/$escaped/outline',
-        NovelWorkspaceSection.screenplay_beats => '/beats/$escaped',
         NovelWorkspaceSection.screenplay_scenes => '/scenes/$escaped',
         _ => null,
       };
@@ -121,11 +120,10 @@ NovelWorkspaceSection? novelWorkspaceSectionFromAiResourceType(
     'foreshadowing' => NovelWorkspaceSection.foreshadowings,
     'novel' => NovelWorkspaceSection.novel_description,
     'maps' => NovelWorkspaceSection.maps,
-    'canvas' => NovelWorkspaceSection.canvas,
+    'canvas' => ideationCanvasEnabled ? NovelWorkspaceSection.canvas : null,
     'screenplay_scenes' => NovelWorkspaceSection.screenplay_scenes,
     'production_clips' => NovelWorkspaceSection.storyboard,
     'screenplay_episodes' => NovelWorkspaceSection.screenplay_outline,
-    'screenplay_beats' => NovelWorkspaceSection.screenplay_beats,
     _ => null,
   };
 }
@@ -161,7 +159,6 @@ enum NovelWorkspaceSection {
   story_progress,
   screenplay_script,
   screenplay_outline,
-  screenplay_beats,
   screenplay_scenes,
   storyboard,
 }

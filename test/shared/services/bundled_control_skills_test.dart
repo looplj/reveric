@@ -9,6 +9,8 @@
 //   assets/bundled_skills/management/references/
 //   assets/bundled_skills/story-continuity/references/relations.md
 
+import 'package:reveric/shared/app_config.dart';
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -89,6 +91,18 @@ void main() {
     },
   );
 
+  test(
+    'canvas skill discovery and direct loading follow the feature switch',
+    () async {
+      expect(bundledControlCallNames.contains('画布构图指南'), ideationCanvasEnabled);
+      final skill = await loader.findByCallName(bundle, '画布构图指南');
+      expect(skill != null, ideationCanvasEnabled);
+      if (skill != null) {
+        expect(skill.references, hasLength(4));
+      }
+    },
+  );
+
   group('loadAll', () {
     test('returns all bundled control skills in fixed spec order', () {
       // fallback 必须齐齐返回,顺序固定,便于上层按 index 引用或 diff。
@@ -96,7 +110,14 @@ void main() {
       return loader.loadAll(bundle).then((skills) {
         expect(
           skills.map((s) => s.callName).toList(),
-          equals(['创作向导', '系统管理', '画布构图指南', '剧本工具使用规范', '故事连续性维护', '媒体处理与剪辑']),
+          equals([
+            '创作向导',
+            '系统管理',
+            if (ideationCanvasEnabled) '画布构图指南',
+            '剧本工具使用规范',
+            '故事连续性维护',
+            '媒体处理与剪辑',
+          ]),
         );
       });
     });
@@ -112,7 +133,10 @@ void main() {
 
           expect(byCallName['创作向导']!.callName, '创作向导');
           expect(byCallName['系统管理']!.callName, '系统管理');
-          expect(byCallName['画布构图指南']!.callName, '画布构图指南');
+          expect(
+            byCallName['画布构图指南']?.callName,
+            ideationCanvasEnabled ? '画布构图指南' : null,
+          );
           expect(byCallName['剧本工具使用规范']!.callName, '剧本工具使用规范');
           expect(byCallName['故事连续性维护']!.callName, '故事连续性维护');
 
@@ -255,41 +279,44 @@ void main() {
             expect(management.prompt, isNot(contains(reference.content)));
           }
 
-          final canvasGuide = skills.firstWhere((s) => s.callName == '画布构图指南');
-          expect(canvasGuide.name, '画布构图指南');
-          expect(canvasGuide.whenToUse, contains('操作构思画布'));
-          expect(canvasGuide.whenToUse, contains('按集制作画布'));
-          expect(canvasGuide.whenToUse, contains('「剧本工具使用规范」'));
-          expect(
-            canvasGuide.whenToUse,
-            isNot(contains('三个以上')),
-            reason: '构思画布操作不以节点数量为加载门槛',
-          );
-          // 入口保留共同调用契约，具体构图方法在场景附件中。
-          expect(canvasGuide.prompt, contains('构图优先用 `col`/`row`'));
-          // canvas 操作细节从 Read/Write 工具描述下沉到此,删掉就等于删掉唯一真源。
-          expect(canvasGuide.prompt, contains('/canvas/{name}/layout'));
-          expect(canvasGuide.prompt, contains('/canvas/{name}/open'));
-          expect(canvasGuide.prompt, contains('?search='));
-          expect(canvasGuide.prompt, contains('/_schema/canvas'));
-          expect(canvasGuide.prompt, contains('整体覆盖便签正文'));
-          expect(canvasGuide.prompt, contains('局部替换便签正文'));
-          expect(canvasGuide.prompt, contains('不支持 Write / Edit'));
-          expect(canvasGuide.prompt, contains('创建后不可写'));
-          expect(canvasGuide.prompt, contains('不是可读字段'));
-          expect(canvasGuide.prompt, contains('成功响应仅为 `{"ok": true}`'));
-          expect(canvasGuide.prompt, contains('"value": "发现新的线索"'));
-          expect(
-            canvasGuide.prompt,
-            contains('"old_text": "新的", "new_text": "关键"'),
-          );
-          expect(canvasGuide.prompt, contains('工具仍支持 `x`/`y`'));
+          if (ideationCanvasEnabled) {
+            final canvasGuide = skills.firstWhere(
+              (s) => s.callName == '画布构图指南',
+            );
+            expect(canvasGuide.name, '画布构图指南');
+            expect(canvasGuide.whenToUse, contains('操作构思画布'));
+            expect(canvasGuide.whenToUse, contains('按集制作画布'));
+            expect(canvasGuide.whenToUse, contains('「剧本工具使用规范」'));
+            expect(
+              canvasGuide.whenToUse,
+              isNot(contains('三个以上')),
+              reason: '构思画布操作不以节点数量为加载门槛',
+            );
+            // 入口保留共同调用契约，具体构图方法在场景附件中。
+            expect(canvasGuide.prompt, contains('构图优先用 `col`/`row`'));
+            // canvas 操作细节从 Read/Write 工具描述下沉到此,删掉就等于删掉唯一真源。
+            expect(canvasGuide.prompt, contains('/canvas/{name}/layout'));
+            expect(canvasGuide.prompt, contains('/canvas/{name}/open'));
+            expect(canvasGuide.prompt, contains('?search='));
+            expect(canvasGuide.prompt, contains('/_schema/canvas'));
+            expect(canvasGuide.prompt, contains('整体覆盖便签正文'));
+            expect(canvasGuide.prompt, contains('局部替换便签正文'));
+            expect(canvasGuide.prompt, contains('不支持 Write / Edit'));
+            expect(canvasGuide.prompt, contains('创建后不可写'));
+            expect(canvasGuide.prompt, contains('不是可读字段'));
+            expect(canvasGuide.prompt, contains('成功响应仅为 `{"ok": true}`'));
+            expect(canvasGuide.prompt, contains('"value": "发现新的线索"'));
+            expect(
+              canvasGuide.prompt,
+              contains('"old_text": "新的", "new_text": "关键"'),
+            );
+            expect(canvasGuide.prompt, contains('工具仍支持 `x`/`y`'));
 
-          expect(
-            canvasGuide.assetPath,
-            'assets/bundled_skills/canvas-composition/SKILL.md',
-          );
-
+            expect(
+              canvasGuide.assetPath,
+              'assets/bundled_skills/canvas-composition/SKILL.md',
+            );
+          }
           final relationGuide = skills.firstWhere(
             (s) => s.callName == '故事连续性维护',
           );
@@ -331,18 +358,22 @@ void main() {
       expect(await loader.findByCallName(bundle, '图像生成工具指南'), isNull);
       expect(await loader.findByCallName(bundle, '地图设计指南'), isNull);
       expect(await loader.findByCallName(bundle, '地图草稿工具指南'), isNull);
-      final canvas = skills.singleWhere((skill) => skill.callName == '画布构图指南');
-      expect(
-        canvas.references.map((ref) => ref.path),
-        unorderedEquals([
-          'references/story-structure.md',
-          'references/branching-story.md',
-          'references/relationships.md',
-          'references/idea-board.md',
-        ]),
-      );
-      for (final reference in canvas.references) {
-        expect(reference.content, isNotEmpty, reason: reference.path);
+      if (ideationCanvasEnabled) {
+        final canvas = skills.singleWhere(
+          (skill) => skill.callName == '画布构图指南',
+        );
+        expect(
+          canvas.references.map((ref) => ref.path),
+          unorderedEquals([
+            'references/story-structure.md',
+            'references/branching-story.md',
+            'references/relationships.md',
+            'references/idea-board.md',
+          ]),
+        );
+        for (final reference in canvas.references) {
+          expect(reference.content, isNotEmpty, reason: reference.path);
+        }
       }
       final screenplay = skills.singleWhere(
         (skill) => skill.callName == '剧本工具使用规范',
@@ -396,41 +427,49 @@ void main() {
     },
   );
 
-  test('every bundled file is registered and relative links resolve', () async {
-    final skills = await loader.loadAll(bundle);
-    final registered = <String>{};
-    final link = RegExp(r'\]\(([^)#]+\.md)(?:#[^)]*)?\)');
-    for (final skill in skills) {
-      final root = File(skill.assetPath).parent;
-      registered.add(skill.assetPath);
-      final bodies = {
-        skill.assetPath: skill.prompt,
-        for (final ref in skill.references)
-          '${root.path}/${ref.path}': ref.content,
-      };
-      registered.addAll(bodies.keys);
-      for (final entry in bodies.entries) {
-        for (final match in link.allMatches(entry.value)) {
-          final target = match.group(1)!;
-          if (target.contains('://')) {
-            continue;
+  test(
+    'every enabled bundled file is registered and relative links resolve',
+    () async {
+      final skills = await loader.loadAll(bundle);
+      final registered = <String>{};
+      final link = RegExp(r'\]\(([^)#]+\.md)(?:#[^)]*)?\)');
+      for (final skill in skills) {
+        final root = File(skill.assetPath).parent;
+        registered.add(skill.assetPath);
+        final bodies = {
+          skill.assetPath: skill.prompt,
+          for (final ref in skill.references)
+            '${root.path}/${ref.path}': ref.content,
+        };
+        registered.addAll(bodies.keys);
+        for (final entry in bodies.entries) {
+          for (final match in link.allMatches(entry.value)) {
+            final target = match.group(1)!;
+            if (target.contains('://')) {
+              continue;
+            }
+            final path = File('${File(entry.key).parent.path}/$target').path;
+            expect(
+              bodies.containsKey(path),
+              isTrue,
+              reason: '${entry.key}: $target',
+            );
           }
-          final path = File('${File(entry.key).parent.path}/$target').path;
-          expect(
-            bodies.containsKey(path),
-            isTrue,
-            reason: '${entry.key}: $target',
-          );
         }
       }
-    }
-    final onDisk = Directory('assets/bundled_skills')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .map((file) => file.path)
-        .toSet();
-    expect(registered, unorderedEquals(onDisk));
-  });
+      final onDisk = Directory('assets/bundled_skills')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .map((file) => file.path)
+          .where(
+            (path) =>
+                ideationCanvasEnabled ||
+                !path.startsWith('assets/bundled_skills/canvas-composition/'),
+          )
+          .toSet();
+      expect(registered, unorderedEquals(onDisk));
+    },
+  );
 
   test('FFmpeg skill examples obey the executable argument contract', () async {
     final skill = (await loader.findByCallName(bundle, '媒体处理与剪辑'))!;

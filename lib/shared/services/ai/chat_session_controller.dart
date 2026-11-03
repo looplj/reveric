@@ -2019,11 +2019,10 @@ class ChatSessionController {
   Future<CurrentWorkspaceContext?> _currentWorkspaceContext() async {
     final resource = await _currentWorkspaceResource();
     // 具体剧本资源的归属只能来自资源自身；所属集缺失时也不合并宿主选择，
-    // 避免把旧季集贴到仍然存在的节拍或场次路径上。
+    // 避免把旧季集贴到仍然存在的场次路径上。
     if (promptContext.contentKind != contentKindScreenplay ||
         const {
           NovelWorkspaceSection.screenplay_outline,
-          NovelWorkspaceSection.screenplay_beats,
           NovelWorkspaceSection.screenplay_script,
           NovelWorkspaceSection.screenplay_scenes,
         }.contains(resource?.section)) {
@@ -2177,16 +2176,6 @@ class ChatSessionController {
             return null;
           }
           fillFromEpisode(episode);
-        // beats 按 /beats/{beat_id} 寻址，经节拍反查所属集。
-        case NovelWorkspaceSection.screenplay_beats:
-          final beat = await screenplayDao.getBeat(itemId);
-          if (beat == null) {
-            return null;
-          }
-          final episode = await screenplayDao.getEpisode(beat.episodeId);
-          if (episode != null) {
-            fillFromEpisode(episode);
-          }
         // script/scenes 按 /scenes/{scene_id} 寻址，经场反查所属集。
         case NovelWorkspaceSection.screenplay_script:
         case NovelWorkspaceSection.screenplay_scenes:

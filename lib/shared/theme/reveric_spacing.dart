@@ -220,16 +220,6 @@ class RevericSizes {
   /// 场次板上相邻两张卡的水平间距。
   static const double screenplaySceneCardGap = 44;
 
-  /// 节拍板单幕列宽度。
-  static const double screenplayActColumnWidth = 260;
-
-  /// 节拍板单幕列弹性拉伸上限 —— 幕少时列宽在最小值到该值之间随窗口
-  /// 伸缩，超过该值不再拉宽，避免单列空状态摊成横幅。
-  static const double screenplayActColumnMaxWidth = 360;
-
-  /// 节拍板末尾「新增一幕」虚线列宽度。
-  static const double screenplayAddActColumnWidth = 120;
-
   /// 大纲正文栏宽度。
   static const double screenplayOutlineMaxWidth = 780;
 

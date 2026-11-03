@@ -29,7 +29,7 @@ when_to_use: 适用于剧本：读写剧本结构，操作“视频 / 制片”�
 
 | 任务 | Reference |
 |---|---|
-| 读取或修改季、集、节拍、场次与正文元素 | [剧本结构与正文](references/screenplay.md) |
+| 读取或修改季、集、场次与正文元素 | [剧本结构与正文](references/screenplay.md) |
 | 读取制作设置、创建片段、配置模型、绑定输入、修改提示词引用、Seedance 合规校验、生成与采用结果 | [分镜与媒体节点](references/clips.md) |
 | 查询风格、新建或编辑自定义风格，设置剧本默认风格、节点独立风格、无风格与继承 | [视觉风格](references/styles.md) |
 | 创建或整理制片节点、导入素材节点、调整布局、视频节点截帧／分离音轨／静音／裁剪、图片派生与预设草稿、宫格切分与高清、全景取景 | [制作画布](references/production-canvas.md) |

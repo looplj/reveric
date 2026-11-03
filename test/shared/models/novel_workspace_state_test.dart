@@ -10,6 +10,17 @@ import 'package:reveric/shared/models/novel_workspace.dart';
 import 'package:reveric/shared/models/novel_workspace_state.dart';
 
 void main() {
+  test('restoring hidden pages selects an available workspace', () {
+    final canvas = NovelWorkspaceStateData.fromJson({
+      'selection': {'section': 'canvas', 'itemId': 'canvas_1'},
+    });
+    expect(canvas.selection, const WorkspaceSelection.overview());
+    final beats = NovelWorkspaceStateData.fromJson({
+      'selection': {'section': 'screenplay_beats', 'itemId': 'beat_1'},
+    });
+    expect(beats.selection, const WorkspaceSelection.overview());
+  });
+
   group('NovelWorkspaceStateData', () {
     test('round-trips known fields and ignores unknown fields', () {
       final state = NovelWorkspaceStateData.fromJson(<String, dynamic>{
@@ -171,7 +182,6 @@ void main() {
     test('切集时大纲改用新集，其他剧本资源清除旧 item', () {
       for (final section in [
         NovelWorkspaceSection.screenplay_script,
-        NovelWorkspaceSection.screenplay_beats,
         NovelWorkspaceSection.storyboard,
         NovelWorkspaceSection.screenplay_scenes,
       ]) {

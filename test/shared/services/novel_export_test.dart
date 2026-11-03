@@ -594,8 +594,6 @@ void main() {
           NovelExportField.season: '第{number}季',
           NovelExportField.episode: '第{number}集',
           NovelExportField.scene: '第{number}场',
-          NovelExportField.act: '第{number}幕',
-          NovelExportField.beats: '节拍',
           NovelExportField.scenes: '分场',
         },
         storyOutline: '分集大纲',
@@ -659,10 +657,7 @@ void main() {
         for (final file in outlineOnly.files) file.relativePath: file.content,
       };
       expect(outlines['大纲/第1季 风起/第1集 重逢/分集大纲.txt'], contains('旧友在雨夜重逢。'));
-      expect(
-        outlines['大纲/第1季 风起/第1集 重逢/节拍.txt'],
-        contains('第1幕\n\n1. 重逢节拍\n主角认出了旧友。'),
-      );
+      expect(outlines['大纲/第1季 风起/第1集 重逢/节拍.txt'], isNull);
       expect(
         outlines['大纲/第1季 风起/第1集 重逢/分场/第2场 茶馆重逢.txt'],
         contains('两人在茶馆对话。'),

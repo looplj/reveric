@@ -71,10 +71,6 @@ void main() {
         '/episodes/episode_1/outline',
       );
       expect(
-        NovelWorkspaceSection.screenplay_beats.aiResourcePath(itemId: 'beat_1'),
-        '/beats/beat_1',
-      );
-      expect(
         NovelWorkspaceSection.screenplay_scenes.aiResourcePath(
           itemId: 'scene_1',
         ),
@@ -114,7 +110,6 @@ void main() {
         // screenplay_script / screenplay_scenes 仍共用 'screenplay_scenes'，
         // 无法逆映射；outline 独占 'screenplay_episodes'，可以往返。
         NovelWorkspaceSection.screenplay_outline,
-        NovelWorkspaceSection.screenplay_beats,
       ];
       for (final section in navigable) {
         expect(
@@ -128,6 +123,10 @@ void main() {
     test('returns null for unknown resource types', () {
       expect(novelWorkspaceSectionFromAiResourceType('overview'), isNull);
       expect(novelWorkspaceSectionFromAiResourceType('nope'), isNull);
+      expect(
+        novelWorkspaceSectionFromAiResourceType('screenplay_beats'),
+        isNull,
+      );
     });
   });
 

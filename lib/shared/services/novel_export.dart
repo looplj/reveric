@@ -17,7 +17,6 @@ import '../database/novel_content_database.dart'
     show
         ScreenplaySeasonRow,
         ScreenplayEpisodeRow,
-        ScreenplayBeatRow,
         documentTypeLore,
         documentTypeMaterial,
         entityTypeCreature,
@@ -78,8 +77,6 @@ enum NovelExportField {
   season,
   episode,
   scene,
-  act,
-  beats,
   scenes,
   interior,
   exterior,
@@ -317,9 +314,6 @@ class NovelExportService {
                 : const {},
             elements: options.includes(NovelExportScope.body)
                 ? await dao.getDocumentElements(episode.id)
-                : const [],
-            beats: options.includes(NovelExportScope.outlines)
-                ? await dao.getBeatRows(episode.id)
                 : const [],
             scenes: options.includes(NovelExportScope.outlines)
                 ? await dao.getSceneRows(episode.id)
@@ -598,33 +592,6 @@ class NovelExportService {
             path,
             labels.storyOutline,
             '$episodeTitle\n\n${episode.row.outline.trim()}',
-          );
-        }
-        if (episode.beats.isNotEmpty) {
-          final lines = <String>[];
-          int? previousAct;
-          var beatNumber = 0;
-          for (final beat in episode.beats) {
-            if (beat.actNumber != previousAct) {
-              previousAct = beat.actNumber;
-              beatNumber = 0;
-              lines.add(
-                _screenplayHeading(
-                  labels,
-                  NovelExportField.act,
-                  beat.actNumber,
-                ),
-              );
-            }
-            beatNumber++;
-            lines.add(
-              '$beatNumber. ${_fallbackTitle(beat.title, labels.untitledBeat)}\n${beat.description.trim()}',
-            );
-          }
-          builder.addTextFile(
-            path,
-            labels.field(NovelExportField.beats),
-            lines.join('\n\n'),
           );
         }
         for (final (index, scene) in episode.scenes.indexed) {
@@ -1352,13 +1319,11 @@ class _ScreenplayExportEpisode {
     required this.row,
     required this.cast,
     required this.elements,
-    required this.beats,
     required this.scenes,
   });
 
   final ScreenplayEpisodeRow row;
   final Map<String, List<String>> cast;
   final List<ScreenplayElement> elements;
-  final List<ScreenplayBeatRow> beats;
   final List<ScreenplaySceneRecord> scenes;
 }

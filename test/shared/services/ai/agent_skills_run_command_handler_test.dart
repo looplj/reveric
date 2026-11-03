@@ -8,6 +8,8 @@
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 
+import 'package:reveric/shared/app_config.dart';
+
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -448,6 +450,27 @@ void main() {
         expect(content, contains('scene_id'));
         expect(content, contains('区分观众已知与角色已知'));
         expect(content, isNot(contains('{chapter_path}/brief')));
+      }
+    }
+  });
+
+  test('canvas reference access follows the feature switch', () async {
+    final container = _buildContainer(overrides: const []);
+    addTearDown(container.dispose);
+    final handler = AgentSkillsRunCommandHandler(
+      container: container,
+      assetBundle: _FileAssetBundle(),
+    );
+    for (final action in ['reference-list', 'reference-get']) {
+      final result = await handler.run({
+        'action': action,
+        'name': '画布构图指南',
+        if (action == 'reference-get') 'path': 'references/idea-board.md',
+      });
+      expect(result['ok'], ideationCanvasEnabled, reason: '$result');
+      if (!ideationCanvasEnabled) {
+        expect(result, isNot(contains('references')));
+        expect(result, isNot(contains('reference')));
       }
     }
   });

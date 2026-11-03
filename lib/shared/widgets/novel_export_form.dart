@@ -747,8 +747,6 @@ NovelExportLabels _localizedNovelExportLabels(
       NovelExportField.season: context.t(LocaleKeys.screenplaySeason),
       NovelExportField.episode: context.t(LocaleKeys.screenplayEpisode),
       NovelExportField.scene: context.t(LocaleKeys.screenplayScene),
-      NovelExportField.act: context.t(LocaleKeys.screenplayAct),
-      NovelExportField.beats: context.t(LocaleKeys.screenplayBeats),
       NovelExportField.scenes: context.t(LocaleKeys.screenplayScenes),
       NovelExportField.author: context.t(LocaleKeys.libraryAuthorName),
       NovelExportField.category: context.t(LocaleKeys.libraryCategory),

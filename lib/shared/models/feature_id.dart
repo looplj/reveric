@@ -72,7 +72,6 @@ extension NovelWorkspaceSectionFeatureIdX on NovelWorkspaceSection {
     NovelWorkspaceSection.canvas => null,
     NovelWorkspaceSection.screenplay_script ||
     NovelWorkspaceSection.screenplay_outline ||
-    NovelWorkspaceSection.screenplay_beats ||
     NovelWorkspaceSection.storyboard ||
     NovelWorkspaceSection.screenplay_scenes => null,
   };

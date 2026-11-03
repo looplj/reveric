@@ -109,11 +109,12 @@ const _RailGroup _systemGroup = _RailGroup(
       labelKey: LocaleKeys.workspaceStoryProgress,
       target: _RailSystemTarget(NovelWorkspaceSection.story_progress),
     ),
-    _RailEntry(
-      icon: _iconFrameCorners,
-      labelKey: LocaleKeys.workspaceCanvas,
-      target: _RailSystemTarget(NovelWorkspaceSection.canvas),
-    ),
+    if (ideationCanvasEnabled)
+      _RailEntry(
+        icon: _iconFrameCorners,
+        labelKey: LocaleKeys.workspaceCanvas,
+        target: _RailSystemTarget(NovelWorkspaceSection.canvas),
+      ),
     _RailEntry(
       icon: _iconImageSquare,
       labelKey: LocaleKeys.editorCoverNavLabel,
@@ -166,11 +167,6 @@ const _RailGroup _writingGroupScreenplay = _RailGroup(
       icon: _iconListNumbers,
       labelKey: LocaleKeys.screenplayOutline,
       target: _RailContentTarget(NovelWorkspaceSection.screenplay_outline),
-    ),
-    _RailEntry(
-      icon: _iconPath,
-      labelKey: LocaleKeys.screenplayBeats,
-      target: _RailContentTarget(NovelWorkspaceSection.screenplay_beats),
     ),
     _RailEntry(
       icon: _iconUsers,

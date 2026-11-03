@@ -2,6 +2,7 @@
 // 关联文件:
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/utils/short_entity_id.dart
+import 'package:reveric/shared/app_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
 import 'package:reveric/shared/utils/short_entity_id.dart';
@@ -29,9 +30,11 @@ void main() {
       'outlines.id': {ShortEntityIdType.outline},
       'outlines.beats[].id': {ShortEntityIdType.outlineBeat},
       'outlines/beats.id': {ShortEntityIdType.outlineBeat},
-      'canvas.id': {ShortEntityIdType.canvas},
-      'canvas/nodes.id': {ShortEntityIdType.canvasNode},
-      'canvas/edges.id': {ShortEntityIdType.canvasEdge},
+      if (ideationCanvasEnabled) 'canvas.id': {ShortEntityIdType.canvas},
+      if (ideationCanvasEnabled)
+        'canvas/nodes.id': {ShortEntityIdType.canvasNode},
+      if (ideationCanvasEnabled)
+        'canvas/edges.id': {ShortEntityIdType.canvasEdge},
       'works.entries[].id': {
         ShortEntityIdType.novel,
         ShortEntityIdType.screenplay,
@@ -46,7 +49,6 @@ void main() {
       'clips.id': {ShortEntityIdType.productionClip},
       'clips.inputs[].id': {ShortEntityIdType.productionInput},
       'clips/generations.id': {ShortEntityIdType.generationTask},
-      'beats.id': {ShortEntityIdType.screenplayBeat},
       'scenes.id': {ShortEntityIdType.screenplayScene},
       'scenes/elements.id': {ShortEntityIdType.screenplayElement},
     };
@@ -54,7 +56,11 @@ void main() {
     expect(actualPaths, unorderedEquals(registrations.keys));
     expect(
       registrations.values.expand((types) => types).toSet(),
-      unorderedEquals(ShortEntityIdType.values),
+      unorderedEquals(
+        ShortEntityIdType.values.where(
+          (type) => type != ShortEntityIdType.screenplayBeat,
+        ),
+      ),
     );
     for (final type in registrations.values.expand((types) => types)) {
       expect(shortEntityIdPrefixes[type], matches(r'^[a-z]+$'));

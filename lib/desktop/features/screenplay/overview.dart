@@ -144,11 +144,7 @@ class ScreenplayOverviewRegion extends HookConsumerWidget {
                 ),
               ],
               const SizedBox(height: RevericSpacing.x3l),
-              ScreenplayIntroCard(
-                novel: novel,
-                overview: overview,
-                showBeats: !(multiSeason && !scoped),
-              ),
+              ScreenplayIntroCard(novel: novel, overview: overview),
               const SizedBox(height: RevericSpacing.x3l),
               if (multiSeason && !scoped)
                 _SeasonSummaryCard(

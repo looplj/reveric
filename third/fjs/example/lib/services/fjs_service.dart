@@ -176,14 +176,15 @@ class FjsService extends ChangeNotifier {
       );
 
       // If the module exports default, return it. Otherwise return the namespace.
-      final importCode = '''
+      final importCode =
+          '''
 (async () => {
   const module = await import('$moduleName');
   return module.default !== undefined ? module.default : module;
 })()
     ''';
 
-      return session.engine.eval(source: JsCode.code(importCode));
+      return await session.engine.eval(source: JsCode.code(importCode));
     } finally {
       await session.dispose();
     }
@@ -207,11 +208,7 @@ class FjsService extends ChangeNotifier {
       await engine.declareNewModule(
         module: JsModule.code(module: moduleName, code: code),
       );
-      return {
-        'success': true,
-        'moduleName': moduleName,
-        'action': 'declared',
-      };
+      return {'success': true, 'moduleName': moduleName, 'action': 'declared'};
     } catch (e) {
       return {
         'success': false,
@@ -263,10 +260,7 @@ class FjsService extends ChangeNotifier {
 
     try {
       final jsModules = modules
-          .map((m) => JsModule.code(
-                module: m['name']!,
-                code: m['code']!,
-              ))
+          .map((m) => JsModule.code(module: m['name']!, code: m['code']!))
           .toList();
 
       final engine = await _sharedEngine();
@@ -295,10 +289,7 @@ class FjsService extends ChangeNotifier {
     try {
       final engine = await _sharedEngine();
       await engine.clearPendingModules();
-      return {
-        'success': true,
-        'action': 'cleared_pending_modules',
-      };
+      return {'success': true, 'action': 'cleared_pending_modules'};
     } catch (e) {
       return {
         'success': false,
@@ -366,9 +357,10 @@ class FjsService extends ChangeNotifier {
     final results = <Map<String, dynamic>>[];
 
     // Test 1: Declare a simple module
-    results.add(await declareModule(
-      moduleName: 'math-utils',
-      code: '''
+    results.add(
+      await declareModule(
+        moduleName: 'math-utils',
+        code: '''
         export function add(a, b) {
           return a + b;
         }
@@ -377,7 +369,8 @@ class FjsService extends ChangeNotifier {
         }
         export const PI = 3.14159;
       ''',
-    ));
+      ),
+    );
 
     // Test 2: Check if module is declared
     results.add(await isModuleDeclared(moduleName: 'math-utils'));
@@ -386,10 +379,12 @@ class FjsService extends ChangeNotifier {
     results.add(await getDeclaredModules());
 
     // Test 4: Declare multiple modules
-    results.add(await declareMultipleModules(modules: [
-      {
-        'name': 'string-utils',
-        'code': '''
+    results.add(
+      await declareMultipleModules(
+        modules: [
+          {
+            'name': 'string-utils',
+            'code': '''
           export function reverse(str) {
             return str.split('').reverse().join('');
           }
@@ -397,10 +392,10 @@ class FjsService extends ChangeNotifier {
             return str.charAt(0).toUpperCase() + str.slice(1);
           }
         ''',
-      },
-      {
-        'name': 'array-utils',
-        'code': '''
+          },
+          {
+            'name': 'array-utils',
+            'code': '''
           export function sum(arr) {
             return arr.reduce((a, b) => a + b, 0);
           }
@@ -408,13 +403,16 @@ class FjsService extends ChangeNotifier {
             return [...new Set(arr)];
           }
         ''',
-      },
-    ]));
+          },
+        ],
+      ),
+    );
 
     // Test 5: Module dependencies - use modules in another module
-    results.add(await evaluateModuleWrapper(
-      moduleName: 'calculator-test',
-      code: '''
+    results.add(
+      await evaluateModuleWrapper(
+        moduleName: 'calculator-test',
+        code: '''
         import { add, multiply } from 'math-utils';
 
         export default {
@@ -422,12 +420,14 @@ class FjsService extends ChangeNotifier {
           product: multiply(4, 7),
         };
       ''',
-    ));
+      ),
+    );
 
     // Test 6: Named exports
-    results.add(await evaluateModuleWrapper(
-      moduleName: 'date-utils',
-      code: '''
+    results.add(
+      await evaluateModuleWrapper(
+        moduleName: 'date-utils',
+        code: '''
         export function getCurrentDate() {
           return new Date().toISOString().split('T')[0];
         }
@@ -439,12 +439,14 @@ class FjsService extends ChangeNotifier {
           createdAt: new Date().toISOString(),
         };
       ''',
-    ));
+      ),
+    );
 
     // Test 7: Dynamic import in module
-    results.add(await evaluateModuleWrapper(
-      moduleName: 'dynamic-test',
-      code: '''
+    results.add(
+      await evaluateModuleWrapper(
+        moduleName: 'dynamic-test',
+        code: '''
         export async function getMathUtils() {
           const utils = await import('math-utils');
           return {
@@ -458,7 +460,8 @@ class FjsService extends ChangeNotifier {
           createdAt: new Date().toISOString(),
         };
       ''',
-    ));
+      ),
+    );
 
     // Test 8: Clear modules
     results.add(await clearPendingModules());
@@ -492,13 +495,13 @@ class FjsService extends ChangeNotifier {
 
     return _FjsModuleAssets(
       linkedomBundle: bundles[0].buffer.asUint8List(
-            bundles[0].offsetInBytes,
-            bundles[0].lengthInBytes,
-          ),
+        bundles[0].offsetInBytes,
+        bundles[0].lengthInBytes,
+      ),
       canvasBundle: bundles[1].buffer.asUint8List(
-            bundles[1].offsetInBytes,
-            bundles[1].lengthInBytes,
-          ),
+        bundles[1].offsetInBytes,
+        bundles[1].lengthInBytes,
+      ),
     );
   }
 
@@ -509,9 +512,7 @@ class FjsService extends ChangeNotifier {
       modules: assets.additionalModules(),
     );
     await engine.initWithoutBridge();
-    return _FjsSession(
-      engine: engine,
-    );
+    return _FjsSession(engine: engine);
   }
 
   Future<JsEngine> _sharedEngine() async {
@@ -551,9 +552,7 @@ class FjsService extends ChangeNotifier {
 final class _FjsSession {
   final JsEngine engine;
 
-  const _FjsSession({
-    required this.engine,
-  });
+  const _FjsSession({required this.engine});
 
   Future<void> dispose() => engine.close();
 }
@@ -569,14 +568,8 @@ final class _FjsModuleAssets {
 
   List<JsModule> additionalModules() {
     return [
-      JsModule(
-        name: 'canvas',
-        source: JsCode.bytes(canvasBundle),
-      ),
-      JsModule(
-        name: 'linkedom',
-        source: JsCode.bytes(linkedomBundle),
-      ),
+      JsModule(name: 'canvas', source: JsCode.bytes(canvasBundle)),
+      JsModule(name: 'linkedom', source: JsCode.bytes(linkedomBundle)),
     ];
   }
 }

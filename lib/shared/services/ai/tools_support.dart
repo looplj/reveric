@@ -467,7 +467,6 @@ class _OperationParameter {
     this.description = '',
     this.defaultValue,
     this.hasDefault = false,
-    this.fieldPath = false,
     this.query,
   });
   final _ValueSchema value;
@@ -475,7 +474,6 @@ class _OperationParameter {
   final String description;
   final Object? defaultValue;
   final bool hasDefault;
-  final bool fieldPath;
   final _FieldQuery? query;
 }
 
@@ -681,18 +679,6 @@ class _ResourceDefinition {
           parameters: _textEditParameters,
         ),
     ],
-    for (final operation in _operations)
-      for (final entry in operation.parameters.entries)
-        if (entry.value.fieldPath)
-          _ResourceOperation(
-            operation.tool,
-            _ResourceTargetKind.field,
-            field: entry.key,
-            input: _ResourceInput(
-              _ResourceInputKind.field_value,
-              value: entry.value.value,
-            ),
-          ),
   ]);
 
   _ResourceOperation? operation(
@@ -1041,12 +1027,7 @@ void _validateResourceDefinitions(Map<String, _ResourceDefinition> roots) {
         throw StateError('$opPath: duplicate operation');
       }
       if (op.target == _ResourceTargetKind.field &&
-          !node.fields.containsKey(op.field) &&
-          !node._operations.any(
-            (parent) =>
-                parent.tool == op.tool &&
-                parent.parameters[op.field]?.fieldPath == true,
-          )) {
+          !node.fields.containsKey(op.field)) {
         throw StateError('$opPath: unknown field');
       }
       if (op.tool == _ResourceTool.edit &&

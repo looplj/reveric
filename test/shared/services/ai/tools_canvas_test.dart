@@ -7,6 +7,8 @@
 // 遵循的 Rules:
 //   .agents/rules/error-handling.md
 
+import 'package:reveric/shared/app_config.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -66,6 +68,42 @@ void main() {
     await db.close();
     await appDb.close();
   });
+
+  if (!ideationCanvasEnabled) {
+    test(
+      'disabled canvas is absent from discovery and rejects tool access',
+      () async {
+        for (final path in ['/canvas', '/canvas/test', '/_schema/canvas']) {
+          final result = await toolManager.executeTool(
+            name: 'Read',
+            input: {'path': path},
+          );
+          expect(result, contains('error'), reason: path);
+        }
+        for (final name in ['Create', 'Write', 'Edit', 'Remove']) {
+          final result = await toolManager.executeTool(
+            name: name,
+            input: {
+              'path': '/canvas/test',
+              'fields': {'name': 'test'},
+              'old_string': 'old',
+              'new_string': 'new',
+            },
+          );
+          expect(result, contains('error'), reason: name);
+        }
+        final schema = await toolManager.executeTool(
+          name: 'Read',
+          input: {'path': '/_schema'},
+        );
+        expect(
+          (schema['entries'] as List).cast<Map>().map((e) => e['collection']),
+          isNot(contains('canvas')),
+        );
+      },
+    );
+    return;
+  }
 
   // ---- 资源造数 helpers ----
 

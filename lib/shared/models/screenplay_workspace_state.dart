@@ -7,7 +7,6 @@ enum ScreenplayWorkspaceSection {
   overview,
   script,
   outline,
-  beats,
   scenes,
   characters,
   foreshadowings,

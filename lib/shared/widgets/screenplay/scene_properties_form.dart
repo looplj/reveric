@@ -26,7 +26,6 @@ import '../../localization/locale_keys.dart';
 import '../../models/screenplay.dart';
 import '../../models/screenplay_document.dart';
 import '../../providers/maps_providers.dart';
-import '../../providers/screenplay_providers.dart';
 import '../../services/screenplay_service.dart';
 import '../../services/maps_service.dart';
 import '../../theme/theme.dart';
@@ -44,7 +43,6 @@ enum ScenePropertyField<T> implements FieldSchema {
   emotion<List<String>>(),
   events<List<Map<String, dynamic>>>(),
   stage<String>(),
-  beatId<String?>(),
   newLocation<String>();
 
   const ScenePropertyField();
@@ -81,9 +79,6 @@ class ScenePropertiesForm extends HookConsumerWidget {
     final createdLocation = useState<String?>(null);
     final error = useState<String?>(null);
     final locations = ref.watch(locationsProvider(databasePath));
-    final beats = ref.watch(
-      screenplayBeatsProvider(databasePath, initial.episodeId),
-    );
     final locationService = ref.watch(locationsServiceProvider(databasePath));
     final form = useForm<ScenePropertyField>(
       initialValues: {
@@ -95,7 +90,6 @@ class ScenePropertiesForm extends HookConsumerWidget {
         ScenePropertyField.emotion: scene.emotion ?? <String>[],
         ScenePropertyField.events: scene.events ?? <Map<String, dynamic>>[],
         ScenePropertyField.stage: scene.stage,
-        ScenePropertyField.beatId: scene.beatId,
         ScenePropertyField.newLocation: '',
       },
       keys: [sceneId],
@@ -178,7 +172,7 @@ class ScenePropertiesForm extends HookConsumerWidget {
           emotion: emotions.isEmpty && scene.emotion == null ? null : emotions,
           events: events.isEmpty && scene.events == null ? null : events,
           stage: form.getValue<String>(ScenePropertyField.stage)!,
-          beatId: form.getValue<String?>(ScenePropertyField.beatId),
+          beatId: current.scenes[sceneId]!.beatId,
         );
         session.controller.editDocument(
           current.copyWith(
@@ -460,75 +454,34 @@ class ScenePropertiesForm extends HookConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: RevericSpacing.lg),
-                      pair(
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            sectionHeader(
-                              context.t(LocaleKeys.screenplayStage),
-                            ),
-                            const SizedBox(height: RevericSpacing.xs),
-                            HookedFormField<ScenePropertyField, String?>(
-                              fieldHook: ScenePropertyField.stage,
-                              builder: (value, onChanged, _) =>
-                                  RevericSelect<String>(
-                                    value: value ?? screenplayStageDraft,
-                                    items: [
-                                      RevericSelectItem(
-                                        value: screenplayStageDraft,
-                                        label: context.t(
-                                          LocaleKeys.screenplayDraft,
-                                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          sectionHeader(context.t(LocaleKeys.screenplayStage)),
+                          const SizedBox(height: RevericSpacing.xs),
+                          HookedFormField<ScenePropertyField, String?>(
+                            fieldHook: ScenePropertyField.stage,
+                            builder: (value, onChanged, _) =>
+                                RevericSelect<String>(
+                                  value: value ?? screenplayStageDraft,
+                                  items: [
+                                    RevericSelectItem(
+                                      value: screenplayStageDraft,
+                                      label: context.t(
+                                        LocaleKeys.screenplayDraft,
                                       ),
-                                      RevericSelectItem(
-                                        value: screenplayStageFinal,
-                                        label: context.t(
-                                          LocaleKeys.screenplayFinal,
-                                        ),
-                                      ),
-                                    ],
-                                    onChanged: (val) => onChanged?.call(val),
-                                  ),
-                            ),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            sectionHeader(
-                              context.t(LocaleKeys.screenplayBeats),
-                            ),
-                            const SizedBox(height: RevericSpacing.xs),
-                            HookedFormField<ScenePropertyField, String?>(
-                              fieldHook: ScenePropertyField.beatId,
-                              builder: (value, onChanged, _) =>
-                                  RevericSelect<String>(
-                                    value: value ?? '',
-                                    items: [
-                                      RevericSelectItem(
-                                        value: '',
-                                        label: context.t(
-                                          LocaleKeys.screenplayUnspecified,
-                                        ),
-                                      ),
-                                      for (final beat in beats.value ?? [])
-                                        RevericSelectItem(
-                                          value: beat.id,
-                                          label: beat.title.isEmpty
-                                              ? context.t(
-                                                  LocaleKeys
-                                                      .screenplayUntitledBeat,
-                                                )
-                                              : beat.title,
-                                        ),
-                                    ],
-                                    onChanged: (val) => onChanged?.call(
-                                      val.isEmpty ? null : val,
                                     ),
-                                  ),
-                            ),
-                          ],
-                        ),
+                                    RevericSelectItem(
+                                      value: screenplayStageFinal,
+                                      label: context.t(
+                                        LocaleKeys.screenplayFinal,
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (val) => onChanged?.call(val),
+                                ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: RevericSpacing.lg),
                       sectionHeader(context.t(LocaleKeys.screenplaySynopsis)),
@@ -632,8 +585,7 @@ class ScenePropertiesForm extends HookConsumerWidget {
                   ),
                   const SizedBox(width: RevericSpacing.sm),
                   FilledButton(
-                    onPressed:
-                        saving.value || !locations.hasValue || !beats.hasValue
+                    onPressed: saving.value || !locations.hasValue
                         ? null
                         : save,
                     child: Text(context.t(LocaleKeys.commonSave)),

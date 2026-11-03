@@ -5,6 +5,7 @@
 //   lib/shared/services/ai/tools_schema.dart
 //   lib/shared/services/ai/tools_write.dart
 //   lib/shared/services/ai/tools_screenplay.dart
+import 'package:reveric/shared/app_config.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -276,6 +277,10 @@ void main() {
           field == 'role' ? 'supporting' : 'unknown',
         );
       }
+      if (!ideationCanvasEnabled) {
+        expect((await call('Read', {'path': '/canvas'}))['error'], isNotNull);
+        return;
+      }
       await call('Create', {
         'path': 'canvas',
         'fields': {'name': 'c'},
@@ -390,6 +395,10 @@ void main() {
   );
 
   test('reference requirements count provided values, not just keys', () async {
+    if (!ideationCanvasEnabled) {
+      expect((await call('Read', {'path': '/canvas'}))['error'], isNotNull);
+      return;
+    }
     await call('Create', {
       'path': 'canvas',
       'fields': {'name': 'c'},

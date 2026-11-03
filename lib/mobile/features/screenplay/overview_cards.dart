@@ -251,11 +251,6 @@ class MobileScreenplayIntroCard extends StatelessWidget {
                   value: '${overview.locationCount}',
                   unit: context.t(LocaleKeys.screenplayUnitPlaces),
                 ),
-                ScreenplayInlineStat(
-                  label: context.t(LocaleKeys.screenplayBeats),
-                  value: '${overview.beatCount}',
-                  unit: context.t(LocaleKeys.screenplayUnitBeats),
-                ),
               ],
             ),
           ),

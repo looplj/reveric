@@ -86,10 +86,7 @@ class MobileScreenplayScenesPage extends ConsumerWidget {
 
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final beats = episodeId == null
-        ? const <ScreenplayBeatSummary>[]
-        : ref.watch(screenplayBeatsProvider(path, episodeId)).value ??
-              const <ScreenplayBeatSummary>[];
+
     final appearances = episodeId == null
         ? const <ScreenplayAppearanceMatrixRow>[]
         : ref
@@ -223,13 +220,6 @@ class MobileScreenplayScenesPage extends ConsumerWidget {
                       runSpacing: RevericSpacing.xs,
                       children: [
                         ScreenplayStageBadge(stage: scenes[index].stage),
-                        for (final beat in beats.where(
-                          (b) => b.id == scenes[index].beatId,
-                        ))
-                          ScreenplayChip(
-                            label: beat.title,
-                            icon: RevericIcons.timeline_outlined,
-                          ),
                         ScreenplayPagesText(
                           pageEighths: scenes[index].pageEighths,
                         ),

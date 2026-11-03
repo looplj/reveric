@@ -32,6 +32,7 @@ import 'package:reveric/shared/widgets/screenplay/time_field.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() => rootBundle.clear());
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
@@ -54,9 +55,16 @@ void main() {
     final service = ScreenplayService(db);
     final initial = await service.createInitialStructure();
     final root = (await db.screenplayDao.getRoot())!;
+    final legacyBeat = await service.createBeat(
+      screenplayId: root.id,
+      episodeId: initial.episodeId,
+      actNumber: 1,
+      title: 'Legacy beat',
+    );
     final id = await service.createScene(
       screenplayId: root.id,
       episodeId: initial.episodeId,
+      beatId: legacyBeat,
       title: 'A chase through the gate',
       emotion: ['Tense', 'Alert', 'Urgent'],
       events: [
@@ -116,13 +124,9 @@ void main() {
               localizationsDelegates: context.localizationDelegates,
               supportedLocales: context.supportedLocales,
               locale: context.locale,
-              theme: RevericThemeData.reveric.toThemeData(
-                fontFamily: 'Roboto',
-              ),
-              builder: (context, child) => RevericTheme(
-                data: RevericThemeData.reveric,
-                child: child!,
-              ),
+              theme: RevericThemeData.reveric.toThemeData(fontFamily: 'Roboto'),
+              builder: (context, child) =>
+                  RevericTheme(data: RevericThemeData.reveric, child: child!),
               home: home,
             ),
           ),
@@ -196,6 +200,8 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     final saved = (await db.screenplayDao.getScene(id))!;
+    expect(saved.beatId, legacyBeat);
+    expect(await db.screenplayDao.getBeat(legacyBeat), isNotNull);
     expect(saved.title, 'The gate closes');
     expect(saved.interiorExterior, 'interior_exterior');
     expect(saved.timeLabel, '早晨');

@@ -6,6 +6,7 @@
 //   lib/shared/database/app_database.dart
 //   lib/shared/database/novel_content_database.dart
 
+import 'package:reveric/shared/app_config.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -607,7 +608,11 @@ void main() {
           expect(result['error'], isNotNull, reason: '${sample.key}: $result');
           expect(
             result['hint'],
-            contains('Read /works/work_target/${sample.value}'),
+            contains(
+              !ideationCanvasEnabled && sample.key.startsWith('canvas/')
+                  ? 'Read /works/work_target and Read /_schema'
+                  : 'Read /works/work_target/${sample.value}',
+            ),
             reason: '$result',
           );
         }

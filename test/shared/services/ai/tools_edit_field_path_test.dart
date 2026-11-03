@@ -5,6 +5,7 @@
 //   lib/shared/services/ai/tools_outline.dart
 //   lib/shared/services/ai/tools_canvas.dart
 //   lib/shared/services/ai/tools.dart
+import 'package:reveric/shared/app_config.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -168,7 +169,14 @@ void main() {
         'invalid_argument',
         reason: '$path: $result',
       );
-      expect(result['hint'], contains('field'));
+      expect(
+        result['hint'],
+        contains(
+          !ideationCanvasEnabled && path.startsWith('canvas/')
+              ? '/_schema'
+              : 'field',
+        ),
+      );
       expect(preview, isNot(contains('diffOldText')), reason: path);
       expect(preview, isNot(contains('diffNewText')), reason: path);
       expect(preview?['targetPath'], path);
@@ -244,6 +252,10 @@ void main() {
   });
 
   test('sticky node omission leaves its body unchanged', () async {
+    if (!ideationCanvasEnabled) {
+      expect((await edit('canvas/图/nodes/node_1/content'))['error'], isNotNull);
+      return;
+    }
     await tools.executeTool(
       name: 'Create',
       input: {

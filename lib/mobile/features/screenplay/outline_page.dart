@@ -1,4 +1,4 @@
-// 职责: 移动端剧本大纲 — 编辑当前集大纲正文（Logline/Synopsis/Theme/Arcs），下方只读列出结构节拍。
+// 职责: 移动端剧本大纲 — 编辑当前集大纲正文（Logline/Synopsis/Theme/Arcs），维护当前集的结构规划。
 // 关联文件:
 //   lib/mobile/features/screenplay/editor_page.dart
 //   lib/shared/services/document_save_coordinator.dart
@@ -24,8 +24,6 @@ import '../../../shared/database/novel_content_database.dart'
     show ScreenplayEpisodeRow;
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
-import '../../../shared/models/screenplay.dart';
-import '../../../shared/models/screenplay_workspace_state.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/providers/screenplay_providers.dart';
 import '../../../shared/providers/screenplay_workspace_state_provider.dart';
@@ -33,7 +31,6 @@ import '../../../shared/services/document_save_coordinator.dart';
 import '../../../shared/services/screenplay_outline_save.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/md/reveric_markdown_editor.dart';
-import '../../../shared/widgets/screenplay/chips.dart';
 import 'support.dart';
 
 class MobileScreenplayOutlinePage extends HookConsumerWidget {
@@ -50,7 +47,6 @@ class MobileScreenplayOutlinePage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeFlush = useRef<Future<void> Function()?>(null);
     final path = novel.contentDatabasePath!;
     final provider = screenplayWorkspaceStateControllerProvider(novel.id, path);
     final workspace = ref.watch(provider);
@@ -73,26 +69,8 @@ class MobileScreenplayOutlinePage extends HookConsumerWidget {
       );
     }
     final episode = ref.watch(screenplayEpisodeProvider(path, episodeId)).value;
-    final beats =
-        ref.watch(screenplayBeatsProvider(path, episodeId)).value ??
-        const <ScreenplayBeatSummary>[];
-    final scenes =
-        ref.watch(screenplayScenesProvider(path, episodeId)).value ??
-        const <ScreenplaySceneSummary>[];
     if (episode == null) {
       return const SizedBox.shrink();
-    }
-
-    Future<void> openBeats() async {
-      await activeFlush.value?.call();
-      if (!context.mounted) {
-        return;
-      }
-      ref
-          .read(provider.notifier)
-          .update(
-            workspace.copyWith(section: ScreenplayWorkspaceSection.beats),
-          );
     }
 
     return SingleChildScrollView(
@@ -105,69 +83,12 @@ class MobileScreenplayOutlinePage extends HookConsumerWidget {
               key: ValueKey(episode.id),
               novel: novel,
               episode: episode,
-              registerFlush: (flush) {
-                activeFlush.value = flush;
-                registerFlush(flush);
-              },
+              registerFlush: registerFlush,
             ),
           ),
-          MobileScreenplaySectionHeader(
-            title: context.t(LocaleKeys.screenplayOutlineBeats),
-            trailing: TextButton(
-              onPressed: openBeats,
-              child: Text(context.t(LocaleKeys.screenplayOpenBeatsBoard)),
-            ),
-          ),
-          if (beats.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(RevericSpacing.lg),
-              child: Text(
-                context.t(LocaleKeys.screenplayNoBeats),
-                style: RevericTheme.typographyOf(
-                  context,
-                ).ui.copyWith(color: RevericTheme.colorsOf(context).textMuted),
-              ),
-            )
-          else
-            ..._buildBeatCards(context, beats, scenes, openBeats),
         ],
       ),
     );
-  }
-
-  List<Widget> _buildBeatCards(
-    BuildContext context,
-    List<ScreenplayBeatSummary> beats,
-    List<ScreenplaySceneSummary> scenes,
-    VoidCallback onOpenBeats,
-  ) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
-    final acts = beats.map((beat) => beat.actNumber).toSet().toList()..sort();
-    return [
-      for (final act in acts) ...[
-        Padding(
-          padding: const EdgeInsets.only(
-            left: RevericSpacing.lg,
-            bottom: RevericSpacing.sm,
-          ),
-          child: Text(
-            context.t(LocaleKeys.screenplayAct, namedArgs: {'number': '$act'}),
-            style: typo.uiSmallSemibold.copyWith(color: colors.textMuted),
-          ),
-        ),
-        for (final beat in beats.where((beat) => beat.actNumber == act))
-          _MobileOutlineBeatCard(
-            beat: beat,
-            sceneNumbers: [
-              for (final scene in scenes)
-                if (scene.beatId == beat.id) scene.sceneNumber,
-            ],
-            onTap: onOpenBeats,
-          ),
-        const SizedBox(height: RevericSpacing.lg),
-      ],
-    ];
   }
 }
 
@@ -248,83 +169,6 @@ class _MobileOutlineDocEditor extends HookConsumerWidget {
       hintText: context.t(LocaleKeys.screenplayOutlineHint),
       autoHeight: true,
       minHeight: 400,
-    );
-  }
-}
-
-/// 只读节拍卡片 —— 与节拍页同一份数据，点按跳到节拍分区。
-class _MobileOutlineBeatCard extends StatelessWidget {
-  const _MobileOutlineBeatCard({
-    required this.beat,
-    required this.sceneNumbers,
-    required this.onTap,
-  });
-
-  final ScreenplayBeatSummary beat;
-  final List<int> sceneNumbers;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
-    final description = beat.description.trim();
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(RevericSpacing.lg),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: colors.borderSubtle)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    beat.title.trim().isEmpty
-                        ? context.t(LocaleKeys.screenplayUntitledBeat)
-                        : beat.title,
-                    style: typo.uiSemibold.copyWith(color: colors.textPrimary),
-                  ),
-                ),
-                const SizedBox(width: RevericSpacing.sm),
-                ScreenplayPagesText(pageEighths: beat.pageEighths),
-              ],
-            ),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: RevericSpacing.xs),
-              Text(
-                description,
-                style: typo.bodySmall.copyWith(
-                  fontSize: 13,
-                  height: 1.7,
-                  color: colors.textSecondary,
-                ),
-              ),
-            ],
-            if (sceneNumbers.isNotEmpty) ...[
-              const SizedBox(height: RevericSpacing.sm),
-              Wrap(
-                spacing: RevericSpacing.xxs,
-                runSpacing: RevericSpacing.xxs,
-                children: [
-                  for (final number in sceneNumbers)
-                    ScreenplayChip(
-                      tone: ScreenplayChipTone.plain,
-                      label: context.t(
-                        LocaleKeys.screenplayScene,
-                        namedArgs: {'number': '$number'},
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }

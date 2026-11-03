@@ -61,6 +61,61 @@ void main() {
     )..registerAllTools();
   }
 
+  test(
+    'retired beats are inaccessible while scene writes preserve legacy associations',
+    () async {
+      final service = ScreenplayService(database);
+      final initial = await service.createInitialStructure();
+      final root = (await database.screenplayDao.getRoot())!;
+      final beatId = await service.createBeat(
+        screenplayId: root.id,
+        episodeId: initial.episodeId,
+        actNumber: 1,
+        title: 'Legacy',
+      );
+      final sceneId = await service.createScene(
+        screenplayId: root.id,
+        episodeId: initial.episodeId,
+        beatId: beatId,
+      );
+      final tools = manager();
+      addTearDown(tools.dispose);
+      for (final name in ['Read', 'Create', 'Write', 'Edit', 'Remove']) {
+        final result = await tools.executeTool(
+          name: name,
+          input: {
+            'path': 'beats/$beatId',
+            'fields': {'title': 'Changed'},
+            'old_text': 'Legacy',
+            'new_text': 'Changed',
+          },
+        );
+        expect(result['error'], isNotNull, reason: '$result');
+      }
+      final schema = await tools.executeTool(
+        name: 'Read',
+        input: {'path': '/_schema/beats'},
+      );
+      expect(schema['error'], isNotNull);
+      final changed = await tools.executeTool(
+        name: 'Write',
+        input: {
+          'path': 'scenes/$sceneId',
+          'fields': {'title': 'New title', 'beat_id': null},
+        },
+      );
+      expect(changed['ok'], isTrue, reason: '$changed');
+      expect(changed['ignored_fields'], contains('beat_id'));
+      expect((await database.screenplayDao.getScene(sceneId))!.beatId, beatId);
+      expect((await database.screenplayDao.getBeat(beatId))!.title, 'Legacy');
+      final scene = await tools.executeTool(
+        name: 'Read',
+        input: {'path': 'scenes/$sceneId'},
+      );
+      expect(scene, isNot(contains('beat_id')));
+    },
+  );
+
   Future<
     ({
       List<String> seasons,
@@ -114,8 +169,6 @@ void main() {
         description: '线索说明$i',
       );
       beats.add(beat);
-      texts['beats/$beat/title'] = 'synopsis';
-      texts['beats/$beat/description'] = '线索说明$i';
       final scene = await service.createScene(
         screenplayId: root.id,
         episodeId: episode,
@@ -179,7 +232,6 @@ void main() {
       for (final path in [
         'seasons/missing',
         'episodes/missing',
-        'beats/missing',
         'scenes/missing',
         'scenes/${fixture.scenes.first}/elements/missing',
       ]) {
@@ -249,7 +301,7 @@ void main() {
     },
   );
 
-  for (final field in ['title', 'synopsis', 'text', 'description', 'outline']) {
+  for (final field in ['title', 'synopsis', 'text', 'outline']) {
     test(
       'screenplay Edit classifies replacement failures for $field',
       () async {
@@ -260,7 +312,6 @@ void main() {
           'text' => fixture.texts.keys.firstWhere(
             (key) => key.contains('/elements/'),
           ),
-          'description' => 'beats/${fixture.beats.first}/description',
           _ => 'episodes/${fixture.episodes.first}/outline',
         };
         final written = await tools.executeTool(
@@ -397,96 +448,6 @@ void main() {
   }
 
   test(
-    'screenplay uses the same scalar normalization for flat Create, field and resource Write',
-    () async {
-      final initial = await ScreenplayService(
-        database,
-      ).createInitialStructure();
-      final tools = manager(episodeId: initial.episodeId);
-      for (final raw in <Object>[7.2, 7.8, '7.8']) {
-        final expected = raw == 7.2 ? 7 : 8;
-        final created = await tools.executeTool(
-          name: 'Create',
-          input: {
-            'path': 'beats',
-            'act_number': raw,
-            'episode_id': initial.episodeId,
-            'fields': {'act_number': expected, 'title': 42},
-          },
-        );
-        expect(created['ok'], true, reason: '$created');
-        final path = created['path'] as String;
-        expect(
-          (await tools.executeTool(
-            name: 'Read',
-            input: {'path': '$path/title'},
-          ))['value'],
-          '42',
-        );
-        for (final input in <Map<String, dynamic>>[
-          {
-            'path': '$path/act_number',
-            'value': raw,
-            'fields': {'act_number': expected},
-          },
-          {'path': path, 'fields': "{'act_number':'$raw'}"},
-        ]) {
-          final result = await tools.executeTool(name: 'Write', input: input);
-          expect(result['ok'], true, reason: '$result');
-          expect(
-            (await tools.executeTool(
-              name: 'Read',
-              input: {'path': path},
-            ))['act_number'],
-            expected,
-          );
-        }
-      }
-      final scene = await tools.executeTool(
-        name: 'Create',
-        input: {
-          'path': 'scenes',
-          'fields': {
-            'episode_id': initial.episodeId,
-            'synopsis': '  first\n  second  ',
-            'emotion': '[" tense ", "tense"]',
-            'interior_exterior': 'INTERIOR-EXTERIOR',
-          },
-        },
-      );
-      expect(scene['ok'], true, reason: '$scene');
-      final path = scene['path'] as String;
-      expect(
-        (await tools.executeTool(
-          name: 'Read',
-          input: {'path': '$path/synopsis'},
-        ))['value'],
-        'first\n  second',
-      );
-      expect(
-        (await tools.executeTool(
-          name: 'Read',
-          input: {'path': '$path/emotion'},
-        ))['value'],
-        ['tense'],
-      );
-      final cleared = await tools.executeTool(
-        name: 'Write',
-        input: {
-          'path': '$path/emotion',
-          'value': null,
-          'fields': {'emotion': []},
-        },
-      );
-      expect(cleared['ok'], true, reason: '$cleared');
-      expect(
-        (await database.screenplayDao.getScene(scene['id'] as String))!.emotion,
-        isEmpty,
-      );
-    },
-  );
-
-  test(
     'entity arrays retain duplicates without IDs, reject duplicate IDs and report all invalid leaves',
     () async {
       final initial = await ScreenplayService(
@@ -602,13 +563,6 @@ void main() {
         input: {'path': '${episode['path']}/editing_id'},
       );
       expect(editingRef['value'], editing.id);
-      final beat = await tools.executeTool(
-        name: 'Create',
-        input: {
-          'path': 'beats',
-          'fields': {'episode_id': episode['id'], 'act_number': 1},
-        },
-      );
       final characterId = await contentService.createCharacterProfile(
         defaultName: '林岚',
       );
@@ -618,7 +572,6 @@ void main() {
           'path': 'scenes',
           'fields': {
             'episode_id': episode['id'],
-            'beat_id': beat['id'],
             'cast': [characterId],
             'elements': [
               {'type': 'action', 'text': '推门而入。'},
@@ -629,7 +582,6 @@ void main() {
       for (final entry in {
         'seasons': season,
         'episodes': episode,
-        'beats': beat,
         'scenes': scene,
       }.entries) {
         final created = entry.value;
@@ -654,7 +606,7 @@ void main() {
         input: {'path': scene['path']},
       );
       expect(sceneRead['episode_id'], episode['id']);
-      expect(sceneRead['beat_id'], beat['id']);
+      expect(sceneRead, isNot(contains('beat_id')));
       expect(sceneRead, isNot(contains('scene_id')));
 
       final elementsPath = '${scene['path']}/elements';
@@ -792,10 +744,7 @@ void main() {
     () async {
       final fixture = await searchFixture();
       final tools = manager();
-      for (final (collection, expected) in [
-        ('beats', fixture.beats),
-        ('scenes', fixture.scenes),
-      ]) {
+      for (final (collection, expected) in [('scenes', fixture.scenes)]) {
         final listing = await tools.executeTool(
           name: 'Read',
           input: {'path': collection},
@@ -1135,8 +1084,6 @@ void main() {
         'episodes/${fixture.episodes[1]}': [fixture.episodes[1]],
         'scenes?episode_id=${fixture.episodes[1]}': [fixture.scenes[1]],
         'scenes?stage=final&search=线索': [fixture.scenes[1]],
-        'scenes?beat_id=${fixture.beats[2]}': [fixture.scenes[2]],
-        'beats?episode_id=${fixture.episodes[2]}': [fixture.beats[2]],
         'scenes/${fixture.scenes[0]}': [fixture.scenes[0]],
       }.entries) {
         final result = await tools.executeTool(
@@ -1332,29 +1279,6 @@ void main() {
     },
   );
 
-  test(
-    'beat Create reports all missing fields with its path contract',
-    () async {
-      await ScreenplayService(database).createInitialStructure();
-      final result = await manager().executeTool(
-        name: 'Create',
-        input: {
-          'path': 'beats',
-          'fields': {'title': 'Turning point'},
-        },
-      );
-      expect(result['error_code'], 'invalid_argument');
-      expect(
-        result['missing_fields'],
-        containsAll(['episode_id', 'act_number']),
-      );
-      final contract = result['input_contract'] as Map;
-      expect(contract['required_fields'], ['episode_id', 'act_number']);
-      expect(contract['allowed_fields'], isNot(contains('scene_number')));
-      expect(contract['positive_integer_fields'], contains('act_number'));
-    },
-  );
-
   test('missing character references remain readable through name', () async {
     final service = ScreenplayService(database);
     final initial = await service.createInitialStructure();
@@ -1467,7 +1391,6 @@ void main() {
       ),
       ({'episode_id': 'missing'}, 'invalid_argument'),
       ({'location_id': 'missing'}, 'invalid_argument'),
-      ({'beat_id': 'missing'}, 'invalid_argument'),
       ({'before_scene_id': 'missing'}, 'invalid_argument'),
     ];
     const anchors = {'episode_id', 'before_scene_id', 'after_scene_id'};
@@ -1799,51 +1722,6 @@ void main() {
         input: {'path': 'scenes?episode_id=${initial.episodeId}'},
       );
       expect(after['entries'], hasLength(1));
-    },
-  );
-
-  test(
-    'beat Create ignores unknown fields but validates integer and both anchors before writing',
-    () async {
-      final initial = await ScreenplayService(
-        database,
-      ).createInitialStructure();
-      final tools = manager();
-      final result = await tools.executeTool(
-        name: 'Create',
-        input: {
-          'path': 'beats',
-          'fields': {
-            'episode_id': initial.episodeId,
-            'act_number': 0,
-            'before_beat_id': 'before',
-            'after_beat_id': 'after',
-            'scene_number': 1,
-          },
-        },
-      );
-      expect(
-        (result['validation_errors'] as List).map((e) => (e as Map)['code']),
-        containsAll(['invalid_integer', 'conflicting_fields']),
-      );
-      expect(result['ignored_fields'], ['scene_number']);
-      final listing = await tools.executeTool(
-        name: 'Read',
-        input: {'path': 'beats?episode_id=${initial.episodeId}'},
-      );
-      expect(listing['entries'], isEmpty);
-      final corrected = await tools.executeTool(
-        name: 'Create',
-        input: {
-          'path': 'beats',
-          'fields': {
-            'episode_id': initial.episodeId,
-            'act_number': 1,
-            'title': 'Opening',
-          },
-        },
-      );
-      expect(corrected['ok'], isTrue);
     },
   );
 
@@ -2319,12 +2197,6 @@ void main() {
         episodeId: initial.episodeId,
         title: 'synopsis',
       );
-      final beat = await service.createBeat(
-        screenplayId: root.id,
-        episodeId: initial.episodeId,
-        actNumber: 1,
-        title: 'synopsis',
-      );
       final scene = await service.createScene(
         screenplayId: root.id,
         episodeId: initial.episodeId,
@@ -2348,7 +2220,7 @@ void main() {
         crossWorkAccess: _ScreenplayCrossWorkAccess(contentService),
       );
       addTearDown(tools.dispose);
-      for (final collection in ['scenes', 'beats']) {
+      for (final collection in ['scenes']) {
         final local = await tools.executeTool(
           name: 'Read',
           input: {'path': '/$collection'},
@@ -2380,7 +2252,6 @@ void main() {
       for (final pair in [
         ('seasons', 'seasons/${initial.seasonId}'),
         ('episodes', 'episodes/${initial.episodeId}'),
-        ('beats', 'beats/$beat'),
         ('scenes/$scene/elements', 'scenes/$scene/elements/$elementId'),
       ]) {
         final listed = await tools.executeTool(
@@ -2444,7 +2315,7 @@ void main() {
         ),
       );
       addTearDown(tools.dispose);
-      for (final collection in ['scenes', 'beats']) {
+      for (final collection in ['scenes']) {
         final path = '/works/target/$collection';
         final expected = collection == 'scenes' ? 1 : 0;
         final unscoped = await tools.executeTool(
@@ -2730,14 +2601,14 @@ void main() {
       final notes = pathSchemaFieldNotes(kind: contentKindScreenplay);
       expect(notes, contains('- seasons（季）\n  path: seasons/{season_id}'));
       expect(notes, contains('- episodes（集）\n  path: episodes/{episode_id}'));
-      expect(notes, contains('- beats（节拍）\n  path: beats/{beat_id}'));
+      expect(notes, isNot(contains('- beats（节拍）')));
       expect(notes, contains('- scenes（场次）\n  path: scenes/{scene_id}'));
       expect(notes, contains('- scenes/{scene_id}/elements（正文元素）\n'));
       expect(notes, isNot(contains('screenplay/')));
       expect(notes, contains('episode_number'));
       expect(notes, contains('element_id'));
       expect(notes, contains('seasons/{season_id}'));
-      expect(notes, contains('beats/{beat_id}'));
+      expect(notes, isNot(contains('beats/{beat_id}')));
       // screenplay 单例保持 hidden：整表只读的派生统计不占常驻字段字典。
       for (final field in ['season_count', 'page_eighths（readonly）']) {
         expect(notes, isNot(contains(field)));
@@ -2917,7 +2788,7 @@ void main() {
           expect(result['error_code'], 'internal');
           expect(await overlay.getWorkingChanges(), isEmpty);
         } else {
-          expect(result['applied_fields'], 26, reason: '$result');
+          expect(result['applied_fields'], 23, reason: '$result');
           final failed = (result['failed'] as Map)['internal'] as Map;
           expect(failed['count'], 1);
           expect(failed['sample_paths'], [elementPath]);
@@ -3038,7 +2909,7 @@ void main() {
         },
       );
       expect(removedAfterDiscovery, isTrue);
-      expect(result['applied_fields'], 26, reason: '$result');
+      expect(result['applied_fields'], 23, reason: '$result');
       expect((result['failed'] as Map)['not_found'], {
         'count': 1,
         'sample_paths': [removed],
@@ -3614,140 +3485,6 @@ void main() {
     },
   );
 
-  test(
-    'beat Create rejects missing and foreign anchors without any persisted changes',
-    () async {
-      final service = ScreenplayService(database);
-      final initial = await service.createInitialStructure();
-      final root = (await database.screenplayDao.getRoot())!;
-      final secondEpisode = await service.createEpisode(
-        seasonId: initial.seasonId,
-      );
-      final firstBeat = await service.createBeat(
-        screenplayId: root.id,
-        episodeId: initial.episodeId,
-        actNumber: 1,
-      );
-      final foreignBeat = await service.createBeat(
-        screenplayId: root.id,
-        episodeId: secondEpisode,
-        actNumber: 1,
-      );
-      final otherActBeat = await service.createBeat(
-        screenplayId: root.id,
-        episodeId: initial.episodeId,
-        actNumber: 2,
-      );
-      await service.createScene(
-        screenplayId: root.id,
-        episodeId: initial.episodeId,
-        beatId: firstBeat,
-      );
-      final beforeBeats = await database.select(database.screenplayBeats).get();
-      final beforeScenes = await database
-          .select(database.screenplayScenes)
-          .get();
-      final beforeElements = await database
-          .select(database.screenplaySceneElements)
-          .get();
-      final tools = manager();
-      addTearDown(tools.dispose);
-      for (final anchor in {
-        'beat_missing': 'invalid_argument',
-        foreignBeat: 'failed_precondition',
-        otherActBeat: 'failed_precondition',
-      }.entries) {
-        for (final key in ['before_beat_id', 'after_beat_id']) {
-          final result = await tools.executeTool(
-            name: 'Create',
-            input: {
-              'path': 'beats',
-              'fields': {
-                'episode_id': initial.episodeId,
-                'act_number': 1,
-                'title': '不应残留',
-                key: anchor.key,
-              },
-            },
-          );
-          expect(result['error_code'], anchor.value, reason: '$result');
-          expect(
-            await database.select(database.screenplayBeats).get(),
-            beforeBeats,
-          );
-          expect(
-            await database.select(database.screenplayScenes).get(),
-            beforeScenes,
-          );
-          expect(
-            await database.select(database.screenplaySceneElements).get(),
-            beforeElements,
-          );
-          expect(await database.select(database.workingChanges).get(), isEmpty);
-        }
-      }
-      var sawInsertedBeat = false;
-      database.screenplayDao.beforeBeatRead = (id) async {
-        if (id != firstBeat && id != foreignBeat) {
-          sawInsertedBeat =
-              (await database.select(database.screenplayBeats).get()).any(
-                (beat) => beat.id == id,
-              );
-          throw StateError(
-            'Injected failure while positioning the created beat',
-          );
-        }
-      };
-      await expectLater(
-        tools.executeTool(
-          name: 'Create',
-          input: {
-            'path': 'beats',
-            'fields': {
-              'episode_id': initial.episodeId,
-              'act_number': 1,
-              'after_beat_id': firstBeat,
-            },
-          },
-        ),
-        throwsStateError,
-      );
-      expect(sawInsertedBeat, isTrue);
-      expect(
-        await database.select(database.screenplayBeats).get(),
-        beforeBeats,
-      );
-      expect(
-        await database.select(database.screenplayScenes).get(),
-        beforeScenes,
-      );
-      expect(
-        await database.select(database.screenplaySceneElements).get(),
-        beforeElements,
-      );
-      expect(await database.select(database.workingChanges).get(), isEmpty);
-      database.screenplayDao.beforeBeatRead = null;
-      final created = await tools.executeTool(
-        name: 'Create',
-        input: {
-          'path': 'beats',
-          'fields': {
-            'episode_id': initial.episodeId,
-            'act_number': 1,
-            'before_beat_id': firstBeat,
-            'title': '插入锚点前',
-          },
-        },
-      );
-      expect(created['error'], isNull, reason: '$created');
-      final beats = await database.screenplayDao
-          .watchBeats(initial.episodeId)
-          .first;
-      expect(beats.map((b) => b.id), [created['id'], firstBeat, otherActBeat]);
-      expect(beats.map((b) => b.actNumber), [1, 1, 2]);
-    },
-  );
-
   test('screenplay Remove force only tolerates missing targets', () async {
     final service = ScreenplayService(database);
     final initial = await service.createInitialStructure();
@@ -3773,7 +3510,6 @@ void main() {
     addTearDown(tools.dispose);
     for (final path in [
       'episodes/ep_missing',
-      'beats/beat_missing',
       'scenes/sc_missing',
       'scenes/$scene/elements/el_missing',
     ]) {
@@ -3877,7 +3613,6 @@ void main() {
       for (final fixture in fixtures) {
         for (final path in [
           'episodes/${fixture.episode}/outline',
-          'beats/${fixture.beat}/description',
           'scenes/${fixture.scene}/synopsis',
           'scenes/${fixture.scene}/elements/${fixture.element}/text',
         ]) {

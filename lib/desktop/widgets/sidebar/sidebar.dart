@@ -7,6 +7,8 @@
 //   lib/shared/entity_graph/entity_list_section.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+import '../../../shared/app_config.dart';
+
 import '../../../shared/widgets/plugin_view/navigation.dart';
 import '../../../shared/widgets/plugin_view/page.dart';
 import 'dart:async';
@@ -310,7 +312,6 @@ const String _iconBugBeetle = 'assets/icons/phosphor/bug-beetle.svg';
 const String _iconImageSquare = 'assets/icons/phosphor/image-square.svg';
 const String _iconUsersFour = 'assets/icons/phosphor/users-four.svg';
 const String _iconArticle = 'assets/icons/phosphor/article.svg';
-const String _iconPath = 'assets/icons/phosphor/path.svg';
 const String _iconSquaresFour = 'assets/icons/phosphor/squares-four.svg';
 
 void _noopVoidCallback() {}
@@ -375,7 +376,6 @@ class _LeftSidebarState extends ConsumerState<LeftSidebar> {
       // 剧本四个 section 共用同一棵季 / 集 / 场次树当中栏。
       case NovelWorkspaceSection.screenplay_script:
       case NovelWorkspaceSection.screenplay_outline:
-      case NovelWorkspaceSection.screenplay_beats:
       case NovelWorkspaceSection.storyboard:
       case NovelWorkspaceSection.screenplay_scenes:
         return true;

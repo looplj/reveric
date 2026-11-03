@@ -329,43 +329,6 @@ void main() {
       expect(view.episodeNumber, 1);
       expect(view.seasonId, isNull);
     });
-
-    test('screenplay beats 选中节拍时经节拍反查集归属', () async {
-      final screenplayService = ScreenplayService(contentDb);
-      final initial = await screenplayService.createInitialStructure();
-      final root = await contentDb.screenplayDao.getRoot();
-      final beatId = await screenplayService.createBeat(
-        screenplayId: root!.id,
-        episodeId: initial.episodeId,
-        actNumber: 1,
-        title: '风暴前的平静',
-      );
-
-      final view = await buildController(
-        section: NovelWorkspaceSection.screenplay_beats,
-        itemId: beatId,
-      ).resolveCurrentWorkspaceContextForTest();
-
-      expect(view, isNotNull);
-      expect(view!.path, '/beats/$beatId');
-      expect(view.episodeId, initial.episodeId);
-      expect(view.episodeNumber, 1);
-      expect(view.seasonId, isNull);
-    });
-
-    test('screenplay beats 传集 id（非法节拍 id）时返回 null', () async {
-      final screenplayService = ScreenplayService(contentDb);
-      final initial = await screenplayService.createInitialStructure();
-
-      // /beats/{id} 寻址的是节拍 id；传集 id 必须按资源不存在处理，
-      // 不能拿集 id 拼出无效节拍路径。
-      final view = await buildController(
-        section: NovelWorkspaceSection.screenplay_beats,
-        itemId: initial.episodeId,
-      ).resolveCurrentWorkspaceContextForTest();
-
-      expect(view, isNull);
-    });
   });
 
   group('buildCurrentWorkspaceContextRemindForTest', () {
@@ -618,7 +581,6 @@ void main() {
       null,
       NovelWorkspaceSection.overview,
       NovelWorkspaceSection.screenplay_outline,
-      NovelWorkspaceSection.screenplay_beats,
       NovelWorkspaceSection.screenplay_script,
       NovelWorkspaceSection.screenplay_scenes,
     ]) {
@@ -781,7 +743,6 @@ void main() {
     });
 
     for (final section in [
-      NovelWorkspaceSection.screenplay_beats,
       NovelWorkspaceSection.screenplay_script,
       NovelWorkspaceSection.screenplay_scenes,
     ]) {
@@ -796,17 +757,10 @@ void main() {
           seasonId: resourceSeason.seasonId,
           title: '资源所属集',
         );
-        final resourceId = section == NovelWorkspaceSection.screenplay_beats
-            ? await service.createBeat(
-                screenplayId: root.id,
-                episodeId: episodeId,
-                actNumber: 1,
-                title: '资源节拍',
-              )
-            : await service.createScene(
-                screenplayId: root.id,
-                episodeId: episodeId,
-              );
+        final resourceId = await service.createScene(
+          screenplayId: root.id,
+          episodeId: episodeId,
+        );
         final chat = controller(
           section: section,
           itemId: resourceId,

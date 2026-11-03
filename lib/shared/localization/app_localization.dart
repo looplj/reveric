@@ -63,7 +63,6 @@ String sectionLocaleKey(NovelWorkspaceSection section) {
     NovelWorkspaceSection.story_progress => LocaleKeys.workspaceStoryProgress,
     NovelWorkspaceSection.screenplay_script => LocaleKeys.screenplayScript,
     NovelWorkspaceSection.screenplay_outline => LocaleKeys.screenplayOutline,
-    NovelWorkspaceSection.screenplay_beats => LocaleKeys.screenplayBeats,
     NovelWorkspaceSection.screenplay_scenes => LocaleKeys.screenplayScenes,
     NovelWorkspaceSection.storyboard => LocaleKeys.productionTitle,
   };

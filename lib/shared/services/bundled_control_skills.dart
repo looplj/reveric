@@ -15,6 +15,7 @@
 
 import 'package:flutter/services.dart' show AssetBundle;
 
+import '../app_config.dart';
 import '../models/agent_skill_reference.dart';
 import 'agent_skill_import_parser.dart';
 
@@ -65,7 +66,7 @@ class BundledControlSkill {
 const Set<String> bundledControlCallNames = {
   '创作向导',
   '系统管理',
-  '画布构图指南',
+  if (ideationCanvasEnabled) '画布构图指南',
   '剧本工具使用规范',
   '故事连续性维护',
   '媒体处理与剪辑',
@@ -139,17 +140,18 @@ const List<_BundledControlSkillSpec> _bundledControlSkillSpecs = [
     ],
   ),
   // 画布使用通用资源工具；构图方法按场景附件加载。
-  _BundledControlSkillSpec(
-    callName: '画布构图指南',
-    runCommand: null,
-    assetPath: 'assets/bundled_skills/canvas-composition/SKILL.md',
-    referenceAssetPaths: [
-      'assets/bundled_skills/canvas-composition/references/story-structure.md',
-      'assets/bundled_skills/canvas-composition/references/branching-story.md',
-      'assets/bundled_skills/canvas-composition/references/relationships.md',
-      'assets/bundled_skills/canvas-composition/references/idea-board.md',
-    ],
-  ),
+  if (ideationCanvasEnabled)
+    _BundledControlSkillSpec(
+      callName: '画布构图指南',
+      runCommand: null,
+      assetPath: 'assets/bundled_skills/canvas-composition/SKILL.md',
+      referenceAssetPaths: [
+        'assets/bundled_skills/canvas-composition/references/story-structure.md',
+        'assets/bundled_skills/canvas-composition/references/branching-story.md',
+        'assets/bundled_skills/canvas-composition/references/relationships.md',
+        'assets/bundled_skills/canvas-composition/references/idea-board.md',
+      ],
+    ),
   _BundledControlSkillSpec(
     callName: '剧本工具使用规范',
     runCommand: null,

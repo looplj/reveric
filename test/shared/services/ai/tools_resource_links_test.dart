@@ -5,6 +5,7 @@
 //   lib/shared/services/ai/tools_write.dart
 //   lib/shared/services/ai/prompts/prompt_fragments.dart
 
+import 'package:reveric/shared/app_config.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -347,12 +348,16 @@ void main() {
           name: 'Read',
           input: {'path': '/_schema/canvas'},
         );
-        final nodes = (schema['subresources'] as List).first as Map;
-        final documentTargets =
-            nodes['fields']['ref_id']['reference_targets_by_field']['ref_type']['document']
-                as List;
-        expect(documentTargets, ['lore', 'materials']);
-        expect(documentTargets, contains(collection));
+        if (ideationCanvasEnabled) {
+          final nodes = (schema['subresources'] as List).first as Map;
+          final documentTargets =
+              nodes['fields']['ref_id']['reference_targets_by_field']['ref_type']['document']
+                  as List;
+          expect(documentTargets, ['lore', 'materials']);
+          expect(documentTargets, contains(collection));
+        } else {
+          expect(schema['error'], isNotNull);
+        }
         final folder = await toolManager.executeTool(
           name: 'Create',
           input: {
@@ -405,6 +410,10 @@ void main() {
             'fields': {'name': '引用图'},
           },
         );
+        if (!ideationCanvasEnabled) {
+          expect(canvas['error'], isNotNull);
+          return;
+        }
         final node = await toolManager.executeTool(
           name: 'Create',
           input: {

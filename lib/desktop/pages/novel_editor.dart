@@ -873,7 +873,6 @@ class NovelEditorPage extends HookConsumerWidget {
           case NovelWorkspaceSection.canvas:
           case NovelWorkspaceSection.screenplay_script:
           case NovelWorkspaceSection.screenplay_outline:
-          case NovelWorkspaceSection.screenplay_beats:
           case NovelWorkspaceSection.storyboard:
           case NovelWorkspaceSection.screenplay_scenes:
             return null;
@@ -1319,7 +1318,6 @@ class NovelEditorPage extends HookConsumerWidget {
         case NovelWorkspaceSection.canvas:
         case NovelWorkspaceSection.screenplay_script:
         case NovelWorkspaceSection.screenplay_outline:
-        case NovelWorkspaceSection.screenplay_beats:
         case NovelWorkspaceSection.storyboard:
         case NovelWorkspaceSection.screenplay_scenes:
           return context.t(sectionLocaleKey(selection.value.section));
@@ -2882,7 +2880,6 @@ class NovelEditorPage extends HookConsumerWidget {
         case NovelWorkspaceSection.canvas:
         case NovelWorkspaceSection.screenplay_script:
         case NovelWorkspaceSection.screenplay_outline:
-        case NovelWorkspaceSection.screenplay_beats:
         case NovelWorkspaceSection.storyboard:
         case NovelWorkspaceSection.screenplay_scenes:
           return null;

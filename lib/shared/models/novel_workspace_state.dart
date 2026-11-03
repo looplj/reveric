@@ -4,6 +4,8 @@
 //   lib/shared/models/screenplay_workspace_state.dart
 //   lib/shared/providers/novel_workspace_state_provider.dart
 
+import '../app_config.dart';
+
 import 'novel_workspace.dart';
 
 class NovelWorkspaceStateData {
@@ -139,8 +141,7 @@ WorkspaceSelection reconcileWorkspaceSelection({
 
 /// 把通用工作区选择中的剧本资源 ID 对齐到剧本工作区的当前季集状态。
 ///
-/// 大纲以集 ID 寻址；剧本正文和场次以当前场次 ID 寻址；节拍没有共享的
-/// 当前 beat 状态，因此仅在切集时清除上一集残留的 beat ID。
+/// 大纲以集 ID 寻址；剧本正文和场次以当前场次 ID 寻址；分镜选择在切集时清除。
 WorkspaceSelection reconcileScreenplayWorkspaceSelection({
   required WorkspaceSelection selection,
   required String? previousEpisodeId,
@@ -155,7 +156,6 @@ WorkspaceSelection reconcileScreenplayWorkspaceSelection({
     case NovelWorkspaceSection.screenplay_scenes:
       itemId = sceneId;
     case NovelWorkspaceSection.storyboard:
-    case NovelWorkspaceSection.screenplay_beats:
       itemId = previousEpisodeId == episodeId ? selection.itemId : null;
     default:
       return selection;
@@ -172,7 +172,8 @@ WorkspaceSelection reconcileScreenplayWorkspaceSelection({
 
 WorkspaceSelection _selectionFromJson(Map<String, dynamic> json) {
   final section = _sectionFromName(json['section']);
-  if (section == null) {
+  if (section == null ||
+      (!ideationCanvasEnabled && section == NovelWorkspaceSection.canvas)) {
     return const WorkspaceSelection.overview();
   }
   final rawItemId = json['itemId'];

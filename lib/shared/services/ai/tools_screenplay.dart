@@ -1,4 +1,4 @@
-// 职责: 按公共资源目标与已校验操作执行剧本、季、集、节拍、场次和元素读写。
+// 职责: 按公共资源目标与已校验操作执行剧本、季、集、场次和元素读写。
 // 关联文件:
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/services/screenplay_create_orchestrator.dart
@@ -164,7 +164,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       return await switch (resource.schema.segment) {
         'seasons' => _readSeasons(parsed, root.id),
         'episodes' => _readEpisodes(parsed, root.id),
-        'beats' => _readBeats(parsed, root.id),
         'scenes' || 'elements' => _readScenes(parsed, operation, root.id),
         _ => _resourceError(
           parsed.displayPath,
@@ -244,41 +243,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     return _episodeJson(row, includeOutline: true);
   }
 
-  Future<Map<String, dynamic>> _readBeats(
-    ParsedPath parsed,
-    String screenplayId,
-  ) async {
-    final dao = _contentService.database.screenplayDao;
-    if (parsed._resource!.listing) {
-      final scope = await _resolveReadEpisodes(screenplayId, parsed);
-      if (scope.error != null) {
-        return scope.error!;
-      }
-      final entries = <Map<String, dynamic>>[];
-      for (final episodeId in scope.ids) {
-        final rows = await dao.watchBeats(episodeId).first;
-        entries.addAll([for (final row in rows) _beatSummaryJson(row)]);
-      }
-      return {
-        'type': 'listing',
-        if (scope.scopedId != null) 'episode_id': scope.scopedId,
-        'entries': entries,
-      };
-    }
-    final row = await dao.getBeat(parsed.locator('beat_id')!);
-    if (row == null) {
-      return _notFound(parsed, 'beat');
-    }
-    if (parsed.hasField) {
-      return {
-        'value': parsed.field == 'description' ? row.description : row.title,
-      };
-    }
-    final siblings = await dao.watchBeats(row.episodeId).first;
-    final summary = siblings.firstWhere((item) => item.id == row.id);
-    return _beatSummaryJson(summary);
-  }
-
   Future<Map<String, dynamic>> _readScenes(
     ParsedPath parsed,
     _ResourceOperation operation,
@@ -291,7 +255,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       if (scope.error != null) {
         return scope.error!;
       }
-      final beatId = parsed.queryParameters['beat_id'];
       final stage = parsed.queryParameters['stage'];
       final search = parsed.queryParameters[_listingSearchQueryParam]
           ?.toLowerCase();
@@ -299,9 +262,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       for (final episodeId in scope.ids) {
         final rows = await dao.watchScenes(episodeId).first;
         for (final row in rows) {
-          if (beatId != null && row.beatId != beatId) {
-            continue;
-          }
           if (stage != null && row.stage != stage) {
             continue;
           }
@@ -477,19 +437,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
             'editing_id': episode.editingId,
             'editing_revision': 0,
           };
-        case 'beats':
-          final episodeId = fields['episode_id'] as String;
-          final actNumber = fields['act_number'] as int;
-          final id = await _screenplayService.createBeat(
-            screenplayId: root.id,
-            episodeId: episodeId,
-            actNumber: actNumber,
-            title: fields['title'] as String? ?? '',
-            description: fields['description'] as String? ?? '',
-            beforeBeatId: _screenplayOptionalField(fields, 'before_beat_id'),
-            afterBeatId: _screenplayOptionalField(fields, 'after_beat_id'),
-          );
-          return {'ok': true, 'created': true, 'id': id, 'path': 'beats/$id'};
         case 'scenes':
           return await _createScene(root.id, fields);
       }
@@ -544,7 +491,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       }
     }
     final sourceSession = _resolvedScreenplaySessionId();
-    final beatId = _screenplayOptionalField(fields, 'beat_id');
     final locationId = _screenplayOptionalField(fields, 'location_id');
     final interiorExterior = _screenplayOptionalField(
       fields,
@@ -566,7 +512,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
         service: _screenplayService,
         screenplayId: screenplayId,
         episodeId: episodeId,
-        beatId: beatId,
         locationId: locationId,
         interiorExterior: interiorExterior,
         stage: stage,
@@ -646,10 +591,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
             case 'episodes':
               return businessFields(
                 (await dao.getEpisode(resource.ids['episode_id']!))?.toJson(),
-              );
-            case 'beats':
-              return businessFields(
-                (await dao.getBeat(resource.ids['beat_id']!))?.toJson(),
               );
             case 'elements':
               if (await dao.getScene(resource.ids['scene_id']!) == null) {
@@ -741,8 +682,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
         return {'ok': true, 'path': 'seasons/${resource.ids['season_id']}'};
       case 'episodes':
         return await _writeEpisode(parsed, resource.ids['episode_id']!, fields);
-      case 'beats':
-        return await _writeBeat(parsed, resource.ids['beat_id']!, fields);
       case 'scenes':
       case 'elements':
         return await _writeScene(parsed, operation, fields);
@@ -799,37 +738,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       );
     }
     return {'ok': true, if (episode != null) ..._episodeJson(episode)};
-  }
-
-  Future<Map<String, dynamic>> _writeBeat(
-    ParsedPath parsed,
-    String beatId,
-    Map<String, dynamic> fields,
-  ) async {
-    final before = _screenplayOptionalField(fields, 'before_beat_id');
-    final after = _screenplayOptionalField(fields, 'after_beat_id');
-    await _screenplayService.updateBeat(
-      beatId: beatId,
-      title: fields.containsKey('title')
-          ? fields['title'] as String? ?? ''
-          : null,
-      description: fields.containsKey('description')
-          ? fields['description'] as String? ?? ''
-          : null,
-    );
-    if (before != null) {
-      await _screenplayService.moveBeatBefore(beatId, before);
-    }
-    if (after != null) {
-      await _screenplayService.moveBeatAfter(beatId, after);
-    }
-    if (before == null && after == null && fields.containsKey('act_number')) {
-      await _screenplayService.moveBeatToActEnd(
-        beatId,
-        fields['act_number'] as int,
-      );
-    }
-    return {'ok': true, 'path': 'beats/$beatId'};
   }
 
   Future<Map<String, dynamic>> _writeScene(
@@ -903,9 +811,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     final episodeId = _screenplayOptionalField(fields, 'episode_id');
     await _screenplayService.updateScene(
       sceneId: sceneId,
-      beatId: fields.containsKey('beat_id')
-          ? Value(_screenplayOptionalField(fields, 'beat_id'))
-          : const Value.absent(),
       locationId: fields.containsKey('location_id')
           ? Value(_screenplayOptionalField(fields, 'location_id'))
           : const Value.absent(),
@@ -1057,31 +962,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
           _stageElements(parsed, resource.ids['scene_id']!, elements, target),
         );
       }
-      // 节拍说明与季/集的结构字段一样直写，不进待审阅：working overlay 没有
-      // screenplay_beats 这个 resourceType，_writeBeat 走的也是直写。
-      if (resource.schema.segment == 'beats' &&
-          operation.field == 'description') {
-        final beat = await _contentService.database.screenplayDao.getBeat(
-          resource.ids['beat_id']!,
-        );
-        if (beat == null) {
-          return _notFound(parsed, 'beat');
-        }
-        final replaced = replace(beat.description);
-        if (replaced.error != null) {
-          return AiToolManager._replaceTextErrorResult(replaced);
-        }
-        await _screenplayService.updateBeat(
-          beatId: resource.ids['beat_id']!,
-          description: replaced.value!,
-        );
-        return {
-          'ok': true,
-          'path': 'beats/${resource.ids['beat_id']!}/description',
-          'edited': changed,
-          'match_count': matchCount,
-        };
-      }
       if (resource.schema.segment == 'episodes' &&
           operation.field == 'outline') {
         final episode = await _contentService.database.screenplayDao.getEpisode(
@@ -1107,7 +987,7 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
         parsed.displayPath,
         ToolErrorCode.unsupported,
         'Edit supports only scene synopsis, scene element text, episode '
-        'outline and beat description paths.',
+        'outline paths.',
       );
     } on WorkingOverlayConflictException catch (error) {
       return _workingChangeConflict(error);
@@ -1136,8 +1016,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     try {
       if (resource.schema.segment == 'episodes') {
         await _screenplayService.deleteEpisode(resource.ids['episode_id']!);
-      } else if (resource.schema.segment == 'beats') {
-        await _screenplayService.deleteBeat(resource.ids['beat_id']!);
       } else if (resource.schema.segment == 'scenes') {
         await _screenplayService.deleteScene(resource.ids['scene_id']!);
       } else if (resource.schema.segment == 'elements') {
@@ -1179,7 +1057,6 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     } on ScreenplayServiceException catch (error) {
       final missingCode = switch (resource.schema.segment) {
         'episodes' => 'invalid_episode_ref',
-        'beats' => 'invalid_beat_ref',
         'scenes' => 'invalid_scene_ref',
         _ => null,
       };
@@ -1344,16 +1221,16 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     return value;
   }
 
-  /// beats / scenes listing 的集作用域：只认显式 `episode_id`，没有就按季号、
+  /// scenes listing 的集作用域：只认显式 `episode_id`，没有就按季号、
   /// 集号枚举整剧。
   ///
   /// 刻意不回落到当前集：那样会把整剧读悄悄缩成一集，而 listing 的 `total`
-  /// 也跟着缩水，模型无从察觉结果被过滤过，会把一集的节拍数当成全剧的。
+  /// 也跟着缩水，模型无从察觉结果被过滤过，会把一集的场次数当成全剧的。
   /// 少一次往返换一个静默的错误结论，不划算。
   ///
   /// [scopedId] 仅在显式指定单集时有值，用于 listing 顶层回显；枚举整剧时留空，
   /// 避免把第一集伪装成整个结果的作用域。条目自带 `episode_id`，
-  /// 而 `beat_number` / `scene_number` 是集内位置，跨集拼接时不重编号。
+  /// 而 `scene_number` 是集内位置，跨集拼接时不重编号。
   Future<({List<String> ids, String? scopedId, Map<String, dynamic>? error})>
   _resolveReadEpisodes(String screenplayId, ParsedPath parsed) async {
     final dao = _contentService.database.screenplayDao;
@@ -1570,23 +1447,10 @@ Map<String, dynamic> _episodeJson(
   'path': 'episodes/${row.id}',
 };
 
-Map<String, dynamic> _beatSummaryJson(ScreenplayBeatSummary row) => {
-  'id': row.id,
-  'episode_id': row.episodeId,
-  'act_number': row.actNumber,
-  'beat_number': row.beatNumber,
-  'title': row.title,
-  'description': row.description,
-  'scene_count': row.sceneCount,
-  'page_eighths': row.pageEighths,
-  'path': 'beats/${row.id}',
-};
-
 Map<String, dynamic> _sceneSummaryJson(ScreenplaySceneSummary row) => {
   'id': row.id,
   'episode_id': row.episodeId,
   'scene_number': row.sceneNumber,
-  'beat_id': row.beatId,
   'location_id': row.locationId,
   'interior_exterior': row.interiorExterior,
   'time': row.timeLabel,

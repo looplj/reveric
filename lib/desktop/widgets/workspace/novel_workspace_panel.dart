@@ -34,6 +34,8 @@
 //   assets/translations/zh-CN/common.json
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+import '../../../shared/app_config.dart';
+
 import '../../features/production/region.dart';
 import '../../features/production/status.dart';
 import 'dart:async';
@@ -87,7 +89,6 @@ import 'foreshadowing_editor.dart';
 import '../history/resource_history_button.dart';
 import '../../features/canvas/widgets/canvas_region.dart';
 import '../../features/map/map_studio_page.dart';
-import '../../features/screenplay/beats.dart';
 import '../../features/screenplay/outline.dart';
 import '../../features/screenplay/overview.dart';
 import '../../features/screenplay/scenes.dart';
@@ -646,7 +647,9 @@ class NovelWorkspacePanel extends ConsumerWidget {
       case NovelWorkspaceSection.entity_graph:
         return _buildEntityGraphPanel(context);
       case NovelWorkspaceSection.canvas:
-        return _buildCanvasPanel(context);
+        return ideationCanvasEnabled
+            ? _buildCanvasPanel(context)
+            : const SizedBox.shrink();
       case NovelWorkspaceSection.screenplay_script:
         return ScreenplayScriptRegion(
           novel: novel,
@@ -657,8 +660,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
           novel: novel,
           registerFlush: onRegisterScreenplaySceneFlush ?? (_) {},
         );
-      case NovelWorkspaceSection.screenplay_beats:
-        return ScreenplayBeatsRegion(novel: novel);
       case NovelWorkspaceSection.storyboard:
         return ProductionRegion(
           novel: novel,
@@ -1134,7 +1135,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
       case NovelWorkspaceSection.canvas:
       case NovelWorkspaceSection.screenplay_script:
       case NovelWorkspaceSection.screenplay_outline:
-      case NovelWorkspaceSection.screenplay_beats:
       case NovelWorkspaceSection.storyboard:
       case NovelWorkspaceSection.screenplay_scenes:
         return null;
@@ -1199,7 +1199,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
       case NovelWorkspaceSection.story_progress:
       case NovelWorkspaceSection.screenplay_script:
       case NovelWorkspaceSection.screenplay_outline:
-      case NovelWorkspaceSection.screenplay_beats:
       case NovelWorkspaceSection.storyboard:
       case NovelWorkspaceSection.screenplay_scenes:
         return false;
@@ -1360,7 +1359,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
       case NovelWorkspaceSection.canvas:
       case NovelWorkspaceSection.screenplay_script:
       case NovelWorkspaceSection.screenplay_outline:
-      case NovelWorkspaceSection.screenplay_beats:
       case NovelWorkspaceSection.storyboard:
       case NovelWorkspaceSection.screenplay_scenes:
         return const <dynamic>[];
@@ -1482,7 +1480,6 @@ class NovelWorkspacePanel extends ConsumerWidget {
         return selectedCanvasName ?? context.t(LocaleKeys.workspaceCanvas);
       case NovelWorkspaceSection.screenplay_script:
       case NovelWorkspaceSection.screenplay_outline:
-      case NovelWorkspaceSection.screenplay_beats:
       case NovelWorkspaceSection.storyboard:
       case NovelWorkspaceSection.screenplay_scenes:
         return context.t(sectionLocaleKey(selection.section));

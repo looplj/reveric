@@ -4309,14 +4309,11 @@ abstract final class LocaleKeys {
   static const narrationAuthentication = 'screenplay.narration.authentication';
   static const narrationRateLimited = 'screenplay.narration.rateLimited';
 
-  static const screenplayAddBeat = 'screenplay.add_beat';
   static const screenplayAddEpisode = 'screenplay.add_episode';
   static const screenplayAddScene = 'screenplay.add_scene';
   static const screenplayAddSeason = 'screenplay.add_season';
-  static const screenplayAct = 'screenplay.act';
   static const screenplayActNumber = 'screenplay.act_number';
   static const screenplayActualEpisodes = 'screenplay.actual_episodes';
-  static const screenplayAddAct = 'screenplay.add_act';
   static const screenplayAppearanceMatrix = 'screenplay.appearance_matrix';
   static const screenplayAtLeastOneSeason = 'screenplay.at_least_one_season';
   static const screenplayAutosaveOn = 'screenplay.autosave_on';
@@ -4401,7 +4398,6 @@ abstract final class LocaleKeys {
   static const screenplayLinesUnit = 'screenplay.lines_unit';
   static const screenplayLocations = 'screenplay.locations';
   static const screenplayPlaces = 'screenplay.places';
-  static const screenplayUnitBeats = 'screenplay.unit_beats';
   static const screenplayUnitEpisodes = 'screenplay.unit_episodes';
   static const screenplayUnitLines = 'screenplay.unit_lines';
   static const screenplayUnitPeople = 'screenplay.unit_people';
@@ -4413,16 +4409,13 @@ abstract final class LocaleKeys {
   static const screenplayMatrixHint = 'screenplay.matrix_hint';
   static const screenplayMoveDown = 'screenplay.move_down';
   static const screenplayMoveUp = 'screenplay.move_up';
-  static const screenplayNoBeats = 'screenplay.no_beats';
   static const screenplayNoCharacters = 'screenplay.no_characters';
   static const screenplayNoOutline = 'screenplay.no_outline';
   static const screenplayNoScenes = 'screenplay.no_scenes';
   static const screenplayNoScenesSub = 'screenplay.no_scenes_sub';
   static const screenplayNoScriptYet = 'screenplay.no_script_yet';
   static const screenplayNotePrefix = 'screenplay.note_prefix';
-  static const screenplayOpenBeatsBoard = 'screenplay.open_beats_board';
   static const screenplayOutline = 'screenplay.outline';
-  static const screenplayOutlineBeats = 'screenplay.outline_beats';
   static const screenplayOutlineHint = 'screenplay.outline_hint';
   static const screenplayWriteFromSynopsis = 'screenplay.write_from_synopsis';
   static const screenplayOverPlanned = 'screenplay.over_planned';
@@ -4469,7 +4462,6 @@ abstract final class LocaleKeys {
   static const screenplayTimeLater = 'screenplay.time_later';
   static const screenplayTimeSameTime = 'screenplay.time_same_time';
   static const screenplayTimeHint = 'screenplay.time_hint';
-  static const screenplayUntitledBeat = 'screenplay.untitled_beat';
   static const screenplayUntitledEpisode = 'screenplay.untitled_episode';
   static const screenplayUntitledScene = 'screenplay.untitled_scene';
   static const screenplayDeletedCharacter = 'screenplay.deleted_character';

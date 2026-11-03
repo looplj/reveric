@@ -6,6 +6,7 @@
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/services/ai/tools_create.dart
 
+import 'package:reveric/shared/app_config.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -542,7 +543,7 @@ void main() {
       expect(
         screenplayNotes,
         contains(
-          'path: scenes/{scene_id}\n  Read / Glob / Grep query: search、episode_id、beat_id、stage',
+          'path: scenes/{scene_id}\n  Read / Glob / Grep query: search、episode_id、stage',
         ),
       );
       expect(screenplayNotes, isNot(contains('query: search、chapter_num')));
@@ -553,6 +554,10 @@ void main() {
           name: 'Read',
           input: {'path': '/_schema/$collection'},
         );
+        if (collection == 'canvas' && !ideationCanvasEnabled) {
+          expect(contract['error'], isNotNull);
+          continue;
+        }
         expect(contract['query'], isNotEmpty);
         for (final child in (contract['subresources'] as List).cast<Map>()) {
           // 关系变化历史只用于展示与追溯，不参与搜索（ADR 0037）。
@@ -1195,7 +1200,10 @@ void main() {
         );
 
         expect(result['updated'], isTrue);
-        expect(result['fields'], ['description', 'type', 'parent_id']);
+        expect(
+          result['fields'],
+          unorderedEquals(['description', 'type', 'parent_id']),
+        );
         final location = await locationsService.getLocationById(rootId);
         expect(location!.description, '位于黑角域的学院。');
         expect(location.type, locationTypeBuilding);

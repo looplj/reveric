@@ -212,12 +212,10 @@ class ScreenplayIntroCard extends StatelessWidget {
     super.key,
     required this.novel,
     required this.overview,
-    required this.showBeats,
   });
 
   final Novel novel;
   final ScreenplayOverview? overview;
-  final bool showBeats;
 
   @override
   Widget build(BuildContext context) {
@@ -293,12 +291,6 @@ class ScreenplayIntroCard extends StatelessWidget {
                     value: '${stats.locationCount}',
                     unit: context.t(LocaleKeys.screenplayUnitPlaces),
                   ),
-                  if (showBeats)
-                    ScreenplayInlineStat(
-                      label: context.t(LocaleKeys.screenplayBeats),
-                      value: '${stats.beatCount}',
-                      unit: context.t(LocaleKeys.screenplayUnitBeats),
-                    ),
                 ],
               ),
             ),
