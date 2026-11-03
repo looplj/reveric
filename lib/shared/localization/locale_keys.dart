@@ -521,6 +521,7 @@ abstract final class LocaleKeys {
 
   static const productionTitle = 'screenplay.production.title';
   static const productionCanvas = 'screenplay.production.canvas';
+  static const productionClips = 'screenplay.production.clips';
   static const productionDeleteNodeConfirm =
       'screenplay.production.deleteNodeConfirm';
   static const productionIndependentMedia =

@@ -319,7 +319,7 @@ class _SceneListRowMenu extends StatelessWidget {
           position: box.localToGlobal(Offset(0, box.size.height)),
           entries: [
             RevericMenuItem(
-              label: context.t(LocaleKeys.productionTitle),
+              label: context.t(LocaleKeys.storyboardBoard),
               onTap: onOpenStoryboard,
             ),
             RevericMenuItem(

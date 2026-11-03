@@ -366,7 +366,7 @@ class NovelWorkspacePanel extends ConsumerWidget {
             novel.sourceNovelId != null
         ? ref.watch(novelProvider(novel.sourceNovelId!)).value
         : null;
-    // 制片里打开剪辑或导演台时，面包屑在「制片」后多一级子页面名称。
+    // 制片里打开剪辑或导演台时，面包屑在「视频」后多一级子页面名称。
     final databasePath = novel.contentDatabasePath;
     final subpage =
         selection.section == NovelWorkspaceSection.storyboard &&

@@ -848,7 +848,7 @@ String _localizedCollection(
     'seasons' => LocaleKeys.screenplaySeasons,
     'episodes' => LocaleKeys.screenplayEpisodes,
     'scenes' => LocaleKeys.screenplayScenes,
-    'clips' => LocaleKeys.productionTitle,
+    'clips' => LocaleKeys.productionClips,
     'beats' => LocaleKeys.screenplayBeats,
     'profile' => LocaleKeys.workspaceNovelOverview,
     'canvas' => LocaleKeys.workspaceCanvas,
