@@ -18,6 +18,7 @@ enum VideoMode { text, first_frame, first_last_frame, reference }
 enum VideoInputRole {
   first_frame,
   last_frame,
+  middle_frame,
   reference_image,
   reference_video,
   reference_audio,

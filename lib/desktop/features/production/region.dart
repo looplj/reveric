@@ -40,6 +40,7 @@ import '../../../shared/services/storyboard/edit_orchestrator.dart';
 import '../../../shared/providers/storyboard.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/models/video/request.dart';
+import '../../../shared/models/video/channels.dart';
 import '../../../shared/services/ai/video/draft.dart';
 import '../../../shared/models/production/image_request.dart';
 import '../../../shared/models/audio/channels.dart';
@@ -896,6 +897,20 @@ class _EpisodeRegion extends HookConsumerWidget {
       final asset = source.clipId == null
           ? await service.requireAsset(source.mediaAssetId!)
           : null;
+      final videoProvider =
+          target.type == canvasNodeTypeVideo && shot.providerId != null
+          ? await service.library.database.aiProviderDao.getById(
+              shot.providerId!,
+            )
+          : null;
+      final supportsMiddleFrames =
+          !productionUsesFrames(request.mode) ||
+          (lookupVideoChannelModel(
+                    videoProvider?.type ?? '',
+                    shot.modelId,
+                  )?.capabilities.maxMiddleFrames ??
+                  0) >
+              0;
       final roles =
           (target.type == canvasNodeTypeImage
                   ? const [VideoInputRole.reference_image]
@@ -912,7 +927,11 @@ class _EpisodeRegion extends HookConsumerWidget {
                           role,
                     ]
                   : productionRoles(request.mode))
-              .where((r) => r.kind.name == (asset?.type ?? source.type))
+              .where(
+                (r) =>
+                    r.kind.name == (asset?.type ?? source.type) &&
+                    (r != VideoInputRole.middle_frame || supportsMiddleFrames),
+              )
               .toList();
       if (!context.mounted || roles.isEmpty) {
         return;

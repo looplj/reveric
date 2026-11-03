@@ -158,6 +158,7 @@ Map<String, dynamic>? _video(AiProvider provider, String model) {
         if (caps.allowsReferenceMode)
           ...kinds.map((kind) => 'reference_${kind.name}'),
       ],
+      'max_middle_frames': caps.maxMiddleFrames,
       'max_references': caps.maxReferences,
       'max_prompt_characters': caps.maxPromptCharacters,
       'supports_audio_only_reference': caps.supportsAudioOnlyReference,

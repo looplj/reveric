@@ -37,6 +37,18 @@ void main() {
     (
       'veo-3.1',
       VideoMode.reference,
+      [VideoInputRole.middle_frame],
+      LocaleKeys.productionGenerateReferenceUnsupported,
+    ),
+    (
+      'veo-3.1',
+      VideoMode.first_last_frame,
+      [VideoInputRole.first_frame, VideoInputRole.middle_frame],
+      LocaleKeys.productionGenerateMiddleFramesUnsupported,
+    ),
+    (
+      'veo-3.1',
+      VideoMode.reference,
       [VideoInputRole.first_frame],
       LocaleKeys.productionGenerateReferenceUnsupported,
     ),
@@ -115,6 +127,7 @@ void main() {
         LocaleKeys.productionGenerateReferenceUnsupported,
         LocaleKeys.productionGenerateFramesUnsupported,
         LocaleKeys.productionGenerateReferencesInvalid,
+        LocaleKeys.productionGenerateMiddleFramesUnsupported,
       ]) {
         expect(
           strings[key],

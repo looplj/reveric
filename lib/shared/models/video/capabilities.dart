@@ -22,6 +22,7 @@ class VideoCapabilities {
     final channel = lookupVideoChannelModel(providerType, request.modelId);
     if (channel == null) {
       _check(request.prompt.trim().isNotEmpty, 'prompt');
+      _check(!roles.contains(VideoInputRole.middle_frame), 'references');
       return;
     }
     _validateParameters(channel, request, roles);
@@ -52,11 +53,16 @@ class VideoCapabilities {
           .where(
             (r) =>
                 r == VideoInputRole.first_frame ||
-                r == VideoInputRole.last_frame,
+                r == VideoInputRole.last_frame ||
+                r == VideoInputRole.middle_frame,
           )
           .every(channel.frameRoles.contains),
       'references',
     );
+    final middleCount = roles
+        .where((r) => r == VideoInputRole.middle_frame)
+        .length;
+    _check(middleCount <= model.maxMiddleFrames, 'middle_frame_count');
     _check(channel.ratios.contains(request.ratio), 'ratio');
     _check((request.audio != null) == channel.requiresAudio, 'audio');
     _check(
@@ -82,7 +88,13 @@ class VideoCapabilities {
         );
       case VideoMode.first_last_frame:
         _check(
-          (roles.length == 2 &&
+          (middleCount > 0 &&
+                  roles.every(channel.frameRoles.contains) &&
+                  roles.where((r) => r == VideoInputRole.first_frame).length ==
+                      1 &&
+                  roles.where((r) => r == VideoInputRole.last_frame).length <=
+                      1) ||
+              (roles.length == 2 &&
                   roles.toSet().containsAll({
                     VideoInputRole.first_frame,
                     VideoInputRole.last_frame,
@@ -102,7 +114,8 @@ class VideoCapabilities {
         _check(
           roles.isNotEmpty &&
               !roles.contains(VideoInputRole.first_frame) &&
-              !roles.contains(VideoInputRole.last_frame),
+              !roles.contains(VideoInputRole.last_frame) &&
+              !roles.contains(VideoInputRole.middle_frame),
           'references',
         );
         _check(
@@ -124,7 +137,7 @@ class VideoCapabilities {
   void validate(VideoRequest request, List<VideoReference> references) {
     final channel = lookupVideoChannelModel(providerType, request.modelId);
     if (channel == null) {
-      _check(request.prompt.trim().isNotEmpty, 'prompt');
+      validateParameters(request, references.map((r) => r.role).toList());
       return;
     }
     final model = channel.capabilities;

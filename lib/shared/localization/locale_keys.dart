@@ -606,6 +606,15 @@ abstract final class LocaleKeys {
   static const productionVideoFile = 'screenplay.production.videoFile';
   static const productionEmpty = 'screenplay.production.empty';
   static const productionResultPending = 'screenplay.production.resultPending';
+  static const productionMiddleFrame = 'screenplay.production.middleFrame';
+  static const productionMiddleFrameReference =
+      'screenplay.production.middleFrameReference';
+  static const productionMiddleFrameReferenceNumber =
+      'screenplay.production.middleFrameReferenceNumber';
+  static const productionMiddleFrameNumber =
+      'screenplay.production.middleFrameNumber';
+  static const productionGenerateMiddleFramesUnsupported =
+      'screenplay.production.generateMiddleFramesUnsupported';
   static const productionFirstFrame = 'screenplay.production.firstFrame';
   static const productionLastFrame = 'screenplay.production.lastFrame';
   static const productionFirstFrameReference =

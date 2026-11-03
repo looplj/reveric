@@ -47,6 +47,16 @@ class ProductionInput {
   String? get sourceNodeId =>
       refType == ProductionInputType.node ? refId : null;
 
+  /// 中间帧在有序输入中的一基序号，包含直接素材与节点引用。
+  int? middleFrameIndex(List<ProductionInput> inputs) =>
+      role != VideoInputRole.middle_frame
+      ? null
+      : inputs
+                .where((input) => input.role == VideoInputRole.middle_frame)
+                .takeWhile((input) => input.id != id)
+                .length +
+            1;
+
   ProductionInput withRole(VideoInputRole value) => ProductionInput(
     id: id,
     refType: refType,

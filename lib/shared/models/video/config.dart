@@ -13,40 +13,24 @@ const videoRatios = {'21:9', '16:9', '4:3', '1:1', '3:4', '9:16', 'adaptive'};
 
 class VideoReferenceLimits {
   const VideoReferenceLimits({
-    int? maxCount,
-    ConfigValue<Set<String>>? mimeTypes,
-    ConfigValue<num>? maxSizeMb,
-    ConfigValue<int>? minDimension,
-    ConfigValue<int>? maxDimension,
-    ConfigValue<double>? minRatio,
-    ConfigValue<double>? maxRatio,
-    ConfigValue<int>? minDurationMs,
-    ConfigValue<int>? maxDurationMs,
-    ConfigValue<int>? maxTotalDurationMs,
-    ConfigValue<int>? minTotalDurationMs,
-    ConfigValue<num>? maxTotalSizeMb,
-    ConfigValue<double>? minFrameRate,
-    ConfigValue<double>? maxFrameRate,
-    ConfigValue<int>? minPixels,
-    ConfigValue<int>? maxPixels,
-    bool? exclusiveMaxSize,
-  }) : _maxCount = maxCount,
-       _mimeTypes = mimeTypes,
-       _maxSizeMb = maxSizeMb,
-       _minDimension = minDimension,
-       _maxDimension = maxDimension,
-       _minRatio = minRatio,
-       _maxRatio = maxRatio,
-       _minDurationMs = minDurationMs,
-       _maxDurationMs = maxDurationMs,
-       _maxTotalDurationMs = maxTotalDurationMs,
-       _minTotalDurationMs = minTotalDurationMs,
-       _maxTotalSizeMb = maxTotalSizeMb,
-       _minFrameRate = minFrameRate,
-       _maxFrameRate = maxFrameRate,
-       _minPixels = minPixels,
-       _maxPixels = maxPixels,
-       _exclusiveMaxSize = exclusiveMaxSize;
+    this._maxCount,
+    this._mimeTypes,
+    this._maxSizeMb,
+    this._minDimension,
+    this._maxDimension,
+    this._minRatio,
+    this._maxRatio,
+    this._minDurationMs,
+    this._maxDurationMs,
+    this._maxTotalDurationMs,
+    this._minTotalDurationMs,
+    this._maxTotalSizeMb,
+    this._minFrameRate,
+    this._maxFrameRate,
+    this._minPixels,
+    this._maxPixels,
+    this._exclusiveMaxSize,
+  });
 
   final int? _maxCount;
   int get maxCount => _maxCount ?? 0;
@@ -108,30 +92,20 @@ class VideoReferenceLimits {
 
 class VideoModelCapabilities {
   const VideoModelCapabilities({
-    Set<String>? resolutions,
-    Set<String>? ratios,
-    Set<int>? durations,
-    Set<VideoInputRole>? frameRoles,
-    ConfigValue<int>? maxPromptCharacters,
-    int? maxReferences,
-    Map<VideoMediaKind, VideoReferenceLimits?>? references,
-    bool? supportsAudioOnlyReference,
-    bool? supportsAdaptiveTextRatio,
-    bool? supportsLastFrameOnly,
-    ConfigValue<int>? maxInputOutputDurationMs,
-    bool? allowsReferenceMode,
-  }) : _resolutions = resolutions,
-       _ratios = ratios,
-       _durations = durations,
-       _frameRoles = frameRoles,
-       _maxPromptCharacters = maxPromptCharacters,
-       _maxReferences = maxReferences,
-       _references = references,
-       _supportsAudioOnlyReference = supportsAudioOnlyReference,
-       _supportsAdaptiveTextRatio = supportsAdaptiveTextRatio,
-       _supportsLastFrameOnly = supportsLastFrameOnly,
-       _maxInputOutputDurationMs = maxInputOutputDurationMs,
-       _allowsReferenceMode = allowsReferenceMode;
+    this._resolutions,
+    this._ratios,
+    this._durations,
+    this._frameRoles,
+    this._maxMiddleFrames,
+    this._maxPromptCharacters,
+    this._maxReferences,
+    this._references,
+    this._supportsAudioOnlyReference,
+    this._supportsAdaptiveTextRatio,
+    this._supportsLastFrameOnly,
+    this._maxInputOutputDurationMs,
+    this._allowsReferenceMode,
+  });
 
   final Set<String>? _resolutions;
   Set<String> get resolutions => _resolutions ?? const {};
@@ -143,6 +117,8 @@ class VideoModelCapabilities {
   Set<VideoInputRole> get frameRoles =>
       _frameRoles ??
       const {VideoInputRole.first_frame, VideoInputRole.last_frame};
+  final int? _maxMiddleFrames;
+  int get maxMiddleFrames => _maxMiddleFrames ?? 0;
   final ConfigValue<int>? _maxPromptCharacters;
   int? get maxPromptCharacters => _maxPromptCharacters?.value;
   final int? _maxReferences;
@@ -172,6 +148,7 @@ class VideoModelCapabilities {
     ratios: overrides._ratios ?? _ratios,
     durations: overrides._durations ?? _durations,
     frameRoles: overrides._frameRoles ?? _frameRoles,
+    maxMiddleFrames: overrides._maxMiddleFrames ?? _maxMiddleFrames,
     maxPromptCharacters: overrides._maxPromptCharacters ?? _maxPromptCharacters,
     maxReferences: overrides._maxReferences ?? _maxReferences,
     references: mergeModelReferences(
@@ -192,11 +169,7 @@ class VideoModelCapabilities {
 }
 
 class VideoRequestDefaults {
-  const VideoRequestDefaults({
-    ConfigValue<bool>? audio,
-    ConfigValue<bool>? promptExtend,
-  }) : _audio = audio,
-       _promptExtend = promptExtend;
+  const VideoRequestDefaults({this._audio, this._promptExtend});
 
   final ConfigValue<bool>? _audio;
   bool? get audio => _audio?.value;

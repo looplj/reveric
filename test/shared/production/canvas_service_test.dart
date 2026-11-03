@@ -3279,6 +3279,198 @@ void main() {
     },
   );
 
+  test(
+    'Kling middle frames retain identities and order across save, reorder and preview',
+    () async {
+      service = ProductionCanvasService(
+        service.shots,
+        MediaLibraryService(appDb, _ImageMedia(size: 720), root),
+        'work',
+      );
+      await appDb
+          .into(appDb.aiProviders)
+          .insert(
+            app.AiProvidersCompanion.insert(
+              id: 'kling',
+              name: 'Kling',
+              type: 'atlascloud',
+              enabled: const Value(true),
+              apiKey: const Value('test'),
+              videoModels: const Value([
+                'kwaivgi/kling-v4.0',
+                'bytedance/seedance-2.5',
+              ]),
+            ),
+          );
+      for (final id in ['first', 'a', 'b', 'last']) {
+        await asset(id);
+      }
+      final target = await service.ensureShotNode(shot.id);
+      final aNode = await service.addMedia(target.canvasId, 'a');
+      final bNode = await service.addMedia(target.canvasId, 'b');
+      final first = ProductionInput.asset('first', VideoInputRole.first_frame);
+      final a = ProductionInput.node(aNode.id, VideoInputRole.middle_frame);
+      final b = ProductionInput.node(bNode.id, VideoInputRole.middle_frame);
+      final last = ProductionInput.asset('last', VideoInputRole.last_frame);
+      final prompt = [
+        first,
+        a,
+        b,
+        last,
+      ].map((i) => StoryboardPrompt.reference(i.id, i.refId)).join(' ');
+      Future<void> save(
+        List<ProductionInput> inputs, {
+        String model = 'kwaivgi/kling-v4.0',
+        VideoMode mode = VideoMode.first_last_frame,
+      }) => service.save(
+        nodeId: target.id,
+        providerId: 'kling',
+        overlay: overlay,
+        inputs: inputs,
+        request: VideoRequest(
+          modelId: model,
+          prompt: prompt,
+          mode: mode,
+          resolution: '720p',
+          ratio: mode == VideoMode.reference ? '16:9' : 'adaptive',
+        ),
+      );
+      await save([last, b, first, a]);
+      expect((await service.inputs(target.id)).map((i) => i.id), [
+        last.id,
+        b.id,
+        first.id,
+        a.id,
+      ]);
+      final operation = ProductionGenerateOrchestrator();
+      final preview = await operation.preview(service, target.id);
+      expect(preview.request.prompt, '@image_1 @image_3 @image_2 @image_4');
+      expect(
+        preview.inputs
+            .where((i) => i.role == VideoInputRole.middle_frame)
+            .map((i) => i.assetId),
+        ['b', 'a'],
+      );
+      final restored = VideoRequest.fromJson(preview.request.toJson());
+      expect(
+        restored.referenceSlots.singleWhere((s) => s.inputId == a.id).slot,
+        '@image_3',
+      );
+      final edges = (await service.content(target.canvasId)).edges;
+      expect(edges.singleWhere((e) => e.inputId == a.id).middleFrameIndex, 2);
+      expect(edges.singleWhere((e) => e.inputId == b.id).middleFrameIndex, 1);
+      await save([first, a, b, last]);
+      expect(
+        (await operation.preview(service, target.id)).request.prompt,
+        '@image_1 @image_2 @image_3 @image_4',
+      );
+      expect((await service.shots.getShot(shot.id))!.prompt, prompt);
+      await save([first, a, b, last], model: 'bytedance/seedance-2.5');
+      await expectLater(
+        operation.preview(service, target.id),
+        throwsA(isA<VideoException>()),
+      );
+      expect(
+        (await service.inputs(
+          target.id,
+        )).where((i) => i.role == VideoInputRole.middle_frame),
+        hasLength(2),
+      );
+      for (final model in ['kwaivgi/kling-v4.0', 'bytedance/seedance-2.5']) {
+        await save(
+          [last, b, first, a],
+          model: model,
+          mode: VideoMode.reference,
+        );
+        final reference = await operation.preview(service, target.id);
+        expect(
+          reference.inputs.map((i) => i.role),
+          everyElement(VideoInputRole.reference_image),
+        );
+        expect(reference.inputs.map((i) => i.assetId), [
+          'last',
+          'b',
+          'first',
+          'a',
+        ]);
+        final token = model == 'kwaivgi/kling-v4.0' ? '@image_' : '@Image';
+        expect(
+          reference.request.prompt,
+          startsWith('${token}3 ${token}4 ${token}2 ${token}1'),
+        );
+        expect(
+          reference.request.prompt,
+          contains('以 ${token}2 作为第 1 个中间过程的画面参考。'),
+        );
+        expect(
+          reference.request.prompt,
+          contains('以 ${token}4 作为第 2 个中间过程的画面参考。'),
+        );
+        expect((await service.inputs(target.id)).map((i) => i.role), [
+          VideoInputRole.last_frame,
+          VideoInputRole.middle_frame,
+          VideoInputRole.first_frame,
+          VideoInputRole.middle_frame,
+        ]);
+      }
+      await save([last, b, first, a]);
+      expect(
+        (await operation.preview(service, target.id)).request.prompt,
+        '@image_1 @image_3 @image_2 @image_4',
+      );
+      expect(
+        productionSubmitMode(VideoMode.first_last_frame, [
+          VideoInputRole.first_frame,
+          VideoInputRole.middle_frame,
+        ]),
+        VideoMode.first_last_frame,
+      );
+    },
+  );
+
+  test('middle frames become ordinary references across video protocols', () {
+    final middle = ProductionInput.asset('middle', VideoInputRole.middle_frame);
+    for (final (protocol, model) in [
+      (VideoProtocol.ark_video, 'doubao-seedance-2-0-260128'),
+      (VideoProtocol.minimax_video_v2, 'MiniMax-H3'),
+      (VideoProtocol.atlascloud_video, 'bytedance/seedance-2.5'),
+    ]) {
+      final provider = videoProviderType(protocol);
+      final channel = lookupVideoChannelModel(provider, model)!;
+      final raw = VideoRequest(
+        modelId: model,
+        prompt: StoryboardPrompt.reference(middle.id, 'Middle'),
+        mode: VideoMode.reference,
+        resolution: channel.resolutions.first,
+        ratio: '16:9',
+        durationSeconds: channel.durations.first,
+        audio: channel.requestDefaults.audio,
+        promptExtend: channel.requestDefaults.promptExtend,
+      );
+      final compiled = compileForTest(provider, raw, [middle]);
+      final role = productionSubmitRole(raw.mode, middle.role);
+      expect(role, VideoInputRole.reference_image);
+      expect(compiled.referenceSlots.single.role, role);
+      expect(compiled.referenceSlots.single.inputId, middle.id);
+      VideoCapabilities(provider).validateParameters(compiled, [role]);
+      final limit =
+          channel.capabilities.references[VideoMediaKind.image]!.maxCount;
+      expect(
+        () => VideoCapabilities(
+          provider,
+        ).validateParameters(compiled, List.filled(limit + 1, role)),
+        throwsA(
+          isA<VideoException>().having((e) => e.field, 'field', 'image_count'),
+        ),
+      );
+      expect(
+        productionSubmitRole(VideoMode.first_last_frame, middle.role),
+        VideoInputRole.middle_frame,
+      );
+      expect(productionSubmitRole(VideoMode.text, middle.role), role);
+    }
+  });
+
   test('submit mode follows the chosen group and the inputs actually sent', () {
     const first = VideoInputRole.first_frame;
     const last = VideoInputRole.last_frame;
@@ -3296,7 +3488,11 @@ void main() {
       productionSubmitMode(VideoMode.first_last_frame, [first, last]),
       VideoMode.first_last_frame,
     );
-    expect(productionRoles(VideoMode.first_last_frame), [first, last]);
+    expect(productionRoles(VideoMode.first_last_frame), [
+      first,
+      VideoInputRole.middle_frame,
+      last,
+    ]);
     expect(productionRoles(VideoMode.reference), containsAll([first, last]));
   });
   test(

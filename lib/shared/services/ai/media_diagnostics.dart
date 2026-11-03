@@ -1,4 +1,4 @@
-// 职责: 为音视频 HTTP 诊断移除凭据和签名地址并限制日志长度。
+// 职责: 为音视频 HTTP 诊断移除凭据并限制日志长度，保留 URL 供排查。
 // 关联文件:
 //   lib/shared/services/ai/audio/client.dart
 //   lib/shared/services/ai/video/client.dart
@@ -9,10 +9,6 @@ String safeMediaDiagnostic(Object error, String apiKey) {
     message = message.replaceAll(apiKey, '[redacted]');
   }
   final safe = message
-      .replaceAll(
-        RegExp(r'''https?://[^\s<>"']+''', caseSensitive: false),
-        '[url]',
-      )
       .replaceAll(
         RegExp(r'Bearer\s+\S+|\bsk-[\w-]+', caseSensitive: false),
         '[redacted]',

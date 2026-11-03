@@ -745,6 +745,8 @@ class ProductionNodeBar extends HookConsumerWidget {
                                             final role? => productionRole(
                                               context,
                                               role,
+                                              middleFrameIndex:
+                                                  edge.middleFrameIndex,
                                             ),
                                             null => null,
                                           },

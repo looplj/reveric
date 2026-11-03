@@ -65,12 +65,14 @@ class ProductionConnection {
     required this.type,
     this.role,
     this.inputId,
+    this.middleFrameIndex,
   });
   final String id, sourceNodeId, targetNodeId, type;
   final String? role;
 
   /// 由片段输入派生的连线才有；输入 id 只在所属片段内唯一。
   final String? inputId;
+  final int? middleFrameIndex;
   factory ProductionConnection.stored(CanvasEdge edge) => ProductionConnection(
     id: edge.id,
     sourceNodeId: edge.sourceNodeId,
@@ -1079,6 +1081,9 @@ class ProductionCanvasService {
                     type: canvasEdgeTypeInput,
                     role: input.role.name,
                     inputId: input.id,
+                    middleFrameIndex: input.middleFrameIndex(
+                      byId[node.clipId]!.inputs,
+                    ),
                   ),
           ],
         );

@@ -68,6 +68,83 @@ void main() {
   });
 
   testWidgets(
+    'middle frame menus follow model support and show sequence labels',
+    (tester) async {
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      final main = app.AppDatabase.forTest(NativeDatabase.memory());
+      final service = ProductionCanvasService(
+        StoryboardService(db),
+        MediaLibraryService(
+          main,
+          MediaService(FfmpegRunner()),
+          Directory.systemTemp,
+        ),
+        'work',
+      );
+      final input = ProductionInput.asset(
+        'missing',
+        VideoInputRole.middle_frame,
+      );
+      VideoInputRole? selected;
+      try {
+        for (final (supported, mode, label, roleLabel) in [
+          (false, VideoMode.first_last_frame, 'Middle 2', 'Middle frame'),
+          (true, VideoMode.first_last_frame, 'Middle 2', 'Middle frame'),
+          (
+            true,
+            VideoMode.reference,
+            'Middle ref. 2',
+            'Middle-frame reference',
+          ),
+        ]) {
+          await tester.pumpWidget(
+            _wrap(
+              Center(
+                child: ProductionInputTile(
+                  service: service,
+                  input: input,
+                  mode: mode,
+                  supportsMiddleFrames: supported,
+                  middleFrameIndex: 2,
+                  valid: supported,
+                  onRole: (role) => selected = role,
+                  onMove: null,
+                  onRemove: () {},
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text(label), findsOneWidget);
+          await tester.tap(find.byType(ProductionInputTile));
+          await tester.pumpAndSettle();
+          expect(
+            find.text(roleLabel),
+            supported ? findsOneWidget : findsNothing,
+          );
+          if (supported) {
+            await tester.tap(find.text(roleLabel));
+            expect(selected, VideoInputRole.middle_frame);
+          } else {
+            await tester.tap(find.text('First frame'));
+            expect(selected, VideoInputRole.first_frame);
+          }
+          await tester.pumpAndSettle();
+        }
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await db.close();
+        await main.close();
+      }
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+    }),
+  );
+
+  testWidgets(
     'shared voices can be renamed and unlinked',
     (tester) async {
       final db = NovelContentDatabase.forTest(NativeDatabase.memory());

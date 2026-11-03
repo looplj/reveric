@@ -43,6 +43,12 @@ void main() {
           'alibaba/wan-3.0',
           'alibaba/wan-3.0-prime',
           'minimax/h3',
+          'kwaivgi/kling-v4.0',
+          'minimax/h3-developer',
+          'minimax/h3-fast',
+          'minimax/h3-max',
+          'minimax/h3-max-turbo',
+
           'pixverse/v6',
           'xai/grok-imagine-video-v1.5',
         ]),
@@ -183,6 +189,145 @@ void testAtlasRoutes() {
 }
 
 void testWireConventions() {
+  test(
+    'Kling keyframes preserve middle order and submit without a last frame',
+    () async {
+      final seen = <Map<String, dynamic>>[];
+      final api = client(
+        MockClient((r) async {
+          final body = jsonDecode(r.body) as Map<String, dynamic>;
+          validateSchema(
+            body,
+            officialSchemas[body['model']] as Map<String, dynamic>,
+          );
+          seen.add(body);
+          return http.Response('{"data":{"id":"keyframes"}}', 200);
+        }),
+      );
+      VideoReference image(VideoInputRole role, String name) => VideoReference(
+        role: role,
+        url: Uri.https('media.example', '/$name.png'),
+        mimeType: 'image/png',
+        fileSize: 100,
+        mediaInfo: const VideoMediaInfo(width: 720, height: 720),
+      );
+      final first = image(VideoInputRole.first_frame, 'first');
+      final middleA = image(VideoInputRole.middle_frame, 'a');
+      final middleB = image(VideoInputRole.middle_frame, 'b');
+      final last = image(VideoInputRole.last_frame, 'last');
+      final raw = request('kwaivgi/kling-v4.0', VideoMode.first_last_frame);
+      await api.submit(raw, [last, middleB, first, middleA]);
+      expect(seen.single['image'], first.url.toString());
+      expect(seen.single['middle_images'], [
+        middleB.url.toString(),
+        middleA.url.toString(),
+      ]);
+      expect(seen.single['last_image'], last.url.toString());
+      expect(seen.single.containsKey('aspect_ratio'), false);
+      await api.submit(raw, [first, middleA]);
+      expect(seen.last.containsKey('last_image'), false);
+      await api.submit(raw, [first, ...List.filled(8, middleA), last]);
+      expect(seen.last['middle_images'], hasLength(8));
+      final count = seen.length;
+      for (final refs in [
+        [first, ...List.filled(9, middleA)],
+        [middleA, last],
+        [first, first, middleA],
+        [first, middleA, last, last],
+      ]) {
+        await expectLater(
+          api.submit(raw, refs),
+          throwsA(isA<VideoException>()),
+        );
+      }
+      await expectLater(
+        api.submit(request('minimax/h3', VideoMode.first_last_frame), [
+          first,
+          middleA,
+          last,
+        ]),
+        throwsA(isA<VideoException>()),
+      );
+      await expectLater(
+        api.submit(request('kwaivgi/kling-v4.0', VideoMode.reference), [
+          middleA,
+        ]),
+        throwsA(isA<VideoException>()),
+      );
+      expect(seen, hasLength(count));
+    },
+  );
+
+  test('H3 reference variants reject more than twelve total assets', () async {
+    final api = client(
+      MockClient((_) async => throw StateError('unexpected POST')),
+    );
+    for (final model in [
+      'minimax/h3',
+      'minimax/h3-developer',
+      'minimax/h3-fast',
+      'minimax/h3-max',
+    ]) {
+      final refs = [
+        for (var i = 0; i < 9; i++) reference(VideoInputRole.reference_image),
+        for (var i = 0; i < 3; i++) reference(VideoInputRole.reference_video),
+        reference(VideoInputRole.reference_audio),
+      ];
+      await expectLater(
+        api.submit(request(model, VideoMode.reference), refs),
+        throwsA(
+          isA<VideoException>().having(
+            (e) => e.field,
+            'field',
+            'reference_count',
+          ),
+        ),
+      );
+    }
+  });
+
+  test(
+    'new variants preserve mode-specific limits and omit unsupported switches',
+    () {
+      final api = client(
+        MockClient((_) async => throw StateError('unexpected POST')),
+      );
+      final kling = api.encode(
+        request('kwaivgi/kling-v4.0', VideoMode.text, duration: 30),
+        [],
+      );
+      expect(kling['duration'], 30);
+      expect(kling['aspect_ratio'], '16:9');
+      expect(kling.containsKey('generate_audio'), false);
+      expect(kling.containsKey('sound'), false);
+      final turbo = api.encode(
+        request('minimax/h3-max-turbo', VideoMode.text),
+        [],
+      );
+      expect(turbo.containsKey('prompt_expansion'), false);
+      for (final (model, mode, resolution, duration) in [
+        ('kwaivgi/kling-v4.0', VideoMode.text, '720p', 31),
+        ('minimax/h3-fast', VideoMode.text, '768P', 5),
+        ('minimax/h3-max', VideoMode.reference, '4k-sr', 5),
+      ]) {
+        expect(
+          () => api.encode(
+            request(model, mode, resolution: resolution, duration: duration),
+            [],
+          ),
+          throwsA(isA<VideoException>()),
+        );
+      }
+      final turboOptions =
+          lookupVideoChannelModel(
+                'atlascloud',
+                'minimax/h3-max-turbo',
+              )!.protocolOptions
+              as AtlasCloudVideoOptions;
+      expect(turboOptions.routeFor(VideoMode.reference), isNull);
+    },
+  );
+
   test(
     'Veo uses aspect_ratio and rejects invalid high-resolution duration before POST',
     () async {
@@ -381,6 +526,20 @@ void validateSchema(Object? value, Map<String, dynamic> schema) {
 // https://static.atlascloud.ai/model/schema/<model-id-with-slashes-replaced-by-hyphens>.json
 final officialSchemas = jsonDecode(_officialSchemaJson) as Map<String, dynamic>;
 const _officialSchemaJson = r'''{
+"kwaivgi/kling-v4.0/image-to-video":{"type":"object","required":["model","image"],"properties":{"model":{"type":"string","enum":["kwaivgi/kling-v4.0/image-to-video"]},"prompt":{"type":"string"},"image":{"type":"string"},"middle_images":{"type":"array","items":{"type":"string"},"maxItems":8},"last_image":{"type":"string"},"duration":{"type":"integer","minimum":3,"maximum":30},"resolution":{"type":"string","enum":["720p","1080p","1080p-esr","2k-esr","4k-esr"]}}},
+"kwaivgi/kling-v4.0/reference-to-video":{"type":"object","required":["model","prompt"],"properties":{"model":{"type":"string","enum":["kwaivgi/kling-v4.0/reference-to-video"]},"prompt":{"type":"string"},"reference_images":{"type":"array","items":{"type":"string"},"maxItems":10},"reference_videos":{"type":"array","items":{"type":"string"},"maxItems":5},"elements":{"type":"array","maxItems":7,"items":{"type":"object","properties":{"element_id":{"type":"integer"},"element_name":{"type":"string"},"element_description":{"type":"string"},"reference_type":{"type":"string","enum":["image_refer","video_refer"]},"frontal_image":{"type":"string"},"refer_images":{"type":"array","items":{"type":"string"},"maxItems":3},"refer_videos":{"type":"array","items":{"type":"string"},"maxItems":1}}}},"voice_ids":{"type":"array","items":{"type":"string"},"maxItems":3},"image":{"type":"string"},"middle_images":{"type":"array","items":{"type":"string"},"maxItems":8},"last_image":{"type":"string"},"duration":{"type":"integer","minimum":3,"maximum":30},"aspect_ratio":{"type":"string","enum":["auto","16:9","9:16","1:1","21:9"]},"resolution":{"type":"string","enum":["720p","1080p","1080p-esr","2k-esr","4k-esr"]}}},
+"kwaivgi/kling-v4.0/text-to-video":{"type":"object","required":["model","prompt"],"properties":{"model":{"type":"string","enum":["kwaivgi/kling-v4.0/text-to-video"]},"prompt":{"type":"string"},"duration":{"type":"integer","minimum":3,"maximum":30},"aspect_ratio":{"type":"string","enum":["16:9","9:16","1:1","21:9"]},"resolution":{"type":"string","enum":["720p","1080p","1080p-esr","2k-esr","4k-esr"]}}},
+"minimax/h3-developer/image-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"string"},"end_image":{"type":"string"},"resolution":{"enum":["480P","768P","1440p-sr","4k-sr"],"type":"string"},"duration":{"enum":[4,5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["adaptive"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration"],"type":"object"},
+"minimax/h3-developer/reference-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"refers":{"type":"array","items":{"type":"object","properties":{"url":{"type":"string"},"type":{"type":"string","enum":["image","video","audio"]}},"required":["url"]},"minItems":1,"maxItems":12},"resolution":{"enum":["480P","768P","1440p-sr","4k-sr"],"type":"string"},"duration":{"enum":[4,5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["adaptive","21:9","16:9","4:3","1:1","3:4","9:16"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration","refers"],"type":"object"},
+"minimax/h3-developer/text-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"resolution":{"enum":["480P","768P","1440p-sr","4k-sr"],"type":"string"},"duration":{"enum":[4,5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["21:9","16:9","4:3","1:1","3:4","9:16"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration","ratio"],"type":"object"},
+"minimax/h3-fast/image-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"string"},"end_image":{"type":"string"},"resolution":{"enum":["480P"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["adaptive"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration"],"type":"object"},
+"minimax/h3-fast/reference-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"refers":{"type":"array","items":{"type":"object","properties":{"url":{"type":"string"},"type":{"type":"string","enum":["image","video","audio"]}},"required":["url"]},"minItems":1,"maxItems":12},"resolution":{"enum":["480P"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["21:9","16:9","4:3","1:1","3:4","9:16"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration","refers"],"type":"object"},
+"minimax/h3-fast/text-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"resolution":{"enum":["480P"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["21:9","16:9","4:3","1:1","3:4","9:16"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration"],"type":"object"},
+"minimax/h3-max-turbo/image-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"string"},"end_image":{"type":"string"},"resolution":{"enum":["480P","768P"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["adaptive"],"type":"string"}},"required":["model","prompt","resolution","duration"],"type":"object"},
+"minimax/h3-max-turbo/text-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"resolution":{"enum":["480P","768P"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["21:9","16:9","4:3","1:1","3:4","9:16"],"type":"string"}},"required":["model","prompt","resolution","duration"],"type":"object"},
+"minimax/h3-max/image-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"image":{"type":"string"},"end_image":{"type":"string"},"resolution":{"enum":["480P","768P","1440p-sr","4k-sr"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["adaptive"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration"],"type":"object"},
+"minimax/h3-max/reference-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"refers":{"type":"array","items":{"type":"object","properties":{"url":{"type":"string"},"type":{"type":"string","enum":["image","video","audio"]}},"required":["url"]},"minItems":1,"maxItems":12},"resolution":{"enum":["480P","768P"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["adaptive","21:9","16:9","4:3","1:1","3:4","9:16"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","refers","resolution","duration"],"type":"object"},
+"minimax/h3-max/text-to-video":{"properties":{"model":{"type":"string"},"prompt":{"type":"string"},"resolution":{"enum":["480P","768P","1440p-sr","4k-sr"],"type":"string"},"duration":{"enum":[5,6,7,8,9,10,11,12,13,14,15],"type":"number"},"ratio":{"enum":["21:9","16:9","4:3","1:1","3:4","9:16"],"type":"string"},"prompt_expansion":{"type":"boolean"}},"required":["model","prompt","resolution","duration"],"type":"object"},
 "alibaba/happyhorse-1.0/text-to-video":{"type":"object","required":["model","prompt"],"properties":{"model":{"type":"string","enum":["alibaba/happyhorse-1.0/text-to-video"]},"prompt":{"type":"string"},"resolution":{"enum":["720p","1080p"],"type":"string"},"ratio":{"enum":["16:9","9:16","1:1","4:3","3:4"],"type":"string"},"duration":{"minimum":3,"maximum":15,"type":"integer"},"seed":{"minimum":-1,"maximum":2147483647,"type":"integer"}}},
 "alibaba/happyhorse-1.0/image-to-video":{"type":"object","required":["model","image"],"properties":{"model":{"type":"string","enum":["alibaba/happyhorse-1.0/image-to-video"]},"image":{"type":"string"},"prompt":{"type":"string"},"resolution":{"enum":["720p","1080p"],"type":"string"},"duration":{"minimum":3,"maximum":15,"type":"integer"},"seed":{"minimum":-1,"maximum":2147483647,"type":"integer"}}},
 "alibaba/happyhorse-1.0/reference-to-video":{"type":"object","required":["model","prompt","images"],"properties":{"model":{"type":"string","enum":["alibaba/happyhorse-1.0/reference-to-video"]},"prompt":{"type":"string"},"images":{"type":"array","minItems":1,"maxItems":9,"items":{"type":"string"}},"resolution":{"enum":["720p","1080p"],"type":"string"},"ratio":{"enum":["16:9","9:16","1:1","4:3","3:4"],"type":"string"},"duration":{"minimum":3,"maximum":15,"type":"integer"},"seed":{"minimum":-1,"maximum":2147483647,"type":"integer"}}},

@@ -442,6 +442,40 @@ void main() {
           expect(controller.viewport, viewport);
           expect(controller.selectedNodeIds, {videoNode.id});
         }
+        final middleA = input.withRole(VideoInputRole.middle_frame);
+        final middleB = ProductionInput.node(
+          second.id,
+          VideoInputRole.middle_frame,
+        );
+        await shots.restoreInputs(video.id, [
+          middleA.toJson(),
+          middleB.toJson(),
+        ]);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(edge.label?.text, 'Middle ref. 1');
+        final otherEdge = controller.getConnection(
+          '${videoNode.id}:${middleB.id}',
+        )!;
+        expect(otherEdge.label?.text, 'Middle ref. 2');
+        await shots.restoreInputs(video.id, [
+          middleB.toJson(),
+          middleA.toJson(),
+        ]);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(controller.getConnection(edgeId), same(edge));
+        expect(edge.label?.text, 'Middle ref. 2');
+        expect(otherEdge.label?.text, 'Middle ref. 1');
+        expect(controller.viewport, viewport);
+        await shots.apply(video.id, {
+          ...shots.snapshot((await shots.getShot(video.id))!),
+          'reference_mode': 'first_last_frame',
+        });
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(edge.label?.text, 'Middle 2');
+        expect(otherEdge.label?.text, 'Middle 1');
         // Keep the grabbed point under the pointer throughout a zoomed drag.
         for (final zoom in [.5, 1.0, 1.5]) {
           controller.setViewport(

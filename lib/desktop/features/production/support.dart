@@ -57,17 +57,28 @@ String productionRole(
   BuildContext context,
   VideoInputRole role, {
   VideoMode? mode,
-}) => context.t(switch (role) {
-  VideoInputRole.first_frame when mode == VideoMode.reference =>
-    LocaleKeys.productionFirstFrameReference,
-  VideoInputRole.last_frame when mode == VideoMode.reference =>
-    LocaleKeys.productionLastFrameReference,
-  VideoInputRole.first_frame => LocaleKeys.productionFirstFrame,
-  VideoInputRole.last_frame => LocaleKeys.productionLastFrame,
-  VideoInputRole.reference_image => LocaleKeys.productionReferenceImage,
-  VideoInputRole.reference_video => LocaleKeys.productionReferenceVideo,
-  VideoInputRole.reference_audio => LocaleKeys.productionReferenceAudio,
-});
+  int? middleFrameIndex,
+}) => role == VideoInputRole.middle_frame && middleFrameIndex != null
+    ? context.t(
+        mode == VideoMode.reference
+            ? LocaleKeys.productionMiddleFrameReferenceNumber
+            : LocaleKeys.productionMiddleFrameNumber,
+        namedArgs: {'n': '$middleFrameIndex'},
+      )
+    : context.t(switch (role) {
+        VideoInputRole.first_frame when mode == VideoMode.reference =>
+          LocaleKeys.productionFirstFrameReference,
+        VideoInputRole.last_frame when mode == VideoMode.reference =>
+          LocaleKeys.productionLastFrameReference,
+        VideoInputRole.first_frame => LocaleKeys.productionFirstFrame,
+        VideoInputRole.last_frame => LocaleKeys.productionLastFrame,
+        VideoInputRole.middle_frame when mode == VideoMode.reference =>
+          LocaleKeys.productionMiddleFrameReference,
+        VideoInputRole.middle_frame => LocaleKeys.productionMiddleFrame,
+        VideoInputRole.reference_image => LocaleKeys.productionReferenceImage,
+        VideoInputRole.reference_video => LocaleKeys.productionReferenceVideo,
+        VideoInputRole.reference_audio => LocaleKeys.productionReferenceAudio,
+      });
 Future<void> productionRun(
   BuildContext context,
   Future<void> Function() action,

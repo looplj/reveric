@@ -3273,6 +3273,7 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
                     'reference_video',
                     'reference_audio',
                     'first_frame',
+                    'middle_frame',
                     'last_frame',
                   ],
                 ),

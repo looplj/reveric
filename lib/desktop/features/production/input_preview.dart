@@ -31,6 +31,8 @@ class ProductionInputTile extends HookWidget {
     required this.input,
     required this.valid,
     this.mode,
+    this.supportsMiddleFrames = false,
+    this.middleFrameIndex,
     required this.onRole,
     required this.onMove,
     required this.onRemove,
@@ -41,6 +43,8 @@ class ProductionInputTile extends HookWidget {
   /// 用途在当前生成方式下可用。
   final bool valid;
   final VideoMode? mode;
+  final bool supportsMiddleFrames;
+  final int? middleFrameIndex;
   final ValueChanged<VideoInputRole>? onRole;
 
   /// -1 前移，1 后移；到头时为 null。
@@ -86,7 +90,9 @@ class ProductionInputTile extends HookWidget {
           ],
           if (onRole != null)
             for (final role in VideoInputRole.values.where(
-              (r) => r.kind == input.role.kind,
+              (r) =>
+                  r.kind == input.role.kind &&
+                  (r != VideoInputRole.middle_frame || supportsMiddleFrames),
             ))
               RevericMenuItem(
                 label: productionRole(context, role, mode: mode),
@@ -126,7 +132,7 @@ class ProductionInputTile extends HookWidget {
 
     return Tooltip(
       message: [
-        '$name · ${productionRole(context, input.role, mode: mode)}',
+        '$name · ${productionRole(context, input.role, mode: mode, middleFrameIndex: middleFrameIndex)}',
         if (mode != null &&
             productionSubmitRole(mode!, input.role) != input.role)
           context.t(LocaleKeys.productionFrameReferenceHint),
@@ -175,7 +181,12 @@ class ProductionInputTile extends HookWidget {
                         ),
                       ),
                       child: Text(
-                        productionRole(context, input.role, mode: mode),
+                        productionRole(
+                          context,
+                          input.role,
+                          mode: mode,
+                          middleFrameIndex: middleFrameIndex,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: typo.uiTinySemibold.copyWith(

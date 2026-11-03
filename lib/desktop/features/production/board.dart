@@ -541,6 +541,7 @@ class ProductionBoard extends HookConsumerWidget {
             context,
             VideoInputRole.values.byName(role),
             mode: clipInfo?[byId[edge.targetNodeId]?.clipId]?.mode,
+            middleFrameIndex: edge.middleFrameIndex,
           ),
     };
     useEffect(

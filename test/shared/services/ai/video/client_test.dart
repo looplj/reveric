@@ -297,9 +297,9 @@ void main() {
     expect(log, contains('connection reset'));
     expect(log, contains('ClientException'));
     expect(log, isNot(contains('secret')));
-    expect(log, isNot(contains('private.example')));
+    expect(log, contains('https://private.example/?token=[redacted]'));
   });
-  test('HTTP error diagnostics redact credentials and signed URLs', () async {
+  test('HTTP error diagnostics retain URLs and redact credentials', () async {
     final lines = <String>[];
     final originalDebugPrint = debugPrint;
     debugPrint = (message, {wrapWidth}) {
@@ -329,12 +329,11 @@ void main() {
     final log = lines.join('\n');
     expect(log, contains('status=503'));
     expect(log, contains('No available channel'));
+    expect(log, contains('https://signed.example/video?token=private-token'));
     for (final sensitive in [
       'secret',
       'upstream-token',
       'sk-private-key',
-      'signed.example',
-      'private-token',
       '\nnext line',
     ]) {
       expect(log, isNot(contains(sensitive)));
