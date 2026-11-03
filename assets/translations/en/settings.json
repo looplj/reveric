@@ -714,5 +714,9 @@
   "settings.about_upload_logs_confirm_title": "Upload diagnostic logs?",
   "settings.about_upload_logs_confirm_description": "Uploads app logs and crash reports for troubleshooting.",
   "settings.about_upload_logs_success": "Logs uploaded successfully.",
-  "settings.about_upload_logs_failed": "Upload failed. Please try again."
+  "settings.about_upload_logs_failed": "Upload failed. Please try again.",
+  "settings.builtin_provider_purefox": "PureFox",
+  "settings.builtin_provider_purefox_media": "PureFox Media",
+  "settings.provider_description_purefox": "Access models through the PureFox gateway using its OpenAI-compatible API.",
+  "settings.provider_description_purefox_media": "PureFox media gateway for image and video generation (OpenAI Images compatible)."
 }

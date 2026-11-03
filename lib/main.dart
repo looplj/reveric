@@ -58,6 +58,7 @@ import 'shared/providers/production_audio.dart';
 import 'shared/providers/agent_skill_catalog_providers.dart';
 import 'shared/providers/official_skill_sync_providers.dart';
 import 'shared/providers/anonymous_reporting_providers.dart';
+import 'shared/providers/purefox_media_providers.dart';
 import 'shared/providers/remote_bridge_providers.dart';
 import 'shared/providers/settings_providers.dart';
 import 'shared/services/ai/prompt_template.dart';
@@ -695,6 +696,9 @@ class _EagerInitialization extends ConsumerWidget {
     // 同步本地官方目录：安装新增技能，升级已有官方安装，保留用户删除选择。
     ref.watch(officialAgentSkillsProvider(agentSkillCatalogFilter()));
     ref.watch(officialSkillSyncProvider);
+    // PureFox Media 的型号能力只存在内存目录，冷启动后按已保存配置重新登记；
+    // 失败由 provider 内部记录，不阻塞启动。
+    ref.watch(purefoxMediaModelsProvider);
     // 预热远程桥接：coordinator 会级联实例化 bridge/forwarder 并触发
     // remoteBridgeAutoRestoreProvider（免扫码恢复 + 重挂 run 订阅 + 孤儿 run 对账 +
     // 仅桌面端：headless run 宿主与 bridge 都只存在于桌面端。

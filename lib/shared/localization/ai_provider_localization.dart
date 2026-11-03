@@ -28,6 +28,8 @@ String localizedBuiltinAiProviderName(
 }) {
   final key = switch (providerId) {
     'metaso' => LocaleKeys.settingsBuiltinProviderMetaso,
+    'purefox' => LocaleKeys.settingsBuiltinProviderPurefox,
+    'purefox_media' => LocaleKeys.settingsBuiltinProviderPurefoxMedia,
     'deepseek' => LocaleKeys.settingsBuiltinProviderDeepseek,
     'doubao' => LocaleKeys.settingsBuiltinProviderDoubao,
     'moonshot' => LocaleKeys.settingsBuiltinProviderMoonshot,
@@ -82,6 +84,9 @@ String localizedProviderTypeDescription(
     AiProviderType.agnes => LocaleKeys.settingsProviderDescriptionAgnes,
     AiProviderType.atlascloud =>
       LocaleKeys.settingsProviderDescriptionAtlascloud,
+    AiProviderType.purefox => LocaleKeys.settingsProviderDescriptionPurefox,
+    AiProviderType.purefox_media =>
+      LocaleKeys.settingsProviderDescriptionPurefoxMedia,
   };
   return context.t(key);
 }

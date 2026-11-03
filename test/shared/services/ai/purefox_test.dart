@@ -1,0 +1,389 @@
+// 职责: 验证 PureFox 媒体网关按 /v1/models 动态登记型号、图片档位编码、视频 NDJSON 流与参考素材上传。
+// 关联文件:
+//   lib/shared/services/ai/purefox_media.dart
+//   lib/shared/services/ai/image/purefox.dart
+//   lib/shared/services/ai/video/purefox.dart
+//   lib/shared/models/image/channels.dart
+//   lib/shared/models/video/channels.dart
+//   lib/shared/providers/purefox_media_providers.dart
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/video/catalog.dart';
+import 'package:reveric/shared/models/video/channels.dart';
+import 'package:reveric/shared/models/video/request.dart';
+import 'package:reveric/shared/models/video/task_result.dart';
+import 'package:reveric/shared/services/ai/image.dart';
+import 'package:reveric/shared/services/ai/purefox_media.dart';
+import 'package:reveric/shared/services/ai/video/purefox.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
+
+const _png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==';
+
+const _videoId = 'site-video-model';
+const _imageId = 'site-image-model';
+
+/// 站点真实信封：duration 是 {mode, options}，参考上限分三类。
+String _payload() => jsonEncode({
+  'object': 'list',
+  'data': [
+    {
+      'id': _imageId,
+      'kind': 'image',
+      'qualities': ['1K', '2K'],
+      'refImages': 3,
+    },
+    {
+      'id': _videoId,
+      'kind': 'video',
+      'qualities': ['720p'],
+      'duration': {
+        'mode': 'options',
+        'options': [5, 6],
+      },
+      'refImages': 4,
+      'refVideos': 2,
+      'refAudios': 1,
+    },
+    // 缺少时长：视频不可用，必须被过滤，不能进目录。
+    {
+      'id': 'no-duration-video',
+      'kind': 'video',
+      'qualities': ['720p'],
+      'refImages': 2,
+    },
+  ],
+});
+
+AiProvider _media() => aiProviderBuiltinById(
+  'purefox_media',
+)!.copyWith(enabled: true, apiKey: 'purefox-key');
+
+Future<PurefoxMediaModelCatalog> _registerCatalog() async {
+  final catalog = await fetchPurefoxMediaModels(
+    _media(),
+    httpClient: MockClient((request) async {
+      expect(request.url.toString(), 'https://img.purefox.org/v1/models');
+      expect(request.headers['Authorization'], 'Bearer purefox-key');
+      return http.Response(_payload(), 200);
+    }),
+  );
+  catalog.register();
+  return catalog;
+}
+
+VideoRequest _videoRequest() => VideoRequest(
+  modelId: _videoId,
+  prompt: 'A bird flying',
+  mode: VideoMode.text,
+  resolution: '720p',
+  ratio: '16:9',
+  durationSeconds: 5,
+);
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory support;
+
+  setUp(() async {
+    support = await Directory.systemTemp.createTemp('reveric_purefox_');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async =>
+              {
+                'getApplicationSupportDirectory',
+                'getTemporaryDirectory',
+              }.contains(call.method)
+              ? support.path
+              : null,
+        );
+    await RevericPaths.initialize();
+  });
+
+  tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+    purefoxMediaImageModels.remove(_imageId);
+    purefoxMediaVideoModels.remove(_videoId);
+    imageModelsCatalog.remove(_imageId);
+    videoModelsCatalog.remove(_videoId);
+    await support.delete(recursive: true);
+  });
+
+  test('providers are built in but not seeded', () {
+    expect(
+      aiProviderFixedBaseUrl(AiProviderType.purefox),
+      'https://purefox.org/v1',
+    );
+    expect(
+      aiProviderFixedBaseUrl(AiProviderType.purefox_media),
+      'https://img.purefox.org/v1',
+    );
+    expect(imageModelsForProvider('purefox_media'), isEmpty);
+    expect(videoModelsForProvider('purefox_media'), isEmpty);
+  });
+
+  test('models come from /v1/models and are split by kind', () async {
+    final catalog = await _registerCatalog();
+    expect(catalog.idsOfKind('image'), [_imageId]);
+    expect(catalog.idsOfKind('video'), [_videoId]);
+
+    final image = lookupImageChannelModel('purefox_media', _imageId);
+    expect(image, isNotNull);
+    expect(image!.capabilities.resolutions, {'1K', '2K'});
+    expect(image.capabilities.maxReferences, 3);
+
+    final video = lookupVideoChannelModel('purefox_media', _videoId);
+    expect(video, isNotNull);
+    expect(video!.capabilities.resolutions, {'720p'});
+    expect(video.capabilities.durations, {5, 6});
+    expect(video.capabilities.maxReferences, 7);
+
+    // 缺时长的视频不登记，避免 minDurationSeconds 崩溃/误提交。
+    expect(
+      lookupVideoChannelModel('purefox_media', 'no-duration-video'),
+      isNull,
+    );
+  });
+
+  test(
+    'startup registration re-fetches only configured media providers',
+    () async {
+      var requests = 0;
+      await ensurePurefoxMediaModelsRegistered(
+        [
+          aiProviderBuiltinById(
+            'purefox',
+          )!.copyWith(enabled: true, apiKey: 'text-key'),
+          aiProviderBuiltinById(
+            'purefox_media',
+          )!.copyWith(enabled: false, apiKey: ''),
+          _media(),
+        ],
+        httpClient: MockClient((request) async {
+          requests++;
+          return http.Response(_payload(), 200);
+        }),
+      );
+
+      expect(requests, 1);
+      expect(lookupVideoChannelModel('purefox_media', _videoId), isNotNull);
+    },
+  );
+
+  test('startup registration keeps going when the gateway fails', () async {
+    await expectLater(
+      ensurePurefoxMediaModelsRegistered([
+        _media(),
+      ], httpClient: MockClient((_) async => http.Response('boom', 500))),
+      completes,
+    );
+    expect(lookupVideoChannelModel('purefox_media', _videoId), isNull);
+  });
+
+  test('non-200 becomes an exception carrying the status code', () async {
+    await expectLater(
+      fetchPurefoxMediaModels(
+        _media(),
+        httpClient: MockClient((_) async => http.Response('nope', 401)),
+      ),
+      throwsA(
+        isA<PurefoxMediaModelsException>().having(
+          (e) => e.statusCode,
+          'statusCode',
+          401,
+        ),
+      ),
+    );
+  });
+
+  test('image request sends quality tier and aspect ratio', () async {
+    await _registerCatalog();
+    final seen = <http.Request>[];
+    await http.runWithClient(
+      () async {
+        final service = AiImageGenerationService(_media(), model: _imageId);
+        final result = await service.generateImage(
+          'a cat',
+          aspectRatio: '16:9',
+          resolution: '2K',
+        );
+        expect(
+          File(result.localFilePath!).readAsBytesSync(),
+          base64Decode(_png),
+        );
+      },
+      () => MockClient((request) async {
+        seen.add(request);
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'url': 'data:image/png;base64,$_png'},
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+    expect(
+      seen.single.url.toString(),
+      'https://img.purefox.org/v1/images/generations',
+    );
+    expect(jsonDecode(seen.single.body), {
+      'model': _imageId,
+      'prompt': 'a cat',
+      'n': 1,
+      'response_format': 'url',
+      'quality': '2K',
+      'aspect_ratio': '16:9',
+    });
+  });
+
+  test('image rejects unsupported ratio before network', () async {
+    await _registerCatalog();
+    await http.runWithClient(() async {
+      final service = AiImageGenerationService(_media(), model: _imageId);
+      await expectLater(
+        service.generateImage('a cat', aspectRatio: '1:1', resolution: '2K'),
+        throwsA(isA<AiImageGenerationException>()),
+      );
+    }, () => MockClient((_) => throw StateError('must not send')));
+  });
+
+  test('video submit reads the NDJSON receipt and uploads references', () async {
+    await _registerCatalog();
+    final seen = <http.Request>[];
+    final transport = MockClient((request) async {
+      seen.add(request);
+      if (request.url.path.endsWith('/uploads')) {
+        return http.Response(
+          jsonEncode({
+            'key': 'uploads/reference.png',
+            'url': 'https://upload.example/signed',
+          }),
+          200,
+        );
+      }
+      if (request.method == 'PUT') {
+        expect(request.headers['Content-Type'], 'image/png');
+        return http.Response('', 200);
+      }
+      return http.Response(
+        '{"jobId":"job-1","status":"running"}\n\n'
+        '{"jobId":"job-1","status":"succeeded","result":"https://result.example/movie.mp4"}\n',
+        200,
+      );
+    });
+    final api = PurefoxVideoClient(
+      httpClient: transport,
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    final receipt = await api.submit(_videoRequest(), []);
+    expect(receipt.taskId, 'job-1');
+    expect(seen.single.url.path, '/v1/generate');
+    expect(jsonDecode(seen.single.body), {
+      'model': _videoId,
+      'prompt': 'A bird flying',
+      'quality': '720p',
+      'ratio': '16:9',
+      'duration': 5,
+      'refs': <String>[],
+    });
+    transport.close();
+  });
+
+  test('video polls the same endpoint with only the job ID', () async {
+    await _registerCatalog();
+    final seen = <http.Request>[];
+    final api = PurefoxVideoClient(
+      httpClient: MockClient((request) async {
+        seen.add(request);
+        return http.Response(
+          '{"jobId":"job-1","status":"succeeded","result":"/files/movie.mp4"}\n',
+          200,
+        );
+      }),
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    final result = await api.query(
+      VideoSubmission(
+        taskId: 'job-1',
+        modelId: _videoId,
+        pollingUrl: api.queryUrl('job-1', _videoId),
+      ),
+    );
+    expect(result.status, VideoRemoteStatus.succeeded);
+    expect(
+      result.videoUrl.toString(),
+      'https://img.purefox.org/files/movie.mp4',
+    );
+    expect(jsonDecode(seen.single.body), {'jobId': 'job-1'});
+  });
+
+  test('video failure keeps a redacted provider message', () async {
+    await _registerCatalog();
+    final api = PurefoxVideoClient(
+      httpClient: MockClient(
+        (_) async => http.Response(
+          '{"jobId":"job-1","status":"failed","error":{"code":"4001","message":"content rejected"}}\n',
+          200,
+        ),
+      ),
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    final result = await api.query(
+      VideoSubmission(
+        taskId: 'job-1',
+        modelId: _videoId,
+        pollingUrl: api.queryUrl('job-1', _videoId),
+      ),
+    );
+    expect(result.status, VideoRemoteStatus.failed);
+    expect(result.providerMessage, 'content rejected');
+    expect(result.videoUrl, isNull);
+  });
+
+  test('video rejects an unauthorized key without retrying', () async {
+    await _registerCatalog();
+    var posts = 0;
+    final api = PurefoxVideoClient(
+      httpClient: MockClient((_) async {
+        posts++;
+        return http.Response.bytes(
+          utf8.encode('{"error":{"code":"4011","message":"无效的 API Key"}}'),
+          401,
+        );
+      }),
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    await expectLater(
+      api.submit(_videoRequest(), []),
+      throwsA(
+        isA<VideoException>()
+            .having((e) => e.code, 'code', VideoErrorCode.authentication)
+            .having((e) => e.statusCode, 'status', 401),
+      ),
+    );
+    expect(posts, 1);
+  });
+}

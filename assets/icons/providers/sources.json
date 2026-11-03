@@ -78,5 +78,15 @@
   "metaso": {
     "source": "User-supplied META SOTA brand artwork",
     "file": "metaso.png"
+  },
+  "purefox": {
+    "page": "https://purefox.org",
+    "source": "https://purefox.org favicon (inline base64 PNG in <link rel=\"icon\">)",
+    "file": "purefox.png"
+  },
+  "purefox_media": {
+    "page": "https://img.purefox.org",
+    "source": "https://img.purefox.org/purefox_1_eye_192.png",
+    "file": "purefox_media.png"
   }
 }

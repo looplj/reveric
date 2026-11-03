@@ -19,7 +19,8 @@ class ImageModelCatalogEntry {
   final ImageRequestDefaults requestDefaults;
 }
 
-const imageModelsCatalog = <String, ImageModelCatalogEntry>{
+/// 运行时目录：获取模型后可登记站点返回的动态型号。
+final imageModelsCatalog = <String, ImageModelCatalogEntry>{
   // https://platform.moss.cn/docs/reference/images-generations/
   'moss-image-base-1.0': _mossImage,
   'moss-image-sft-1.0': _mossImage,

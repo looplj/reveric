@@ -6,6 +6,8 @@
 
 const providerChannelUrls = {
   'metaso': 'https://metaso.cn/minimax-h3/?s=Reveric',
+  'purefox': 'https://purefox.org/keys',
+  'purefox_media': 'https://img.purefox.org/',
   'api88': 'https://88api.ai/sign-up?aff=5q8X',
   'ooki': 'https://ookiapi.com/',
   'openai': 'https://platform.openai.com/api-keys',
@@ -45,6 +47,8 @@ const providerLogoAssets = <String, String>{
   'api88': 'assets/icons/providers/api88.png',
   'ooki': 'assets/icons/providers/ooki.png',
   'metaso': 'assets/icons/providers/metaso.png',
+  'purefox': 'assets/icons/providers/purefox.png',
+  'purefox_media': 'assets/icons/providers/purefox_media.png',
 };
 
 String? providerLogoAsset(String type) =>

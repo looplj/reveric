@@ -45,6 +45,7 @@ import 'client.dart';
 import 'draft.dart';
 import 'minimax.dart';
 import 'openrouter.dart';
+import 'purefox.dart';
 import '../new_api.dart';
 import 'reference_storage_service.dart';
 import 'wan.dart';
@@ -1274,6 +1275,12 @@ class VideoTaskService {
         apiKey: apiKey,
       ),
       VideoProtocol.minimax_video_v2 => MinimaxVideoClient(
+        httpClient: transport,
+        providerType: type,
+        endpoint: endpoint,
+        apiKey: apiKey,
+      ),
+      VideoProtocol.purefox_media => PurefoxVideoClient(
         httpClient: transport,
         providerType: type,
         endpoint: endpoint,

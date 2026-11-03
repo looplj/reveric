@@ -714,5 +714,9 @@
   "settings.about_upload_logs_confirm_title": "上传诊断日志？",
   "settings.about_upload_logs_confirm_description": "将上传应用日志和崩溃记录，用于排查问题。",
   "settings.about_upload_logs_success": "日志上传成功。",
-  "settings.about_upload_logs_failed": "上传失败，请重试。"
+  "settings.about_upload_logs_failed": "上传失败，请重试。",
+  "settings.builtin_provider_purefox": "PureFox",
+  "settings.builtin_provider_purefox_media": "PureFox Media",
+  "settings.provider_description_purefox": "通过 PureFox 聚合网关接入多家模型，使用 OpenAI 兼容接口进行对话。",
+  "settings.provider_description_purefox_media": "通过 PureFox 媒体网关生成图片与视频；型号目录按站点 /v1/models 获取。"
 }

@@ -108,6 +108,10 @@ class AiProviderInitializer {
 
   Future<ProviderClient> _createClient() async {
     switch (_config.typeEnum) {
+      case AiProviderType.purefox_media:
+        throw UnsupportedError(
+          'PureFox Media is configured for image and video generation only',
+        );
       case AiProviderType.moss:
         throw UnsupportedError('MOSS supports image and audio generation only');
       case AiProviderType.agnes:
@@ -144,6 +148,7 @@ class AiProviderInitializer {
         );
       case AiProviderType.openrouter:
       case AiProviderType.atlascloud:
+      case AiProviderType.purefox:
       case AiProviderType.openai_compatible:
       case AiProviderType.xai:
       case AiProviderType.deepseek:

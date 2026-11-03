@@ -35,6 +35,7 @@ import '../../../shared/models/storyboard/prompt.dart';
 import '../../../shared/models/video/capabilities.dart';
 import '../../../shared/models/video/channels.dart';
 import '../../../shared/providers/novel_providers.dart';
+import '../../../shared/providers/purefox_media_providers.dart';
 import '../../../shared/providers/video_tasks.dart';
 import '../../../shared/services/ai/video/draft.dart';
 import '../../../shared/services/production/canvas_service.dart';
@@ -180,6 +181,8 @@ class _ComposerForm extends HookConsumerWidget {
     final busy = useState(false);
     final error = useState<String?>(null);
     final saved = useRef('');
+    // 型号能力由启动时的远端登记决定；完成后重建，让型号下拉拿到最新的能力表。
+    ref.watch(purefoxMediaModelsProvider);
     final form = useForm<ShotField>(
       listen: false,
       initialValues: {

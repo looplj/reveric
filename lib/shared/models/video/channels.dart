@@ -2390,7 +2390,7 @@ const _metasoH3Capabilities = VideoModelCapabilities(
 );
 
 // Public model catalog and API examples: https://metaso.cn/minimax-h3
-const _providerVideoModels = <String, Map<String, VideoChannelModel>>{
+final _providerVideoModels = <String, Map<String, VideoChannelModel>>{
   // https://platform.qianwenai.com/docs/api-reference/video-generation/happyhorse-text-to-video/create-task
   // https://platform.qianwenai.com/docs/api-reference/video-generation/happyhorse-image-to-video/create-task
   // https://platform.qianwenai.com/docs/api-reference/video-generation/happyhorse-reference-to-video/create-task
@@ -2516,7 +2516,13 @@ const _providerVideoModels = <String, Map<String, VideoChannelModel>>{
       ),
     ),
   },
+  // 站点只接受自己返回的模型 ID；目录在「获取模型」时按 `/v1/models` 登记。
+  'purefox_media': purefoxMediaVideoModels,
 };
+
+/// PureFox 媒体网关的视频型号目录：不预置，填 key 后按站点 `/v1/models`
+/// 返回的 kind / qualities / duration / ref* 登记。
+final purefoxMediaVideoModels = <String, VideoChannelModel>{};
 
 List<String> videoModelsForProvider(String providerType) =>
     (_providerVideoModels[providerType] ??

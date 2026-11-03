@@ -24,6 +24,7 @@ enum ImageProtocol {
   new_api_images,
   codex_image,
   gemini_image,
+  purefox_media,
 }
 
 /// 只有对应协议才读取的渠道选项，每个协议一种类型。
@@ -114,7 +115,12 @@ final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
   ImageProtocol.openai_images: _pixelSizeChannels,
   ImageProtocol.codex_image: _pixelSizeChannels,
   ImageProtocol.gemini_image: _geminiChannels,
+  ImageProtocol.purefox_media: purefoxMediaImageModels,
 };
+
+/// PureFox 媒体网关的图片型号目录：不预置，填 key 后按站点 `/v1/models`
+/// 返回的 kind / qualities / refImages 登记。
+final purefoxMediaImageModels = <String, ImageChannelModel>{};
 
 const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
   // https://www.atlascloud.ai/docs/openapi-index
