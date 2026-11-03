@@ -6,12 +6,19 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../shared/components/reveric_icon_button.dart';
+import '../../../shared/components/reveric_popover.dart';
+import '../../../shared/components/reveric_surfaces.dart';
+import '../../../shared/localization/app_localization.dart';
+import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../canvas/widgets/glass.dart';
@@ -94,20 +101,64 @@ class ScreenplayRegionToolbar extends ConsumerWidget {
               border: Border(bottom: BorderSide(color: colors.borderSubtle)),
             ),
       child: leading != null
-          ? Row(
-              children: [
-                group(leading!),
-                const SizedBox(width: RevericSpacing.md),
-                // 右侧动作整体靠右；其中的 Flexible 项在窄宽度下先收缩。
-                Expanded(
-                  child: floating
-                      ? Align(
-                          alignment: Alignment.centerRight,
-                          child: group(actions),
-                        )
-                      : actions,
-                ),
-              ],
+          ? LayoutBuilder(
+              builder: (context, constraints) {
+                final compact =
+                    floating &&
+                    constraints.maxWidth <
+                        RevericSizes.screenplayToolbarCompactWidth *
+                            MediaQuery.textScalerOf(context).scale(1);
+                return Row(
+                  children: [
+                    if (compact)
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: group(leading!),
+                        ),
+                      )
+                    else
+                      group(leading!),
+                    const SizedBox(width: RevericSpacing.md),
+                    if (compact) ...[
+                      group(
+                        RevericPopover(
+                          alignEnd: true,
+                          trigger: (context, open, toggle) => RevericIconButton(
+                            icon: RevericIcons.more_horiz,
+                            tooltip: context.t(LocaleKeys.commonMoreActions),
+                            onPressed: toggle,
+                          ),
+                          panel: (context, close) => Material(
+                            type: MaterialType.transparency,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth:
+                                    RevericSizes.screenplayToolbarPanelWidth,
+                              ),
+                              child: RevericElevatedCard(
+                                fallback: colors.surface,
+                                padding: const EdgeInsets.all(
+                                  RevericSpacing.sm,
+                                ),
+                                child: actions,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ] else
+                      Expanded(
+                        child: floating
+                            ? Align(
+                                alignment: Alignment.centerRight,
+                                child: group(actions),
+                              )
+                            : actions,
+                      ),
+                  ],
+                );
+              },
             )
           : Row(
               children: [

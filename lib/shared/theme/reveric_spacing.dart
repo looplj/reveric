@@ -204,6 +204,15 @@ class RevericSizes {
   /// 剧本分区顶栏高度。
   static const double screenplayTopBarHeight = 46;
 
+  /// 浮动工具条低于此宽度时收起右侧工具。
+  static const double screenplayToolbarCompactWidth = 640;
+
+  /// 收起后的工具面板宽度，仍受窗口可用宽度约束。
+  static const double screenplayToolbarPanelWidth = 600;
+
+  /// 场次组头低于此宽度时使用带提示的图标操作。
+  static const double storyboardHeaderCompactWidth = 640;
+
   /// 场次卡 / 镜头卡宽度。
   static const double screenplaySceneCardWidth = 340;
 

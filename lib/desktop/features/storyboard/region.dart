@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/components/reveric_button.dart';
+import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_context_menu.dart';
 import '../../../shared/components/reveric_placeholder.dart';
 import '../../../shared/database/app_database.dart' show Novel;
@@ -506,73 +507,97 @@ class _SceneHeader extends StatelessWidget {
         place,
       [time, interiorExterior].where((s) => s.isNotEmpty).join(' / '),
     ].where((s) => s.isNotEmpty).join(' · ');
+    final title = scene == null
+        ? context.t(LocaleKeys.storyboardSourceMissing)
+        : '${scene.sceneNumber}、${scene.title.isEmpty ? place : scene.title}';
     return Padding(
       padding: const EdgeInsets.only(bottom: RevericSpacing.xs),
-      child: Row(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    scene == null
-                        ? context.t(LocaleKeys.storyboardSourceMissing)
-                        : '${scene.sceneNumber}、${scene.title.isEmpty ? place : scene.title}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: typo.uiSemibold,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact =
+              constraints.maxWidth <
+              RevericSizes.storyboardHeaderCompactWidth *
+                  MediaQuery.textScalerOf(context).scale(1);
+          Widget action(String label, String icon, VoidCallback? onPressed) =>
+              compact
+              ? RevericIconButton(
+                  icon: icon,
+                  tooltip: label,
+                  onPressed: onPressed,
+                )
+              : RevericButton.text(
+                  label: label,
+                  icon: icon,
+                  size: RevericButtonSize.compact,
+                  onPressed: onPressed,
+                );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Tooltip(
+                      message: title,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: typo.uiSemibold,
+                      ),
+                    ),
                   ),
-                ),
-                if (condition.isNotEmpty) ...[
-                  const SizedBox(width: RevericSpacing.sm),
+                  if (scene != null && onSplit != null)
+                    action(
+                      context.t(LocaleKeys.productionSplit),
+                      RevericIcons.auto_awesome,
+                      onSplit,
+                    ),
+                  if (scene != null)
+                    action(
+                      context.t(LocaleKeys.storyboardSource),
+                      RevericIcons.file_text,
+                      onSource,
+                    ),
+                ],
+              ),
+              // 条件和统计按完整条目换行，不再和标题争用一行剩余宽度。
+              Wrap(
+                spacing: RevericSpacing.lg,
+                runSpacing: RevericSpacing.xxs,
+                children: [
+                  if (condition.isNotEmpty)
+                    Text(
+                      condition,
+                      style: typo.uiSmall.copyWith(color: colors.textMuted),
+                    ),
                   Text(
-                    condition,
+                    clips.isEmpty
+                        ? context.t(LocaleKeys.productionSceneEmpty)
+                        : context.t(
+                            LocaleKeys.productionSceneStat,
+                            namedArgs: {
+                              'done':
+                                  '${clips.where((c) => c.adoptedAssetId != null).length}',
+                              'count': '${clips.length}',
+                              'seconds': '${(planned / 1000).round()}',
+                            },
+                          ),
                     style: typo.uiSmall.copyWith(color: colors.textMuted),
                   ),
-                ],
-                const SizedBox(width: RevericSpacing.lg),
-                Text(
-                  clips.isEmpty
-                      ? context.t(LocaleKeys.productionSceneEmpty)
-                      : context.t(
-                          LocaleKeys.productionSceneStat,
-                          namedArgs: {
-                            'done':
-                                '${clips.where((c) => c.adoptedAssetId != null).length}',
-                            'count': '${clips.length}',
-                            'seconds': '${(planned / 1000).round()}',
-                          },
-                        ),
-                  style: typo.uiSmall.copyWith(color: colors.textMuted),
-                ),
-                if (missing > 0) ...[
-                  const SizedBox(width: RevericSpacing.xs),
-                  Text(
-                    context.t(
-                      LocaleKeys.productionSceneMissingDuration,
-                      namedArgs: {'count': '$missing'},
+                  if (missing > 0)
+                    Text(
+                      context.t(
+                        LocaleKeys.productionSceneMissingDuration,
+                        namedArgs: {'count': '$missing'},
+                      ),
+                      style: typo.uiSmall.copyWith(color: colors.warningText),
                     ),
-                    style: typo.uiSmall.copyWith(color: colors.warningText),
-                  ),
                 ],
-              ],
-            ),
-          ),
-          if (scene != null && onSplit != null)
-            RevericButton.text(
-              label: context.t(LocaleKeys.productionSplit),
-              icon: RevericIcons.auto_awesome,
-              size: RevericButtonSize.compact,
-              onPressed: onSplit,
-            ),
-          if (scene != null)
-            RevericButton.text(
-              label: context.t(LocaleKeys.storyboardSource),
-              icon: RevericIcons.file_text,
-              size: RevericButtonSize.compact,
-              onPressed: onSource,
-            ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
