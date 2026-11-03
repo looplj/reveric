@@ -34,10 +34,11 @@
   "library.import_txt": "Import TXT",
   "library.import_txt_summary": "Detected {volumes} volume(s) and {chapters} chapter(s). Check the details before importing.",
   "library.import_txt_success": "Imported {volumes} volume(s) and {chapters} chapter(s).",
-  "library.import_txt_failed": "Failed to import TXT.",
-  "library.import_txt_empty": "No chapter headings were detected in this TXT file.",
+  "library.import_txt_failed": "Failed to import TXT. Make sure the file is plain text encoded in UTF-8 or GBK.",
+  "library.import_txt_empty": "No chapter headings were detected in this TXT file. Put each chapter heading on its own line, such as \"第1章 Title\", \"第一回\", \"序章\", or \"Chapter 1\"; volume headings can be written as \"第一卷\".",
   "library.importing_txt": "Importing...",
   "library.start_import": "Start Import",
+  "library.adapt_after_import": "Adapt into a screenplay after import",
   "library.import_tags_hint": "Separate tags with spaces or commas",
   "library.custom_rules": "Rules",
   "library.select_cover": "Select Cover",
@@ -157,5 +158,6 @@
   "library.collection_order_failed": "Order could not be saved. The previous order is retained.",
   "library.content_kind_all": "All types",
   "library.adapt_banner_title": "Adapt a novel",
-  "library.adapt_banner_hint": "Bring a novel's characters and setting into a screenplay."
+  "library.adapt_banner_hint": "Pick a novel as the source. Its title, synopsis, and tags carry over.",
+  "library.adapt_no_source_novels": "No novels on your shelf yet"
 }

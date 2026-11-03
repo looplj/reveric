@@ -446,23 +446,41 @@ class _NovelCard extends HookConsumerWidget {
                             borderRadius: BorderRadius.circular(
                               RevericRadius.small,
                             ),
-                            child: RevericIconButton(
-                              icon: RevericIcons.more_horiz,
-                              tooltip: context.t(LocaleKeys.commonMoreActions),
-                              onPressed: () {
-                                final renderBox =
-                                    context.findRenderObject() as RenderBox;
-                                final position = renderBox.localToGlobal(
-                                  Offset.zero,
-                                );
-                                _showMoreActionsMenu(
-                                  context,
-                                  Offset(
-                                    position.dx + renderBox.size.width - 16,
-                                    position.dy + 48,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // 改编直接露在悬停操作里，不用先找右键菜单；
+                                // 条件与菜单项一致，草稿选不回原著。
+                                if (novel.contentKind == contentKindNovel &&
+                                    !novel.draft)
+                                  RevericIconButton(
+                                    icon: RevericIcons.movie_outlined,
+                                    tooltip: context.t(
+                                      LocaleKeys.libraryActionAdapt,
+                                    ),
+                                    onPressed: onAdapt,
                                   ),
-                                );
-                              },
+                                RevericIconButton(
+                                  icon: RevericIcons.more_horiz,
+                                  tooltip: context.t(
+                                    LocaleKeys.commonMoreActions,
+                                  ),
+                                  onPressed: () {
+                                    final renderBox =
+                                        context.findRenderObject() as RenderBox;
+                                    final position = renderBox.localToGlobal(
+                                      Offset.zero,
+                                    );
+                                    _showMoreActionsMenu(
+                                      context,
+                                      Offset(
+                                        position.dx + renderBox.size.width - 16,
+                                        position.dy + 48,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                           ),
                         ),

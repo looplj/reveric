@@ -53,7 +53,6 @@ import '../../shared/models/novel_agent_skill.dart';
 import '../../shared/models/subagent.dart';
 import '../../shared/providers/ai_mode_processing.dart';
 import '../../shared/models/novel.dart';
-import '../../shared/models/novel_form_prefill.dart';
 import '../../shared/providers/novel_providers.dart';
 import '../../shared/providers/novel_agent_skill_providers.dart';
 import '../../shared/services/novel_import.dart';
@@ -77,6 +76,7 @@ import '../features/agent_skills/setup_edit_panel.dart';
 import '../features/agent_skills/skill_revision_history_dialog.dart';
 import '../widgets/desktop_window_frame.dart';
 import '../widgets/desktop_save_shortcut.dart';
+import '../widgets/novel_create_submitter.dart';
 import '../widgets/novel_form_dialog.dart';
 import '../widgets/novel_import_dialog.dart';
 import '../widgets/home/library_home_panel.dart';
@@ -288,89 +288,6 @@ class NovelHomePage extends HookConsumerWidget {
     final settingsLeave = useMemoized(SettingsLeaveController.new);
     final sessionsExpanded = _homeSessionsExpanded;
     useListenable(sessionsExpanded);
-    Future<bool> createNovel({
-      required BuildContext feedbackContext,
-      required String title,
-      required String authorName,
-      required String description,
-      required String category,
-      required String type,
-      required String contentKind,
-      required int? plannedEpisodeCount,
-      required String? sourceNovelId,
-      required String? coverSourcePath,
-      required bool removeCover,
-      required List<String> tags,
-    }) async {
-      final actions = ref.read(novelActionsProvider);
-      final messenger = ScaffoldMessenger.of(feedbackContext);
-      final navigator = Navigator.of(context);
-
-      try {
-        final novelId = await actions.createNovel(
-          title: title,
-          authorName: authorName,
-          description: description,
-          category: category,
-          type: type,
-          contentKind: contentKind,
-          plannedEpisodeCount: plannedEpisodeCount,
-          sourceNovelId: sourceNovelId,
-          coverSourcePath: coverSourcePath,
-          tags: tags,
-        );
-
-        if (!context.mounted) {
-          return true;
-        }
-        novelSerial.value += 1;
-        // Pop the dialog before pushing a new route, otherwise
-        // handleSubmit's Navigator.of(context).pop() would pop
-        // NovelEditorPage instead of the dialog.
-        if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).pop();
-        }
-        if (context.mounted) {
-          navigator.push(
-            MaterialPageRoute(
-              builder: (_) => WorkspaceEditorPage(
-                novelId: novelId,
-                openChatOnEntry: contentKind == contentKindNovel,
-              ),
-            ),
-          );
-        }
-        return true;
-      } on NovelTitleConflictException catch (error) {
-        _log.error('createNovel title conflict', error: error);
-        if (!feedbackContext.mounted) {
-          return false;
-        }
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t(
-                LocaleKeys.libraryDuplicateName,
-                namedArgs: {'name': error.title},
-              ),
-            ),
-          ),
-        );
-        return false;
-      } catch (error) {
-        _log.error('caught error=$error', error: error);
-        if (!feedbackContext.mounted) {
-          return false;
-        }
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.t(LocaleKeys.libraryCreateNovelFailed)),
-          ),
-        );
-        return false;
-      }
-    }
-
     // 快速开书：占位建书后直接进编辑器，其余设定交给创作向导 onboarding。
     // 从首页顶栏直接触发（无对话框可关），故不做 dialog pop。
     Future<void> quickStartNovel() async {
@@ -533,10 +450,7 @@ class NovelHomePage extends HookConsumerWidget {
       );
     }
 
-    void openCreateNovelDialog({
-      String initialContentKind = contentKindNovel,
-      NovelFormPrefill? prefill,
-    }) {
+    void openCreateNovelDialog({String initialContentKind = contentKindNovel}) {
       final novels = novelsAsync.maybeWhen(
         data: (list) => list,
         orElse: () => <Novel>[],
@@ -548,41 +462,17 @@ class NovelHomePage extends HookConsumerWidget {
         builder: (_) => DialogFeedback.scope(
           builder: (dialogContext) => NovelFormDialog.create(
             initialContentKind: initialContentKind,
-            prefill: prefill,
-            onSubmit:
-                ({
-                  required title,
-                  required authorName,
-                  required description,
-                  required category,
-                  required type,
-                  required contentKind,
-                  required plannedEpisodeCount,
-                  required sourceNovelId,
-                  required coverSourcePath,
-                  required removeCover,
-                  required tags,
-                }) => createNovel(
-                  feedbackContext: dialogContext,
-                  title: title,
-                  authorName: authorName,
-                  description: description,
-                  category: category,
-                  type: type,
-                  contentKind: contentKind,
-                  plannedEpisodeCount: plannedEpisodeCount,
-                  sourceNovelId: sourceNovelId,
-                  coverSourcePath: coverSourcePath,
-                  removeCover: removeCover,
-                  tags: tags,
-                ),
+            onSubmit: createWorkSubmitter(
+              context,
+              ref,
+              feedbackContext: dialogContext,
+            ),
             onQuickStart: () {
               // 先关表单对话框，再走占位建书 + 进编辑器。
               Navigator.of(context, rootNavigator: true).pop();
               quickStartNovel();
             },
-            // 改编入口已经带着原著信息进来，演示小说快捷按钮在这里没有意义。
-            onCreateDemoNovel: hasDemo || prefill != null
+            onCreateDemoNovel: hasDemo
                 ? null
                 : () => createDemoNovelWithNavigation(
                     context,
@@ -596,16 +486,7 @@ class NovelHomePage extends HookConsumerWidget {
 
     /// 从一本小说出发新建改编剧本：类型、来源与原著信息预填，其余交给用户确认。
     void adaptNovel(Novel novel) {
-      openCreateNovelDialog(
-        initialContentKind: contentKindScreenplay,
-        prefill: NovelFormPrefill.adaptationOf(
-          novel,
-          title: context.t(
-            LocaleKeys.libraryAdaptationTitle,
-            namedArgs: {'title': novel.title},
-          ),
-        ),
-      );
+      showNovelAdaptationDialog(context, ref, novel);
     }
 
     Future<void> openImportNovelDialog() async {
@@ -630,9 +511,11 @@ class NovelHomePage extends HookConsumerWidget {
           if (!context.mounted) {
             return;
           }
+          // 提示里带了章节标题的格式要求，多留些时间读完。
           messenger.showSnackBar(
             SnackBar(
               content: Text(context.t(LocaleKeys.libraryImportTxtEmpty)),
+              duration: const Duration(seconds: 8),
             ),
           );
           return;
@@ -662,6 +545,8 @@ class NovelHomePage extends HookConsumerWidget {
                 required category,
                 required type,
                 required tags,
+                required adaptationTitle,
+                required plannedEpisodeCount,
               }) {
                 return importService.importTxt(
                   filePath: filePath,
@@ -670,6 +555,8 @@ class NovelHomePage extends HookConsumerWidget {
                   category: category,
                   type: type,
                   tags: tags,
+                  adaptationTitle: adaptationTitle,
+                  plannedEpisodeCount: plannedEpisodeCount,
                 );
               },
         ),
@@ -690,9 +577,13 @@ class NovelHomePage extends HookConsumerWidget {
           ),
         ),
       );
+
       navigator.push(
         MaterialPageRoute(
-          builder: (_) => WorkspaceEditorPage(novelId: importResult.novelId),
+          builder: (_) => WorkspaceEditorPage(
+            novelId: importResult.screenplayId ?? importResult.novelId,
+            openChatOnEntry: true,
+          ),
         ),
       );
     }

@@ -1,4 +1,4 @@
-// 职责: TXT 作品导入服务，负责解析卷章结构、编码自动检测（UTF-8/GBK/GB2312）并写入小说与内容库。
+// 职责: 解析并导入 TXT 小说，可同步创建关联原著的改编剧本。
 // 关联文件:
 //   lib/shared/services/novel_actions.dart
 //   lib/shared/services/novel_content.dart
@@ -15,6 +15,7 @@ import '../logger/app_logger.dart';
 import '../database/app_database.dart';
 import '../database/novel_content_database.dart';
 import '../models/novel_type.dart';
+import '../models/content_kind.dart';
 import '../utils/text_file_decoder.dart';
 import '../utils/text_unit_count.dart';
 import 'novel_actions.dart';
@@ -39,12 +40,14 @@ class ParsedNovelImport {
 class NovelImportResult {
   const NovelImportResult({
     required this.novelId,
+    this.screenplayId,
     required this.chapterCount,
     required this.volumeCount,
     required this.wordCount,
   });
 
   final String novelId;
+  final String? screenplayId;
   final int chapterCount;
   final int volumeCount;
   final int wordCount;
@@ -206,7 +209,14 @@ class NovelImportService {
     required String category,
     required String type,
     required List<String> tags,
+    String? adaptationTitle,
+    int? plannedEpisodeCount,
   }) async {
+    if (adaptationTitle != null &&
+        (adaptationTitle.trim().isEmpty ||
+            (plannedEpisodeCount != null && plannedEpisodeCount < 1))) {
+      throw ArgumentError('Invalid adaptation title or planned episode count');
+    }
     final parsed = await parseTxtFile(filePath);
     if (parsed.chapters.isEmpty) {
       throw const NovelImportException('TXT 文件未识别到章节，无法导入。');
@@ -218,6 +228,7 @@ class NovelImportService {
     }
     Novel? createdNovel;
     String? novelId;
+    String? screenplayId;
     try {
       novelId = await actions.createNovel(
         title: title,
@@ -252,6 +263,25 @@ class NovelImportService {
       } finally {
         await contentDatabase.close();
       }
+      if (adaptationTitle != null) {
+        final baseTitle = adaptationTitle.trim();
+        var screenplayTitle = baseTitle;
+        var suffix = 2;
+        while (await actions.findNovelByTitle(screenplayTitle) != null) {
+          screenplayTitle = '$baseTitle ($suffix)';
+          suffix++;
+        }
+        screenplayId = await actions.createNovel(
+          title: screenplayTitle,
+          description: description,
+          category: category,
+          tags: tags,
+          contentKind: contentKindScreenplay,
+          type: novelTypeAdaptation,
+          sourceNovelId: novelId,
+          plannedEpisodeCount: plannedEpisodeCount,
+        );
+      }
     } catch (error, stackTrace) {
       _log.error(
         'IMPORT_TXT id=${novelId ?? '<not_created>'} error=$error',
@@ -274,6 +304,7 @@ class NovelImportService {
 
     return NovelImportResult(
       novelId: novelId,
+      screenplayId: screenplayId,
       chapterCount: parsed.chapters.length,
       volumeCount: parsed.volumeCount,
       wordCount: parsed.wordCount,

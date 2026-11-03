@@ -83,6 +83,8 @@ void main() {
                                   required category,
                                   required type,
                                   required tags,
+                                  required adaptationTitle,
+                                  required plannedEpisodeCount,
                                 }) async => throw StateError('Must not submit'),
                           )
                         : const MobileNovelCreatePage(

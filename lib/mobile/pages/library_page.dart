@@ -38,7 +38,6 @@ import '../../shared/localization/locale_keys.dart';
 import '../../shared/widgets/quick_start_idea.dart';
 import '../../shared/models/content_status.dart';
 import '../../shared/models/content_kind.dart';
-import '../../shared/models/novel_form_prefill.dart';
 import '../widgets/segmented_tabs.dart';
 import '../features/library/filters.dart';
 import '../features/library/resume.dart';
@@ -71,24 +70,6 @@ void _openCreate(BuildContext context, String contentKind) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => MobileNovelCreatePage(contentKind: contentKind),
-    ),
-  );
-}
-
-/// 从一本小说出发新建改编剧本：类型、来源与原著信息预填，其余交给用户确认。
-void _openAdapt(BuildContext context, Novel novel) {
-  Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => MobileNovelCreatePage(
-        contentKind: contentKindScreenplay,
-        prefill: NovelFormPrefill.adaptationOf(
-          novel,
-          title: context.t(
-            LocaleKeys.libraryAdaptationTitle,
-            namedArgs: {'title': novel.title},
-          ),
-        ),
-      ),
     ),
   );
 }
@@ -229,9 +210,11 @@ class MobileLibraryPage extends HookConsumerWidget {
           if (!context.mounted) {
             return;
           }
+          // 提示里带了章节标题的格式要求，多留些时间读完。
           messenger.showSnackBar(
             SnackBar(
               content: Text(context.t(LocaleKeys.libraryImportTxtEmpty)),
+              duration: const Duration(seconds: 8),
             ),
           );
           return;
@@ -261,6 +244,8 @@ class MobileLibraryPage extends HookConsumerWidget {
                   required category,
                   required type,
                   required tags,
+                  required adaptationTitle,
+                  required plannedEpisodeCount,
                 }) {
                   return importService.importTxt(
                     filePath: filePath,
@@ -269,6 +254,8 @@ class MobileLibraryPage extends HookConsumerWidget {
                     category: category,
                     type: type,
                     tags: tags,
+                    adaptationTitle: adaptationTitle,
+                    plannedEpisodeCount: plannedEpisodeCount,
                   );
                 },
           ),
@@ -291,13 +278,17 @@ class MobileLibraryPage extends HookConsumerWidget {
         ),
       );
 
-      final novel = await actions.getNovel(importResult.novelId);
+      final novel = await actions.getNovel(
+        importResult.screenplayId ?? importResult.novelId,
+      );
       if (!context.mounted || novel == null) {
         return;
       }
+
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => MobileWorkspaceEditorPage(novel: novel),
+          builder: (_) =>
+              MobileWorkspaceEditorPage(novel: novel, openChatOnEntry: true),
         ),
       );
     }
@@ -374,7 +365,7 @@ class MobileLibraryPage extends HookConsumerWidget {
         novel: novel,
         onRead: () => _openReader(context, novel),
         onEdit: () => openEditNovel(novel),
-        onAdapt: () => _openAdapt(context, novel),
+        onAdapt: () => openNovelAdaptation(context, novel),
         onUpdateStatus: (status) => updateStatus(novel, status),
         onDelete: () => deleteNovel(novel),
       );

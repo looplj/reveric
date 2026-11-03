@@ -30,6 +30,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../shared/components/reveric_button.dart';
 import '../../shared/components/reveric_segmented_control.dart';
+import '../../shared/widgets/novel/adapt_banner.dart';
 import '../../shared/widgets/novel/start_banner.dart';
 import '../../shared/components/reveric_input_decoration.dart';
 import '../../shared/form/form.dart';
@@ -64,6 +65,24 @@ String _novelTypeLabel(BuildContext context, String type) {
     novelTypeMaterial => context.t(LocaleKeys.libraryNovelTypeMaterial),
     _ => type,
   };
+}
+
+/// 从一本小说出发新建改编剧本：类型、来源与原著信息预填，其余交给用户确认。
+void openNovelAdaptation(BuildContext context, Novel novel) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => MobileNovelCreatePage(
+        contentKind: contentKindScreenplay,
+        prefill: NovelFormPrefill.adaptationOf(
+          novel,
+          title: context.t(
+            LocaleKeys.libraryAdaptationTitle,
+            namedArgs: {'title': novel.title},
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class MobileNovelCreatePage extends HookConsumerWidget {
@@ -383,9 +402,13 @@ class MobileNovelCreatePage extends HookConsumerWidget {
       }
     }
 
-    // 剧本横幅：直接切到改编，下方作品类型随之露出「改编自小说」。
-    void startAdaptation() {
-      form.updateValue(NovelFormField.type, novelTypeAdaptation, notify: true);
+    void pickAdaptationSource(String? sourceId) {
+      selectAdaptationSource(
+        context,
+        form: form,
+        sourceNovels: sourceNovels,
+        sourceId: sourceId,
+      );
     }
 
     return Scaffold(
@@ -455,11 +478,33 @@ class MobileNovelCreatePage extends HookConsumerWidget {
                   const SizedBox(height: RevericSpacing.x2l),
                   // 快速开书只建小说（占位建书走小说内容库）；剧本换成从小说改编。
                   isScreenplay
-                      ? NovelStartBanner(
-                          icon: RevericIcons.movie_outlined,
-                          title: context.t(LocaleKeys.libraryAdaptBannerTitle),
-                          hint: context.t(LocaleKeys.libraryAdaptBannerHint),
-                          onTap: isBusy.value ? null : startAdaptation,
+                      ? NovelAdaptBanner(
+                          picker: ListenableBuilder(
+                            listenable: form,
+                            builder: (context, _) {
+                              // 续作、同人等也会带来源小说；横幅只表达「改编自哪本」。
+                              final isAdaptation =
+                                  form.getValue<String>(NovelFormField.type) ==
+                                  novelTypeAdaptation;
+                              return _MobileSourceNovelPicker(
+                                sourceNovels: sourceNovels,
+                                selectedId: isAdaptation
+                                    ? form.getValue<String?>(
+                                        NovelFormField.sourceNovelId,
+                                      )
+                                    : null,
+                                noneLabel: context.t(
+                                  LocaleKeys.librarySourceNovelNoneAdaptation,
+                                ),
+                                emptyLabel: context.t(
+                                  LocaleKeys.libraryAdaptNoSourceNovels,
+                                ),
+                                onChanged: isBusy.value
+                                    ? null
+                                    : pickAdaptationSource,
+                              );
+                            },
+                          ),
                         )
                       : NovelStartBanner(
                           icon: RevericIcons.auto_awesome,
@@ -759,7 +804,10 @@ class _TypeField extends StatelessWidget {
                       ),
                   ],
                 ),
-                if (sourceLabelKey != null) ...[
+                // 新建改编剧本的原著由顶部横幅选择，这里不再重复一份。
+                if (sourceLabelKey != null &&
+                    !(existingType == null &&
+                        selected == novelTypeAdaptation)) ...[
                   const SizedBox(height: RevericSpacing.xl),
                   _FieldLabel(text: context.t(sourceLabelKey)),
                   _MobileSourceNovelField(
@@ -789,56 +837,85 @@ class _MobileSourceNovelField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
     return HookedFormField<NovelFormField, String?>(
       fieldHook: NovelFormField.sourceNovelId,
       notifyOnChange: true,
       builder: (sourceId, onSourceChanged, sourceError) {
-        final selectedSource = sourceNovels
-            .where((source) => source.id == sourceId)
-            .firstOrNull;
-        return InkWell(
-          borderRadius: BorderRadius.circular(RevericRadius.large),
-          onTap: () => _showSourceNovelSheet(
-            context,
-            sourceNovels: sourceNovels,
-            selectedId: sourceId,
-            onChanged: (id) => onSourceChanged?.call(id),
-          ),
-          child: InputDecorator(
-            decoration: _decoration(context),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    selectedSource?.title ?? noneLabel,
-                    style: typo.ui.copyWith(
-                      color: selectedSource == null
-                          ? colors.textMuted
-                          : colors.textPrimary,
-                    ),
-                  ),
-                ),
-                RevericIcon(
-                  RevericIcons.expand_more,
-                  size: 18,
-                  color: colors.textMuted,
-                ),
-              ],
-            ),
-          ),
+        return _MobileSourceNovelPicker(
+          sourceNovels: sourceNovels,
+          selectedId: sourceId,
+          noneLabel: noneLabel,
+          onChanged: (id) => onSourceChanged?.call(id),
         );
       },
     );
   }
+}
+
+/// 来源小说选择器：输入框样式的触发器 + 底部弹层列表，只管展示和回调，
+/// 由调用方决定写回哪里（类型下方的来源字段或改编横幅）。
+class _MobileSourceNovelPicker extends StatelessWidget {
+  const _MobileSourceNovelPicker({
+    required this.sourceNovels,
+    required this.selectedId,
+    required this.noneLabel,
+    required this.onChanged,
+    this.emptyLabel,
+  });
+
+  final List<Novel> sourceNovels;
+  final String? selectedId;
+  final String noneLabel;
+
+  /// 书架上没有可选小说时的占位文案；为空时沿用 [noneLabel]，且不禁用。
+  final String? emptyLabel;
+
+  /// 为 null 时禁用。
+  final ValueChanged<String?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final selectedSource = sourceNovels
+        .where((source) => source.id == selectedId)
+        .firstOrNull;
+    final emptyLabel = sourceNovels.isEmpty ? this.emptyLabel : null;
+    final onChanged = emptyLabel == null ? this.onChanged : null;
+    return InkWell(
+      borderRadius: BorderRadius.circular(RevericRadius.large),
+      onTap: onChanged == null
+          ? null
+          : () => _showSourceNovelSheet(context, onChanged),
+      child: InputDecorator(
+        decoration: _decoration(context),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                selectedSource?.title ?? emptyLabel ?? noneLabel,
+                style: typo.ui.copyWith(
+                  color: selectedSource == null
+                      ? colors.textMuted
+                      : colors.textPrimary,
+                ),
+              ),
+            ),
+            RevericIcon(
+              RevericIcons.expand_more,
+              size: 18,
+              color: colors.textMuted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _showSourceNovelSheet(
-    BuildContext context, {
-    required List<Novel> sourceNovels,
-    required String? selectedId,
-    required ValueChanged<String?> onChanged,
-  }) {
+    BuildContext context,
+    ValueChanged<String?> onChanged,
+  ) {
     return showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -852,8 +929,8 @@ class _MobileSourceNovelField extends StatelessWidget {
                   ? const RevericIcon(RevericIcons.check, size: 18)
                   : null,
               onTap: () {
-                onChanged(null);
                 Navigator.of(sheetContext).pop();
+                onChanged(null);
               },
             ),
             for (final source in sourceNovels)
@@ -863,8 +940,8 @@ class _MobileSourceNovelField extends StatelessWidget {
                     ? const RevericIcon(RevericIcons.check, size: 18)
                     : null,
                 onTap: () {
-                  onChanged(source.id);
                   Navigator.of(sheetContext).pop();
+                  onChanged(source.id);
                 },
               ),
           ],

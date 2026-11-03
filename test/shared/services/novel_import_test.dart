@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/novel_type.dart';
+import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/novel_import.dart';
@@ -273,6 +274,37 @@ void main() {
       final novel = await appDb.novelDao.get(result.novelId);
       expect(novel, isNotNull);
       expect(novel!.contentDatabasePath, isNotEmpty);
+      expect(result.screenplayId, isNull);
+      await appDb.novelDao.create(
+        id: 'existing_screenplay',
+        title: '改编导入（剧本）',
+        description: '',
+      );
+      final adapted = await service.importTxt(
+        filePath: txtFile.path,
+        title: '改编导入',
+        description: '简介',
+        category: '奇幻',
+        type: novelTypeOriginal,
+        tags: const ['成长'],
+        adaptationTitle: '改编导入（剧本）',
+        plannedEpisodeCount: 12,
+      );
+      final screenplay = await appDb.novelDao.get(adapted.screenplayId!);
+      expect(screenplay!.title, '改编导入（剧本） (2)');
+      expect(screenplay.contentKind, contentKindScreenplay);
+      expect(screenplay.type, novelTypeAdaptation);
+      expect(screenplay.sourceNovelId, adapted.novelId);
+      expect(screenplay.description, '简介');
+      expect(screenplay.tags, ['成长']);
+      final screenplayDb = NovelContentDatabase(
+        screenplay.contentDatabasePath!,
+      );
+      addTearDown(screenplayDb.close);
+      final season = await screenplayDb
+          .select(screenplayDb.screenplaySeasons)
+          .getSingle();
+      expect(season.plannedEpisodeCount, 12);
 
       final contentDb = NovelContentDatabase(novel.contentDatabasePath!);
       addTearDown(contentDb.close);

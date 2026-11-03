@@ -8,6 +8,8 @@
 //   assets/translations/zh-CN/workspace.json
 //   assets/translations/en/editor.json
 //   assets/translations/zh-CN/editor.json
+//   assets/translations/en/library.json
+//   assets/translations/zh-CN/library.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -22,16 +24,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
+import '../../../shared/components/reveric_button.dart';
 import '../../../shared/components/reveric_surfaces.dart';
 import '../../../shared/components/reveric_context_menu.dart';
 import '../../../shared/database/app_database.dart';
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
+import '../../../shared/models/content_kind.dart';
 import '../../../shared/models/content_status.dart';
 import '../../../shared/models/novel_workspace.dart';
 import '../../../shared/theme/theme.dart';
 import '../agent_management/agent_model_settings_page.dart';
+import '../novel_create_submitter.dart';
 import 'hero.dart';
 import '../../../shared/widgets/media_asset_image.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -115,14 +120,14 @@ class NovelOverview extends StatelessWidget {
 // =============================================================================
 // Title section: 大标题 + 编辑按钮 + 标签 + 状态徽章
 // =============================================================================
-class _TitleSection extends StatelessWidget {
+class _TitleSection extends ConsumerWidget {
   const _TitleSection({required this.novel, this.onEditNovel});
 
   final Novel novel;
   final VoidCallback? onEditNovel;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final tags = novel.tags;
@@ -150,6 +155,16 @@ class _TitleSection extends StatelessWidget {
                 color: colors.textMuted,
               ),
             ),
+            // 草稿不在改编的原著候选里，选不回来，所以只给书架上的小说。
+            if (novel.contentKind == contentKindNovel && !novel.draft) ...[
+              const SizedBox(width: RevericSpacing.sm),
+              RevericButton.secondary(
+                onPressed: () => showNovelAdaptationDialog(context, ref, novel),
+                icon: RevericIcons.movie_outlined,
+                label: context.t(LocaleKeys.libraryActionAdapt),
+                size: RevericButtonSize.compact,
+              ),
+            ],
           ],
         ),
         const SizedBox(height: RevericSpacing.md),

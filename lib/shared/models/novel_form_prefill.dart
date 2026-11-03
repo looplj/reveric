@@ -5,8 +5,12 @@
 //   lib/shared/models/novel_type.dart
 //   lib/desktop/widgets/novel_form_dialog.dart
 //   lib/mobile/pages/novel_create_page.dart
+import 'package:flutter/foundation.dart';
+
+import '../../third/form/flutter_hook_form.dart';
 import '../database/app_database.dart';
 import 'content_kind.dart';
+import 'novel_form_fields.dart';
 import 'novel_type.dart';
 
 /// 创建作品表单的预填值。只覆盖用户可改的字段，封面不预填 —— 改编剧本通常要换新封面。
@@ -36,6 +40,34 @@ class NovelFormPrefill {
       sourceNovelId: source.id,
       tags: source.tags,
     );
+  }
+
+  /// 在已打开的表单里换原著：类型和来源直接写入；标题、作者、简介、分类、标签
+  /// 只填空着的，或仍是 [replacing]（上一本原著带入的值）原样的字段，
+  /// 用户改过的内容不覆盖。
+  void applyTo(
+    FormFieldsController<NovelFormField> form, {
+    NovelFormPrefill? replacing,
+  }) {
+    form.updateValue(NovelFormField.type, type, notify: false);
+    void fillText(NovelFormField field, String next, String? previous) {
+      final current = form.getValue<String>(field) ?? '';
+      if (current.trim().isEmpty || current == previous) {
+        form.updateValue(field, next, notify: false);
+      }
+    }
+
+    fillText(NovelFormField.title, title, replacing?.title);
+    fillText(NovelFormField.authorName, authorName, replacing?.authorName);
+    fillText(NovelFormField.description, description, replacing?.description);
+    fillText(NovelFormField.category, category, replacing?.category);
+    final currentTags = form.getValue<List<String>>(NovelFormField.tags) ?? [];
+    if (currentTags.isEmpty ||
+        (replacing != null && listEquals(currentTags, replacing.tags))) {
+      form.updateValue(NovelFormField.tags, tags, notify: false);
+    }
+    // 最后一笔才通知，整组改动只触发一次重建。
+    form.updateValue(NovelFormField.sourceNovelId, sourceNovelId);
   }
 
   final String contentKind;

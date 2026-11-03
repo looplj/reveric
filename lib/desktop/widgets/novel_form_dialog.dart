@@ -44,6 +44,7 @@ import '../../shared/models/novel_type.dart';
 import '../../shared/providers/dictionary_providers.dart';
 import '../../shared/providers/novel_providers.dart';
 import '../../shared/theme/theme.dart';
+import '../../shared/widgets/novel/adapt_banner.dart';
 import '../../shared/widgets/novel/category_field.dart';
 import '../../shared/widgets/novel/start_banner.dart';
 import '../../shared/logger/app_logger.dart';
@@ -213,10 +214,17 @@ class NovelFormDialog extends HookConsumerWidget {
       }
     }
 
-    // 剧本横幅：直接切到改编，并展开左栏露出「改编自小说」。
-    void startAdaptation() {
-      form.updateValue(NovelFormField.type, novelTypeAdaptation, notify: true);
-      moreOpen.value = true;
+    // 剧本横幅选原著：按原著预填后展开「更多信息」，带入的简介和标签不被藏起来。
+    void pickAdaptationSource(String? sourceId) {
+      selectAdaptationSource(
+        context,
+        form: form,
+        sourceNovels: sourceNovels,
+        sourceId: sourceId,
+      );
+      if (sourceId != null) {
+        moreOpen.value = true;
+      }
     }
 
     Future<void> pickCover() async {
@@ -401,17 +409,17 @@ class NovelFormDialog extends HookConsumerWidget {
                       children: [
                         // 同一个横幅槽位：小说是快速开书（占位建书只走小说内容库），
                         // 剧本是从小说改编。切换类型只换内容，高度不变。
-                        if (onQuickStart != null) ...[
+                        // 改编横幅不依赖快速开书，从小说概览发起的改编也要显示已选原著。
+                        if (!_isEditMode &&
+                            (isScreenplay || onQuickStart != null)) ...[
                           isScreenplay
-                              ? NovelStartBanner(
-                                  icon: RevericIcons.movie_outlined,
-                                  title: context.t(
-                                    LocaleKeys.libraryAdaptBannerTitle,
+                              ? NovelAdaptBanner(
+                                  picker: _AdaptSourcePicker(
+                                    form: form,
+                                    sourceNovels: sourceNovels,
+                                    enabled: !isBusy.value,
+                                    onChanged: pickAdaptationSource,
                                   ),
-                                  hint: context.t(
-                                    LocaleKeys.libraryAdaptBannerHint,
-                                  ),
-                                  onTap: isBusy.value ? null : startAdaptation,
                                 )
                               : NovelStartBanner(
                                   icon: RevericIcons.auto_awesome,
@@ -646,7 +654,8 @@ class NovelFormDialog extends HookConsumerWidget {
         final type =
             form.getValue<String>(NovelFormField.type) ?? novelTypeOriginal;
         final labelKey = sourceNovelLabelKey(type);
-        if (labelKey == null) {
+        // 新建改编剧本的原著由顶部横幅选择，这里不再重复一份。
+        if (labelKey == null || (!_isEditMode && type == novelTypeAdaptation)) {
           return const SizedBox.shrink();
         }
         // 标题和空值文案都跟着类型走：「改编自小说 / 未选择原著」比通用说法讲得清关系。
@@ -1141,4 +1150,51 @@ String _novelTypeLabel(BuildContext context, String type) {
     novelTypeMaterial => context.t(LocaleKeys.libraryNovelTypeMaterial),
     _ => type,
   };
+}
+
+/// 改编横幅里的原著下拉。只读写表单值、不注册字段：左栏的来源小说字段占用同一个
+/// 字段 key，两边同时挂载时注册会冲突。
+class _AdaptSourcePicker extends StatelessWidget {
+  const _AdaptSourcePicker({
+    required this.form,
+    required this.sourceNovels,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final FormFieldsController<NovelFormField> form;
+  final List<Novel> sourceNovels;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final noneLabel = context.t(LocaleKeys.librarySourceNovelNoneAdaptation);
+    return ListenableBuilder(
+      listenable: form,
+      builder: (context, _) {
+        // 续作、同人等也会带来源小说；横幅只表达「改编自哪本」。
+        final isAdaptation =
+            form.getValue<String>(NovelFormField.type) == novelTypeAdaptation;
+        final sourceId = isAdaptation
+            ? form.getValue<String?>(NovelFormField.sourceNovelId)
+            : null;
+        return RevericSelect<String?>(
+          value: sourceId,
+          enabled: enabled && sourceNovels.isNotEmpty,
+          placeholder: sourceNovels.isEmpty
+              ? context.t(LocaleKeys.libraryAdaptNoSourceNovels)
+              : noneLabel,
+          // 空书架不放「未选择」项：它的值也是 null，会顶掉空书架占位。
+          items: [
+            if (sourceNovels.isNotEmpty)
+              RevericSelectItem<String?>(value: null, label: noneLabel),
+            for (final source in sourceNovels)
+              RevericSelectItem<String?>(value: source.id, label: source.title),
+          ],
+          onChanged: onChanged,
+        );
+      },
+    );
+  }
 }

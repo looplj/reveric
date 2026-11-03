@@ -1,4 +1,4 @@
-// 职责: 新建作品表单顶部的引导横幅 — 小说是快速开书、剧本是从小说改编，两端共用同一槽位与尺寸。
+// 职责: 新建小说表单顶部的快速开书横幅 — 与剧本的改编横幅共用同一槽位，两端共用。
 // 关联文件:
 //   lib/desktop/widgets/novel_form_dialog.dart
 //   lib/mobile/pages/novel_create_page.dart

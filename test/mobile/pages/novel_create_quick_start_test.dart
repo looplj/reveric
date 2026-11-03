@@ -1,4 +1,4 @@
-// 职责: 验证移动新建页以入口类型开场、可在页内切换小说 / 剧本；横幅随类型换内容且表单不位移。
+// 职责: 验证移动新建页以入口类型开场、可在页内切换小说 / 剧本；横幅随类型换内容且下方字段不重建。
 // 关联文件:
 //   lib/mobile/pages/novel_create_page.dart
 //   lib/shared/providers/dictionary_providers.dart
@@ -78,14 +78,15 @@ void main() {
     expect(find.text('Planned episodes'), findsOneWidget);
     expect(find.text('Quick Start'), findsNothing);
     expect(find.text('Adapt a novel'), findsOneWidget);
-    final titleTop = tester.getTopLeft(find.text('Work name')).dy;
+    final titleElement = tester.element(find.text('Work name'));
 
-    // 页内切到小说：横幅换成快速开书，剧本专属字段收起，下方表单不位移。
+    // 页内切到小说：横幅换成快速开书，剧本专属字段收起。改编横幅内嵌了原著选择，
+    // 窄屏比快速开书高，下方表单会上移，但字段不能被重建。
     await tester.tap(kindTab('Novel'));
     await tester.pumpAndSettle();
     expect(find.text('Planned episodes'), findsNothing);
     expect(find.text('Quick Start'), findsOneWidget);
-    expect(tester.getTopLeft(find.text('Work name')).dy, titleTop);
+    expect(tester.element(find.text('Work name')), same(titleElement));
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

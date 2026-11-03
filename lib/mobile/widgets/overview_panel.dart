@@ -41,6 +41,7 @@ import '../../shared/database/novel_content_database.dart';
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
 import '../../shared/logger/app_logger.dart';
+import '../../shared/models/content_kind.dart';
 import '../../shared/models/content_status.dart';
 import '../../shared/models/novel.dart';
 import '../../shared/providers/agent_rule_providers.dart';
@@ -49,6 +50,7 @@ import '../../shared/providers/novel_providers.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/chapter_last_sentence.dart';
 import '../pages/agent_model_settings_page.dart';
+import '../pages/novel_create_page.dart';
 import '../../shared/widgets/media_asset_image.dart';
 
 final _log = AppLogger.forModule('MobileOverview');
@@ -363,6 +365,16 @@ class _TitleSection extends StatelessWidget {
                 style: typo.display.copyWith(color: colors.textPrimary),
               ),
             ),
+            // 草稿不在改编的原著候选里，选不回来，所以只给书架上的小说。
+            if (novel.contentKind == contentKindNovel && !novel.draft) ...[
+              const SizedBox(width: RevericSpacing.sm),
+              RevericButton.secondary(
+                onPressed: () => openNovelAdaptation(context, novel),
+                icon: RevericIcons.movie_outlined,
+                label: context.t(LocaleKeys.libraryActionAdapt),
+                size: RevericButtonSize.compact,
+              ),
+            ],
             const SizedBox(width: RevericSpacing.sm),
             InkWell(
               onTap: onEditNovel,
@@ -1118,9 +1130,7 @@ class _CoverActionTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(RevericRadius.large),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(
-          minHeight: RevericSizes.buttonHeight,
-        ),
+        constraints: const BoxConstraints(minHeight: RevericSizes.buttonHeight),
         padding: const EdgeInsets.symmetric(
           horizontal: RevericSpacing.lg,
           vertical: RevericSpacing.sm,

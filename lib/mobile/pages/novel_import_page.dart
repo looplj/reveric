@@ -1,4 +1,4 @@
-// 职责: 移动端 TXT 作品导入页 — 填写作品信息、选择类型并确认拆章导入
+// 职责: 移动端 TXT 作品导入页 — 填写作品信息、选择类型并确认拆章导入，可选导入后直接改编
 // 关联文件:
 //   lib/mobile/pages/library_page.dart
 //   lib/shared/services/novel_import.dart
@@ -19,10 +19,14 @@ import '../../shared/form/form.dart';
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
 import '../../shared/models/novel_type.dart';
+import '../../shared/logger/app_logger.dart';
 import '../../shared/providers/dictionary_providers.dart';
 import '../../shared/services/novel_import.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/novel/category_field.dart';
+import '../../shared/widgets/novel/import_adapt_option.dart';
+
+final _log = AppLogger.forModule('NovelImport');
 
 typedef MobileNovelImportSubmitter =
     Future<NovelImportResult> Function({
@@ -31,10 +35,13 @@ typedef MobileNovelImportSubmitter =
       required String category,
       required String type,
       required List<String> tags,
+      required String? adaptationTitle,
+      required int? plannedEpisodeCount,
     });
 
 enum _ImportFormField<T> implements FieldSchema {
   title<String>(validators: [RequiredValidator<String>()]),
+  plannedEpisodeCount<String>(),
   description<String>(),
   category<String>(),
   type<String>(),
@@ -66,6 +73,7 @@ class MobileNovelImportPage extends HookConsumerWidget {
       initialValues: {
         _ImportFormField.title: parsed.suggestedTitle,
         _ImportFormField.description: '',
+        _ImportFormField.plannedEpisodeCount: '',
         _ImportFormField.category: '',
         _ImportFormField.type: novelTypeOriginal,
         _ImportFormField.tags: <String>[],
@@ -73,6 +81,7 @@ class MobileNovelImportPage extends HookConsumerWidget {
       keys: [filePath],
     );
     final isBusy = useState(false);
+    final adaptAfterImport = useState(false);
     // 标签建议：loading 中传 null（纯自由文本），加载完成后自动补全。
     final tagSuggestions = ref.watch(novelTagsProvider).value;
 
@@ -94,6 +103,10 @@ class MobileNovelImportPage extends HookConsumerWidget {
       final tags =
           form.getValue<List<String>>(_ImportFormField.tags) ?? const [];
 
+      final episodeText =
+          (form.getValue<String>(_ImportFormField.plannedEpisodeCount) ?? '')
+              .trim();
+      final episodeCount = int.tryParse(episodeText);
       isBusy.value = true;
       try {
         final result = await onSubmit(
@@ -102,13 +115,28 @@ class MobileNovelImportPage extends HookConsumerWidget {
           category: category,
           type: type,
           tags: tags,
+          adaptationTitle: adaptAfterImport.value
+              ? context.t(
+                  LocaleKeys.libraryAdaptationTitle,
+                  namedArgs: {'title': title},
+                )
+              : null,
+          plannedEpisodeCount: adaptAfterImport.value ? episodeCount : null,
         );
         if (context.mounted) {
-          Navigator.of(context).pop(result);
+          Navigator.of(context).pop<NovelImportResult>(result);
         }
       } on NovelImportException catch (e) {
         if (context.mounted) {
           form.setError(_ImportFormField.title, e.message);
+        }
+      } catch (error, stackTrace) {
+        _log.error('Import failed', error: error, stackTrace: stackTrace);
+        if (context.mounted) {
+          form.setError(
+            _ImportFormField.title,
+            context.t(LocaleKeys.libraryImportTxtFailed),
+          );
         }
       } finally {
         if (context.mounted) {
@@ -179,6 +207,37 @@ class MobileNovelImportPage extends HookConsumerWidget {
                   autovalidateMode: AutovalidateMode.onUserInteraction,
                   textInputAction: TextInputAction.next,
                 ),
+                const SizedBox(height: RevericSpacing.sm),
+                NovelImportAdaptOption(
+                  value: adaptAfterImport.value,
+                  onChanged: isBusy.value
+                      ? null
+                      : (value) => adaptAfterImport.value = value,
+                ),
+                if (adaptAfterImport.value) ...[
+                  const SizedBox(height: RevericSpacing.sm),
+                  HookedTextFormField<_ImportFormField>(
+                    key: const ValueKey('import-planned-episodes'),
+                    enabled: !isBusy.value,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    validator: (value) {
+                      final text = value?.trim() ?? '';
+                      final count = int.tryParse(text);
+                      return text.isNotEmpty && (count == null || count < 1)
+                          ? context.t(
+                              LocaleKeys.libraryPlannedEpisodeCountInvalid,
+                            )
+                          : null;
+                    },
+                    fieldHook: _ImportFormField.plannedEpisodeCount,
+                    label: context.t(LocaleKeys.libraryPlannedEpisodeCount),
+                    hintText: context.t(
+                      LocaleKeys.libraryPlannedEpisodeCountHint,
+                    ),
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                  ),
+                ],
                 const SizedBox(height: RevericSpacing.xl),
                 HookedTextFormField<_ImportFormField>(
                   fieldHook: _ImportFormField.description,

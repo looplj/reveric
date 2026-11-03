@@ -3219,6 +3219,7 @@ abstract final class LocaleKeys {
   static const libraryQuickStartChatHint = 'library.quick_start_chat_hint';
   static const libraryAdaptBannerTitle = 'library.adapt_banner_title';
   static const libraryAdaptBannerHint = 'library.adapt_banner_hint';
+  static const libraryAdaptNoSourceNovels = 'library.adapt_no_source_novels';
   static const libraryQuickStartHint = 'library.quick_start_hint';
   static const libraryScreenplayWorkspacePreparing =
       'library.screenplay_workspace_preparing';
@@ -3241,6 +3242,7 @@ abstract final class LocaleKeys {
   static const libraryWorkName = 'library.work_name';
   static const librarySelectCover = 'library.select_cover';
   static const libraryStartImport = 'library.start_import';
+  static const libraryAdaptAfterImport = 'library.adapt_after_import';
   static const librarySettings = 'library.settings';
   static const libraryStatusAbandoned = 'library.status_abandoned';
   static const libraryStatusArchived = 'library.status_archived';
