@@ -4020,6 +4020,35 @@ abstract final class LocaleKeys {
   static const settingsProviderSearchHint = 'settings.provider_search_hint';
   static const settingsProviderSponsoredBadge =
       'settings.provider_sponsored_badge';
+  static const settingsProviderApi88DeepseekDiscount =
+      'settings.provider_api88_deepseek_discount';
+  static const settingsProviderApi88DeepseekDetail =
+      'settings.provider_api88_deepseek_detail';
+  static const settingsProviderApi88Category =
+      'settings.provider_api88_category';
+  static const settingsProviderApi88Title = 'settings.provider_api88_title';
+  static const settingsProviderApi88Summary = 'settings.provider_api88_summary';
+  static const settingsProviderApi88ListTagline =
+      'settings.provider_api88_list_tagline';
+  static const settingsProviderApi88ImageDetail =
+      'settings.provider_api88_image_detail';
+  static const settingsProviderApi88ImageUnit =
+      'settings.provider_api88_image_unit';
+  static const settingsProviderApi88VideoDetail =
+      'settings.provider_api88_video_detail';
+  static const settingsProviderApi88VideoUnit =
+      'settings.provider_api88_video_unit';
+  static const settingsProviderApi88TokensUnit =
+      'settings.provider_api88_tokens_unit';
+  static const settingsProviderApi88ChatModels =
+      'settings.provider_api88_chat_models';
+  static const settingsProviderApi88VoiceModels =
+      'settings.provider_api88_voice_models';
+  static const settingsProviderApi88Link = 'settings.provider_api88_link';
+  static const settingsProviderApi88PricingLink =
+      'settings.provider_api88_pricing_link';
+  static const settingsProviderApi88PricingNote =
+      'settings.provider_api88_pricing_note';
   static const settingsProviderMetasoLink = 'settings.provider_metaso_link';
   static const settingsProviderMetasoCategory =
       'settings.provider_metaso_category';

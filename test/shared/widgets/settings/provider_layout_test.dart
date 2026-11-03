@@ -21,6 +21,7 @@ import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/settings/ai_providers_section.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
 import 'package:reveric/shared/widgets/settings/provider_logo.dart';
+import 'package:reveric/shared/widgets/settings/provider_overview.dart';
 import 'package:reveric/shared/widgets/settings/provider_type_picker.dart';
 import 'package:reveric/shared/widgets/settings/mobile_provider_list.dart';
 import 'package:reveric/shared/components/reveric_button.dart';
@@ -57,6 +58,64 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+  for (final width in [320.0, 760.0]) {
+    for (final dark in [false, true]) {
+      testWidgets(
+        '88API showcase fits width=$width dark=$dark and opens both links',
+        (tester) async {
+          await tester.binding.setSurfaceSize(Size(width, 900));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final launched = <String>[];
+          const channel = MethodChannel('plugins.flutter.io/url_launcher');
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            channel,
+            (call) async {
+              if (call.method == 'launch') {
+                launched.add((call.arguments as Map)['url'] as String);
+              }
+              return true;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(channel, null),
+          );
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [appSettingsProvider.overrideWith(_Settings.new)],
+              child: _wrap(
+                SingleChildScrollView(
+                  child: ProviderOverview(
+                    config: aiProviderBuiltinById('api88')!,
+                  ),
+                ),
+                dark,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Nano Banana 2'), findsOneWidget);
+          expect(find.text('Seedance 2.0 Fast'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          for (final label in [
+            'Go to 88API · Get API key',
+            'View all pricing',
+          ]) {
+            await tester.ensureVisible(find.text(label));
+            await tester.tap(find.text(label));
+            await tester.pumpAndSettle();
+          }
+          expect(launched, [
+            providerChannelUrls['api88'],
+            'https://88api.ai/pricing',
+          ]);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        },
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+    }
+  }
   testWidgets(
     'all bundled provider logos and an unknown channel render offline',
     (tester) async {

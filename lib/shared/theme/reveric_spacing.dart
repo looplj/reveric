@@ -180,7 +180,7 @@ class RevericSizes {
   static const double statusDotSizeMobile = 9;
 
   /// 设置页 AI 供应商列表栏宽。
-  static const double settingsProviderListWidth = 200;
+  static const double settingsProviderListWidth = 280;
 
   /// 添加自定义供应商的类型选择弹层宽度与最大高度（桌面）。
   static const double providerTypePickerWidth = 320;
