@@ -517,7 +517,7 @@ void validateDocument(Json d) {
 
     final actor = o['kind'] == 'actor';
     // 手工对象可以不绑定目录；绑定后的身份独立于名称及实例 UUID。
-    if (o.containsKey('catalog_id')) {
+    if (o['catalog_id'] != null) {
       label(o['catalog_id'], '$p.catalog_id', 256);
       if (!actor || !catalogIds.add(o['catalog_id'])) {
         invalid('$p.catalog_id', 'invalid_or_duplicate_actor');

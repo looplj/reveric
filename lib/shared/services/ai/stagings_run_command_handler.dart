@@ -295,6 +295,23 @@ extension _StagingsCommands on _AiToolManagerBase {
           }
           for (final value in raw) {
             final edit = Map<String, dynamic>.of(value as Map<String, dynamic>);
+            final fields = edit['data'];
+            if (fields is Map<String, dynamic> &&
+                fields.containsKey('id') &&
+                !edit.containsKey('frame')) {
+              final nestedId = fields['id'];
+              if (nestedId is! String || nestedId.trim().isEmpty) {
+                throw const FormatException(
+                  'data.id must be a nonempty string.',
+                );
+              }
+              if (edit['id'] != null && edit['id'] != nestedId) {
+                throw const FormatException('id and data.id must match.');
+              }
+              // 先提取资源身份，再生成缺省 ID；领域编辑只接收外层身份。
+              edit['id'] = nestedId;
+              edit['data'] = Map<String, dynamic>.of(fields)..remove('id');
+            }
             if (edit['op'] == 'create' && !edit.containsKey('frame')) {
               edit['id'] ??= const Uuid().v4();
             }

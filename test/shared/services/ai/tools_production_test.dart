@@ -844,6 +844,96 @@ void main() {
     },
   );
 
+  test('staging edits accept nested and repeated resource IDs', () async {
+    final created = await director('create', {'title': 'Resource identities'});
+    ok(created);
+    final base = created['id'] as String;
+    const firstId = '11111111-1111-4111-8111-000000000001';
+    const secondId = '11111111-1111-4111-8111-000000000002';
+    final nestedData = {...actor(), 'id': firstId};
+    final result = await director('apply', {
+      'staging_id': base,
+      'edits': [
+        {'op': 'create', 'collection': 'objects', 'data': nestedData},
+        {
+          'op': 'create',
+          'collection': 'objects',
+          'id': secondId,
+          'data': {...actor(), 'id': secondId},
+        },
+        {
+          'op': 'write',
+          'collection': 'objects',
+          'data': {'id': firstId, 'name': 'Renamed'},
+        },
+      ],
+    });
+    ok(result);
+    expect(result['results'].map((r) => r['id']), [firstId, secondId, firstId]);
+    expect(result['document']['objects'][0]['name'], 'Renamed');
+    expect(nestedData['id'], firstId);
+
+    final camera = Map<String, dynamic>.from(created['document']['cameras'][0]);
+    final cameraId = camera['id'];
+    camera['name'] = 'Updated camera';
+    ok(
+      await applyEdit(base, 'cameras', 'write', {
+        'id': cameraId,
+        'data': camera,
+      }),
+    );
+    final read = await director('read', {
+      'staging_id': base,
+      'collection': 'cameras',
+      'id': cameraId,
+    });
+    expect(read['data']['id'], cameraId);
+    expect(read['data']['name'], 'Updated camera');
+    final missing = await applyEdit(base, 'cameras', 'write', {
+      'data': {...camera, 'id': '33333333-3333-4333-8333-000000000001'},
+    });
+    expect(missing['error_code'], 'not_found');
+  });
+
+  test(
+    'conflicting staging IDs reject the batch without saving earlier edits',
+    () async {
+      final created = await director('create', {
+        'title': 'Conflicting identities',
+      });
+      ok(created);
+      final base = created['id'] as String;
+      final cameraId = created['document']['cameras'][0]['id'];
+      for (final op in ['create', 'write', 'remove']) {
+        final result = await director('apply', {
+          'staging_id': base,
+          'edits': [
+            {
+              'op': 'write',
+              'collection': 'cameras',
+              'id': cameraId,
+              'data': {'name': 'Must not persist'},
+            },
+            {
+              'op': op,
+              'collection': 'objects',
+              'id': '11111111-1111-4111-8111-000000000001',
+              'data': {
+                ...actor(),
+                'id': '11111111-1111-4111-8111-000000000002',
+              },
+            },
+          ],
+        });
+        expect(result['error_code'], 'invalid_argument');
+        expect(result['error'], contains('id and data.id must match'));
+        final current = await stagingService.require(base);
+        expect(current.document, created['document']);
+        expect(current.version, created['version']);
+      }
+    },
+  );
+
   test(
     'apply preserves omitted collections and write requires a complete replacement',
     () async {
@@ -1547,6 +1637,49 @@ void main() {
       expect(session.history.preview, isNull);
       expect(session.history.dirty, isFalse);
       expect((await service.require(row.id)).title, 'Remote');
+    },
+  );
+  test(
+    'unbound actors accept null catalog IDs and reject invalid bindings',
+    () async {
+      final schema = await director('schema', {});
+      expect(schema['object']['properties']['catalog_id']['type'], [
+        'string',
+        'null',
+      ]);
+      final created = await director('create', {'title': 'Unbound actors'});
+      ok(created);
+      final base = created['id'] as String;
+      for (var i = 0; i < 2; i++) {
+        ok(
+          await applyEdit(base, 'objects', 'create', {
+            'data': {...actor(), 'catalog_id': null},
+          }),
+        );
+      }
+      final saved = await stagingService.require(base);
+      final document = DirectorDocument.parse(jsonEncode(saved.document));
+      expect(document.objects, hasLength(2));
+      expect(document.objects.every((o) => o['catalog_id'] == null), isTrue);
+      final actorId = document.objects.first['id'];
+      ok(
+        await applyEdit(base, 'objects', 'write', {
+          'id': actorId,
+          'data': {'name': 'Renamed', 'catalog_id': null},
+        }),
+      );
+      final beforeInvalid = await stagingService.require(base);
+      for (final invalidId in ['', 42, 'missing']) {
+        final result = await applyEdit(base, 'objects', 'write', {
+          'id': actorId,
+          'data': {'catalog_id': invalidId},
+        });
+        expect(result['error_code'], 'invalid_argument');
+        expect(
+          (await stagingService.require(base)).document,
+          beforeInvalid.document,
+        );
+      }
     },
   );
   test(

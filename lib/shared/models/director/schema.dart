@@ -206,7 +206,7 @@ Json directorSchema() {
       'prop': _enum(['none']),
     },
     'catalog_id': {
-      'type': 'string',
+      'type': ['string', 'null'],
       'reference': 'work character; unique among actors',
     },
     'deleted_at': cameraFields['deleted_at'],

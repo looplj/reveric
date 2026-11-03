@@ -1,6 +1,6 @@
 # 导演文档编辑
 
-导演操作统一使用 `Run stagings`。先读当前场次正文和导演文档，确定要表达的空间关系与镜头职责，再选择所需的站位、姿势和运动。
+导演操作统一使用 `Run stagings`。按剧情安排调度时，读取对应场次正文和目标导演文档；按参考图搭独立场景时，读取参考图和目标导演文档，无需预读无关场次。先确定要表达的空间关系与镜头职责，再选择所需的站位、姿势和运动。
 
 ## 主要用途与制作粒度
 
@@ -33,13 +33,108 @@
 | `frames` | `staging_id`、`frames` | 1–12 个整数帧；`camera_mode=sequence` 默认按切镜，fixed 必须传 `camera_id` |
 | `preview` | `staging_id` | 刷新画布预览 |
 
-`read` 返回 `id/title/version/document`；选择子元素时返回 `data`。collection 可选 `objects/cameras/tracks/motion_paths/camera_moves/camera_cuts`。`frames` 同步返回带帧号的图片拼图，不保存到素材或画布。
+`read` 的返回结构随读取范围区分：
+
+| options 中的读取范围 | 返回内容 |
+|---|---|
+| 只有 `staging_id` | `id/title/version/document`，完整文档在 `document` |
+| 加 `collection` | `staging_id/version/entries`，每项为 `{id, data}`，资源字段在该项 `data` |
+| 再加 `id` | `staging_id/version/id/data`，单项资源在 `data` |
+| tracks 单项再加 `frame` | `staging_id/version/id/frame/data`，该帧属性键在 `data` |
+
+collection 可选 `objects/cameras/tracks/motion_paths/camera_moves/camera_cuts`。集合查询用 `result.entries.map(entry => entry.data)` 取得资源，不从 `result.data` 读取整个集合。`frames` 同步返回带帧号的图片拼图，不保存到素材或画布。
 
 需要编辑完整文档或自定义字段时再查询 `schema`。`schema` 返回当前文档、姿态、属性、路径、机位目标、运镜与切镜的字段、类型、单位、范围和控制规则；`presets` 默认返回道具、姿势、机位和运镜的 ID 目录，各分类都是对象数组，每项只有 `id`。传 `catalog=props|poses|cameras|moves` 只查询该类；再传非空 `ids` 数组获取指定条目的完整详情。`ids` 必须配合 `catalog`，未知分类或 ID 会报错。姿势详情的 `variants` 数组同时返回各人物模型的 `geometry_key` 和完整 `pose`，查询不传模型参数；机位详情仍只有 ID。以这些查询结果为准，不自行拼另一套字段定义。
 
 从当前工作区上下文的 `staging_id` 或制作画布导演节点的 `ref_id` 定位导演台，用 `Run stagings read` 读取 `version` 和完整 `document`。读取、编辑、恢复、采样、预览或删除已有导演台时，包括重试，都必须携带真实 `staging_id`。`schema`、`list` 不接受参数，使用空 `options`；`presets` 只接受 `catalog`、`ids`；`create` 新建独立文档，不传 `staging_id`。新建从空白工程开始，不加载场景模板。
 
 `read` 可按 `collection` 读取对象、机位、属性轨、路径、运镜或切镜，再按 `id` 读取单项；读取某个属性键时传轨道 `id` 和 `frame`。身份来自实际返回值，不能用人物目录 ID 代替场内人物实例 ID。
+
+## 编辑与原子批次
+
+局部修改用 `apply`，整份替换用 `write`。
+
+`apply` 只接收 `staging_id`、局部资源 `edits` 和编辑命令 `commands`；后两者至少提供一种，不接收 `document` 或顶层 `title`。先合并所有 `edits`，再按顺序执行 `commands`；整个请求成功才保存，失败不留下部分修改。未涉及的内容保持原样，无需重传 `motion_paths`、`camera_moves` 等集合。批次命令字段由 `schema.commands` 查询。
+
+`write` 只接收 `staging_id` 和完整 `document`，不接收 `edits/commands`。先完整读取再替换，保留文档和内部资源 ID，以及所有必填字段；没有运动路径或运镜时，`motion_paths` 和 `camera_moves` 也必须显式写 `[]`。已有内容不能为了补齐字段直接清空。`create` 若显式传入 `document`，同样要求完整；省略则创建空白文档。
+
+- `edits` 是对象数组，每项用 `op` 指定 `create/write/remove`，用 `collection` 指定集合、`id` 定位资源、`data` 提供字段。新资源用 `create`；已有资源用 `write`，它不会创建不存在的资源。创建时可省略 `id`，`results` 按输入顺序返回实际 ID；同批需引用新资源时显式提供唯一 UUID。修改只传需要改动的字段。编辑 tracks 中的单个姿态或属性键时，额外传 `frame` 定位该键。
+- `commands` 复用编辑器的行为。`set_key` 按 `target_id/property/frame` 新建或更新键，不必先创建轨道；未提供 `easing` 时保留当前键的缓动。`remove_key` 删除末键时移除轨道。
+- 文档级修改也用命令：`set_title` 传 `title`；`set_duration` 传 `duration_frames`，缩短后存在越界动画时拒绝，不自动裁剪；`set_output` 传完整 `output`（width、height、background 及可选 aspect_mode），只替换输出设置。灯光使用已有的 `set_base/set_key`。
+- `set_base` 只改没有动画控制的基础属性。有动画时用属性键，不能改一个最终又被动画覆盖的基础值。
+- `upsert_path/upsert_move` 的 `data` 使用领域 schema。改变控制区间若会替换已有控制，必须显式传 `replace:true`；先读现有控制再决定。`bake` 将指定路径或运镜转换为键，保留模式与区间外结果，无法满足误差或容量时整次失败。
+- `add_camera` 使用机位预设；`set_camera_mode` 在指定帧保留构图，已有方向动画必须先显式处理。`set_cut` 按帧 upsert 切镜，`set_default_camera` 设置首切点前使用的机位。`command_results` 返回实际资源 ID。
+
+例如创建一个立方体道具，由接口生成 ID：
+
+```json
+{
+  "command": "stagings",
+  "subcommand": "apply",
+  "options": {
+    "staging_id": "{staging_id}",
+    "edits": [
+      {
+        "op": "create",
+        "collection": "objects",
+        "data": {
+          "kind": "prop",
+          "name": "占位箱",
+          "geometry_key": "prop.cube.v1",
+          "position": [0, 0, 0],
+          "rotation": [0, 0, 0, 1],
+          "scale": [1, 1, 1],
+          "color": "#B7A48B",
+          "pose": "none",
+          "visible": true
+        }
+      }
+    ]
+  }
+}
+```
+
+成功后从 `result.results[0].id` 取得新对象 ID，再用它修改位置：
+
+```json
+{
+  "command": "stagings",
+  "subcommand": "apply",
+  "options": {
+    "staging_id": "{staging_id}",
+    "edits": [
+      {
+        "op": "write",
+        "collection": "objects",
+        "id": "{object_id}",
+        "data": {"position": [2, 0, 0]}
+      }
+    ]
+  }
+}
+```
+
+新增机位可用 `add_camera`，从 `command_results` 取得新机位 ID 后再调整构图。
+
+例如在第 24 帧记录位置，在第 48 帧切换机位：
+
+```json
+{"command":"stagings","subcommand":"apply","options":{"staging_id":"{staging_id}","commands":[{"op":"set_key","target_id":"{actor_id}","property":"position","frame":24,"value":[2,0,0],"easing":"smoothstep"},{"op":"set_cut","frame":48,"camera_id":"{camera_id}"}]}}
+```
+
+`scale` 是 `[x,y,z]` 三轴缩放，每个分量必须在 **0.1 至 10（含边界）**。对象基础值和动画关键帧都受此限制；演员必须三轴等比，道具可以非等比。不要用 0 或 0.01 表示隐藏；隐藏和出现使用 `visible`，对应动画键使用 `hold`。
+
+批次失败表示其中所有改动均未保存。重试前核对错误与当前内容，重新提交该批尚未完成的改动；不能只补一个修正项就认为整批已完成。参数不完整的调用未执行，需要重新提交合法调用。大量动画按独立动作阶段分批，前批成功后再继续；相互依赖的创建、引用和引用修复留在同一批，不反复重写整份大文档。
+
+应用预设使用 `apply_pose`，传 `target_id`、`preset`，无需传模型或完整姿态。程序从目标人物读取 `geometry_key` 并展开对应参数；传 `frame` 时按 `set_key` 新建或更新该帧姿态键，不传时按 `set_base` 修改基础姿态，已有姿态动画时拒绝。命令结果的 `id` 为目标人物实例 ID。
+
+自定义姿态时，从当前采样或 `presets` 的 `catalog=poses`、`ids` 查询取得完整姿态；详情在 `poses[].variants[]` 中，按目标人物的 `geometry_key` 选择，再改需要的角度或高度。每个姿态键保存完整 26 参数。姿势预设仅填姿态，不改世界走位。人物整体走位与朝向使用对象 `position/rotation`；姿态里的身体旋转属于模型内部变换，不代替人物整体转向。
+
+机位朝向分 `free` 和 `look_at`，字段互斥。注视目标使用完整的 point/object/bone 描述，偏移属于目标的局部空间；骨骼目标随本帧姿态求值。需要转向独立动画时用 free 旋转键，需要跟踪人物时用动态引用。切镜决定使用哪台机位，运镜只改变单台机位。
+
+删除对象会移除其专属控制；默认机位、切镜和其他机位的注视引用必须在同批 `edits` 中显式处理。整份替换前必须完整读取，保留文档和内部资源 ID，不用局部列表拼出完整文档。写后回读并核对无关内容和引用。
+
+修改自动保存并同步打开的导演台。同轮对话保留修改前历史快照；`restore` 使用实际快照版本替换整份文档。用户与 Agent 同时编辑同一字段时以后写入为准。
 
 ## 预设目录
 
@@ -113,41 +208,6 @@
 底面原点的道具在无旋转、`position.y=0` 时落地。武器使用握持点原点，坐标零点以下可能仍有柄或杆；新建的默认位置只负责初始落地，持物时把对象位置移到手掌对应的世界位置，再调整旋转。刀剑和长杆沿 +Y，枪和弓瞄向 +Z，具体方向仍以目录为准。没有自动握持、骨骼挂载、接触解算或物理模拟；人物运动时不会自动带动武器。
 
 坐面、桌面、床面和架面用 `support_heights_m`，不要拿包围盒总高度代替。无旋转时，世界支撑高度为对象位置 Y 加上局部支撑高度乘以 Y 缩放；旋转后需要按对象完整变换计算并检查画面。窗框需按窗台位置抬高，门板与门框分别摆放；灯具、屏幕、轮子、抽屉等只提供静态轮廓，不会自动发光、转动或开合。手机、文件和书默认平放，具体朝向与支撑关系以目录及实际画面为准。
-
-## 编辑与原子批次
-
-局部修改用 `apply`，整份替换用 `write`。
-
-`apply` 只接收 `staging_id`、局部资源 `edits` 和编辑命令 `commands`；后两者至少提供一种，不接收 `document` 或顶层 `title`。先合并所有 `edits`，再按顺序执行 `commands`；整个请求成功才保存，失败不留下部分修改。未涉及的内容保持原样，无需重传 `motion_paths`、`camera_moves` 等集合。批次命令字段由 `schema.commands` 查询。
-
-`write` 只接收 `staging_id` 和完整 `document`，不接收 `edits/commands`。先完整读取再替换，保留文档和内部资源 ID，以及所有必填字段；没有运动路径或运镜时，`motion_paths` 和 `camera_moves` 也必须显式写 `[]`。已有内容不能为了补齐字段直接清空。`create` 若显式传入 `document`，同样要求完整；省略则创建空白文档。
-
-- `edits` 用 `create/write/remove` 和 `collection/id/data` 编辑资源。创建时可省略 `id`，`results` 按输入顺序返回实际 ID；同批需引用新资源时显式提供唯一 UUID。修改只传需要改动的字段。编辑 tracks 中的单个姿态或属性键时，额外传 `frame` 定位该键。
-- `commands` 复用编辑器的行为。`set_key` 按 `target_id/property/frame` 新建或更新键，不必先创建轨道；未提供 `easing` 时保留当前键的缓动。`remove_key` 删除末键时移除轨道。
-- 文档级修改也用命令：`set_title` 传 `title`；`set_duration` 传 `duration_frames`，缩短后存在越界动画时拒绝，不自动裁剪；`set_output` 传完整 `output`（width、height、background 及可选 aspect_mode），只替换输出设置。灯光使用已有的 `set_base/set_key`。
-- `set_base` 只改没有动画控制的基础属性。有动画时用属性键，不能改一个最终又被动画覆盖的基础值。
-- `upsert_path/upsert_move` 的 `data` 使用领域 schema。改变控制区间若会替换已有控制，必须显式传 `replace:true`；先读现有控制再决定。`bake` 将指定路径或运镜转换为键，保留模式与区间外结果，无法满足误差或容量时整次失败。
-- `add_camera` 使用机位预设；`set_camera_mode` 在指定帧保留构图，已有方向动画必须先显式处理。`set_cut` 按帧 upsert 切镜，`set_default_camera` 设置首切点前使用的机位。`command_results` 返回实际资源 ID。
-
-例如在第 24 帧记录位置，在第 48 帧切换机位：
-
-```json
-{"command":"stagings","subcommand":"apply","options":{"staging_id":"{staging_id}","commands":[{"op":"set_key","target_id":"{actor_id}","property":"position","frame":24,"value":[2,0,0],"easing":"smoothstep"},{"op":"set_cut","frame":48,"camera_id":"{camera_id}"}]}}
-```
-
-`scale` 是 `[x,y,z]` 三轴缩放，每个分量必须在 **0.1 至 10（含边界）**。对象基础值和动画关键帧都受此限制；演员必须三轴等比，道具可以非等比。不要用 0 或 0.01 表示隐藏；隐藏和出现使用 `visible`，对应动画键使用 `hold`。
-
-批次失败表示其中所有改动均未保存。重试前核对错误与当前内容，重新提交该批尚未完成的改动；不能只补一个修正项就认为整批已完成。参数不完整的调用未执行，需要重新提交合法调用。大量动画按独立动作阶段分批，前批成功后再继续；相互依赖的创建、引用和引用修复留在同一批，不反复重写整份大文档。
-
-应用预设使用 `apply_pose`，传 `target_id`、`preset`，无需传模型或完整姿态。程序从目标人物读取 `geometry_key` 并展开对应参数；传 `frame` 时按 `set_key` 新建或更新该帧姿态键，不传时按 `set_base` 修改基础姿态，已有姿态动画时拒绝。命令结果的 `id` 为目标人物实例 ID。
-
-自定义姿态时，从当前采样或 `presets` 的 `catalog=poses`、`ids` 查询取得完整姿态；详情在 `poses[].variants[]` 中，按目标人物的 `geometry_key` 选择，再改需要的角度或高度。每个姿态键保存完整 26 参数。姿势预设仅填姿态，不改世界走位。人物整体走位与朝向使用对象 `position/rotation`；姿态里的身体旋转属于模型内部变换，不代替人物整体转向。
-
-机位朝向分 `free` 和 `look_at`，字段互斥。注视目标使用完整的 point/object/bone 描述，偏移属于目标的局部空间；骨骼目标随本帧姿态求值。需要转向独立动画时用 free 旋转键，需要跟踪人物时用动态引用。切镜决定使用哪台机位，运镜只改变单台机位。
-
-删除对象会移除其专属控制；默认机位、切镜和其他机位的注视引用必须在同批 `edits` 中显式处理。整份替换前必须完整读取，保留文档和内部资源 ID，不用局部列表拼出完整文档。写后回读并核对无关内容和引用。
-
-修改自动保存并同步打开的导演台。同轮对话保留修改前历史快照；`restore` 使用实际快照版本替换整份文档。用户与 Agent 同时编辑同一字段时以后写入为准。
 
 ## 采样与画面检查
 
