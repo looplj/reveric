@@ -16,6 +16,7 @@ import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/services/ai/new_api.dart';
 import 'package:reveric/shared/services/ai/provider_initializer.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
+import 'package:reveric/shared/widgets/settings/providers/registry.dart';
 
 AiProvider _provider([String type = 'api88']) =>
     aiProviderBuiltinById('openai')!.copyWith(
@@ -36,11 +37,25 @@ http.Response _json(Object value) => http.Response(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('OOKiAPI is available only by manual creation without a showcase', () {
+    expect(customAiProviderTypes, contains(AiProviderType.ooki));
+    expect(aiProviderBuiltinById('ooki'), isNull);
+    expect(providerShowcases, isNot(contains('ooki')));
+  });
+  for (final (type, baseUrl) in [
+    ('api88', 'https://api.88api.ai/v1'),
+    ('ooki', 'https://api.ookiapi.com/v1'),
+  ]) {
+    group(type, () => _testProvider(type, baseUrl));
+  }
+}
+
+void _testProvider(String type, String baseUrl) {
   test(
-    '88API exposes four kinds while New API stays an internal integration',
+    'New API provider exposes four kinds while New API stays an internal integration',
     () {
-      expect(_provider().effectiveBaseUrl, 'https://api.88api.ai/v1');
-      expect(_provider().supportedModelKinds, {
+      expect(_provider(type).effectiveBaseUrl, baseUrl);
+      expect(_provider(type).supportedModelKinds, {
         AiModelKind.chat,
         AiModelKind.image,
         AiModelKind.audio,
@@ -58,7 +73,7 @@ void main() {
   test(
     'all registered media channel entries resolve to usable capabilities',
     () {
-      for (final type in ['api88']) {
+      for (final type in ['api88', 'ooki']) {
         for (final channel
             in imageChannelModels[ImageProtocol.new_api_images]!.values) {
           expect(channel.model, isNotNull);
@@ -83,23 +98,25 @@ void main() {
       var requests = 0;
       await http.runWithClient(
         () async {
-          expect(await fetchProviderModels(_provider()), ['deepseek-v4-flash']);
+          expect(await fetchProviderModels(_provider(type)), [
+            'deepseek-v4-flash',
+          ]);
           expect(
-            await fetchProviderModels(_provider(), kind: AiModelKind.image),
+            await fetchProviderModels(_provider(type), kind: AiModelKind.image),
             ['gemini-3.1-flash-image', 'gpt-image-2'],
           );
           expect(
-            await fetchProviderModels(_provider(), kind: AiModelKind.audio),
+            await fetchProviderModels(_provider(type), kind: AiModelKind.audio),
             ['gemini-3.1-flash-tts'],
           );
           expect(
-            await fetchProviderModels(_provider(), kind: AiModelKind.video),
+            await fetchProviderModels(_provider(type), kind: AiModelKind.video),
             ['seedance-2.0官方版', 'veo-3.1'],
           );
         },
         () => MockClient((request) async {
           requests++;
-          expect(request.url.toString(), 'https://api.88api.ai/v1/models');
+          expect(request.url.toString(), '$baseUrl/models');
           expect(request.headers['Authorization'], 'Bearer test-key');
           return _json({
             'data': [
@@ -134,12 +151,13 @@ void main() {
       () async {
         var calls = 0;
         final initializer = AiProviderInitializer(
-          config: _provider(),
+          config: _provider(type),
           chatModel: model,
           httpClient: MockClient((request) async {
             calls++;
             expect(request.method, 'POST');
             expect(request.url.path, path);
+            expect(request.url.host, Uri.parse(baseUrl).host);
             final body = jsonDecode(request.body) as Map;
             if (protocol != NewApiChatProtocol.gemini) {
               expect(body['model'], model);
@@ -251,7 +269,7 @@ void main() {
       });
       addTearDown(transport.close);
       final initializer = AiProviderInitializer(
-        config: _provider(),
+        config: _provider(type),
         chatModel: 'writer',
         httpClient: transport,
       );
@@ -276,7 +294,7 @@ void main() {
     });
     addTearDown(transport.close);
     await expectLater(
-      NewApiClient(_provider()).models(httpClient: transport),
+      NewApiClient(_provider(type)).models(httpClient: transport),
       throwsA(
         isA<StateError>().having(
           (e) => e.toString(),

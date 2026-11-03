@@ -139,6 +139,7 @@
   "settings.provider_description_codex": "Access models using local Codex login credentials. Desktop only.",
   "settings.provider_description_openai_compatible": "Connect to an OpenAI-compatible service using its base URL and API key.",
   "settings.provider_description_api88": "Access models from multiple providers through 88API for chat, image, video, and speech generation.",
+  "settings.provider_description_ooki": "Access models from multiple providers through OOKiAPI for chat, image, video, and speech generation.",
   "settings.provider_description_openrouter": "Access models from multiple providers through OpenRouter with one API key and account balance.",
   "settings.provider_description_xai": "Access xAI Grok models for chat and image generation.",
   "settings.provider_description_anthropic": "Access the Claude family of chat models from Anthropic.",

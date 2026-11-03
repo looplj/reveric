@@ -34,6 +34,7 @@ enum AiProviderType {
   codex,
   openai_compatible,
   api88,
+  ooki,
   openrouter,
   xai,
   anthropic,
@@ -68,6 +69,7 @@ enum ModelIdSource {
 class AiProviderTypeConfig {
   final String displayName;
   final bool fixedBaseUrl;
+  final bool usesNewApi;
   final ModelIdSource modelIdSource;
   final ImageProtocol? imageProtocol;
   final VideoProtocol? videoProtocol;
@@ -84,6 +86,7 @@ class AiProviderTypeConfig {
     this.videoProtocol,
     this.audioProtocol,
     this.fixedBaseUrl = false,
+    this.usesNewApi = false,
   });
 
   Set<AiModelKind> get supportedModelKinds => {
@@ -137,6 +140,17 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     videoProtocol: VideoProtocol.new_api_video,
     audioProtocol: AudioProtocol.new_api_speech,
     fixedBaseUrl: true,
+    usesNewApi: true,
+  ),
+  AiProviderType.ooki: AiProviderTypeConfig(
+    displayName: 'OOKiAPI',
+    modelIdSource: ModelIdSource.open,
+    textModelKinds: _chatOnlyKinds,
+    imageProtocol: ImageProtocol.new_api_images,
+    videoProtocol: VideoProtocol.new_api_video,
+    audioProtocol: AudioProtocol.new_api_speech,
+    fixedBaseUrl: true,
+    usesNewApi: true,
   ),
   AiProviderType.openrouter: AiProviderTypeConfig(
     displayName: 'OpenRouter',
@@ -240,6 +254,7 @@ final List<AiProviderType> customAiProviderTypes = List.unmodifiable(
 String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
   AiProviderType.metaso => 'https://metaso.cn/api/minimax',
   AiProviderType.api88 => 'https://api.88api.ai/v1',
+  AiProviderType.ooki => 'https://api.ookiapi.com/v1',
   AiProviderType.atlascloud => 'https://api.atlascloud.ai/v1',
   AiProviderType.codex => 'https://chatgpt.com/backend-api/codex',
   AiProviderType.openrouter => 'https://openrouter.ai/api/v1',

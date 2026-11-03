@@ -812,7 +812,7 @@ Future<List<String>> fetchProviderModels(
   AiProvider config, {
   AiModelKind kind = AiModelKind.chat,
 }) async {
-  if (config.typeEnum == AiProviderType.api88) {
+  if (config.typeConfig.usesNewApi) {
     return NewApiClient(config).modelIds(kind);
   }
   if (kind == AiModelKind.audio &&

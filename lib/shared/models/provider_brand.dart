@@ -7,6 +7,7 @@
 const providerChannelUrls = {
   'metaso': 'https://metaso.cn/minimax-h3/?s=Reveric',
   'api88': 'https://88api.ai/sign-up?aff=5q8X',
+  'ooki': 'https://ookiapi.com/',
   'openai': 'https://platform.openai.com/api-keys',
   'openrouter': 'https://openrouter.ai/settings/keys',
   'xai': 'https://console.x.ai/',
@@ -39,6 +40,7 @@ const providerLogoAssets = <String, String>{
   'agnes': 'assets/icons/providers/agnes.png',
   'atlascloud': 'assets/icons/providers/atlascloud.png',
   'api88': 'assets/icons/providers/api88.png',
+  'ooki': 'assets/icons/providers/ooki.png',
   'metaso': 'assets/icons/providers/metaso.png',
 };
 

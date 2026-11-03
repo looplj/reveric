@@ -139,6 +139,7 @@
   "settings.provider_description_codex": "使用本机 Codex 登录凭据接入模型，仅支持桌面端。",
   "settings.provider_description_openai_compatible": "接入兼容 OpenAI API 的服务，需填写服务商提供的基础 URL 和密钥。",
   "settings.provider_description_api88": "通过 88API 聚合平台接入多家模型，支持对话、图像、视频和语音生成。",
+  "settings.provider_description_ooki": "通过 OOKiAPI 聚合平台接入多家模型，支持对话、图像、视频和语音生成。",
   "settings.provider_description_openrouter": "通过 OpenRouter 接入多家模型，使用统一的密钥和账户余额。",
   "settings.provider_description_xai": "接入 xAI 的 Grok 模型，支持对话和图像生成。",
   "settings.provider_description_anthropic": "接入 Anthropic 的 Claude 系列对话模型。",

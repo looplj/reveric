@@ -4787,6 +4787,8 @@ abstract final class LocaleKeys {
       'settings.provider_description_codex';
   static const settingsProviderDescriptionOpenaiCompatible =
       'settings.provider_description_openai_compatible';
+  static const settingsProviderDescriptionOoki =
+      'settings.provider_description_ooki';
   static const settingsProviderDescriptionApi88 =
       'settings.provider_description_api88';
   static const settingsProviderDescriptionOpenrouter =
