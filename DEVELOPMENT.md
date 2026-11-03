@@ -243,3 +243,8 @@ python3 -m unittest discover -s third/fjs/tool -p artifact_test.py
 - **测试后出现无关依赖变更**：检查 `pubspec.lock` 的 diff，尤其是本地镜像源 URL 和自动解析的依赖版本；不要将无关变化混入功能提交。
 
 构建和打包入口以 [Makefile](Makefile)、各平台脚本及 [CI 工作流](.github/workflows/build.yaml) 为准。升级工具链或调整入口时，同步维护本文件。
+
+
+## 贡献
+
+提交 Pull Request（PR）前，请阅读 [贡献者许可协议（CLA）](CLA.md)。提交 PR 即表示同意该协议，允许维护者将你的贡献用于商业闭源版本及再许可；你保留贡献的版权。

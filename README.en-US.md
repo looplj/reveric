@@ -16,7 +16,6 @@
   <a href="#supported-models">Models</a> •
   <a href="#download--installation">Download</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#developer-guide">Contribute</a> •
   <a href="#feedback--community">Community</a> •
   <a href="#license">License</a>
 </p>
@@ -243,44 +242,6 @@ Get started with your collaborative AI studio in four simple steps:
    When you open a new work, the built-in onboarding guide asks about genre, voice, and core settings in chat, saves writing constraints as agent rules, and writes characters and worldbuilding into the codex. You can add to them by hand at any time.
 4. **Hand Tasks to the Agent**
    Just say "write chapter three", "adapt volume one into a screenplay", or "storyboard this scene and generate reference images". The agent researches and executes. Then stage shots in the 3D Director Stage and finish music and export in the Editing Suite.
-
----
-
-## Developer Guide
-
-Reveric is built using Flutter and modern cross-platform engineering practices. Community contributions are welcome!
-
-### Tech Stack
-
-- **Framework & Language**: Flutter 3.8+, Dart SDK
-- **State Management**: Riverpod (Hooks Riverpod) + Flutter Hooks
-- **Storage**: Drift (SQLite) with Local-First architecture
-- **3D Engine**: Flutter Scene (spatial rendering & camera rigging)
-- **Multimedia Engine**: FFmpeg Kit, FVP video player
-
-### Local Setup & Build
-
-```bash
-# 1. Clone repository
-git clone https://github.com/looplj/reveric.git
-cd reveric
-
-# 2. Install dependencies (FVM recommended)
-make deps
-# Or: fvm flutter pub get
-
-# 3. Run code generation (Drift DB schema & Riverpod annotations)
-make codegen
-
-# 4. Launch locally in debug mode
-make run-macos     # macOS client
-# make run-windows # Windows client
-# make run-linux   # Linux client
-
-# 5. Build production releases
-make build-macos-release   # macOS release bundle
-make build-windows-release # Windows release bundle
-```
 
 ---
 

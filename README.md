@@ -16,7 +16,6 @@
   <a href="#模型支持">模型支持</a> •
   <a href="#下载安装">下载安装</a> •
   <a href="#快速开始">快速开始</a> •
-  <a href="#开发者指南">开发者指南</a> •
   <a href="#反馈与交流">反馈与交流</a> •
   <a href="#许可证">许可证</a>
 </p>
@@ -243,44 +242,6 @@ Reveric 为短剧制片与无限画布深度集成了主流视频生成大模型
    进入作品后，内置的创作向导会在聊天中询问题材、文风与核心设定，并把写作约束保存为智能体规则、把人物与世界观写入设定库。你也可以随时手动补充。
 4. **把任务交给智能体**
    直接在聊天中说"写第三章"、"把第一卷改编成剧本"、"给这场戏拆分镜并生成参考图"，智能体会自己查资料、动手执行。随后进入 3D 导演台编排镜头，在剪辑台完成配乐与成片导出。
-
----
-
-## 开发者指南
-
-Reveric 采用 Flutter 与现代跨平台架构构建，欢迎社区开发者共同探索与改进。
-
-### 技术栈
-
-- **框架与语言**：Flutter 3.8+、Dart SDK
-- **状态管理**：Riverpod (Hooks Riverpod) + Flutter Hooks
-- **本地存储**：Drift (SQLite) Local-First 架构
-- **3D 引擎**：Flutter Scene（3D 场景与镜头渲染）
-- **多媒体处理**：FFmpeg Kit、FVP 视频播放引擎
-
-### 本地编译与运行
-
-```bash
-# 1. 克隆代码仓库
-git clone https://github.com/looplj/reveric.git
-cd reveric
-
-# 2. 安装项目依赖 (推荐使用 FVM 管理 Flutter SDK)
-make deps
-# 或者: fvm flutter pub get
-
-# 3. 运行代码生成器 (Drift 数据库与 Riverpod 代码)
-make codegen
-
-# 4. 本地启动应用调试
-make run-macos     # macOS 客户端
-# make run-windows # Windows 客户端
-# make run-linux   # Linux 客户端
-
-# 5. 构建 Release 正式安装包
-make build-macos-release   # 构建 macOS 客户端
-make build-windows-release # 构建 Windows 客户端
-```
 
 ---
 
