@@ -58,7 +58,7 @@ import 'composer_toolbar.dart';
 import 'generate_button.dart';
 import 'spec_panel.dart';
 import 'upload.dart';
-import '../../widgets/settings/settings_dialog.dart';
+import '../../widgets/agent_management/ai_providers_page.dart';
 import '../../../shared/widgets/settings/provider_video_highlights.dart';
 
 final _log = AppLogger.forModule('Production');

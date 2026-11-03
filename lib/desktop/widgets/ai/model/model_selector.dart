@@ -20,7 +20,7 @@ import '../../../../shared/localization/app_localization.dart';
 import '../../../../shared/localization/locale_keys.dart';
 import '../../../../shared/widgets/ai/reasoning_effort_bars.dart';
 import '../../../../shared/widgets/ai/provider_model_icon.dart';
-import '../../settings/settings_dialog.dart';
+import '../../agent_management/ai_providers_page.dart';
 
 /// 模型选择回调类型
 typedef SelectModelCallback = void Function(AiModelOption option);
@@ -516,10 +516,7 @@ class _ModelSelectorState extends State<ModelSelector> {
 
         onAddModel: () {
           _hideMenu();
-          showDialog(
-            context: context,
-            builder: (_) => const SettingsDialog(initialNavId: 'providers'),
-          );
+          showAiProviderSettingsDialog(context);
         },
       );
     }

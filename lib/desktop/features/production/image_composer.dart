@@ -53,7 +53,7 @@ import 'spec_panel.dart';
 import 'support.dart';
 import 'upload.dart';
 import 'view/method.dart';
-import '../../widgets/settings/settings_dialog.dart';
+import '../../widgets/agent_management/ai_providers_page.dart';
 
 final _log = AppLogger.forModule('ProductionImage');
 

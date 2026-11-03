@@ -3031,7 +3031,9 @@ abstract final class LocaleKeys {
       'home.greeting_personalized_simple';
   static const homeRecentSessions = 'home.recent_sessions';
   static const homeRecentWork = 'home.recent_work';
-  static const homeSectionAi = 'home.section_ai';
+  static const homeSectionAgent = 'home.section_agent';
+  static const homeSectionChat = 'home.section_chat';
+  static const homeSectionModel = 'home.section_model';
   static const homeSectionSettings = 'home.section_settings';
   static const homeSectionWorks = 'home.section_works';
   static const homeNavWorks = 'home.nav_works';

@@ -1,7 +1,7 @@
 // 职责: 验证跨平台配置预览不连接，并保留窄屏表单字段和错误提示。
 // 关联文件:
 //   lib/shared/widgets/settings/mcp/server_editor.dart
-//   lib/desktop/widgets/settings/settings_mcp_section.dart
+//   lib/desktop/widgets/agent_management/mcp_page.dart
 //   lib/shared/widgets/settings/leave_guard.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
@@ -10,7 +10,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:mcp_dart/mcp_dart.dart' as sdk;
-import 'package:reveric/desktop/widgets/settings/settings_mcp_section.dart';
+import 'package:reveric/desktop/widgets/agent_management/mcp_page.dart';
 import 'package:reveric/shared/components/reveric_dialog.dart';
 import 'package:reveric/shared/services/mcp/diagnostics.dart';
 import 'package:reveric/shared/widgets/settings/mcp/server_row.dart';
@@ -319,9 +319,7 @@ void main() {
                               child: SizedBox(
                                 width: 700,
                                 height: 600,
-                                child: Scaffold(
-                                  body: McpDesktopSettingsSection(),
-                                ),
+                                child: Scaffold(body: McpServersRegion()),
                               ),
                             ),
                           ),
@@ -445,7 +443,7 @@ void main() {
                                           child: const Text('Leave fixture'),
                                         ),
                                         const Expanded(
-                                          child: McpDesktopSettingsSection(),
+                                          child: McpServersRegion(),
                                         ),
                                       ],
                                     ),

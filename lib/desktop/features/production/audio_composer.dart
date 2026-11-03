@@ -50,7 +50,7 @@ import 'prompt_field.dart';
 import 'support.dart';
 import 'upload.dart';
 import 'popover.dart';
-import '../../widgets/settings/settings_dialog.dart';
+import '../../widgets/agent_management/ai_providers_page.dart';
 
 final _log = AppLogger.forModule('ProductionAudio');
 

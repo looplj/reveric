@@ -1,16 +1,15 @@
 // 职责: AI 聊天面板配置提示组件 — 当 AI 未配置时显示提示，并提供打开 AI 供应商设置的入口
 // 关联文件:
 //   lib/desktop/widgets/ai/chat/panel.dart
-//   lib/desktop/widgets/settings/settings_dialog.dart
+//   lib/desktop/widgets/agent_management/ai_providers_page.dart
 //   lib/shared/localization/locale_keys.dart
 import 'package:flutter/material.dart';
 
 import '../../../../shared/components/reveric_button.dart';
-import '../../../../shared/components/reveric_dialog.dart';
 import '../../../../shared/localization/app_localization.dart';
 import '../../../../shared/localization/locale_keys.dart';
 import '../../../../shared/theme/theme.dart';
-import '../../settings/settings_dialog.dart';
+import '../../agent_management/ai_providers_page.dart';
 
 class ChatConfigHint extends StatelessWidget {
   const ChatConfigHint({super.key});
@@ -44,10 +43,7 @@ class ChatConfigHint extends StatelessWidget {
             RevericButton.primary(
               label: context.t(LocaleKeys.aiConfigureProvider),
               icon: RevericIcons.settings_outlined,
-              onPressed: () => showRevericDialog<void>(
-                context: context,
-                builder: (_) => const SettingsDialog(initialNavId: 'providers'),
-              ),
+              onPressed: () => showAiProviderSettingsDialog(context),
             ),
           ],
         ),

@@ -31,7 +31,7 @@ import '../../../shared/models/narration.dart';
 import '../../../shared/providers/narration.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/theme/theme.dart';
-import '../../widgets/settings/settings_dialog.dart';
+import '../../widgets/agent_management/ai_providers_page.dart';
 import 'errors.dart';
 import 'voice.dart';
 

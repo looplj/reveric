@@ -37,7 +37,7 @@ import 'light_panel.dart';
 import 'form.dart';
 import 'models.dart';
 import 'sphere_preview.dart';
-import '../../../widgets/settings/settings_dialog.dart';
+import '../../../widgets/agent_management/ai_providers_page.dart';
 
 class ProductionViewPanel extends HookConsumerWidget {
   const ProductionViewPanel({

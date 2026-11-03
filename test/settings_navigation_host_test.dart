@@ -3,6 +3,7 @@
 //   lib/settings_navigation_host.dart
 //   lib/shared/providers/settings_navigation.dart
 //   lib/shared/widgets/settings/object_storage_form.dart
+//   lib/desktop/widgets/agent_management/page_dialog.dart
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 import 'dart:io';
@@ -15,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/settings_navigation_host.dart';
 import 'package:reveric/desktop/widgets/settings/settings_dialog.dart';
+import 'package:reveric/desktop/widgets/agent_management/ai_providers_page.dart';
 import 'package:reveric/mobile/pages/settings_page.dart';
 import 'package:reveric/shared/widgets/settings/general_settings_section.dart';
 import 'package:reveric/shared/database/app_database.dart' show AppDatabase;
@@ -105,11 +107,20 @@ void main() {
         'about',
       };
       expect(SettingsPage.navigableSections, shared);
-      expect(SettingsDialog.navigableSections, {
+      expect(SettingsNavigationHost.desktopNavigableSections, {
         ...shared,
         'storage',
         'remote',
       });
+      // 桌面端 AI 管理页已移到首页，设置弹窗不再承载它们。
+      expect(
+        SettingsDialog.navigableSections.intersection({
+          'ai_agents',
+          'providers',
+          'mcp',
+        }),
+        isEmpty,
+      );
     },
   );
   for (final platform in [
@@ -210,6 +221,32 @@ void main() {
           debugDefaultTargetPlatformOverride = null;
           return;
         }
+        navigation.open('providers');
+        await tester.pumpAndSettle();
+        expect(find.byType(AiProvidersPage), findsOneWidget);
+        expect(find.byType(SettingsDialog), findsNothing);
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AiProvidersPage), findsNothing);
+
+        navigation.open('providers');
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Add Custom'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('OpenAI Compatible'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        expect(find.text('Unsaved changes'), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AiProvidersPage), findsOneWidget);
+        expect(find.text('Unsaved'), findsNWidgets(2));
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Discard').last);
+        await tester.pumpAndSettle();
+        expect(find.byType(AiProvidersPage), findsNothing);
         navigation.open('storage');
         await tester.pumpAndSettle();
         expect(find.byType(ObjectStorageForm), findsOneWidget);

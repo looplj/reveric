@@ -27,7 +27,10 @@
 //   assets/translations/zh-CN/agent_studio.json
 //   assets/translations/en/editor.json
 //   assets/translations/zh-CN/editor.json
+//   assets/translations/en/settings.json
+//   assets/translations/zh-CN/settings.json
 //   lib/shared/widgets/unsaved_changes_dialog.dart
+//   lib/shared/widgets/settings/leave_guard.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 import '../../shared/widgets/plugin_view/navigation.dart';
@@ -60,10 +63,14 @@ import '../../shared/theme/theme.dart';
 import '../../shared/logger/app_logger.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/confirm_dialog.dart';
+import '../../shared/widgets/settings/leave_guard.dart';
 import '../../shared/widgets/unsaved_changes_dialog.dart';
 import '../../shared/services/demo_novel.dart';
 import '../widgets/agent_management/ai_shortcut_action_edit_panel.dart';
 import '../widgets/agent_management/agent_model_settings_page.dart';
+import '../widgets/agent_management/ai_assistant_page.dart';
+import '../widgets/agent_management/ai_providers_page.dart';
+import '../widgets/agent_management/mcp_page.dart';
 import '../widgets/agent_management/expert_team_page.dart';
 import '../features/agent_skills/setup_panel.dart';
 import '../features/agent_skills/setup_edit_panel.dart';
@@ -124,6 +131,18 @@ final class _HomeAgentModelSettingsSelection extends _HomeContentSelection {
 
 final class _HomeExpertTeamSelection extends _HomeContentSelection {
   const _HomeExpertTeamSelection();
+}
+
+final class _HomeAiProvidersSelection extends _HomeContentSelection {
+  const _HomeAiProvidersSelection();
+}
+
+final class _HomeAiAssistantSelection extends _HomeContentSelection {
+  const _HomeAiAssistantSelection();
+}
+
+final class _HomeMcpSelection extends _HomeContentSelection {
+  const _HomeMcpSelection();
 }
 
 final class _HomeSkillListSelection extends _HomeContentSelection {
@@ -265,6 +284,8 @@ class NovelHomePage extends HookConsumerWidget {
     final activeAgentPanelHasChanges = useRef<bool Function()?>(null);
     final activeAgentPanelIsBlankCreateDraft = useRef<bool Function()?>(null);
     final pluginPageHasChanges = useRef<bool Function()?>(null);
+    // 供应商草稿、MCP 编辑表单沿用设置区的离开守卫，切换侧栏前由它们自行询问。
+    final settingsLeave = useMemoized(SettingsLeaveController.new);
     final sessionsExpanded = _homeSessionsExpanded;
     useListenable(sessionsExpanded);
     Future<bool> createNovel({
@@ -715,6 +736,9 @@ class NovelHomePage extends HookConsumerWidget {
         ) =>
           true,
         (_HomeExpertTeamSelection(), _HomeExpertTeamSelection()) => true,
+        (_HomeAiProvidersSelection(), _HomeAiProvidersSelection()) => true,
+        (_HomeAiAssistantSelection(), _HomeAiAssistantSelection()) => true,
+        (_HomeMcpSelection(), _HomeMcpSelection()) => true,
         (_HomeSkillListSelection(), _HomeSkillListSelection()) => true,
         (
           _HomeGlobalSkillSelection(skill: final currentSkill),
@@ -788,6 +812,9 @@ class NovelHomePage extends HookConsumerWidget {
 
     /// 返回 true 表示「拦截」（不允许离开）；false 表示放行。
     Future<bool> guardUnsavedChanges() async {
+      if (!await settingsLeave.confirmLeave()) {
+        return true;
+      }
       if (isBlankCreateDraftSelection()) {
         clearActiveAgentHasChanges();
         return false;
@@ -922,6 +949,18 @@ class NovelHomePage extends HookConsumerWidget {
         onEditPrompt: (agent) {
           selectContent(_HomeSubAgentPromptSelection(agent));
         },
+      ),
+      _HomeAiProvidersSelection() => AiProvidersPage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+      ),
+      _HomeAiAssistantSelection() => AiAssistantPage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+      ),
+      _HomeMcpSelection() => McpPage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
       ),
       _HomeExpertTeamSelection() => AgentExpertTeamPage(
         headerGestureExclusionKey: editPanelHeaderKey,
@@ -1064,7 +1103,12 @@ class NovelHomePage extends HookConsumerWidget {
                 width: RevericSizes.dividerThickness,
                 color: colors.border,
               ),
-              Expanded(child: mainContent),
+              Expanded(
+                child: SettingsLeaveScope(
+                  controller: settingsLeave,
+                  child: mainContent,
+                ),
+              ),
             ],
           ),
         ),
@@ -1143,10 +1187,19 @@ class NovelHomePage extends HookConsumerWidget {
                   },
                 ),
                 const SizedBox(height: RevericSpacing.md),
-                // Section 3: AI
+                // Section 2: 模型
                 _buildSectionGroupHeader(
                   context,
-                  title: context.t(LocaleKeys.homeSectionAi),
+                  title: context.t(LocaleKeys.homeSectionModel),
+                ),
+                _buildLeafNavItem(
+                  context,
+                  icon: RevericIcons.hub_outlined,
+                  title: context.t(LocaleKeys.settingsProviders),
+                  isSelected: selection is _HomeAiProvidersSelection,
+                  onTap: () {
+                    onContentSelected(const _HomeAiProvidersSelection());
+                  },
                 ),
                 _buildLeafNavItem(
                   context,
@@ -1155,6 +1208,21 @@ class NovelHomePage extends HookConsumerWidget {
                   isSelected: modelSettingsSelected,
                   onTap: () {
                     onContentSelected(const _HomeAgentModelSettingsSelection());
+                  },
+                ),
+                const SizedBox(height: RevericSpacing.md),
+                // Section 3: 智能体
+                _buildSectionGroupHeader(
+                  context,
+                  title: context.t(LocaleKeys.homeSectionAgent),
+                ),
+                _buildLeafNavItem(
+                  context,
+                  icon: RevericIcons.smart_toy_outlined,
+                  title: context.t(LocaleKeys.settingsAiAgents),
+                  isSelected: selection is _HomeAiAssistantSelection,
+                  onTap: () {
+                    onContentSelected(const _HomeAiAssistantSelection());
                   },
                 ),
                 _buildLeafNavItem(
@@ -1177,6 +1245,21 @@ class NovelHomePage extends HookConsumerWidget {
                 ),
                 _buildLeafNavItem(
                   context,
+                  icon: RevericIcons.hub_outlined,
+                  title: context.t(LocaleKeys.settingsMcp),
+                  isSelected: selection is _HomeMcpSelection,
+                  onTap: () {
+                    onContentSelected(const _HomeMcpSelection());
+                  },
+                ),
+                const SizedBox(height: RevericSpacing.md),
+                // Section 4: 对话
+                _buildSectionGroupHeader(
+                  context,
+                  title: context.t(LocaleKeys.homeSectionChat),
+                ),
+                _buildLeafNavItem(
+                  context,
                   icon: RevericIcons.rocket_launch_outlined,
                   title: context.t(LocaleKeys.agentShortcutTitle),
                   isSelected: shortcutsSelected,
@@ -1184,7 +1267,7 @@ class NovelHomePage extends HookConsumerWidget {
                     onContentSelected(const _HomeShortcutActionListSelection());
                   },
                 ),
-                // 最近对话（AI section 末尾）
+                // 最近对话（对话 section 末尾）
                 if (recentSessions.isNotEmpty) ...[
                   _buildCollapsibleSectionHeader(
                     context,
@@ -1222,7 +1305,7 @@ class NovelHomePage extends HookConsumerWidget {
                     ),
                   ],
                 ],
-                // 插件页面：放在 AI 分区（含最近对话）之后，避免最近对话被归入插件。
+                // 插件页面：放在对话分区（含最近对话）之后，避免最近对话被归入插件。
                 PluginPageNavigation(
                   builder: (context, views) => Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1250,7 +1333,7 @@ class NovelHomePage extends HookConsumerWidget {
                     ],
                   ),
                 ),
-                // Section 4: 设置
+                // Section 5: 设置
                 const SizedBox(height: RevericSpacing.md),
                 _buildSectionGroupHeader(
                   context,
