@@ -328,6 +328,301 @@ void main() {
     },
   );
 
+  for (final model in ['qwen/qwen-image-2.1-turbo', 'krea/k3-edit']) {
+    test('$model submits reference images with ratio and resolution', () async {
+      final service = AiImageGenerationService(
+        _provider('openrouter'),
+        model: model,
+      );
+      var calls = 0;
+      await http.runWithClient(
+        () async {
+          if (model == 'krea/k3-edit') {
+            await expectLater(
+              service.generateImage('edit'),
+              throwsA(isA<AiImageGenerationException>()),
+            );
+          }
+          final result = await service.editImages(
+            'edit',
+            imageData: _references,
+            aspectRatio: '16:9',
+            resolution: '2K',
+          );
+          expect(
+            File(result.localFilePath!).readAsBytesSync(),
+            base64Decode(_png),
+          );
+        },
+        () => MockClient((r) async {
+          calls++;
+          expect(r.url.toString(), 'https://openrouter.ai/api/v1/images');
+          expect(jsonDecode(r.body), {
+            'model': model,
+            'prompt': 'edit',
+            'n': 1,
+            'aspect_ratio': '16:9',
+            'resolution': '2K',
+            'input_references': [
+              for (final image in _references)
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': image},
+                },
+            ],
+          });
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'b64_json': _png},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      expect(calls, 1);
+    });
+  }
+
+  test(
+    'unknown configured image model validates and generates with automatic defaults',
+    () async {
+      const model = 'vendor/future-image';
+      final provider = _provider('openrouter').copyWith(imageModels: [model]);
+      final caps = ProductionImageCapabilities(provider, model);
+      caps.validate(
+        prompt: 'cover',
+        ratio: 'auto',
+        resolution: 'auto',
+        references: 0,
+      );
+      expect(caps.verifiedCapabilities, isNull);
+      caps.validate(
+        prompt: 'cover',
+        ratio: '16:9',
+        resolution: '2K',
+        references: 32,
+      );
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      addTearDown(db.close);
+      final container = ProviderContainer.test(
+        overrides: [appDatabaseProvider.overrideWithValue(db)],
+      );
+      await http.runWithClient(
+        () async {
+          final result = await container.read(productionImageInvokeProvider)(
+            provider,
+            ProductionImageRequest(
+              providerId: provider.id,
+              modelId: model,
+              originalPrompt: 'cover',
+              prompt: 'cover',
+              ratio: 'auto',
+              resolution: 'auto',
+              size: caps.size('auto', 'auto'),
+            ),
+            (_) async {},
+          );
+          expect(
+            File(result.localFilePath!).readAsBytesSync(),
+            base64Decode(_png),
+          );
+        },
+        () => MockClient((r) async {
+          expect(jsonDecode(r.body), {
+            'model': model,
+            'prompt': 'cover',
+            'n': 1,
+          });
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'b64_json': _png},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+    },
+  );
+
+  test(
+    'registered Gemini direct models send image config and references',
+    () async {
+      const model = 'gemini-3-pro-image';
+      final provider = _provider('gemini').copyWith(imageModels: [model]);
+      final caps = ProductionImageCapabilities(provider, model);
+      expect(caps.verifiedCapabilities, isNotNull);
+      caps.validate(
+        prompt: 'edit',
+        ratio: '16:9',
+        resolution: '2K',
+        references: 2,
+      );
+      await http.runWithClient(
+        () => AiImageGenerationService(provider, model: model).editImages(
+          'edit',
+          imageData: [_image, _image],
+          aspectRatio: '16:9',
+          resolution: '2K',
+        ),
+        () => MockClient((r) async {
+          final body = jsonDecode(r.body) as Map;
+          expect(body['generationConfig']['imageConfig'], {
+            'aspectRatio': '16:9',
+            'imageSize': '2K',
+          });
+          expect(body['contents'][0]['parts'], hasLength(3));
+          return http.Response(
+            jsonEncode({
+              'candidates': [
+                {
+                  'content': {
+                    'parts': [
+                      {
+                        'inlineData': {'mimeType': 'image/png', 'data': _png},
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+    },
+  );
+
+  for (final type in ['openrouter', 'gemini', 'qwen', 'api88']) {
+    test(
+      'unknown $type model sends selected specifications and references',
+      () async {
+        const model = 'future-image';
+        final provider = _provider(type).copyWith(imageModels: [model]);
+        final caps = ProductionImageCapabilities(provider, model);
+        caps.validate(
+          prompt: 'edit',
+          ratio: '16:9',
+          resolution: '2K',
+          references: 2,
+        );
+        final service = AiImageGenerationService(provider, model: model);
+        var calls = 0;
+        await http.runWithClient(
+          () async {
+            final result = await service.editImages(
+              'edit',
+              imageData: [_image, _image],
+              aspectRatio: '16:9',
+              resolution: '2K',
+              size: caps.size('16:9', '2K'),
+            );
+            expect(
+              File(result.localFilePath!).readAsBytesSync(),
+              base64Decode(_png),
+            );
+          },
+          () => MockClient((r) async {
+            calls++;
+            if (type == 'api88') {
+              expect(r.url.path, endsWith('/images/edits'));
+              expect(
+                r.headers['content-type'],
+                startsWith('multipart/form-data'),
+              );
+              final body = latin1.decode(r.bodyBytes);
+              expect(body, contains('2048x1152'));
+              expect(RegExp(r'name="image\[\]"').allMatches(body).length, 2);
+            } else {
+              final body = jsonDecode(r.body) as Map;
+              switch (type) {
+                case 'openrouter':
+                  expect(body, {
+                    'model': model,
+                    'prompt': 'edit',
+                    'n': 1,
+                    'aspect_ratio': '16:9',
+                    'resolution': '2K',
+                    'input_references': [
+                      for (var i = 0; i < 2; i++)
+                        {
+                          'type': 'image_url',
+                          'image_url': {'url': _image},
+                        },
+                    ],
+                  });
+                case 'gemini':
+                  expect(body['generationConfig']['imageConfig'], {
+                    'aspectRatio': '16:9',
+                    'imageSize': '2K',
+                  });
+                  expect(body['contents'][0]['parts'], [
+                    {'text': 'edit'},
+                    for (var i = 0; i < 2; i++)
+                      {
+                        'inlineData': {'mimeType': 'image/png', 'data': _png},
+                      },
+                  ]);
+                case 'qwen':
+                  expect(body['parameters']['size'], '2048*1152');
+                  expect(body['input']['messages'][0]['content'], [
+                    {'image': _image},
+                    {'image': _image},
+                    {'text': 'edit'},
+                  ]);
+              }
+            }
+            return http.Response(
+              jsonEncode(
+                type == 'gemini'
+                    ? {
+                        'candidates': [
+                          {
+                            'content': {
+                              'parts': [
+                                {
+                                  'inlineData': {
+                                    'mimeType': 'image/png',
+                                    'data': _png,
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        ],
+                      }
+                    : type == 'qwen'
+                    ? {
+                        'output': {
+                          'choices': [
+                            {
+                              'message': {
+                                'content': [
+                                  {'image': _image},
+                                ],
+                              },
+                            },
+                          ],
+                        },
+                      }
+                    : {
+                        'data': [
+                          {'b64_json': _png},
+                        ],
+                      },
+              ),
+              200,
+            );
+          }),
+        );
+        expect(calls, 1);
+      },
+    );
+  }
+
   test('OpenRouter honors JPEG-only output and reference order', () async {
     final service = AiImageGenerationService(
       _provider('openrouter'),
@@ -394,39 +689,35 @@ void main() {
     },
   );
 
-  test(
-    'invalid dimensions, reference counts and unknown models never submit',
-    () async {
-      await http.runWithClient(
-        () async {
-          final qwen = AiImageGenerationService(
-            _provider('qwen'),
-            model: 'qwen-image-3.0',
+  test('invalid dimensions and reference counts never submit', () async {
+    await http.runWithClient(
+      () async {
+        final qwen = AiImageGenerationService(
+          _provider('qwen'),
+          model: 'qwen-image-3.0',
+        );
+        final seed = AiImageGenerationService(
+          _provider('doubao'),
+          model: 'doubao-seedream-5-0-260128',
+        );
+        for (final operation in [
+          () => qwen.generateImage('cover', size: '4096x4096'),
+          () => qwen.generateImage('cover', size: '4096x256'),
+          () => qwen.editImages('cover', imageData: List.filled(4, _image)),
+          () => seed.generateImage('cover', size: '1024x1024'),
+          () => seed.generateImage('cover', size: '4K'),
+        ]) {
+          await expectLater(
+            operation(),
+            throwsA(isA<AiImageGenerationException>()),
           );
-          final seed = AiImageGenerationService(
-            _provider('doubao'),
-            model: 'doubao-seedream-5-0-260128',
-          );
-          for (final operation in [
-            () => qwen.generateImage('cover', size: '4096x4096'),
-            () => qwen.generateImage('cover', size: '4096x256'),
-            () => qwen.editImages('cover', imageData: List.filled(4, _image)),
-            () => qwen.generateImage('cover', model: 'qwen-image-future'),
-            () => seed.generateImage('cover', size: '1024x1024'),
-            () => seed.generateImage('cover', size: '4K'),
-          ]) {
-            await expectLater(
-              operation(),
-              throwsA(isA<AiImageGenerationException>()),
-            );
-          }
-        },
-        () => MockClient(
-          (_) => throw StateError('invalid request reached network'),
-        ),
-      );
-    },
-  );
+        }
+      },
+      () => MockClient(
+        (_) => throw StateError('invalid request reached network'),
+      ),
+    );
+  });
 
   for (final status in [400, 200]) {
     test(

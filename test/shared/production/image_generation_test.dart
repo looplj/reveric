@@ -649,7 +649,7 @@ void main() {
             type: 'openrouter',
             enabled: const Value(true),
             apiKey: const Value('test'),
-            imageModels: Value([option.model]),
+            imageModels: Value([option.model, 'future-image']),
           ),
         );
     final source = await canvas.addMedia(node.canvasId, oldAsset);
@@ -677,6 +677,22 @@ void main() {
     expect(clip.resolution, '4K');
     expect(panorama.style?['panorama'], {'yaw': 0, 'pitch': 0, 'fov': 75});
     expect(clip.providerId, 'atlas');
+    final unlisted = await ViewDeriveOrchestrator().create(
+      service: canvas,
+      sourceNodeId: source.id,
+      preset: ViewPreset.panorama,
+      args: const ViewPresetArgs(),
+      model: const AiModelOption(
+        providerId: 'atlas',
+        providerDisplayName: 'Atlas',
+        model: 'future-image',
+        kind: AiModelKind.image,
+      ),
+      title: 'Panorama',
+    );
+    final unlistedClip = (await canvas.shots.getShot(unlisted.clipId!))!;
+    expect(unlistedClip.ratio, '2:1');
+    expect(unlistedClip.resolution, 'auto');
   });
 
   test(
@@ -1675,16 +1691,16 @@ void main() {
     );
     final gemini = ProductionImageCapabilities(
       provider.copyWith(type: 'gemini'),
-      'gpt-image-2',
+      'gemini-2.5-flash-image',
     );
-    expect(gemini.ratios, ['auto']);
-    expect(gemini.maxReferences, 0);
+    expect(gemini.ratios, contains('16:9'));
+    expect(gemini.maxReferences, 3);
     expect(
       () => gemini.validate(
         prompt: 'Body',
-        ratio: 'auto',
+        ratio: '16:9',
         resolution: 'auto',
-        references: 1,
+        references: 4,
       ),
       throwsFormatException,
     );

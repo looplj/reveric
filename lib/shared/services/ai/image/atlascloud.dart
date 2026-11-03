@@ -39,12 +39,12 @@ class AtlasCloudImageClient extends ImageClient {
       throw invalidImageParameter();
     }
     final editing = request.images.isNotEmpty;
-    // Edits use a separate model route that only registered models declare.
-    if (editing && options?.editModel == null) {
+    // Registered models declare their edit route; custom IDs are sent verbatim.
+    if (editing && channel != null && options?.editModel == null) {
       throw invalidImageParameter();
     }
     final body = <String, dynamic>{
-      'model': editing ? options!.editModel! : request.model,
+      'model': editing ? (options?.editModel ?? request.model) : request.model,
       'prompt': request.prompt,
       'output_format': ?channel?.requestDefaults.outputFormat,
     };

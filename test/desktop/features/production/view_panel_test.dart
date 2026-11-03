@@ -12,6 +12,39 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import '../../director/harness.dart';
 
 void main() {
+  test('custom image models remain selectable for reference-based views', () {
+    const option = AiModelOption(
+      providerId: 'router',
+      providerDisplayName: 'Router',
+      model: 'custom-image',
+      kind: AiModelKind.image,
+    );
+    final provider = aiProviderBuiltinDefaults.first.copyWith(
+      id: 'router',
+      type: 'openrouter',
+      enabled: true,
+      imageModels: [option.model],
+    );
+    for (final panorama in [false, true]) {
+      expect(
+        viewModelOptions(
+          options: [option],
+          providers: [provider],
+          panorama: panorama,
+        ),
+        [option],
+      );
+      expect(
+        viewModelOptions(
+          options: [option],
+          providers: [provider.copyWith(enabled: false)],
+          panorama: panorama,
+        ),
+        isEmpty,
+      );
+    }
+  });
+
   setUp(() => rootBundle.clear());
   setUpAll(initializeDirectorTest);
   for (final platform in [
@@ -20,32 +53,34 @@ void main() {
     TargetPlatform.linux,
   ]) {
     for (final width in [360.0, 900.0]) {
-      testWidgets('camera and lighting fit $platform at $width', (
-        tester,
-      ) async {
-        tester.view.physicalSize = Size(width, 900);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
-        for (final preset in [ViewPreset.camera, ViewPreset.light]) {
-          await tester.pumpWidget(
-            directorTestApp(
-              Align(
-                alignment: Alignment.topCenter,
-                child: ViewPresetForm(
-                  key: ValueKey(preset),
-                  preset: preset,
-                  imagePath: null,
-                  onSubmit: (_) async {},
-                  onClose: () {},
+      testWidgets(
+        'camera and lighting fit $platform at $width',
+        (tester) async {
+          tester.view.physicalSize = Size(width, 900);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          for (final preset in [ViewPreset.camera, ViewPreset.light]) {
+            await tester.pumpWidget(
+              directorTestApp(
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: ViewPresetForm(
+                    key: ValueKey(preset),
+                    preset: preset,
+                    imagePath: null,
+                    onSubmit: (_) async {},
+                    onClose: () {},
+                  ),
                 ),
               ),
-            ),
-          );
-          await tester.pumpAndSettle();
-          expect(tester.takeException(), isNull);
-          expect(find.text('Generate'), findsOneWidget);
-        }
-      }, variant: TargetPlatformVariant.only(platform));
+            );
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+            expect(find.text('Generate'), findsOneWidget);
+          }
+        },
+        variant: TargetPlatformVariant.only(platform),
+      );
     }
   }
   testWidgets('camera choices and optional text submit and reset as one form', (

@@ -20,7 +20,7 @@ List<AiModelOption> viewModelOptions({
   }
   final capabilities = ProductionImageCapabilities(provider, option.model);
   return capabilities.isSupported &&
-      capabilities.maxReferences > 0 &&
+      capabilities.allowsReferenceCount(1) &&
       (!panorama || capabilities.ratios.contains('2:1'));
 }).toList();
 

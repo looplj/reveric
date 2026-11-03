@@ -12,6 +12,111 @@ import 'package:reveric/shared/services/ai/image/agnes.dart';
 import '../../../helpers/media_provider_types.dart';
 
 void main() {
+  test(
+    'OpenRouter image additions retain channel-specific reference limits',
+    () {
+      final qwen = lookupImageChannelModel(
+        'openrouter',
+        'qwen/qwen-image-2.1-turbo',
+      )!;
+      final krea = lookupImageChannelModel('openrouter', 'krea/k3-edit')!;
+      qwen.capabilities.validateReferences(0);
+      qwen.capabilities.validateReferences(4);
+      expect(
+        () => qwen.capabilities.validateReferences(5),
+        throwsFormatException,
+      );
+      expect(qwen.capabilities.size('1:4', '2K'), isNull);
+      expect(qwen.requestDefaults.size, isNull);
+      expect(
+        () => krea.capabilities.validateReferences(0),
+        throwsFormatException,
+      );
+      krea.capabilities.validateReferences(1);
+      krea.capabilities.validateReferences(8);
+      expect(
+        () => krea.capabilities.validateReferences(9),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test(
+    'configured unknown image models use defaults across provider protocols',
+    () {
+      for (final type in [
+        'openrouter',
+        'openai_compatible',
+        'qwen',
+        'agnes',
+        'atlascloud',
+        'gemini',
+      ]) {
+        final provider = aiProviderBuiltinById(
+          'openai',
+        )!.copyWith(type: type, enabled: true, imageModels: ['custom-image']);
+        final caps = ProductionImageCapabilities(provider, 'custom-image');
+        caps.validate(
+          prompt: 'cover',
+          ratio: 'auto',
+          resolution: 'auto',
+          references: 0,
+        );
+        expect(caps.size('auto', 'auto'), isNull);
+        expect(caps.verifiedCapabilities, isNull);
+        expect(caps.ratios.first, 'auto');
+        expect(caps.resolutions.first, 'auto');
+        for (final ratio in caps.ratios) {
+          for (final resolution in caps.resolutions) {
+            caps.validate(
+              prompt: 'cover',
+              ratio: ratio,
+              resolution: resolution,
+              references: 32,
+            );
+          }
+        }
+        expect(caps.allowsReferenceCount(32), isTrue);
+        expect(
+          caps.size('16:9', '2K'),
+          ['openrouter', 'gemini'].contains(type) ? null : '2048x1152',
+        );
+        expect(
+          () => caps.validate(
+            prompt: 'cover',
+            ratio: 'invalid',
+            resolution: '2K',
+            references: 1,
+          ),
+          throwsFormatException,
+        );
+        expect(
+          () =>
+              ProductionImageCapabilities(provider, 'not-configured').validate(
+                prompt: 'cover',
+                ratio: 'auto',
+                resolution: 'auto',
+                references: 0,
+              ),
+          throwsFormatException,
+        );
+        expect(
+          () =>
+              ProductionImageCapabilities(
+                provider.copyWith(enabled: false),
+                'custom-image',
+              ).validate(
+                prompt: 'cover',
+                ratio: 'auto',
+                resolution: 'auto',
+                references: 0,
+              ),
+          throwsFormatException,
+        );
+      }
+    },
+  );
+
   test('Qwen presets retain only 3.0 and Wan while 2.x stays usable', () {
     const presets = [
       'qwen-image-3.0-pro',

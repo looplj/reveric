@@ -19,12 +19,10 @@ class GeminiImageClient extends ImageClient {
   final bool useGateway;
 
   @override
-  bool get supportsEdit => useGateway;
-
-  @override
   Future<AiImageGenerationResult> generate(
     ImageGenerationRequest request,
   ) async {
+    validatedChannel(request);
     final base = useGateway
         ? config.effectiveBaseUrl.replaceFirst(RegExp(r'/v1$'), '')
         : 'https://generativelanguage.googleapis.com';
@@ -49,8 +47,7 @@ class GeminiImageClient extends ImageClient {
       ],
       'generationConfig': {
         'responseModalities': ['IMAGE', 'TEXT'],
-        if (useGateway &&
-            (request.aspectRatio != null || request.resolution != null))
+        if (request.aspectRatio != null || request.resolution != null)
           'imageConfig': {
             if (request.aspectRatio != null && request.aspectRatio != 'auto')
               'aspectRatio': request.aspectRatio,

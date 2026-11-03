@@ -99,7 +99,7 @@ class ProductionImageRequest {
   }
 }
 
-/// 制作场景的图像能力：只允许渠道登记了能力的型号，底层生图接口本身不拦截。
+/// 制作场景的图像能力：未登记型号开放常用规格及参考图，由服务端校验。
 class ProductionImageCapabilities {
   const ProductionImageCapabilities(this.provider, this.model);
   final AiProvider provider;
@@ -110,10 +110,22 @@ class ProductionImageCapabilities {
   ImageChannelModel? get _channel =>
       lookupImageChannelModel(provider.type, model);
   ImageModelCapabilities get _capabilities =>
-      _channel?.capabilities ?? const ImageModelCapabilities();
+      _channel?.capabilities ??
+      ImageModelCapabilities(
+        ratios: _unlistedImageRatios,
+        resolutions: const {'auto', '1K', '2K', '4K'},
+        sizes: _usesRatioParameters ? const {} : _unlistedImageSizes,
+        unlimitedReferences: true,
+      );
 
-  /// 渠道登记了该型号的能力，可以在制作中选用。
-  bool get isSupported => supports(provider) && _channel != null;
+  bool get _usesRatioParameters =>
+      provider.typeConfig.imageProtocol == ImageProtocol.openrouter_image ||
+      provider.typeConfig.imageProtocol == ImageProtocol.gemini_image ||
+      (provider.typeConfig.imageProtocol == ImageProtocol.new_api_images &&
+          model.startsWith('gemini-'));
+
+  /// 渠道支持生图即可使用；未登记型号的参数由服务端验证。
+  bool get isSupported => supports(provider);
 
   /// 只暴露渠道登记的能力，未登记型号返回 null。
   ImageModelCapabilities? get verifiedCapabilities =>
@@ -121,7 +133,12 @@ class ProductionImageCapabilities {
 
   List<String> get ratios => _capabilities.ratios.toList();
   List<String> get resolutions => _capabilities.resolutions.toList();
-  int get maxReferences => _capabilities.maxReferences;
+
+  /// null 表示没有本地数量上限，由服务端校验。
+  int? get maxReferences =>
+      _capabilities.unlimitedReferences ? null : _capabilities.maxReferences;
+  bool allowsReferenceCount(int count) =>
+      _capabilities.allowsReferenceCount(count);
   String? size(String ratio, String resolution) =>
       _capabilities.size(ratio, resolution);
 
@@ -141,3 +158,40 @@ class ProductionImageCapabilities {
     _capabilities.validateSize(size(ratio, resolution), references: references);
   }
 }
+
+// 自动选项排在首位；像素协议不能单独表达比例或分辨率时，分别以 1K、1:1 补齐。
+const _unlistedImageRatios = {
+  'auto',
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3',
+  '3:4',
+  '3:2',
+  '2:3',
+  '2:1',
+  '1:2',
+  '21:9',
+};
+const _unlistedImageBaseSizes = {
+  'auto': (1024, 1024),
+  '1:1': (1024, 1024),
+  '16:9': (1024, 576),
+  '9:16': (576, 1024),
+  '4:3': (1024, 768),
+  '3:4': (768, 1024),
+  '3:2': (1008, 672),
+  '2:3': (672, 1008),
+  '2:1': (1024, 512),
+  '1:2': (512, 1024),
+  '21:9': (1008, 432),
+};
+final _unlistedImageSizes = {
+  for (final tier in {'auto': 1, '1K': 1, '2K': 2, '4K': 4}.entries)
+    tier.key: {
+      for (final entry in _unlistedImageBaseSizes.entries)
+        if (tier.key != 'auto' || entry.key != 'auto')
+          entry.key:
+              '${entry.value.$1 * tier.value}x${entry.value.$2 * tier.value}',
+    },
+};

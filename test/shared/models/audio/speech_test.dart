@@ -19,9 +19,10 @@ import 'package:reveric/shared/models/storyboard/prompt.dart';
 void main() {
   for (final entry in speechModels.entries) {
     test(
-      '${entry.key} sends a voice and supported instructions as MP3',
+      '${entry.key} sends voice and decodes its default audio format',
       () async {
         final voice = entry.value.voices.firstOrNull ?? 'custom-voice';
+        final pcm = entry.key == 'heygen/heygen-voice-1-turbo:free';
         var calls = 0;
         final api = OpenRouterAudioClient(
           MockClient((r) async {
@@ -34,11 +35,15 @@ void main() {
               json['instructions'],
               entry.value.supportsInstructions ? '平静、温暖' : null,
             );
-            expect(json['response_format'], 'mp3');
+            expect(json['response_format'], pcm ? 'pcm' : 'mp3');
             return http.Response.bytes(
               [73, 68, 51, 1, 2, 3],
               200,
-              headers: {'content-type': 'audio/mpeg'},
+              headers: {
+                'content-type': pcm
+                    ? 'audio/pcm;rate=44100;channels=1'
+                    : 'audio/mpeg',
+              },
             );
           }),
           'key',
@@ -58,7 +63,17 @@ void main() {
         );
         final restored = AudioRequest.fromJson(request.toJson());
         expect(restored.parameters.voice, voice);
-        expect((await api.generate(restored)).bytes, [73, 68, 51, 1, 2, 3]);
+        final bytes = (await api.generate(restored)).bytes;
+        if (pcm) {
+          expect(ascii.decode(bytes.sublist(0, 4)), 'RIFF');
+          expect(
+            ByteData.sublistView(bytes).getUint32(24, Endian.little),
+            44100,
+          );
+          expect(bytes.sublist(44), [73, 68, 51, 1, 2, 3]);
+        } else {
+          expect(bytes, [73, 68, 51, 1, 2, 3]);
+        }
         expect(calls, 1);
       },
     );

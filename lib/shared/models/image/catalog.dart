@@ -363,6 +363,14 @@ const imageModelsCatalog = <String, ImageModelCatalogEntry>{
   'mai-image-2.5-pro': ImageModelCatalogEntry(
     capabilities: _maiImage25ProCapabilities,
   ),
+  'k3-edit': ImageModelCatalogEntry(
+    capabilities: ImageModelCapabilities(
+      ratios: {'1:1', '4:3', '3:2', '16:9', '4:5', '2:3', '9:16'},
+      resolutions: {'1K', '2K'},
+      minReferences: 1,
+      maxReferences: 8,
+    ),
+  ),
   'krea-2-large': ImageModelCatalogEntry(capabilities: _krea2LargeCapabilities),
   'krea-2-medium': ImageModelCatalogEntry(
     capabilities: _krea2LargeCapabilities,

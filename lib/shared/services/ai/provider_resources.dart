@@ -52,8 +52,7 @@ Map<String, dynamic> providerModelResource(
   final adapterSupportsModel = kind == 'chat'
       ? provider.supportsModelKind(AiModelKind.chat)
       : kind == 'image'
-      ? ProductionImageCapabilities.supports(provider) &&
-            lookupImageChannelModel(provider.type, model) != null
+      ? ProductionImageCapabilities(provider, model).isSupported
       : capabilities != null;
   final reason = !provider.enabled
       ? 'provider_disabled'

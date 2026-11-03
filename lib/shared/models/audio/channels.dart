@@ -31,11 +31,10 @@ class AudioProtocolOptions {
 class AudioChannelModel {
   const AudioChannelModel({
     required this.catalogId,
-    AudioModelCapabilities capabilities = const AudioModelCapabilities(),
-    AudioRequestDefaults requestDefaults = const AudioRequestDefaults(),
+    this._capabilities = const AudioModelCapabilities(),
+    this._requestDefaults = const AudioRequestDefaults(),
     this.protocolOptions = const AudioProtocolOptions(),
-  }) : _capabilities = capabilities,
-       _requestDefaults = requestDefaults;
+  });
   final String catalogId;
   final AudioModelCapabilities _capabilities;
   final AudioRequestDefaults _requestDefaults;
@@ -98,7 +97,13 @@ final audioChannelModels = <AudioProtocol, Map<String, AudioChannelModel>>{
     'music-2.6': AudioChannelModel(catalogId: 'music-2.6'),
   },
   AudioProtocol.openrouter_speech: {
-    for (final id in speechModels.keys) id: AudioChannelModel(catalogId: id),
+    for (final id in speechModels.keys)
+      id: AudioChannelModel(
+        catalogId: id,
+        requestDefaults: id == 'heygen/heygen-voice-1-turbo:free'
+            ? const AudioRequestDefaults(responseFormat: ConfigValue('pcm'))
+            : const AudioRequestDefaults(),
+      ),
     'bytedance-seed/seed-audio-1-0': AudioChannelModel(
       catalogId: 'seed-audio-1.0',
       capabilities: AudioModelCapabilities(

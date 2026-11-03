@@ -99,12 +99,14 @@ class ViewDeriveOrchestrator {
     var resolution = clip?.resolution ?? '1K';
     if (preset == ViewPreset.panorama) {
       ratio = '2:1';
-      final resolutions = [...capabilities.resolutions]
-        ..sort(
-          (a, b) => (double.tryParse(b.replaceAll('K', '')) ?? 0).compareTo(
-            double.tryParse(a.replaceAll('K', '')) ?? 0,
-          ),
-        );
+      // 未登记型号的规格未经验证，交给服务端默认分辨率，不自动挑最高档。
+      final resolutions = capabilities.verifiedCapabilities == null
+          ? const ['auto']
+          : ([...capabilities.resolutions]..sort(
+              (a, b) => (double.tryParse(b.replaceAll('K', '')) ?? 0).compareTo(
+                double.tryParse(a.replaceAll('K', '')) ?? 0,
+              ),
+            ));
       resolution = resolutions.firstWhere((candidate) {
         try {
           capabilities.validate(

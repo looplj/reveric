@@ -387,7 +387,9 @@ class _ImageForm extends HookConsumerWidget {
                           ProductionInputTile(
                             service: service,
                             input: inputs.value[i],
-                            valid: i < (capability?.maxReferences ?? 0),
+                            valid:
+                                capability?.allowsReferenceCount(i + 1) ??
+                                false,
                             onRole: null,
                             onMove: inputs.value.length < 2
                                 ? null

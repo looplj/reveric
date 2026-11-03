@@ -66,11 +66,10 @@ class ImageChannelModel {
   const ImageChannelModel({
     required this.catalogId,
     this.includedInPresets = true,
-    ImageModelCapabilities capabilities = const ImageModelCapabilities(),
-    ImageRequestDefaults requestDefaults = const ImageRequestDefaults(),
+    this._capabilities = const ImageModelCapabilities(),
+    this._requestDefaults = const ImageRequestDefaults(),
     this.protocolOptions,
-  }) : _capabilities = capabilities,
-       _requestDefaults = requestDefaults;
+  });
   final String catalogId;
   final bool includedInPresets;
   final ImageModelCapabilities _capabilities;
@@ -288,6 +287,40 @@ const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
     ),
   },
   ImageProtocol.openrouter_image: {
+    // https://openrouter.ai/api/v1/images/models
+    'qwen/qwen-image-2.1-turbo': ImageChannelModel(
+      catalogId: 'qwen-image-2.1-turbo',
+      includedInPresets: false,
+      capabilities: ImageModelCapabilities(
+        ratios: {
+          '1:1',
+          '1:2',
+          '1:4',
+          '2:1',
+          '2:3',
+          '3:2',
+          '3:4',
+          '4:1',
+          '4:3',
+          '4:5',
+          '5:4',
+          '9:16',
+          '16:9',
+        },
+        resolutions: {'1K', '2K'},
+        sizes: {},
+        maxReferences: 4,
+        minPixels: ConfigValue(null),
+        maxPixels: ConfigValue(null),
+        maxAspectRatio: ConfigValue(null),
+      ),
+      requestDefaults: _openrouterDefaults,
+    ),
+    'krea/k3-edit': ImageChannelModel(
+      catalogId: 'k3-edit',
+      includedInPresets: false,
+      requestDefaults: _openrouterDefaults,
+    ),
     'google/gemini-nano-banana-2.1': ImageChannelModel(
       catalogId: 'gemini-nano-banana-2.1',
       requestDefaults: _openrouterDefaults,
@@ -778,24 +811,12 @@ final _pixelSizeChannels = {
       ),
 };
 
-// Gemini 直连适配器只支持自动尺寸的文生图。
+// Gemini 直连与网关共用 generateContent 契约，直接沿用目录登记的 Gemini 能力。
 final _geminiChannels = {
-  for (final id in imageModelsCatalog.keys)
-    id: ImageChannelModel(
-      catalogId: id,
-      includedInPresets: false,
-      capabilities: const ImageModelCapabilities(
-        ratios: {'auto'},
-        resolutions: {'auto'},
-        sizes: {},
-        minReferences: 0,
-        maxReferences: 0,
-        minPixels: ConfigValue(null),
-        maxPixels: ConfigValue(null),
-        maxEditPixels: ConfigValue(null),
-        maxAspectRatio: ConfigValue(null),
-      ),
-    ),
+  for (final id in imageModelsCatalog.keys.where(
+    (id) => id.startsWith('gemini-'),
+  ))
+    id: ImageChannelModel(catalogId: id, includedInPresets: false),
 };
 
 const _atlasBananaRatios = {

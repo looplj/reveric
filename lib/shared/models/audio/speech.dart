@@ -8,6 +8,22 @@ import 'config.dart';
 // 模型与预设音色来源：https://openrouter.ai/api/v1/models?output_modalities=speech
 // 单次制作正文限制为 4000 字符；更长内容由用户拆成独立片段。
 const speechModels = <String, AudioModelCapabilities>{
+  'heygen/heygen-voice-1-turbo:free': AudioModelCapabilities(
+    speech: true,
+    maxPromptCharacters: 4000,
+    voices: [
+      'nadine',
+      'tabitha',
+      'bram',
+      'gareth',
+      'noelle',
+      'meredith',
+      'sabrina',
+      'lucian',
+      'weston',
+      'vincent',
+    ],
+  ),
   'qwen/qwen-audio-3.0-tts-plus': AudioModelCapabilities(
     speech: true,
     maxPromptCharacters: 4000,
