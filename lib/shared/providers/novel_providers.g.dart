@@ -374,6 +374,50 @@ final class NovelsProvider
 
 String _$novelsHash() => r'836d37d1c2e466f470badb39df794e810ddd8b9b';
 
+/// 回收站中的作品。
+
+@ProviderFor(deletedNovels)
+final deletedNovelsProvider = DeletedNovelsProvider._();
+
+/// 回收站中的作品。
+
+final class DeletedNovelsProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<List<Novel>>,
+          List<Novel>,
+          Stream<List<Novel>>
+        >
+    with $FutureModifier<List<Novel>>, $StreamProvider<List<Novel>> {
+  /// 回收站中的作品。
+  DeletedNovelsProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'deletedNovelsProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$deletedNovelsHash();
+
+  @$internal
+  @override
+  $StreamProviderElement<List<Novel>> $createElement(
+    $ProviderPointer pointer,
+  ) => $StreamProviderElement(pointer);
+
+  @override
+  Stream<List<Novel>> create(Ref ref) {
+    return deletedNovels(ref);
+  }
+}
+
+String _$deletedNovelsHash() => r'430ba7c27e91cbebe8977551600907ab3ab48871';
+
 @ProviderFor(novel)
 final novelProvider = NovelFamily._();
 

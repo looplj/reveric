@@ -78,6 +78,13 @@ Stream<List<Novel>> novels(Ref ref) {
   return database.novelDao.watchAll();
 }
 
+/// 回收站中的作品。
+@riverpod
+Stream<List<Novel>> deletedNovels(Ref ref) {
+  final database = ref.watch(appDatabaseProvider);
+  return database.novelDao.watchDeleted();
+}
+
 @riverpod
 Stream<Novel?> novel(Ref ref, String novelId) {
   final database = ref.watch(appDatabaseProvider);

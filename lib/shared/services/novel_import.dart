@@ -2,7 +2,6 @@
 // 关联文件:
 //   lib/shared/services/novel_actions.dart
 //   lib/shared/services/novel_content.dart
-//   lib/shared/database/novel_content_database.dart
 //   lib/shared/models/novel_type.dart
 
 import 'dart:convert';
@@ -12,8 +11,6 @@ import 'package:path/path.dart' as p;
 
 import '../logger/app_logger.dart';
 
-import '../database/app_database.dart';
-import '../database/novel_content_database.dart';
 import '../models/novel_type.dart';
 import '../models/content_kind.dart';
 import '../utils/text_file_decoder.dart';
@@ -56,21 +53,16 @@ class NovelImportResult {
 class NovelImportService {
   NovelImportService({
     required this.actions,
-    NovelContentDatabase Function(String databasePath)? contentDatabaseFactory,
     Future<void> Function(
       NovelContentService service,
       List<ImportedChapterNode> chapters,
     )?
     chapterImporter,
-  }) : _contentDatabaseFactory =
-           contentDatabaseFactory ?? NovelContentDatabase.new,
-       _chapterImporter =
+  }) : _chapterImporter =
            chapterImporter ??
            ((service, chapters) => service.replaceChaptersForImport(chapters));
 
   final NovelActionsService actions;
-  final NovelContentDatabase Function(String databasePath)
-  _contentDatabaseFactory;
   final Future<void> Function(
     NovelContentService service,
     List<ImportedChapterNode> chapters,
@@ -226,10 +218,11 @@ class NovelImportService {
     if (existing != null) {
       throw NovelImportException('作品「$title」已存在，请使用不同的名称。');
     }
-    Novel? createdNovel;
     String? novelId;
     String? screenplayId;
     try {
+      // 章节在作品登记前写入内容库：导入失败时作品不会登记，也不会进回收站。
+      var totalWordCount = 0;
       novelId = await actions.createNovel(
         title: title,
         description: description,
@@ -237,32 +230,23 @@ class NovelImportService {
         type: novelTypes.contains(type) ? type : novelTypeOriginal,
         tags: tags,
         setNovelOnboardingEligible: false,
+        populateContent: (contentDatabase) async {
+          final contentService = NovelContentService(
+            contentDatabase,
+            novelActionsService: actions,
+          );
+          await _chapterImporter(contentService, parsed.chapters);
+          final importedChapters = await contentService.getChapters();
+          totalWordCount = importedChapters.fold<int>(
+            0,
+            (sum, chapter) => sum + chapter.wordCount,
+          );
+        },
       );
-      createdNovel = await actions.getNovel(novelId);
-      final databasePath = createdNovel?.contentDatabasePath;
-      if (databasePath == null || databasePath.isEmpty) {
-        throw const NovelImportException('作品内容库未创建，无法导入章节。');
-      }
-
-      final contentDatabase = _contentDatabaseFactory(databasePath);
-      final contentService = NovelContentService(
-        contentDatabase,
-        novelActionsService: actions,
+      await actions.updateNovelWordCount(
+        novelId: novelId,
+        wordCount: totalWordCount,
       );
-      try {
-        await _chapterImporter(contentService, parsed.chapters);
-        final importedChapters = await contentService.getChapters();
-        final totalWordCount = importedChapters.fold<int>(
-          0,
-          (sum, chapter) => sum + chapter.wordCount,
-        );
-        await actions.updateNovelWordCount(
-          novelId: novelId,
-          wordCount: totalWordCount,
-        );
-      } finally {
-        await contentDatabase.close();
-      }
       if (adaptationTitle != null) {
         final baseTitle = adaptationTitle.trim();
         var screenplayTitle = baseTitle;
@@ -288,9 +272,13 @@ class NovelImportService {
         error: error,
         stackTrace: stackTrace,
       );
-      if (createdNovel != null) {
+      // 改编剧本创建失败时整次导入作废：已登记的原著移入回收站，可恢复。
+      if (novelId != null) {
         try {
-          await actions.deleteNovel(createdNovel);
+          final createdNovel = await actions.getNovel(novelId);
+          if (createdNovel != null) {
+            await actions.deleteNovel(createdNovel);
+          }
         } catch (cleanupError, cleanupStackTrace) {
           _log.error(
             'ROLLBACK_IMPORT_TXT id=$novelId error=$cleanupError',

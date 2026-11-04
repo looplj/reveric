@@ -11,6 +11,7 @@
 //   lib/desktop/pages/settings/usage_page.dart
 //   lib/desktop/widgets/settings/settings_storage_section.dart
 //   lib/shared/widgets/settings/backup_settings_section.dart
+//   lib/shared/widgets/settings/trash_settings_section.dart
 //   lib/shared/widgets/settings/leave_guard.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
@@ -38,6 +39,7 @@ import '../../../shared/widgets/settings/general_settings_section.dart';
 import '../../../shared/widgets/settings/leave_guard.dart';
 import '../../../shared/widgets/settings/backup_settings_section.dart';
 import '../../../shared/widgets/settings/remote_bridge_settings_section.dart';
+import '../../../shared/widgets/settings/trash_settings_section.dart';
 import '../../../shared/widgets/settings/usage_settings_section.dart';
 import '../../pages/settings/usage_page.dart';
 import 'settings_storage_section.dart';
@@ -49,6 +51,7 @@ part 'settings_usage_section.dart';
 part 'settings_editor_section.dart';
 part 'settings_reading_section.dart';
 part 'settings_backup_section.dart';
+part 'settings_trash_section.dart';
 part 'settings_about_section.dart';
 part 'settings_debug_section.dart';
 
@@ -123,6 +126,11 @@ class SettingsDialog extends HookConsumerWidget {
       id: 'backup',
       labelKey: LocaleKeys.settingsBackup,
       icon: RevericIcons.archive_outlined,
+    ),
+    _SettingsNavItem(
+      id: 'trash',
+      labelKey: LocaleKeys.settingsTrash,
+      icon: RevericIcons.delete_outline,
     ),
     _SettingsNavItem(
       id: 'about',
@@ -378,6 +386,7 @@ class SettingsDialog extends HookConsumerWidget {
       'reading' => const _ReadingSettingsSection(),
       'storage' => const StorageSettingsSection(),
       'backup' => const _BackupSettingsSection(),
+      'trash' => const _TrashSettingsSection(),
       'about' => const _AboutSettingsSection(),
       'debug' => _DebugSettingsSection(onClose: onCloseDebugSection),
       _ => const SizedBox.shrink(),

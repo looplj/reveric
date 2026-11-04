@@ -1,15 +1,17 @@
-// 职责: 保护在用作品，按保留期协调会话、历史、软删除记录与图片缓存的清理。
+// 职责: 保护在用作品，按保留期协调会话、历史、软删除记录、回收站作品与图片缓存的清理。
 // 关联文件:
 //   lib/shared/services/novel_maintenance_coordinator.dart
 //   lib/shared/services/network_image/disk_cache.dart
 //   lib/shared/database/app_database.dart
 //   lib/shared/database/novel_content_database.dart
 //   lib/shared/services/storage_cleanup/soft_deleted.dart
+//   lib/shared/services/storage_cleanup/deleted_works.dart
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
 
 import '../database/daos/ai_chat_session_dao.dart';
 import 'network_image/disk_cache.dart';
@@ -19,8 +21,10 @@ import 'novel_maintenance_coordinator.dart';
 import '../database/app_database.dart';
 import '../logger/app_logger.dart';
 import '../database/novel_content_database.dart';
+import '../utils/storage_paths.dart';
 
 part 'storage_cleanup/soft_deleted.dart';
+part 'storage_cleanup/deleted_works.dart';
 
 /// 清理结果
 class CleanupResult {
@@ -42,6 +46,10 @@ class CleanupResult {
   final int deletedSnapshots;
   final Map<String, int> deletedSoftRows;
   final int failedSoftDeleteBatches;
+
+  /// 回收站到期后彻底删除的作品数，以及删除失败、留待下轮重试的作品数。
+  final int purgedWorks;
+  final int failedWorkPurges;
 
   /// 被回收的远端图片缓存文件数与字节数。它们是可按原 URL 重新下载的派生文件，
   /// 不是用户业务数据，因此不计入 [totalDeleted]（那是数据库记录数）。
@@ -66,6 +74,8 @@ class CleanupResult {
     this.deletedSnapshots = 0,
     this.deletedSoftRows = const {},
     this.failedSoftDeleteBatches = 0,
+    this.purgedWorks = 0,
+    this.failedWorkPurges = 0,
     this.deletedImageFiles = 0,
     this.freedImageBytes = 0,
   });
@@ -87,7 +97,8 @@ class CleanupResult {
       'commits=$deletedCommits snapshots=$deletedSnapshots imageFiles=$deletedImageFiles '
       'imageBytes=$freedImageBytes groups=$groups unattributed=$unattributed '
       'conflicts=$conflicts invalidSessions=$invalidSessions scanFailures=$scanFailures '
-      'softDeleted=$deletedSoftRows failedSoftDeleteBatches=$failedSoftDeleteBatches';
+      'softDeleted=$deletedSoftRows failedSoftDeleteBatches=$failedSoftDeleteBatches '
+      'purgedWorks=$purgedWorks failedWorkPurges=$failedWorkPurges';
 }
 
 /// 存储清理调度器 — 按配置的间隔周期性清理过期数据。
@@ -99,6 +110,7 @@ class CleanupResult {
 /// - novel_state_snapshots（仅 superseded；每个小说的内容库）
 /// - ai_chat_sessions（主数据库）
 /// - soft_deleted.dart 固定名单中的软删除记录（从 deleted_at 起算）
+/// - 回收站中超过保留期的作品及其全部数据（deleted_works.dart）
 /// - network_image_cache/（App 私有目录下的远端图片缓存文件，可按原 URL 重下）
 final _log = AppLogger.forModule('StorageCleanup');
 
@@ -639,6 +651,7 @@ class StorageCleanupService {
         registry,
         contents,
       );
+      final deletedWorks = await _purgeDeletedWorks(sessions, contents, cutoff);
       final images = await _pruneNetworkImageCache(cutoff);
       final result = CleanupResult(
         groups: groupCounts,
@@ -658,6 +671,8 @@ class StorageCleanupService {
         deletedSnapshots: deletedSnapshots,
         deletedSoftRows: Map.unmodifiable(softDeleted.deleted),
         failedSoftDeleteBatches: softDeleted.failedBatches,
+        purgedWorks: deletedWorks.purged,
+        failedWorkPurges: deletedWorks.failed,
         deletedImageFiles: images.deletedFiles,
         freedImageBytes: images.freedBytes,
       );

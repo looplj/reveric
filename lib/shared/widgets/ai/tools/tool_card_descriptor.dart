@@ -836,6 +836,7 @@ String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
       'mcp' => LocaleKeys.settingsMcp,
       'plugins' => LocaleKeys.settingsPlugins,
       'backup' => LocaleKeys.settingsBackup,
+      'trash' => LocaleKeys.settingsTrash,
       'about' => LocaleKeys.settingsAbout,
       'remote' => LocaleKeys.settingsRemote,
       'storage' => LocaleKeys.settingsStorage,

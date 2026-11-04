@@ -40,35 +40,34 @@ Future<String> createDemoScreenplay(
   ShortEntityIdBuilder idBuilder = buildShortEntityId,
 }) async {
   final screenplayId = idBuilder(ShortEntityIdType.screenplay);
-  final coverAssetId = await _prepareDemoScreenplayCover(
-    database,
-    screenplayId,
-  );
-  await database.novelDao.create(
-    id: screenplayId,
-    title: demoScreenplayTitle,
-    description: demoScreenplayDescription,
-    coverAssetId: coverAssetId,
-    tags: demoScreenplayTags,
-    category: demoScreenplayCategory,
-    contentKind: contentKindScreenplay,
-    type: novelTypeOriginal,
-  );
-
+  // 先建内容库再登记作品：失败只需删掉刚建的库文件，不会留下残缺作品。
   final contentDatabasePath = await buildNovelContentDatabasePath(screenplayId);
-  final contentDatabase = NovelContentDatabase(contentDatabasePath);
   try {
-    await _seedDemoContent(contentDatabase, idBuilder: idBuilder);
+    final contentDatabase = NovelContentDatabase(contentDatabasePath);
+    try {
+      await _seedDemoContent(contentDatabase, idBuilder: idBuilder);
+    } finally {
+      await contentDatabase.close();
+    }
+    final coverAssetId = await _prepareDemoScreenplayCover(
+      database,
+      screenplayId,
+    );
+    await database.novelDao.create(
+      id: screenplayId,
+      title: demoScreenplayTitle,
+      description: demoScreenplayDescription,
+      coverAssetId: coverAssetId,
+      contentDatabasePath: contentDatabasePath,
+      tags: demoScreenplayTags,
+      category: demoScreenplayCategory,
+      contentKind: contentKindScreenplay,
+      type: novelTypeOriginal,
+    );
   } catch (error, stackTrace) {
-    await contentDatabase.close();
-    await database.novelDao.softDelete(screenplayId);
+    await NovelContentDatabase.deleteFiles(contentDatabasePath);
     Error.throwWithStackTrace(error, stackTrace);
   }
-  await contentDatabase.close();
-  await database.novelDao.updateContentDatabasePath(
-    id: screenplayId,
-    contentDatabasePath: contentDatabasePath,
-  );
   return screenplayId;
 }
 

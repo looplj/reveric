@@ -87,17 +87,8 @@ class BackupSettingsSection extends HookConsumerWidget {
       isError: backupError,
     );
 
-    final retentionController = useTextEditingController(text: '30');
     final settings = settingsAsync.asData?.value;
     final canRestoreWebDav = settings?.webDavBackupConfig.isConfigured == true;
-
-    useEffect(() {
-      if (settings != null) {
-        retentionController.text = settings.changeRecordRetentionDays
-            .toString();
-      }
-      return null;
-    }, [settings?.changeRecordRetentionDays]);
 
     final sectionGap = compact ? RevericSpacing.x2l : RevericSpacing.x3l;
     final blockGap = compact ? RevericSpacing.xl : RevericSpacing.x2l;
@@ -161,10 +152,7 @@ class BackupSettingsSection extends HookConsumerWidget {
           _buildRetentionSection(
             context: context,
             retentionDays: settings?.changeRecordRetentionDays ?? 30,
-            controller: retentionController,
-            onChanged: (days) async {
-              await notifier.setChangeRecordRetentionDays(days);
-            },
+            onChanged: notifier.setChangeRecordRetentionDays,
           ),
           SizedBox(height: sectionGap),
           Text(
@@ -318,7 +306,6 @@ class BackupSettingsSection extends HookConsumerWidget {
   Widget _buildRetentionSection({
     required BuildContext context,
     required int retentionDays,
-    required TextEditingController controller,
     required ValueChanged<int> onChanged,
   }) {
     final colors = RevericTheme.colorsOf(context);
@@ -332,42 +319,7 @@ class BackupSettingsSection extends HookConsumerWidget {
           style: typo.uiSemibold.copyWith(color: colors.textPrimary),
         ),
         const SizedBox(height: RevericSpacing.md),
-        SizedBox(
-          width: 160,
-          child: RevericTextField(
-            key: const ValueKey('change_record_retention_days_field'),
-            fieldKey: const ValueKey('change_record_retention_days_input'),
-            controller: controller,
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.done,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            fillColor: colors.surface,
-            suffixIcon: Padding(
-              padding: const EdgeInsets.only(right: RevericSpacing.lg),
-              child: Center(
-                widthFactor: 1,
-                child: Text(
-                  context.t(LocaleKeys.settingsChangeRecordRetentionDays),
-                  style: typo.ui.copyWith(color: colors.textMuted),
-                ),
-              ),
-            ),
-            suffixIconConstraints: const BoxConstraints(
-              minWidth: 0,
-              minHeight: RevericSizes.fieldHeight,
-            ),
-            onSubmitted: (value) {
-              final days = int.tryParse(value.trim());
-              if (days != null) {
-                final normalized = days.clamp(7, 365);
-                controller.text = normalized.toString();
-                onChanged(normalized);
-              } else {
-                controller.text = retentionDays.toString();
-              }
-            },
-          ),
-        ),
+        _RetentionDaysField(retentionDays: retentionDays, onChanged: onChanged),
       ],
     );
   }
@@ -1174,6 +1126,90 @@ class BackupSettingsSection extends HookConsumerWidget {
       BackupFailureReason.webDavUploadFailed => webDavFailureMessage,
       BackupFailureReason.unknown || null => fallback,
     };
+  }
+}
+
+/// 失焦、回车或卸载时保存。不逐键保存：输入「45」途经的「4」会被下限纠正成 7。
+class _RetentionDaysField extends HookWidget {
+  const _RetentionDaysField({
+    required this.retentionDays,
+    required this.onChanged,
+  });
+
+  final int retentionDays;
+  final ValueChanged<int> onChanged;
+
+  static int? _parse(String text) => int.tryParse(text.trim())?.clamp(7, 365);
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final controller = useTextEditingController(text: '$retentionDays');
+    final focusNode = useFocusNode();
+    final latest = useRef((retentionDays: retentionDays, save: onChanged));
+    latest.value = (retentionDays: retentionDays, save: onChanged);
+
+    useEffect(() {
+      controller.text = '$retentionDays';
+      return null;
+    }, [retentionDays]);
+
+    void commit() {
+      final days = _parse(controller.text);
+      // 越界值即使与当前设置相同，也要把输入框纠正回规范值。
+      controller.text = '${days ?? retentionDays}';
+      if (days != null) {
+        onChanged(days);
+      }
+    }
+
+    useOnListenableChange(focusNode, () {
+      if (!focusNode.hasFocus) {
+        commit();
+      }
+    });
+
+    // 按 Esc 关闭设置、切换分区或移动端返回时，输入框可能来不及失焦就被卸载。
+    // 该 cleanup 先于 controller 的 hook 释放；写设置推迟到卸载这一帧之后。
+    useEffect(() {
+      return () {
+        final days = _parse(controller.text);
+        if (days != null && days != latest.value.retentionDays) {
+          final save = latest.value.save;
+          Future(() => save(days));
+        }
+      };
+    }, const []);
+
+    return SizedBox(
+      width: 160,
+      child: RevericTextField(
+        key: const ValueKey('change_record_retention_days_field'),
+        fieldKey: const ValueKey('change_record_retention_days_input'),
+        controller: controller,
+        focusNode: focusNode,
+        keyboardType: TextInputType.number,
+        textInputAction: TextInputAction.done,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        fillColor: colors.surface,
+        suffixIcon: Padding(
+          padding: const EdgeInsets.only(right: RevericSpacing.lg),
+          child: Center(
+            widthFactor: 1,
+            child: Text(
+              context.t(LocaleKeys.settingsChangeRecordRetentionDays),
+              style: typo.ui.copyWith(color: colors.textMuted),
+            ),
+          ),
+        ),
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 0,
+          minHeight: RevericSizes.fieldHeight,
+        ),
+        onSubmitted: (_) => commit(),
+      ),
+    );
   }
 }
 

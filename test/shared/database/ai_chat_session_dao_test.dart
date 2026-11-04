@@ -49,6 +49,7 @@ void main() {
 
   group('AiChatSessionDao.watchRecent', () {
     test('filters by mode before applying the recent-session limit', () async {
+      await db.novelDao.create(id: 'novel_1', title: 'Novel', description: '');
       await db.aiChatSessionDao.upsert(
         id: 'chat_1',
         novelId: 'novel_1',
@@ -68,5 +69,39 @@ void main() {
 
       expect(sessions.map((session) => session.id), ['chat_1']);
     });
+
+    test(
+      'hides sessions of works in the trash and reappears on restore',
+      () async {
+        await db.novelDao.create(
+          id: 'novel_1',
+          title: 'Novel',
+          description: '',
+        );
+        await db.aiChatSessionDao.upsert(
+          id: 'chat_1',
+          novelId: 'novel_1',
+          title: 'Chat session',
+        );
+        final emitted = <List<String>>[];
+        final subscription = db.aiChatSessionDao
+            .watchRecent(limit: 3)
+            .map((rows) => [for (final row in rows) row.id])
+            .listen(emitted.add);
+        addTearDown(subscription.cancel);
+        await pumpEventQueue();
+
+        await db.novelDao.softDelete('novel_1');
+        await pumpEventQueue();
+        await db.novelDao.restore('novel_1');
+        await pumpEventQueue();
+
+        expect(emitted, [
+          ['chat_1'],
+          <String>[],
+          ['chat_1'],
+        ]);
+      },
+    );
   });
 }

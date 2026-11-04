@@ -13,6 +13,7 @@
 //   lib/shared/widgets/settings/usage_settings_section.dart
 //   lib/shared/widgets/settings/usage_view.dart
 //   lib/shared/widgets/settings/backup_settings_section.dart
+//   lib/shared/widgets/settings/trash_settings_section.dart
 //   lib/shared/widgets/settings/about_settings_section.dart
 //   lib/shared/widgets/settings/debug_settings_section.dart
 //   lib/shared/app_config.dart
@@ -57,6 +58,7 @@ import '../../shared/widgets/reading/reading_settings_controls.dart';
 import '../../shared/widgets/settings/reading_settings_section.dart';
 import '../../shared/widgets/settings/general_settings_section.dart';
 import '../../shared/widgets/settings/backup_settings_section.dart';
+import '../../shared/widgets/settings/trash_settings_section.dart';
 import '../../shared/widgets/settings/usage_settings_section.dart';
 import '../../shared/widgets/settings/usage_view.dart';
 import '../../shared/components/reveric_dialog.dart';
@@ -164,6 +166,11 @@ class SettingsPage extends HookConsumerWidget {
     labelKey: LocaleKeys.settingsBackup,
     icon: RevericIcons.archive_outlined,
   );
+  static const _trashItem = _SettingsNavItem(
+    id: 'trash',
+    labelKey: LocaleKeys.settingsTrash,
+    icon: RevericIcons.delete_outline,
+  );
   static const _aboutItem = _SettingsNavItem(
     id: 'about',
     labelKey: LocaleKeys.settingsAbout,
@@ -180,6 +187,7 @@ class SettingsPage extends HookConsumerWidget {
     _mcpItem,
     _pluginsItem,
     _backupItem,
+    _trashItem,
     _aboutItem,
   ];
 
@@ -403,6 +411,15 @@ class SettingsPage extends HookConsumerWidget {
                 tint: colors.success,
                 label: context.t(_backupItem.labelKey),
                 onTap: () => handleTap(_backupItem),
+              ),
+              _valueRow(
+                context,
+                colors,
+                typo,
+                icon: _trashItem.icon,
+                tint: colors.success,
+                label: context.t(_trashItem.labelKey),
+                onTap: () => handleTap(_trashItem),
               ),
             ]),
             const SizedBox(height: RevericSpacing.x2l),
@@ -741,6 +758,7 @@ class _SettingsDetailPage extends StatelessWidget {
           bodyBuilder: () => const UsageView(showHeader: false),
         ),
         'backup' => const BackupSettingsSection(compact: true),
+        'trash' => const TrashSettingsSection(compact: true),
         'mcp' => const McpSettingsSection(),
         'plugins' => const PluginsSettingsSection(),
         'about' => const AboutSettingsSection(compact: true),

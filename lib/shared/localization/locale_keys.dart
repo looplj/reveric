@@ -4840,6 +4840,15 @@ abstract final class LocaleKeys {
   static const settingsStatusActive = 'settings.status_active';
   static const settingsStatusInactive = 'settings.status_inactive';
   static const settingsStorage = 'settings.storage';
+  static const settingsTrash = 'settings.trash';
+  static const settingsTrashDescription = 'settings.trash_description';
+  static const settingsTrashEmpty = 'settings.trash_empty';
+  static const settingsTrashLoadFailed = 'settings.trash_load_failed';
+  static const settingsTrashDeletedAt = 'settings.trash_deleted_at';
+  static const settingsTrashDaysLeft = 'settings.trash_days_left';
+  static const settingsTrashPurgeSoon = 'settings.trash_purge_soon';
+  static const settingsTrashRestoreSuccess = 'settings.trash_restore_success';
+  static const settingsTrashRestoreFailed = 'settings.trash_restore_failed';
   static const settingsFileWorkspaceDirectory =
       'settings.file_workspace_directory';
   static const settingsFileWorkspaceHint = 'settings.file_workspace_hint';

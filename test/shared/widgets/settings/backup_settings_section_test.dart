@@ -259,6 +259,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(retentionInput.controller?.text, '7');
 
+    // 不按回车，点到输入框外失焦也要保存。
+    await tester.enterText(
+      find.byKey(const ValueKey('change_record_retention_days_input')),
+      '20',
+    );
+    await tester.pump();
+    await tester.tap(find.text('Local Backup Folder'));
+    await tester.pumpAndSettle();
+    expect(
+      container
+          .read(appSettingsProvider)
+          .requireValue
+          .changeRecordRetentionDays,
+      20,
+    );
+
     final frequencyField = find.byKey(const ValueKey('backup_frequency_field'));
     expect(frequencyField, findsOneWidget);
     expect(
@@ -356,6 +372,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(_backupNowButton(tester).onPressed, isNull);
 
+    // 输入后未失焦就离开页面（如 Esc 关闭设置），卸载时也要保存。
+    await tester.enterText(
+      find.byKey(const ValueKey('change_record_retention_days_input')),
+      '60',
+    );
+    await tester.pump();
+
     // 移动端 scoped storage 下写不了自选目录：目录选择器与自动备份计划必须隐藏，
     // 备份改由系统另存面板导出，因此不依赖目录也要能点。
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -363,6 +386,13 @@ void main() {
       _wrap(container, sectionKey: const ValueKey('mobile_section')),
     );
     await tester.pumpAndSettle();
+    expect(
+      container
+          .read(appSettingsProvider)
+          .requireValue
+          .changeRecordRetentionDays,
+      60,
+    );
 
     expect(find.text('Local Backup Folder'), findsNothing);
     expect(find.byKey(const ValueKey('backup_frequency_field')), findsNothing);

@@ -1792,6 +1792,18 @@ class NovelContentDatabase extends _$NovelContentDatabase {
 
   Future<void> _closeExecutorImmediately() => executor.close();
 
+  /// 删除 [filePath] 对应的内容库文件及 `-wal` / `-shm` / `-journal` 伴随文件。
+  /// 调用方须先关闭该库的连接（见 [closeCached]）。
+  static Future<void> deleteFiles(String filePath) async {
+    final resolved = RevericPaths.resolveDatabasePath(filePath);
+    for (final suffix in const ['', '-wal', '-shm', '-journal']) {
+      final file = File('$resolved$suffix');
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+  }
+
   @visibleForTesting
   static bool isCachedForTesting(String filePath) {
     final normalizedPath = _normalizedDatabasePath(filePath);

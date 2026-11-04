@@ -1,4 +1,4 @@
-// 职责: 验证会话、历史及软删除清理的保留期、作品保护、事务失败与打开竞争。
+// 职责: 验证会话、历史、软删除记录及回收站作品清理的保留期、作品保护、事务失败与打开竞争。
 // 关联文件:
 //   lib/shared/services/storage_cleanup_service.dart
 //   lib/shared/database/novel_content_daos/novel_state_snapshot_dao.dart
@@ -11,11 +11,13 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/services/storage_cleanup_service.dart';
 import 'package:reveric/shared/services/novel_maintenance_coordinator.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -296,7 +298,10 @@ void main() {
         }
         await _seedCleanupRow(f.app, 'assets', 'image', deletedAt: old);
         await _seedCleanupRow(f.app, 'image_batches', 'batch', deletedAt: old);
-        await f.app.customStatement('UPDATE novels SET deleted_at = ?', [old]);
+        // 回收站未到期：作品登记不随软删除名单回收。
+        await f.app.customStatement('UPDATE novels SET deleted_at = ?', [
+          recent,
+        ]);
 
         final result = await f.service.runNow();
 
@@ -805,7 +810,13 @@ void main() {
           "DELETE FROM ai_chat_sessions WHERE id = 'root'",
         );
         if (condition == 'soft_deleted_novel') {
-          await f.app.customStatement('UPDATE novels SET deleted_at = 1');
+          // 回收站未到期，作品仍是登记库。
+          await f.app.customStatement('UPDATE novels SET deleted_at = ?', [
+            DateTime.now()
+                    .subtract(const Duration(days: 1))
+                    .millisecondsSinceEpoch ~/
+                1000,
+          ]);
         } else {
           final path = '${f.content.filePath}.other';
           await f.app.novelDao.create(
@@ -1065,6 +1076,181 @@ void main() {
         ).retentionDays,
         365,
       );
+    });
+
+    group('trash', () {
+      Future<Directory> configureStorage() async {
+        final root = await Directory.systemTemp.createTemp('reveric_trash_');
+        addTearDown(() async {
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(
+                const MethodChannel('plugins.flutter.io/path_provider'),
+                null,
+              );
+          await root.delete(recursive: true);
+        });
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('plugins.flutter.io/path_provider'),
+              (call) async => call.method == 'getApplicationSupportDirectory'
+                  ? root.path
+                  : null,
+            );
+        await RevericPaths.initialize();
+        return root;
+      }
+
+      Future<File> writeFile(Directory root, String relative) async {
+        final file = File(p.join(root.path, relative));
+        await file.create(recursive: true);
+        await file.writeAsBytes(const [1]);
+        return file;
+      }
+
+      int secondsAgo(int days) =>
+          DateTime.now()
+              .subtract(Duration(days: days))
+              .millisecondsSinceEpoch ~/
+          1000;
+
+      test(
+        'purges an expired work with its records and files, keeping library images and usage',
+        () async {
+          final root = await configureStorage();
+          final f = await _sessionFixture();
+          await f.app.novelDao.create(id: 'other', title: 'O', description: '');
+          await f.app.aiChatSessionDao.upsert(
+            id: 'other-chat',
+            novelId: 'other',
+            title: 'Other',
+          );
+          final owned = await writeFile(
+            root,
+            'file_workspaces/novel/images/owned.png',
+          );
+          final library = await writeFile(
+            root,
+            'file_workspaces/novel/images/library.png',
+          );
+          final attachment = await writeFile(
+            root,
+            'file_workspaces/novel/sessions/root/note.txt',
+          );
+          // 已软删除的素材即使标了 in_library 也随作品删除。
+          final discarded = await writeFile(
+            root,
+            'file_workspaces/novel/images/discarded.png',
+          );
+          for (final (id, path, inLibrary, deletedAt) in [
+            ('owned', 'file_workspaces/novel/images/owned.png', false, 0),
+            ('library', 'file_workspaces/novel/images/library.png', true, 0),
+            (
+              'discarded',
+              'file_workspaces/novel/images/discarded.png',
+              true,
+              secondsAgo(1),
+            ),
+          ]) {
+            await _seedCleanupRow(
+              f.app,
+              'assets',
+              id,
+              deletedAt: deletedAt,
+              values: {'path': path, 'in_library': inLibrary ? 1 : 0},
+            );
+          }
+          await _seedCleanupRow(f.app, 'image_batches', 'batch', deletedAt: 0);
+          await _seedCleanupRow(f.app, 'agents', 'novel-agent', deletedAt: 0);
+          await f.app.customStatement(
+            'INSERT INTO novel_collection_members '
+            '(collection_id, novel_id, created_at, updated_at, deleted_at) '
+            "VALUES ('c', 'novel', 0, 0, 0)",
+          );
+          await f.app
+              .into(f.app.aiUsages)
+              .insert(
+                AiUsagesCompanion.insert(
+                  id: 'usage',
+                  providerId: 'provider',
+                  model: 'model',
+                  novelId: const Value('novel'),
+                ),
+              );
+          final contentPath = f.content.filePath;
+          await f.app.customStatement(
+            'UPDATE novels SET deleted_at = ? WHERE id = ?',
+            [secondsAgo(31), 'novel'],
+          );
+
+          final result = await f.service.runNow();
+
+          expect(result.purgedWorks, 1);
+          expect(result.failedWorkPurges, 0);
+          expect((await f.app.select(f.app.novels).get()).map((n) => n.id), [
+            'other',
+          ]);
+          expect(
+            (await f.app.select(f.app.aiChatSessions).get()).map((s) => s.id),
+            ['other-chat'],
+          );
+          expect(await f.app.select(f.app.todos).get(), isEmpty);
+          expect(await f.app.select(f.app.agents).get(), isEmpty);
+          expect(await f.app.select(f.app.imageBatches).get(), isEmpty);
+          expect(
+            await f.app.select(f.app.novelCollectionMembers).get(),
+            isEmpty,
+          );
+          expect(await f.app.select(f.app.aiUsages).get(), hasLength(1));
+          final assets = await f.app.select(f.app.assets).get();
+          expect(assets.map((a) => (a.id, a.novelId)), [('library', null)]);
+          expect(await owned.exists(), isFalse);
+          expect(await discarded.exists(), isFalse);
+          expect(await attachment.exists(), isFalse);
+          expect(await library.exists(), isTrue);
+          expect(await File(contentPath).exists(), isFalse);
+
+          final second = await f.service.runNow();
+          expect(second.purgedWorks, 0);
+        },
+      );
+
+      test('follows the shared retention setting', () async {
+        await configureStorage();
+        final f = await _sessionFixture();
+        await f.app.customStatement(
+          'UPDATE novels SET deleted_at = ? WHERE id = ?',
+          [secondsAgo(8), 'novel'],
+        );
+
+        expect((await f.service.runNow()).purgedWorks, 0);
+        f.service.updateConfig(retentionDays: 7);
+        expect((await f.service.runNow()).purgedWorks, 1);
+        expect(await f.app.novelDao.getDeleted('novel'), isNull);
+      });
+
+      for (final condition in ['recent', 'open', 'agent']) {
+        test('keeps a deleted work in the trash when $condition', () async {
+          await configureStorage();
+          final f = await _sessionFixture();
+          await f.app.customStatement(
+            'UPDATE novels SET deleted_at = ? WHERE id = ?',
+            [secondsAgo(condition == 'recent' ? 29 : 31), 'novel'],
+          );
+          switch (condition) {
+            case 'open':
+              final lease = f.coordinator.open('novel');
+              addTearDown(lease.release);
+            case 'agent':
+              f.running.add('unknown-session');
+          }
+
+          final result = await f.service.runNow();
+
+          expect(result.purgedWorks, 0);
+          expect(await f.app.novelDao.getDeleted('novel'), isNotNull);
+          expect(await File(f.content.filePath).exists(), isTrue);
+        });
+      }
     });
 
     test('cleans superseded snapshots for novels', () async {

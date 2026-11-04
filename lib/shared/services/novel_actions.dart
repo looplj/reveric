@@ -1,4 +1,4 @@
-// 职责: 小说元数据操作 — 创建、更新、删除作品并管理封面文件和内容库连接。
+// 职责: 小说元数据操作 — 创建、更新作品，移入回收站与恢复，并管理封面文件和内容库连接。
 // 关联文件:
 //   lib/shared/database/app_database.dart
 //   lib/shared/database/novel_content_database.dart
@@ -46,7 +46,6 @@ class NovelActionsService {
     @visibleForTesting this._seedScreenplayWorkspace,
     @visibleForTesting
     Future<void> Function(NovelContentDatabase database)? closeContentDatabase,
-    @visibleForTesting this._finalizeScreenplayCreation,
   }) : _contentDatabaseFactory =
            contentDatabaseFactory ?? NovelContentDatabase.new,
        _closeContentDatabaseForCreation = closeContentDatabase;
@@ -65,13 +64,11 @@ class NovelActionsService {
   _seedScreenplayWorkspace;
   final Future<void> Function(NovelContentDatabase database)?
   _closeContentDatabaseForCreation;
-  final Future<void> Function({
-    required String id,
-    required String contentDatabasePath,
-    required bool requestedDraft,
-  })?
-  _finalizeScreenplayCreation;
 
+  /// 先建好内容库，再登记作品行：登记失败只需删掉刚建的库文件，
+  /// 不会留下没有内容库的作品记录。
+  /// [populateContent] 在内容库初始化完成、作品登记之前写入初始内容（如导入章节），
+  /// 失败则整个创建失败，作品不登记。
   Future<String> createNovel({
     required String title,
     required String description,
@@ -85,6 +82,7 @@ class NovelActionsService {
     int? plannedEpisodeCount,
     bool setNovelOnboardingEligible = true,
     bool draft = false,
+    Future<void> Function(NovelContentDatabase content)? populateContent,
   }) async {
     if (!draft) {
       await _ensureShelfTitleAvailable(title);
@@ -94,25 +92,8 @@ class NovelActionsService {
           ? ShortEntityIdType.screenplay
           : ShortEntityIdType.novel,
     );
-    final coverAssetId = await _storeCoverFile(
-      novelId: novelId,
-      coverSourcePath: coverSourcePath,
-    );
-    await _database.novelDao.create(
-      id: novelId,
-      title: title,
-      authorName: authorName,
-      description: description,
-      coverAssetId: coverAssetId,
-      tags: tags,
-      category: category,
-      type: type ?? novelTypeOriginal,
-      contentKind: contentKind,
-      sourceNovelId: sourceNovelId,
-      draft: contentKind == contentKindScreenplay ? true : draft,
-    );
+    final contentDatabasePath = await buildNovelContentDatabasePath(novelId);
     try {
-      final contentDatabasePath = await buildNovelContentDatabasePath(novelId);
       await _initializeContentDatabase(
         contentDatabasePath: contentDatabasePath,
         contentKind: contentKind,
@@ -120,30 +101,32 @@ class NovelActionsService {
         tags: tags,
         plannedEpisodeCount: plannedEpisodeCount,
         setNovelOnboardingEligible: setNovelOnboardingEligible,
+        populateContent: populateContent,
       );
-      if (contentKind == contentKindScreenplay) {
-        final finalize = _finalizeScreenplayCreation;
-        if (finalize == null) {
-          await _database.novelDao.finalizeCreation(
-            id: novelId,
-            contentDatabasePath: contentDatabasePath,
-            requestedDraft: draft,
-          );
-        } else {
-          await finalize(
-            id: novelId,
-            contentDatabasePath: contentDatabasePath,
-            requestedDraft: draft,
-          );
-        }
-      } else {
-        await _database.novelDao.updateContentDatabasePath(
-          id: novelId,
-          contentDatabasePath: contentDatabasePath,
-        );
-      }
+      final coverAssetId = await _storeCoverFile(
+        novelId: novelId,
+        coverSourcePath: coverSourcePath,
+      );
+      await _database.novelDao.create(
+        id: novelId,
+        title: title,
+        authorName: authorName,
+        description: description,
+        coverAssetId: coverAssetId,
+        contentDatabasePath: contentDatabasePath,
+        tags: tags,
+        category: category,
+        type: type ?? novelTypeOriginal,
+        contentKind: contentKind,
+        sourceNovelId: sourceNovelId,
+        draft: draft,
+      );
     } catch (error, stackTrace) {
-      await _compensateFailedCreation(novelId, error, stackTrace);
+      await _discardUnregisteredContentDatabase(
+        contentDatabasePath,
+        error,
+        stackTrace,
+      );
       Error.throwWithStackTrace(error, stackTrace);
     }
     return novelId;
@@ -156,6 +139,8 @@ class NovelActionsService {
     required List<String>? tags,
     required int? plannedEpisodeCount,
     required bool setNovelOnboardingEligible,
+    required Future<void> Function(NovelContentDatabase content)?
+    populateContent,
   }) async {
     final contentDatabase = _contentDatabaseFactory(contentDatabasePath);
     Object? operationError;
@@ -173,30 +158,30 @@ class NovelActionsService {
         } else {
           await seedScreenplay(contentDatabase, plannedEpisodeCount);
         }
-        return;
-      }
-      final seedNovel = _seedNovelWorkspace;
-      if (seedNovel == null) {
-        await contentDatabase.seedDefaultWorkspace();
       } else {
-        await seedNovel(contentDatabase);
+        final seedNovel = _seedNovelWorkspace;
+        if (seedNovel == null) {
+          await contentDatabase.seedDefaultWorkspace();
+        } else {
+          await seedNovel(contentDatabase);
+        }
+        if (setNovelOnboardingEligible) {
+          try {
+            await contentDatabase.novelStateDao.upsert(
+              key: 'novel_onboarding',
+              status: 'eligible',
+            );
+          } catch (error, stackTrace) {
+            _log.error(
+              '[DB][novel_states][UPSERT] key=novel_onboarding status=eligible failed path=$contentDatabasePath',
+              error: error,
+              stackTrace: stackTrace,
+            );
+            rethrow;
+          }
+        }
       }
-      if (!setNovelOnboardingEligible) {
-        return;
-      }
-      try {
-        await contentDatabase.novelStateDao.upsert(
-          key: 'novel_onboarding',
-          status: 'eligible',
-        );
-      } catch (error, stackTrace) {
-        _log.error(
-          '[DB][novel_states][UPSERT] key=novel_onboarding status=eligible failed path=$contentDatabasePath',
-          error: error,
-          stackTrace: stackTrace,
-        );
-        rethrow;
-      }
+      await populateContent?.call(contentDatabase);
     } catch (error, stackTrace) {
       operationError = error;
       Error.throwWithStackTrace(error, stackTrace);
@@ -221,21 +206,24 @@ class NovelActionsService {
     }
   }
 
-  Future<void> _compensateFailedCreation(
-    String novelId,
+  /// 创建失败的收尾：作品尚未登记，只需删掉刚建的内容库文件。
+  /// 收尾本身失败只记日志，不覆盖原始错误。
+  Future<void> _discardUnregisteredContentDatabase(
+    String contentDatabasePath,
     Object creationError,
     StackTrace creationStackTrace,
   ) async {
     try {
-      await _database.novelDao.softDelete(novelId);
+      await NovelContentDatabase.closeCached(contentDatabasePath);
+      await NovelContentDatabase.deleteFiles(contentDatabasePath);
     } catch (error, stackTrace) {
       _log.error(
-        '[DB][novels][COMPENSATE_CREATE] failed id=$novelId; original=$creationError',
+        '[DB][novel_content_database][DISCARD] failed path=$contentDatabasePath; original=$creationError',
         error: error,
         stackTrace: stackTrace,
       );
       _log.error(
-        '[DB][novels][CREATE] original failure id=$novelId',
+        '[DB][novels][CREATE] original failure path=$contentDatabasePath',
         error: creationError,
         stackTrace: creationStackTrace,
       );
@@ -278,16 +266,15 @@ class NovelActionsService {
     }
   }
 
+  /// 移入回收站：停止该作品的会话并关闭内容库，作品及其会话、文件原样保留，
+  /// 到期后由 StorageCleanupService 彻底删除。
   Future<void> deleteNovel(Novel novel) async {
     await _closeContentDatabase(novel.id, novel.contentDatabasePath);
     try {
-      await _database.transaction(() async {
-        await _deleteMainDatabaseNovelResources(novel.id);
-        await _database.novelDao.hardDelete(novel.id);
-      });
+      await _database.novelDao.softDelete(novel.id);
     } catch (error, stackTrace) {
       _log.error(
-        '[DB][novels][DELETE] failed id=${novel.id}',
+        '[DB][novels][SOFT_DELETE] failed id=${novel.id}',
         error: error,
         stackTrace: stackTrace,
       );
@@ -295,23 +282,29 @@ class NovelActionsService {
     }
   }
 
-  Future<void> _deleteMainDatabaseNovelResources(String novelId) async {
-    await _database.customStatement(
-      '''
-DELETE FROM todos
-WHERE session_id IN (
-  SELECT id FROM ai_chat_sessions WHERE novel_id = ?
-)
-''',
-      [novelId],
-    );
-    // NovelAgentSkill 现为应用级全局技能，不再随小说删除而清理。
-    await (_database.delete(
-      _database.aiChatSessions,
-    )..where((table) => table.novelId.equals(novelId))).go();
-    await (_database.delete(
-      _database.agents,
-    )..where((table) => table.novelId.equals(novelId))).go();
+  /// 从回收站恢复；书架作品与现有书架作品重名时抛 [NovelTitleConflictException]。
+  Future<void> restoreNovel(String novelId) async {
+    try {
+      await _database.transaction(() async {
+        final novel = await _database.novelDao.getDeleted(novelId);
+        if (novel == null) {
+          throw StateError('Deleted work not found: $novelId');
+        }
+        if (!novel.draft) {
+          await _ensureShelfTitleAvailable(novel.title);
+        }
+        await _database.novelDao.restore(novelId);
+      });
+    } on NovelTitleConflictException {
+      rethrow;
+    } catch (error, stackTrace) {
+      _log.error(
+        '[DB][novels][RESTORE] failed id=$novelId',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 
   Future<void> updateNovel({

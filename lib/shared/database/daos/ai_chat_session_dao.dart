@@ -427,17 +427,25 @@ class AiChatSessionDao extends DatabaseAccessor<AppDatabase>
         .write(AiChatSessionsCompanion(updatedAt: Value(DateTime.now())));
   }
 
+  /// 跨作品的最近会话只列书架上仍存在的作品，回收站作品的会话不显示。
+  Expression<bool> _recentCondition($AiChatSessionsTable table, String? mode) {
+    final novels = attachedDatabase.novels;
+    final liveNovels = selectOnly(novels)
+      ..addColumns([novels.id])
+      ..where(novels.deletedAt.equals(notDeletedSentinel));
+    var condition =
+        table.parentId.isNull() &
+        table.deletedAt.equals(notDeletedSentinel) &
+        table.novelId.isInQuery(liveNovels);
+    if (mode != null) {
+      condition = condition & table.mode.equals(mode);
+    }
+    return condition;
+  }
+
   Stream<List<AiChatSession>> watchRecent({int limit = 3, String? mode}) {
     return (select(aiChatSessions)
-          ..where((table) {
-            var condition =
-                table.parentId.isNull() &
-                table.deletedAt.equals(notDeletedSentinel);
-            if (mode != null) {
-              condition = condition & table.mode.equals(mode);
-            }
-            return condition;
-          })
+          ..where((table) => _recentCondition(table, mode))
           ..orderBy([
             (table) => OrderingTerm(
               expression: table.updatedAt,
@@ -450,15 +458,7 @@ class AiChatSessionDao extends DatabaseAccessor<AppDatabase>
 
   Future<List<AiChatSession>> getRecent({int limit = 3, String? mode}) {
     return (select(aiChatSessions)
-          ..where((table) {
-            var condition =
-                table.parentId.isNull() &
-                table.deletedAt.equals(notDeletedSentinel);
-            if (mode != null) {
-              condition = condition & table.mode.equals(mode);
-            }
-            return condition;
-          })
+          ..where((table) => _recentCondition(table, mode))
           ..orderBy([
             (table) => OrderingTerm(
               expression: table.updatedAt,

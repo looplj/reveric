@@ -1,4 +1,4 @@
-// 职责: 测试 NovelActionsService — 作品创建、标题冲突、删除级联和封面文件保留行为。
+// 职责: 测试 NovelActionsService — 作品创建、标题冲突、移入回收站与恢复、封面文件保留行为。
 // 关联文件:
 //   lib/shared/services/novel_actions.dart
 //   lib/shared/providers/novel_providers.dart
@@ -383,36 +383,40 @@ void main() {
     );
 
     test(
-      'createNovel soft-deletes screenplay metadata when finalization fails',
+      'createNovel registers the work only after its content database exists',
       () async {
-        final tempDir = await Directory.systemTemp.createTemp(
-          'reveric_screenplay_create_failure_test_',
+        final tempDir = await _configureTemporaryStorage('create_order');
+        final service = NovelActionsService(appDb);
+
+        final novelId = await service.createNovel(
+          title: 'Ordered Screenplay',
+          description: '',
+          contentKind: contentKindScreenplay,
         );
-        addTearDown(() async {
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-              .setMockMethodCallHandler(
-                const MethodChannel('plugins.flutter.io/path_provider'),
-                null,
-              );
-          await NovelContentDatabase.closeAllCached();
-          if (await tempDir.exists()) {
-            await tempDir.delete(recursive: true);
-          }
-        });
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(
-              const MethodChannel('plugins.flutter.io/path_provider'),
-              (call) async => call.method == 'getApplicationSupportDirectory'
-                  ? tempDir.path
-                  : null,
-            );
-        await RevericPaths.initialize();
+
+        final novel = await appDb.novelDao.get(novelId);
+        expect(novel, isNotNull);
+        expect(novel!.draft, isFalse);
+        expect(novel.contentDatabasePath, 'novel_workspaces/$novelId.sqlite');
+        expect(
+          await File(
+            p.join(tempDir.path, 'novel_workspaces', '$novelId.sqlite'),
+          ).exists(),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'createNovel removes the content database when registering the work fails',
+      () async {
+        final tempDir = await _configureTemporaryStorage('register_failure');
         await appDb.customStatement('''
-CREATE TRIGGER fail_screenplay_finalize
-BEFORE UPDATE OF content_database_path ON novels
+CREATE TRIGGER fail_screenplay_insert
+BEFORE INSERT ON novels
 WHEN NEW.content_kind = 'screenplay'
 BEGIN
-  SELECT RAISE(ABORT, 'forced screenplay finalization failure');
+  SELECT RAISE(ABORT, 'forced screenplay insert failure');
 END;
 ''');
         final service = NovelActionsService(appDb);
@@ -426,21 +430,16 @@ END;
           throwsA(isA<Exception>()),
         );
 
-        expect(await appDb.novelDao.getAll(), isEmpty);
-        final rows = await (appDb.select(
-          appDb.novels,
-        )..where((table) => table.title.equals('Failed Screenplay'))).get();
-        expect(rows, hasLength(1));
-        expect(rows.single.deletedAt, isNot(notDeletedSentinel));
-        expect(rows.single.contentDatabasePath, isNull);
-        expect(rows.single.draft, isTrue);
+        await _expectUnregisteredCreation(appDb, 'Failed Screenplay', tempDir);
       },
     );
 
     test(
-      'createNovel compensates when opening the content database fails',
+      'createNovel leaves nothing behind when opening the content database fails',
       () async {
-        await _configureTemporaryStorage('screenplay_open_failure');
+        final tempDir = await _configureTemporaryStorage(
+          'screenplay_open_failure',
+        );
         final original = StateError('forced content database open failure');
         final service = NovelActionsService(
           appDb,
@@ -457,37 +456,62 @@ END;
           throwsA(same(original)),
         );
 
-        await _expectSoftDeletedCreation(appDb, 'Open Failure');
+        await _expectUnregisteredCreation(appDb, 'Open Failure', tempDir);
       },
     );
 
-    test('createNovel compensates when seeding a novel fails', () async {
-      await _configureTemporaryStorage('novel_seed_failure');
-      final original = StateError('forced novel seed failure');
-      var closeCount = 0;
-      final service = NovelActionsService(
-        appDb,
+    test(
+      'createNovel leaves nothing behind when seeding a novel fails',
+      () async {
+        final tempDir = await _configureTemporaryStorage('novel_seed_failure');
+        final original = StateError('forced novel seed failure');
+        var closeCount = 0;
+        final service = NovelActionsService(
+          appDb,
 
-        seedNovelWorkspace: (_) => throw original,
-        closeContentDatabase: (database) async {
-          closeCount += 1;
-          await database.close();
-        },
-      );
+          seedNovelWorkspace: (_) => throw original,
+          closeContentDatabase: (database) async {
+            closeCount += 1;
+            await database.close();
+          },
+        );
 
-      await expectLater(
-        service.createNovel(title: 'Seed Failure', description: ''),
-        throwsA(same(original)),
-      );
+        await expectLater(
+          service.createNovel(title: 'Seed Failure', description: ''),
+          throwsA(same(original)),
+        );
 
-      expect(closeCount, 1);
-      await _expectSoftDeletedCreation(appDb, 'Seed Failure');
-    });
+        expect(closeCount, 1);
+        await _expectUnregisteredCreation(appDb, 'Seed Failure', tempDir);
+      },
+    );
 
     test(
-      'createNovel compensates when the screenplay root transaction fails',
+      'createNovel leaves nothing behind when populating content fails',
       () async {
-        await _configureTemporaryStorage('screenplay_root_failure');
+        final tempDir = await _configureTemporaryStorage('populate_failure');
+        final original = StateError('forced populate failure');
+        final service = NovelActionsService(appDb);
+
+        await expectLater(
+          service.createNovel(
+            title: 'Populate Failure',
+            description: '',
+            populateContent: (_) => throw original,
+          ),
+          throwsA(same(original)),
+        );
+
+        await _expectUnregisteredCreation(appDb, 'Populate Failure', tempDir);
+      },
+    );
+
+    test(
+      'createNovel leaves nothing behind when the screenplay root transaction fails',
+      () async {
+        final tempDir = await _configureTemporaryStorage(
+          'screenplay_root_failure',
+        );
         final original = StateError('forced screenplay root failure');
         var closeCount = 0;
         final service = NovelActionsService(
@@ -510,48 +534,16 @@ END;
         );
 
         expect(closeCount, 1);
-        await _expectSoftDeletedCreation(appDb, 'Root Failure');
+        await _expectUnregisteredCreation(appDb, 'Root Failure', tempDir);
       },
     );
 
     test(
-      'creation compensation does not replace the original failure',
+      'createNovel leaves nothing behind when closing the content database fails',
       () async {
-        await _configureTemporaryStorage('screenplay_compensation_failure');
-        await appDb.customStatement('''
-CREATE TRIGGER fail_creation_compensation
-BEFORE UPDATE OF deleted_at ON novels
-BEGIN
-  SELECT RAISE(ABORT, 'forced compensation failure');
-END;
-''');
-        final original = StateError('forced screenplay finalization failure');
-        final service = NovelActionsService(
-          appDb,
-
-          finalizeScreenplayCreation:
-              ({
-                required id,
-                required contentDatabasePath,
-                required requestedDraft,
-              }) => throw original,
+        final tempDir = await _configureTemporaryStorage(
+          'screenplay_close_failure',
         );
-
-        await expectLater(
-          service.createNovel(
-            title: 'Compensation Failure',
-            description: '',
-            contentKind: contentKindScreenplay,
-          ),
-          throwsA(same(original)),
-        );
-      },
-    );
-
-    test(
-      'createNovel compensates when closing the content database fails',
-      () async {
-        await _configureTemporaryStorage('screenplay_close_failure');
         final original = StateError('forced content database close failure');
         var closeCount = 0;
         final service = NovelActionsService(
@@ -573,7 +565,7 @@ END;
         );
 
         expect(closeCount, 1);
-        await _expectSoftDeletedCreation(appDb, 'Close Failure');
+        await _expectUnregisteredCreation(appDb, 'Close Failure', tempDir);
       },
     );
 
@@ -937,7 +929,7 @@ END;
     );
 
     test(
-      'deleteNovel removes AI chat sessions and novel-scoped resources but keeps usage history',
+      'deleteNovel moves the work to the trash and keeps its sessions and resources for restore',
       () async {
         await appDb.novelDao.create(
           id: 'novel_delete_resources',
@@ -1095,42 +1087,59 @@ END;
         await service.deleteNovel(novel!);
 
         expect(await appDb.novelDao.get('novel_delete_resources'), isNull);
-        expect(await appDb.aiChatSessionDao.getById('session_delete'), isNull);
         expect(
-          await appDb.aiChatSessionDao.getById('child_session_delete'),
+          await appDb.novelDao.getDeleted('novel_delete_resources'),
+          isNotNull,
+        );
+        for (final id in ['session_delete', 'child_session_delete']) {
+          expect(await appDb.aiChatSessionDao.getById(id), isNotNull);
+        }
+        expect(
+          await appDb.globalAgentDao.getByScope(agentScopeNovel),
+          hasLength(1),
+        );
+        expect(await appDb.novelAgentSkillDao.getAll(), hasLength(2));
+        expect(await appDb.select(appDb.aiUsages).get(), hasLength(3));
+        expect(await appDb.select(appDb.todos).get(), hasLength(2));
+        expect(
+          (await appDb.aiChatSessionDao.watchRecent(limit: 10).first).map(
+            (s) => s.novelId,
+          ),
+          everyElement('novel_keep_resources'),
+        );
+
+        await service.restoreNovel('novel_delete_resources');
+        expect(await appDb.novelDao.get('novel_delete_resources'), isNotNull);
+        expect(
+          await appDb.novelDao.getDeleted('novel_delete_resources'),
           isNull,
         );
-        expect(await appDb.aiChatSessionDao.getById('session_keep'), isNotNull);
-        expect(await appDb.globalAgentDao.getByScope(agentScopeNovel), isEmpty);
         expect(
-          await appDb.globalAgentDao.getByScope(agentScopeGlobal),
-          hasLength(1),
+          (await appDb.aiChatSessionDao.watchRecent(limit: 10).first).map(
+            (s) => s.id,
+          ),
+          contains('session_delete'),
         );
-        // NovelAgentSkill 应用全局，novel 删除不做级联清理。
-        expect(await appDb.novelAgentSkillDao.getAll(), hasLength(2));
-        expect(
-          await (appDb.select(appDb.aiUsages)..where(
-                (table) => table.id.isIn([
-                  'usage_delete_by_novel',
-                  'usage_delete_by_session',
-                  'usage_keep',
-                ]),
-              ))
-              .get(),
-          hasLength(3),
+      },
+    );
+
+    test(
+      'restoreNovel rejects a shelf title already taken and keeps the work in the trash',
+      () async {
+        await appDb.novelDao.create(id: 'old', title: '同名', description: '');
+        final service = NovelActionsService(appDb);
+        await service.deleteNovel((await appDb.novelDao.get('old'))!);
+        await appDb.novelDao.create(id: 'new', title: '同名', description: '');
+
+        await expectLater(
+          service.restoreNovel('old'),
+          throwsA(isA<NovelTitleConflictException>()),
         );
-        expect(
-          await (appDb.select(
-            appDb.todos,
-          )..where((table) => table.id.equals('todo_delete'))).get(),
-          isEmpty,
-        );
-        expect(
-          await (appDb.select(
-            appDb.todos,
-          )..where((table) => table.id.equals('todo_keep'))).get(),
-          hasLength(1),
-        );
+        expect(await appDb.novelDao.getDeleted('old'), isNotNull);
+
+        await appDb.novelDao.updateMetadata(id: 'new', title: '新名');
+        await service.restoreNovel('old');
+        expect(await appDb.novelDao.get('old'), isNotNull);
       },
     );
 
@@ -1257,14 +1266,18 @@ Future<Directory> _configureTemporaryStorage(String prefix) async {
   return tempDir;
 }
 
-Future<void> _expectSoftDeletedCreation(
+/// 创建失败后：作品没有登记（也不在回收站），刚建的内容库文件已删除。
+Future<void> _expectUnregisteredCreation(
   AppDatabase database,
   String title,
+  Directory tempDir,
 ) async {
-  expect(await database.novelDao.getAll(), isEmpty);
   final rows = await (database.select(
     database.novels,
   )..where((table) => table.title.equals(title))).get();
-  expect(rows, hasLength(1));
-  expect(rows.single.deletedAt, isNot(notDeletedSentinel));
+  expect(rows, isEmpty);
+  final workspaces = Directory(p.join(tempDir.path, 'novel_workspaces'));
+  if (await workspaces.exists()) {
+    expect(await workspaces.list().toList(), isEmpty);
+  }
 }

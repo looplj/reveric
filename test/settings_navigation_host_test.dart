@@ -104,6 +104,7 @@ void main() {
         'mcp',
         'plugins',
         'backup',
+        'trash',
         'about',
       };
       expect(SettingsPage.navigableSections, shared);

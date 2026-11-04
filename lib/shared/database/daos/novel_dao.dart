@@ -187,37 +187,6 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
     }
   }
 
-  Future<void> finalizeCreation({
-    required String id,
-    required String contentDatabasePath,
-    required bool requestedDraft,
-  }) async {
-    final stored =
-        RevericPaths.toRelative(contentDatabasePath) ?? contentDatabasePath;
-    try {
-      await transaction(() async {
-        final updated =
-            await (update(novels)..where((table) => table.id.equals(id))).write(
-              NovelsCompanion(
-                contentDatabasePath: Value(stored),
-                draft: Value(requestedDraft),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-        if (updated != 1) {
-          throw StateError('Work was not found during creation finalization.');
-        }
-      });
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB][novels][FINALIZE_CREATE] failed id=$id draft=$requestedDraft',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      rethrow;
-    }
-  }
-
   Future<void> _validateSourceNovel({
     required String targetNovelId,
     required String type,
@@ -281,14 +250,34 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
     );
   }
 
+  /// 回收站列表：已软删除的作品，最近删除的在前。
+  Stream<List<Novel>> watchDeleted() {
+    return (select(novels)
+          ..where(
+            (table) => table.deletedAt.isBiggerThanValue(notDeletedSentinel),
+          )
+          ..orderBy([
+            (table) => OrderingTerm(
+              expression: table.deletedAt,
+              mode: OrderingMode.desc,
+            ),
+          ]))
+        .watch();
+  }
+
+  Future<Novel?> getDeleted(String id) {
+    return (select(novels)..where(
+          (table) =>
+              table.id.equals(id) &
+              table.deletedAt.isBiggerThanValue(notDeletedSentinel),
+        ))
+        .getSingleOrNull();
+  }
+
   Future<int> restore(String id) {
     return (update(novels)..where((table) => table.id.equals(id))).write(
       NovelsCompanion(deletedAt: Value(notDeletedSentinel)),
     );
-  }
-
-  Future<int> hardDelete(String id) {
-    return (delete(novels)..where((table) => table.id.equals(id))).go();
   }
 
   Future<int> updateDetails({
