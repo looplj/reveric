@@ -994,35 +994,31 @@ class ProductionBoard extends HookConsumerWidget {
                   ),
                 ),
                 // 浮层必须在编辑器之外：编辑器根 Listener 会把其内部点击当成点画布空白。
-                if (selected != null &&
-                    bar != null &&
-                    byId[selected] != null &&
-                    !interaction.storyboardParents.containsKey(selected))
-                  _Anchored(
-                    controller: controller,
-                    nodeId: selected!,
-                    above: true,
-                    topInset: topInset,
-                    headerExtent: productionNodeHeaderExtent,
-                    // 窄窗口下整条缩小，不折行也不溢出。
-                    child: CanvasEnter(
-                      key: ValueKey('bar/$selected'),
-                      slideFrom: const Offset(0, .12),
-                      child: ProductionViewNode(
-                        node: byId[selected]!,
-                        child: FittedBox(fit: BoxFit.scaleDown, child: bar!),
-                      ),
-                    ),
-                  ),
                 if (selected != null && byId[selected] != null)
                   _Anchored(
                     controller: controller,
                     nodeId: selected!,
-                    above: false,
                     topInset: topInset,
                     trailingInset: composerTrailingInset,
                     bottomInset: composerBottomInset,
-                    child: CanvasEnter(
+                    headerExtent: productionNodeHeaderExtent,
+                    bar:
+                        bar == null ||
+                            interaction.storyboardParents.containsKey(selected)
+                        ? null
+                        // 窄窗口下整条缩小，不折行也不溢出。
+                        : CanvasEnter(
+                            key: ValueKey('bar/$selected'),
+                            slideFrom: const Offset(0, .12),
+                            child: ProductionViewNode(
+                              node: byId[selected]!,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: bar!,
+                              ),
+                            ),
+                          ),
+                    composer: CanvasEnter(
                       key: ValueKey('composer/$selected'),
                       slideFrom: const Offset(0, -.04),
                       child: ProductionViewComposer(
@@ -1400,28 +1396,31 @@ class _Band extends StatelessWidget {
   }
 }
 
-/// 按视口把浮层贴在节点上沿（工具条）或下沿（输入框），并夹在视口内。
+enum _AnchorSlot { bar, composer }
+
+/// 按视口把工具条贴在节点上沿、输入框贴在下沿，并夹在视口内。
+/// 两者一起排版：输入框被视口底边顶上去时，工具条随之上移停在输入框上方，两者不重叠。
 class _Anchored extends StatelessWidget {
   const _Anchored({
     required this.controller,
     required this.nodeId,
-    required this.above,
+    required this.composer,
+    this.bar,
     this.topInset = 0,
     this.trailingInset = 0,
     this.bottomInset = 0,
     this.headerExtent = 0,
-    required this.child,
   });
   final _BoardController controller;
   final String nodeId;
-  final bool above;
+  final Widget? bar;
+  final Widget composer;
   final double topInset;
   final double trailingInset;
   final double bottomInset;
 
   /// 节点上沿之外的标题高度（画布坐标），工具条要让过它。
   final double headerExtent;
-  final Widget child;
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
@@ -1438,29 +1437,31 @@ class _Anchored extends StatelessWidget {
               .toScreen(flow.GraphPosition(node.position.value))
               .offset;
           // 标题按缩放反向放大过，工具条要让过放大后的高度。
-          final header = above
-              ? headerExtent *
-                    viewport.zoom *
-                    productionHeaderScale(viewport.zoom)
-              : 0.0;
-          return CustomSingleChildLayout(
+          final header =
+              headerExtent *
+              viewport.zoom *
+              productionHeaderScale(viewport.zoom);
+          return CustomMultiChildLayout(
             delegate: _AnchorLayout(
               Rect.fromLTRB(
                 topLeft.dx,
-                topLeft.dy - header,
+                topLeft.dy,
                 topLeft.dx + node.size.value.width * viewport.zoom,
                 topLeft.dy + node.size.value.height * viewport.zoom,
               ),
-              above,
+              header,
               topInset,
               trailingInset,
               bottomInset,
             ),
-            // 拖动节点时先收起下方输入区，Offstage 保留其中的编辑状态。
-            child: Offstage(
-              offstage: !above && node.dragging.value,
-              child: child,
-            ),
+            children: [
+              if (bar != null) LayoutId(id: _AnchorSlot.bar, child: bar!),
+              LayoutId(
+                id: _AnchorSlot.composer,
+                // 拖动节点时先收起下方输入区，Offstage 保留其中的编辑状态。
+                child: Offstage(offstage: node.dragging.value, child: composer),
+              ),
+            ],
           );
         },
       ),
@@ -1468,16 +1469,16 @@ class _Anchored extends StatelessWidget {
   }
 }
 
-class _AnchorLayout extends SingleChildLayoutDelegate {
+class _AnchorLayout extends MultiChildLayoutDelegate {
   _AnchorLayout(
     this.rect,
-    this.above,
+    this.header,
     this.topInset,
     this.trailingInset,
     this.bottomInset,
   );
   final Rect rect;
-  final bool above;
+  final double header;
   final double topInset;
   final double trailingInset;
   final double bottomInset;
@@ -1487,48 +1488,72 @@ class _AnchorLayout extends SingleChildLayoutDelegate {
   static const double _minWidth = 320;
 
   @override
-  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      BoxConstraints.loose(
-        Size(
-          math.max(
-            0,
-            math.max(
-              math.min(_minWidth, constraints.maxWidth - _margin * 2),
-              constraints.maxWidth - _margin * 2 - trailingInset,
-            ),
-          ),
-          math.max(
-            0,
-            constraints.maxHeight - _margin * 2 - topInset - bottomInset,
-          ),
+  void performLayout(Size size) {
+    final top = topInset + _margin;
+    final maxHeight = math.max(
+      0.0,
+      size.height - _margin * 2 - topInset - bottomInset,
+    );
+    Size? bar;
+    if (hasChild(_AnchorSlot.bar)) {
+      bar = layoutChild(
+        _AnchorSlot.bar,
+        BoxConstraints.loose(
+          Size(math.max(0, size.width - _margin * 2), maxHeight),
         ),
       );
-
-  @override
-  Offset getPositionForChild(Size size, Size child) {
-    final x = (rect.center.dx - child.width / 2)
-        .clamp(
-          _margin,
-          math.max(_margin, size.width - child.width - _margin - trailingInset),
-        )
-        .toDouble();
-    final top = topInset + _margin;
-    final y = above
-        ? math.max(top, rect.top - child.height - RevericSpacing.md)
-        : math.max(
-            top,
-            math.min(
-              rect.bottom + RevericSpacing.xl,
-              size.height - child.height - _margin - bottomInset,
-            ),
-          );
-    return Offset(x, y);
+    }
+    // 输入框最高只到视口顶部留出工具条之后的位置；工具条再按输入框上沿让位。
+    final floor = bar == null ? top : top + bar.height + RevericSpacing.sm;
+    final width = math.max(
+      0.0,
+      math.max(
+        math.min(_minWidth, size.width - _margin * 2),
+        size.width - _margin * 2 - trailingInset,
+      ),
+    );
+    final composer = layoutChild(
+      _AnchorSlot.composer,
+      BoxConstraints.loose(
+        Size(width, math.max(0, size.height - floor - _margin - bottomInset)),
+      ),
+    );
+    final y = math.max(
+      floor,
+      math.min(
+        rect.bottom + RevericSpacing.xl,
+        size.height - composer.height - _margin - bottomInset,
+      ),
+    );
+    positionChild(
+      _AnchorSlot.composer,
+      Offset(_x(size, composer.width, trailingInset), y),
+    );
+    if (bar != null) {
+      // 平时贴在节点上方；输入框被视口底边顶上来时，工具条停在输入框上方，压在节点上。
+      final barY = math.max(
+        top,
+        math.min(
+          rect.top - header - bar.height - RevericSpacing.md,
+          y - RevericSpacing.sm - bar.height,
+        ),
+      );
+      positionChild(_AnchorSlot.bar, Offset(_x(size, bar.width, 0), barY));
+    }
   }
+
+  double _x(Size size, double width, double trailing) =>
+      (rect.center.dx - width / 2)
+          .clamp(
+            _margin,
+            math.max(_margin, size.width - width - _margin - trailing),
+          )
+          .toDouble();
 
   @override
   bool shouldRelayout(_AnchorLayout old) =>
       old.rect != rect ||
-      old.above != above ||
+      old.header != header ||
       old.topInset != topInset ||
       old.trailingInset != trailingInset ||
       old.bottomInset != bottomInset;

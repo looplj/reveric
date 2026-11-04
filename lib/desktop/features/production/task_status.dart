@@ -18,6 +18,7 @@ import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/services/storyboard/service.dart';
+import '../../../shared/theme/canvas_colors.dart';
 import '../../../shared/theme/theme.dart';
 import 'support.dart';
 
@@ -31,6 +32,13 @@ typedef _TaskFeedback = ({
   bool adoptedDraft,
   bool completingDraft,
 });
+
+/// 任务状态的文案 key。上传、提交、生成、保存结果对用户都是同一件事，统一显示「生成中」。
+String productionTaskLabelKey(String status) =>
+    'screenplay.production.task.${switch (status) {
+      'uploading' || 'submitting' || 'saving' => 'running',
+      _ => status,
+    }}';
 
 /// 结果已生成、只差保存的任务；重试不会再次提交生成。
 typedef ProductionSaveRetry = ({String taskId, String status, bool image});
@@ -67,7 +75,8 @@ class ProductionTaskStatus extends HookWidget {
   final ProductionTaskActions? actions;
   final bool compact;
 
-  /// 画布节点用：叠在画面上，不写「已采用 / 未采用」，只在有任务反馈时显示成一枚浮签。
+  /// 画布节点用：铺满画面，不写「已采用 / 未采用」。生成中盖住整个画面，
+  /// 其余任务反馈在左下角显示成一枚浮签。
   final bool floating;
 
   @override
@@ -188,7 +197,9 @@ class ProductionTaskStatus extends HookWidget {
                 ? LocaleKeys.productionResultSaveFailed
                 : task.completingDraft && !failure && task.status != 'completed'
                 ? LocaleKeys.productionDraftCompletionPending
-                : 'screenplay.production.task.${task.status == 'completed' ? 'saving' : task.status}',
+                : productionTaskLabelKey(
+                    task.status == 'completed' ? 'running' : task.status,
+                  ),
           );
     Future<void> act(Future<void> Function() action) async {
       if (busy.value) {
@@ -223,6 +234,16 @@ class ProductionTaskStatus extends HookWidget {
     final adoptedDraft = task?.adoptedDraft ?? false;
     if (floating && !showTask && !adoptedDraft) {
       return const SizedBox.shrink();
+    }
+    if (floating &&
+        showTask &&
+        !failure &&
+        !pendingResult &&
+        task.status != 'prepared') {
+      return _GeneratingCover(
+        label: label,
+        note: adoptedDraft ? context.t(LocaleKeys.productionDraftLabel) : null,
+      );
     }
     final row = Row(
       mainAxisSize: MainAxisSize.min,
@@ -330,18 +351,68 @@ class ProductionTaskStatus extends HookWidget {
     if (!floating) {
       return row;
     }
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh.withValues(alpha: .94),
-        borderRadius: BorderRadius.circular(RevericRadius.medium),
-        border: Border.all(color: colors.borderSubtle),
-      ),
+    return Align(
+      alignment: Alignment.bottomLeft,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: RevericSpacing.sm,
-          vertical: RevericSpacing.xxs,
+        padding: const EdgeInsets.all(RevericSpacing.sm),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHigh.withValues(alpha: .94),
+            borderRadius: BorderRadius.circular(RevericRadius.medium),
+            border: Border.all(color: colors.borderSubtle),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: RevericSpacing.sm,
+              vertical: RevericSpacing.xxs,
+            ),
+            child: row,
+          ),
         ),
-        child: row,
+      ),
+    );
+  }
+}
+
+/// 生成中盖住整个画面：比角落浮签醒目，也挡住生成期间不该点的上传入口。
+/// 画布上可能同时有很多节点在生成，用静态图标，不给每个节点挂循环动画。
+class _GeneratingCover extends StatelessWidget {
+  const _GeneratingCover({required this.label, this.note});
+  final String label;
+
+  /// 画面当前仍是已采用的样片时，在下方注明。
+  final String? note;
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(color: canvasGlassFill(colors, raised: true)),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RevericIcon(
+              RevericIcons.auto_awesome,
+              size: 20,
+              color: colors.accent,
+            ),
+            const SizedBox(height: RevericSpacing.xs),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: typo.uiSmallSemibold.copyWith(color: colors.accent),
+            ),
+            if (note != null)
+              Text(
+                note!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: typo.uiTiny.copyWith(color: colors.textMuted),
+              ),
+          ],
+        ),
       ),
     );
   }

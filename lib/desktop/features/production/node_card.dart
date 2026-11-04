@@ -573,7 +573,7 @@ class _VideoBody extends StatelessWidget {
   }
 }
 
-/// 生成节点的卡片内容：画面铺满，任务反馈浮在左下角。
+/// 生成节点的卡片内容：画面铺满，任务反馈叠在画面上（生成中盖住画面，其余在左下角）。
 class ProductionNodeFrame extends StatelessWidget {
   const ProductionNodeFrame({
     super.key,
@@ -592,21 +592,15 @@ class ProductionNodeFrame extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         frame,
-        Positioned(
-          left: RevericSpacing.sm,
-          right: RevericSpacing.sm,
-          bottom: RevericSpacing.sm,
-          child: Align(
-            alignment: Alignment.bottomLeft,
-            child: ProductionTaskStatus(
-              shots: service.shots,
-              database: service.library.database,
-              novelId: service.novelId,
-              clipId: node.clipId!,
-              actions: taskActions,
-              compact: true,
-              floating: true,
-            ),
+        Positioned.fill(
+          child: ProductionTaskStatus(
+            shots: service.shots,
+            database: service.library.database,
+            novelId: service.novelId,
+            clipId: node.clipId!,
+            actions: taskActions,
+            compact: true,
+            floating: true,
           ),
         ),
       ],

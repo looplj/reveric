@@ -24,7 +24,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/components/reveric_context_menu.dart';
-import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_select.dart';
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/database/app_database.dart' show AssetRow;
@@ -375,54 +374,56 @@ class _ImageForm extends HookConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              ProductionComposerTools(
+                expanded: expanded.value,
+                onExpand: () => expanded.value = !expanded.value,
                 children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: RevericSpacing.sm,
-                      runSpacing: RevericSpacing.sm,
-                      children: [
-                        for (var i = 0; i < inputs.value.length; i++)
-                          ProductionInputTile(
-                            service: service,
-                            input: inputs.value[i],
-                            valid:
-                                capability?.allowsReferenceCount(i + 1) ??
-                                false,
-                            onRole: null,
-                            onMove: inputs.value.length < 2
-                                ? null
-                                : (delta) {
-                                    final target = i + delta;
-                                    if (target >= 0 &&
-                                        target < inputs.value.length) {
-                                      final next = [...inputs.value];
-                                      next.insert(target, next.removeAt(i));
-                                      inputs.value = next;
-                                    }
-                                  },
-                            onRemove: () =>
-                                inputs.value = [...inputs.value]..removeAt(i),
-                          ),
-                      ],
-                    ),
+                  ProductionAddInputButton(
+                    service: service,
+                    types: const {'image'},
+                    onPicked: attach,
                   ),
-                  RevericIconButton(
-                    icon: expanded.value
-                        ? RevericIcons.arrows_in
-                        : RevericIcons.arrows_out,
-                    tooltip: context.t(
-                      expanded.value
-                          ? LocaleKeys.commonCollapse
-                          : LocaleKeys.commonExpand,
-                    ),
-                    onPressed: () => expanded.value = !expanded.value,
+                  ProductionToolChip(
+                    icon: RevericIcons.at,
+                    label: context.t(LocaleKeys.productionMention),
+                    tooltip: context.t(LocaleKeys.productionReference),
+                    onTap: () => productionRun(context, reference),
                   ),
+                  const ProductionImageMethodButton(),
                 ],
               ),
+              if (inputs.value.isNotEmpty) ...[
+                const SizedBox(height: RevericSpacing.sm),
+                Wrap(
+                  spacing: RevericSpacing.sm,
+                  runSpacing: RevericSpacing.sm,
+                  children: [
+                    for (var i = 0; i < inputs.value.length; i++)
+                      ProductionInputTile(
+                        service: service,
+                        input: inputs.value[i],
+                        valid: capability?.allowsReferenceCount(i + 1) ?? false,
+                        onRole: null,
+                        onMove: inputs.value.length < 2
+                            ? null
+                            : (delta) {
+                                final target = i + delta;
+                                if (target >= 0 &&
+                                    target < inputs.value.length) {
+                                  final next = [...inputs.value];
+                                  next.insert(target, next.removeAt(i));
+                                  inputs.value = next;
+                                }
+                              },
+                        onRemove: () =>
+                            inputs.value = [...inputs.value]..removeAt(i),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: RevericSpacing.sm),
-              ProductionImageMethod(
+              // 画布留给输入框的高度不够时，提示词区先收缩，在框内滚动。
+              Flexible(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: expanded.value ? 200 : 60,
@@ -459,26 +460,7 @@ class _ImageForm extends HookConsumerWidget {
                   blockedReason: blockedReason,
                 ),
                 children: [
-                  ProductionAddInputButton(
-                    service: service,
-                    types: const {'image'},
-                    onPicked: attach,
-                  ),
-                  ProductionToolButton(
-                    icon: RevericIcons.at,
-                    tooltip: context.t(LocaleKeys.productionReference),
-                    onTap: () => productionRun(context, reference),
-                  ),
-                  const ProductionImageMethodButton(),
                   ProductionStylePill(service: service, clipId: node.clipId!),
-                  Container(
-                    width: 1,
-                    height: 18,
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: RevericSpacing.xxs,
-                    ),
-                    color: colors.borderSubtle,
-                  ),
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: RevericSpacing.sm,

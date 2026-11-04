@@ -1,5 +1,5 @@
 // 职责: 在图片输入区选择预设并保留用户提示词；预设分组、图标和名称也供节点工具栏复用。
-//   未选预设时入口收进底栏按钮；选中后在提示词左侧显示预设 pill。
+//   入口放在输入框顶部工具行，选中后原位显示预设名称。
 // 关联文件:
 //   lib/desktop/features/production/image_composer.dart
 //   lib/desktop/features/production/node_bar.dart
@@ -93,8 +93,7 @@ const _columns = [
 ImageGenerationPreset _preset(FormFieldsController<ShotField> form) =>
     form.getValue<ImageGenerationPreset>(ShotField.imagePreset)!;
 
-/// 方式列表弹层；底栏按钮和提示词左侧的 pill 共用。
-/// 预设弹层；底栏按钮和提示词左侧的 pill 共用。
+/// 预设弹层；未选时的按钮和选中后的名称 pill 共用。
 class _MethodPicker extends StatelessWidget {
   const _MethodPicker({required this.form, required this.trigger});
   final FormFieldsController<ShotField> form;
@@ -224,7 +223,7 @@ class _PresetTile extends StatelessWidget {
   }
 }
 
-/// 未选预设时放在底栏的入口；选中预设后入口移到提示词左侧。
+/// 输入框顶部工具行的预设入口：未选时是「预设」按钮；选中后显示预设名称，旁边带移除键。
 class ProductionImageMethodButton extends HookWidget {
   const ProductionImageMethodButton({super.key});
 
@@ -232,41 +231,28 @@ class ProductionImageMethodButton extends HookWidget {
   Widget build(BuildContext context) {
     final form = useFormContext<ShotField>(context);
     final method = useListenableSelector(form, () => _preset(form).method);
-    if (method != ImageGenerationMethod.free) {
-      return const SizedBox.shrink();
-    }
-    return _MethodPicker(
-      form: form,
-      trigger: (context, open, toggle) => ProductionToolButton(
-        icon: RevericIcons.category_outlined,
-        tooltip: context.t(LocaleKeys.productionImageMethod),
-        open: open,
-        onTap: toggle,
-      ),
-    );
-  }
-}
-
-class ProductionImageMethod extends HookWidget {
-  const ProductionImageMethod({super.key, required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final form = useFormContext<ShotField>(context);
-    final method = useListenableSelector(form, () => _preset(form).method);
     if (method == ImageGenerationMethod.free) {
-      return child;
+      return _MethodPicker(
+        form: form,
+        trigger: (context, open, toggle) => ProductionToolChip(
+          icon: RevericIcons.category_outlined,
+          label: context.t(LocaleKeys.productionImageMethod),
+          tooltip: context.t(LocaleKeys.productionImageMethod),
+          open: open,
+          onTap: toggle,
+        ),
+      );
     }
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final selector = Row(
+    return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _MethodPicker(
           form: form,
           trigger: (context, open, toggle) => ProductionPill(
             open: open,
+            filled: true,
             onTap: toggle,
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -295,28 +281,6 @@ class ProductionImageMethod extends HookWidget {
           onTap: () => _select(form, ImageGenerationMethod.free),
         ),
       ],
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 500) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [selector, child],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 与提示词首行文字垂直对齐。
-            Padding(
-              padding: const EdgeInsets.only(top: RevericSpacing.xs),
-              child: selector,
-            ),
-            const SizedBox(width: RevericSpacing.md),
-            Expanded(child: child),
-          ],
-        );
-      },
     );
   }
 }

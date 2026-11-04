@@ -53,14 +53,12 @@ void main() {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ProductionImageMethod(
-                        child: ProductionPromptField(
-                          controller: prompt,
-                          onReference: () {},
-                          footer: false,
-                        ),
-                      ),
                       const ProductionImageMethodButton(),
+                      ProductionPromptField(
+                        controller: prompt,
+                        onReference: () {},
+                        footer: false,
+                      ),
                     ],
                   ),
                 ),
@@ -71,7 +69,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // 未选预设时提示词独占整行，入口只在底栏。
+    // 未选预设时只显示「预设」按钮，没有预设名称和展开箭头。
     expect(find.byType(ProductionCaret), findsNothing);
     ImageGenerationMethod method() =>
         form.getValue<ImageGenerationPreset>(ShotField.imagePreset)!.method;

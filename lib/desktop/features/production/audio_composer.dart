@@ -21,7 +21,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/components/reveric_context_menu.dart';
-import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_select.dart';
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/database/app_database.dart' show AssetRow;
@@ -425,86 +424,96 @@ class _AudioForm extends HookConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              ProductionComposerTools(
+                expanded: expanded.value,
+                onExpand: () => expanded.value = !expanded.value,
                 children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: RevericSpacing.sm,
-                      runSpacing: RevericSpacing.sm,
-                      children: [
-                        for (var i = 0; i < inputs.value.length; i++)
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (inputs.value[i].role ==
-                                  VideoInputRole.reference_audio)
-                                Text(
-                                  context.t(
-                                    LocaleKeys.productionAudioReferenceLabel,
-                                    namedArgs: {'index': '${i + 1}'},
-                                  ),
-                                  style: typo.uiTiny.copyWith(
-                                    color: colors.textMuted,
-                                  ),
-                                ),
-                              ProductionInputTile(
-                                service: service,
-                                input: inputs.value[i],
-                                valid: capability?.accepts(inputKinds) ?? false,
-                                onRole: null,
-                                onMove: inputs.value.length < 2
-                                    ? null
-                                    : (delta) {
-                                        final target = i + delta;
-                                        if (target >= 0 &&
-                                            target < inputs.value.length) {
-                                          final next = [...inputs.value];
-                                          next.insert(target, next.removeAt(i));
-                                          inputs.value = next;
-                                        }
-                                      },
-                                onRemove: () =>
-                                    inputs.value = [...inputs.value]
-                                      ..removeAt(i),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
+                  ProductionAddInputButton(
+                    service: service,
+                    types: referenceTypes,
+                    enabled: referenceTypes.isNotEmpty,
+                    onPicked: attach,
                   ),
-                  RevericIconButton(
-                    icon: expanded.value
-                        ? RevericIcons.arrows_in
-                        : RevericIcons.arrows_out,
-                    tooltip: context.t(
-                      expanded.value
-                          ? LocaleKeys.commonCollapse
-                          : LocaleKeys.commonExpand,
-                    ),
-                    onPressed: () => expanded.value = !expanded.value,
+                  ProductionToolChip(
+                    icon: RevericIcons.at,
+                    label: context.t(LocaleKeys.productionMention),
+                    tooltip: context.t(LocaleKeys.productionReference),
+                    onTap:
+                        imageMode ||
+                            capability == null ||
+                            !capability.model.supportsAudioReferencePlaceholders
+                        ? null
+                        : () => productionRun(context, reference),
                   ),
                 ],
               ),
-              const SizedBox(height: RevericSpacing.sm),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: expanded.value ? 200 : 60,
-                  maxHeight: expanded.value ? 360 : 140,
-                ),
-                child: SingleChildScrollView(
-                  child: ProductionPromptField(
-                    controller: prompt,
-                    hintText: imageMode
-                        ? context.t(LocaleKeys.productionAudioImagePrompt)
-                        : context.t(
-                            capability?.model.speech == true
-                                ? LocaleKeys.productionSpeechText
-                                : LocaleKeys.productionAudioPrompt,
+              if (inputs.value.isNotEmpty) ...[
+                const SizedBox(height: RevericSpacing.sm),
+                Wrap(
+                  spacing: RevericSpacing.sm,
+                  runSpacing: RevericSpacing.sm,
+                  children: [
+                    for (var i = 0; i < inputs.value.length; i++)
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (inputs.value[i].role ==
+                              VideoInputRole.reference_audio)
+                            Text(
+                              context.t(
+                                LocaleKeys.productionAudioReferenceLabel,
+                                namedArgs: {'index': '${i + 1}'},
+                              ),
+                              style: typo.uiTiny.copyWith(
+                                color: colors.textMuted,
+                              ),
+                            ),
+                          ProductionInputTile(
+                            service: service,
+                            input: inputs.value[i],
+                            valid: capability?.accepts(inputKinds) ?? false,
+                            onRole: null,
+                            onMove: inputs.value.length < 2
+                                ? null
+                                : (delta) {
+                                    final target = i + delta;
+                                    if (target >= 0 &&
+                                        target < inputs.value.length) {
+                                      final next = [...inputs.value];
+                                      next.insert(target, next.removeAt(i));
+                                      inputs.value = next;
+                                    }
+                                  },
+                            onRemove: () =>
+                                inputs.value = [...inputs.value]..removeAt(i),
                           ),
-                    footer: false,
-                    maxLines: null,
-                    onReference: () => productionRun(context, reference),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: RevericSpacing.sm),
+              // 画布留给输入框的高度不够时，提示词区先收缩，在框内滚动。
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: expanded.value ? 200 : 60,
+                    maxHeight: expanded.value ? 360 : 140,
+                  ),
+                  child: SingleChildScrollView(
+                    child: ProductionPromptField(
+                      controller: prompt,
+                      hintText: imageMode
+                          ? context.t(LocaleKeys.productionAudioImagePrompt)
+                          : context.t(
+                              capability?.model.speech == true
+                                  ? LocaleKeys.productionSpeechText
+                                  : LocaleKeys.productionAudioPrompt,
+                            ),
+                      footer: false,
+                      maxLines: null,
+                      onReference: () => productionRun(context, reference),
+                    ),
                   ),
                 ),
               ),
@@ -568,34 +577,8 @@ class _AudioForm extends HookConsumerWidget {
                   blockedReason: blockedReason,
                 ),
                 children: [
-                  ProductionAddInputButton(
-                    service: service,
-                    types: referenceTypes,
-                    enabled: referenceTypes.isNotEmpty,
-                    onPicked: attach,
-                  ),
-                  ProductionToolButton(
-                    icon: RevericIcons.at,
-                    tooltip: context.t(LocaleKeys.productionReference),
-                    onTap:
-                        imageMode ||
-                            capability == null ||
-                            !capability.model.supportsAudioReferencePlaceholders
-                        ? null
-                        : () => productionRun(context, reference),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 18,
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: RevericSpacing.xxs,
-                    ),
-                    color: colors.borderSubtle,
-                  ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: RevericSpacing.sm,
-                    ),
+                    padding: const EdgeInsets.only(right: RevericSpacing.sm),
                     child: SizedBox(
                       width: 180,
                       child: HookedFormField<ShotField, (String, String)>(

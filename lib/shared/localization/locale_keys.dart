@@ -514,6 +514,7 @@ abstract final class LocaleKeys {
   static const productionUnlink = 'screenplay.production.unlink';
   static const productionUnlinkHint = 'screenplay.production.unlinkHint';
   static const productionReference = 'screenplay.production.reference';
+  static const productionMention = 'screenplay.production.mention';
 
   static const productionExportIncomplete =
       'screenplay.production.exportIncomplete';

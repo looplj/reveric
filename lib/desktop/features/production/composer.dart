@@ -20,7 +20,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_select.dart';
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/database/app_database.dart' show AssetRow;
@@ -761,106 +760,120 @@ class _ComposerForm extends HookConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                ProductionComposerTools(
+                  expanded: expanded.value,
+                  onExpand: () => expanded.value = !expanded.value,
                   children: [
-                    Expanded(
-                      child: Wrap(
-                        spacing: RevericSpacing.sm,
-                        runSpacing: RevericSpacing.sm,
-                        children: [
-                          for (var i = 0; i < displayInputs.length; i++)
-                            ProductionCharacterInput(
-                              key: ValueKey(displayInputs[i].identity),
-                              service: service,
-                              input: displayInputs[i],
-                              framesMode: frames,
-                              onChanged: (input) {
-                                final next = [...inputs.value];
-                                next[next.indexWhere(
-                                      (item) => item.id == displayInputs[i].id,
-                                    )] =
-                                    input;
-                                inputs.value = next;
-                              },
-                              child: ProductionInputTile(
-                                service: service,
-                                input: displayInputs[i],
-                                mode: mode,
-                                valid:
-                                    allowed.contains(displayInputs[i].role) &&
-                                    (displayInputs[i].role !=
-                                            VideoInputRole.middle_frame ||
-                                        supportsMiddleFrames),
-                                supportsMiddleFrames: supportsMiddleFrames,
-                                middleFrameIndex: displayInputs[i]
-                                    .middleFrameIndex(inputs.value),
-                                onRole: (r) {
-                                  final next = [...inputs.value];
-                                  final index = next.indexWhere(
-                                    (item) => item.id == displayInputs[i].id,
-                                  );
-                                  next[index] = next[index].withRole(r);
-                                  inputs.value = next;
-                                },
-                                onMove:
-                                    displayInputs.length < 2 ||
-                                        (productionUsesFrames(mode) &&
-                                            displayInputs[i].role !=
-                                                VideoInputRole.middle_frame)
-                                    ? null
-                                    : (delta) {
-                                        final to = i + delta;
-                                        if (to < 0 ||
-                                            to >= displayInputs.length ||
-                                            (productionUsesFrames(mode) &&
-                                                displayInputs[to].role !=
-                                                    VideoInputRole
-                                                        .middle_frame)) {
-                                          return;
-                                        }
-                                        final next = [...displayInputs];
-                                        next.insert(to, next.removeAt(i));
-                                        inputs.value = next;
-                                      },
-                                onRemove: () {
-                                  inputs.value = inputs.value
-                                      .where(
-                                        (input) =>
-                                            input.id != displayInputs[i].id,
-                                      )
-                                      .toList();
-                                },
-                              ),
-                            ),
-                        ],
-                      ),
+                    ProductionAddInputButton(
+                      service: service,
+                      types: allowed.map((r) => r.kind.name).toSet(),
+                      enabled: !busy.value,
+                      onPicked: attach,
                     ),
-                    RevericIconButton(
-                      icon: expanded.value
-                          ? RevericIcons.arrows_in
-                          : RevericIcons.arrows_out,
-                      tooltip: context.t(
-                        expanded.value
-                            ? LocaleKeys.commonCollapse
-                            : LocaleKeys.commonExpand,
-                      ),
-                      onPressed: () => expanded.value = !expanded.value,
+                    ProductionToolChip(
+                      icon: RevericIcons.at,
+                      label: context.t(LocaleKeys.productionMention),
+                      tooltip: context.t(LocaleKeys.productionReference),
+                      onTap: busy.value
+                          ? null
+                          : () => productionRun(context, reference),
+                    ),
+                    ProductionToolChip(
+                      icon: RevericIcons.video_camera,
+                      label: context.t(LocaleKeys.productionCameraLibrary),
+                      onTap: busy.value
+                          ? null
+                          : () => productionRun(context, insertCamera),
                     ),
                   ],
                 ),
-                const SizedBox(height: RevericSpacing.sm),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: expanded.value ? 200 : 60,
-                    maxHeight: expanded.value ? 360 : 140,
+                if (displayInputs.isNotEmpty) ...[
+                  const SizedBox(height: RevericSpacing.sm),
+                  Wrap(
+                    spacing: RevericSpacing.sm,
+                    runSpacing: RevericSpacing.sm,
+                    children: [
+                      for (var i = 0; i < displayInputs.length; i++)
+                        ProductionCharacterInput(
+                          key: ValueKey(displayInputs[i].identity),
+                          service: service,
+                          input: displayInputs[i],
+                          framesMode: frames,
+                          onChanged: (input) {
+                            final next = [...inputs.value];
+                            next[next.indexWhere(
+                                  (item) => item.id == displayInputs[i].id,
+                                )] =
+                                input;
+                            inputs.value = next;
+                          },
+                          child: ProductionInputTile(
+                            service: service,
+                            input: displayInputs[i],
+                            mode: mode,
+                            valid:
+                                allowed.contains(displayInputs[i].role) &&
+                                (displayInputs[i].role !=
+                                        VideoInputRole.middle_frame ||
+                                    supportsMiddleFrames),
+                            supportsMiddleFrames: supportsMiddleFrames,
+                            middleFrameIndex: displayInputs[i].middleFrameIndex(
+                              inputs.value,
+                            ),
+                            onRole: (r) {
+                              final next = [...inputs.value];
+                              final index = next.indexWhere(
+                                (item) => item.id == displayInputs[i].id,
+                              );
+                              next[index] = next[index].withRole(r);
+                              inputs.value = next;
+                            },
+                            onMove:
+                                displayInputs.length < 2 ||
+                                    (productionUsesFrames(mode) &&
+                                        displayInputs[i].role !=
+                                            VideoInputRole.middle_frame)
+                                ? null
+                                : (delta) {
+                                    final to = i + delta;
+                                    if (to < 0 ||
+                                        to >= displayInputs.length ||
+                                        (productionUsesFrames(mode) &&
+                                            displayInputs[to].role !=
+                                                VideoInputRole.middle_frame)) {
+                                      return;
+                                    }
+                                    final next = [...displayInputs];
+                                    next.insert(to, next.removeAt(i));
+                                    inputs.value = next;
+                                  },
+                            onRemove: () {
+                              inputs.value = inputs.value
+                                  .where(
+                                    (input) => input.id != displayInputs[i].id,
+                                  )
+                                  .toList();
+                            },
+                          ),
+                        ),
+                    ],
                   ),
-                  child: SingleChildScrollView(
-                    child: ProductionPromptField(
-                      controller: prompt,
-                      footer: false,
-                      maxLines: null,
-                      onReference: () => productionRun(context, reference),
+                ],
+                const SizedBox(height: RevericSpacing.sm),
+                // 画布留给输入框的高度不够时，提示词区先收缩，在框内滚动。
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: expanded.value ? 200 : 60,
+                      maxHeight: expanded.value ? 360 : 140,
+                    ),
+                    child: SingleChildScrollView(
+                      child: ProductionPromptField(
+                        controller: prompt,
+                        footer: false,
+                        maxLines: null,
+                        onReference: () => productionRun(context, reference),
+                      ),
                     ),
                   ),
                 ),
@@ -887,35 +900,7 @@ class _ComposerForm extends HookConsumerWidget {
                     },
                   ),
                   children: [
-                    ProductionAddInputButton(
-                      service: service,
-                      types: allowed.map((r) => r.kind.name).toSet(),
-                      enabled: !busy.value,
-                      onPicked: attach,
-                    ),
-                    ProductionToolButton(
-                      icon: RevericIcons.at,
-                      tooltip: context.t(LocaleKeys.productionReference),
-                      onTap: busy.value
-                          ? null
-                          : () => productionRun(context, reference),
-                    ),
-                    ProductionToolButton(
-                      icon: RevericIcons.video_camera,
-                      tooltip: context.t(LocaleKeys.productionCameraLibrary),
-                      onTap: busy.value
-                          ? null
-                          : () => productionRun(context, insertCamera),
-                    ),
                     ProductionStylePill(service: service, clipId: node.clipId!),
-                    Container(
-                      width: 1,
-                      height: 18,
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: RevericSpacing.xxs,
-                      ),
-                      color: colors.borderSubtle,
-                    ),
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: RevericSpacing.sm,

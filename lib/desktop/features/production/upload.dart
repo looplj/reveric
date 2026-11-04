@@ -58,7 +58,7 @@ Future<AssetRow?> uploadProductionAsset(
   return asset;
 }
 
-/// 输入框底栏的「＋」：向上展开「导入 / 从资产库选择」，选中的素材交给 [onPicked] 补成一条输入。
+/// 输入框顶部的「＋ 添加参考」：向上展开「导入 / 从资产库选择」，选中的素材交给 [onPicked] 补成一条输入。
 class ProductionAddInputButton extends StatelessWidget {
   const ProductionAddInputButton({
     super.key,
@@ -88,8 +88,9 @@ class ProductionAddInputButton extends StatelessWidget {
     });
     return RevericPopover(
       up: true,
-      trigger: (_, open, toggle) => ProductionToolButton(
+      trigger: (_, open, toggle) => ProductionToolChip(
         icon: RevericIcons.add,
+        label: context.t(LocaleKeys.productionAddInput),
         tooltip: context.t(LocaleKeys.productionAddInputHint),
         open: open,
         onTap: enabled ? toggle : null,

@@ -524,7 +524,7 @@ void main() {
       }
     });
   }
-  testWidgets('tall composer stays above bottom canvas controls', (
+  testWidgets('tall composer stays between node toolbar and bottom controls', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 600);
@@ -552,6 +552,7 @@ void main() {
       'work',
     );
     const composer = ValueKey('tall-composer');
+    const bar = ValueKey('node-toolbar');
     try {
       await tester.pumpWidget(
         ProviderScope(
@@ -584,6 +585,7 @@ void main() {
                       onConnect: (_, _, _) {},
                       onOpenDirector: (_) {},
                       composerBottomInset: 100,
+                      bar: const SizedBox(key: bar, width: 300, height: 40),
                       composer: const SingleChildScrollView(
                         child: SizedBox(
                           key: composer,
@@ -606,9 +608,14 @@ void main() {
           )
           .controller;
       controller.selectNode(node.id);
+      // 节点贴近底部：工具条若仍贴在节点上方，输入框就没有地方放。
+      controller.setViewport(const flow.GraphViewport());
+      controller.setNodePosition(node.id, const Offset(100, 380));
       await tester.pumpAndSettle();
       final viewport = tester.getRect(find.byType(SingleChildScrollView).last);
       expect(viewport.bottom, lessThanOrEqualTo(600 - 100));
+      // 被底边顶上去的输入框只能停在工具条下方，不能盖住工具条。
+      expect(viewport.top, greaterThan(tester.getRect(find.byKey(bar)).bottom));
       controller.clearSelection();
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());

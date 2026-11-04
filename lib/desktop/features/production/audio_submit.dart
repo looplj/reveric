@@ -23,6 +23,7 @@ import '../../../shared/services/production/audio_generate_orchestrator.dart';
 import '../../../shared/theme/theme.dart';
 import 'popover.dart';
 import 'support.dart';
+import 'task_status.dart';
 
 class ProductionAudioSubmit extends HookConsumerWidget {
   const ProductionAudioSubmit({
@@ -60,7 +61,7 @@ class ProductionAudioSubmit extends HookConsumerWidget {
         tooltip: context.t(
           canCancel
               ? LocaleKeys.commonCancel
-              : 'screenplay.production.task.saving',
+              : productionTaskLabelKey('saving'),
         ),
         onPressed: canCancel
             ? () => productionRun(context, () => jobs.cancel(active.id))

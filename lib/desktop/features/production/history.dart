@@ -34,6 +34,7 @@ import 'popover.dart';
 import 'support.dart';
 import 'draft_completion.dart';
 import 'storage_dialog.dart';
+import 'task_status.dart';
 
 class ProductionHistory extends HookConsumerWidget {
   const ProductionHistory({
@@ -463,7 +464,7 @@ class ProductionResultRow extends StatelessWidget {
               ],
               const TextSpan(text: '  '),
               TextSpan(
-                text: context.t('screenplay.production.task.$status'),
+                text: context.t(productionTaskLabelKey(status)),
                 style: typo.uiTinySemibold.copyWith(
                   color: switch (tone) {
                     ProductionResultTone.error => colors.error,

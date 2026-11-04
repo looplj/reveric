@@ -1,4 +1,4 @@
-// 职责: 制片顶栏与画布浮层共用的弹层外壳、菜单行和底栏 pill；锚定弹层本身见 RevericPopover。
+// 职责: 制片顶栏与画布浮层共用的弹层外壳、菜单行和输入框按钮；锚定弹层本身见 RevericPopover。
 // 关联文件:
 //   lib/desktop/features/production/spec_panel.dart
 //   lib/desktop/features/production/style_button.dart
@@ -163,18 +163,21 @@ class ProductionPopoverItem extends StatelessWidget {
 }
 
 /// 输入框底栏与顶栏的无边框 pill：悬停或展开时铺一层 hover 底色。
+/// [filled] 用于输入框顶部的工具行：静止时也铺一层淡底，读作可点的按钮。
 class ProductionPill extends StatelessWidget {
   const ProductionPill({
     super.key,
     required this.child,
     required this.onTap,
     this.open = false,
+    this.filled = false,
     this.tooltip,
     this.padding = const EdgeInsets.symmetric(horizontal: RevericSpacing.sm),
   });
   final Widget child;
   final VoidCallback? onTap;
   final bool open;
+  final bool filled;
   final String? tooltip;
   final EdgeInsets padding;
   @override
@@ -185,7 +188,11 @@ class ProductionPill extends StatelessWidget {
       type: MaterialType.transparency,
       child: Ink(
         decoration: BoxDecoration(
-          color: open ? colors.hover : null,
+          color: open
+              ? colors.hover
+              : filled
+              ? canvasGlassHover(colors)
+              : null,
           borderRadius: radius,
         ),
         child: InkWell(
@@ -205,7 +212,44 @@ class ProductionPill extends StatelessWidget {
   }
 }
 
-/// 输入框底栏的方形图标按钮（＋ / @ / 运镜）。
+/// 输入框顶部工具行的按钮：淡底 pill 里的图标 + 名称。
+class ProductionToolChip extends StatelessWidget {
+  const ProductionToolChip({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.tooltip,
+    this.open = false,
+  });
+  final String icon;
+  final String label;
+  final String? tooltip;
+  final VoidCallback? onTap;
+  final bool open;
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final color = onTap == null ? colors.textSubtle : colors.textSecondary;
+    return ProductionPill(
+      open: open,
+      filled: true,
+      tooltip: tooltip,
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          RevericIcon(icon, size: 16, color: color),
+          const SizedBox(width: RevericSpacing.xs),
+          Text(label, style: typo.uiSmall.copyWith(color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 输入框里的方形图标按钮（展开、移除预设、表演说明等）。
 class ProductionToolButton extends StatelessWidget {
   const ProductionToolButton({
     super.key,

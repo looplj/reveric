@@ -144,6 +144,74 @@ void main() {
     },
   );
 
+  testWidgets('every in-flight stage reads as generating', (tester) async {
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    final appDb = app.AppDatabase.forTest(NativeDatabase.memory());
+    final shots = StoryboardService(db);
+    final episode = (await ScreenplayService(
+      db,
+    ).createInitialStructure()).episodeId;
+    final clip = await shots.createVideo(episode);
+    await appDb
+        .into(appDb.generationTasks)
+        .insert(
+          app.GenerationTasksCompanion.insert(
+            id: 'task',
+            novelId: 'work',
+            sourceType: 'production_clip',
+            sourceId: clip.id,
+            providerId: 'p',
+            providerType: 'doubao',
+            modelId: 'm',
+            kind: GenerationKind.video,
+            status: GenerationTaskStatus.uploading,
+            requestJson: VideoGenerationRequest(
+              const VideoRequest(
+                modelId: 'm',
+                prompt: 'prompt',
+                mode: VideoMode.text,
+                resolution: '720p',
+                ratio: '9:16',
+              ),
+              inputs: [],
+            ),
+          ),
+        );
+    await tester.pumpWidget(
+      wrap(
+        Column(
+          children: [
+            for (final floating in [false, true])
+              ProductionTaskStatus(
+                shots: shots,
+                database: appDb,
+                novelId: 'work',
+                clipId: clip.id,
+                floating: floating,
+              ),
+          ],
+        ),
+      ),
+    );
+    for (final status in [
+      GenerationTaskStatus.uploading,
+      GenerationTaskStatus.submitting,
+      GenerationTaskStatus.running,
+      GenerationTaskStatus.saving,
+    ]) {
+      await (appDb.update(appDb.generationTasks)
+            ..where((t) => t.id.equals('task')))
+          .write(app.GenerationTasksCompanion(status: Value(status)));
+      await tester.pumpAndSettle();
+      expect(find.text('Generating'), findsNWidgets(2), reason: status.name);
+    }
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await appDb.close();
+    await db.close();
+  });
+
   for (final kind in ['image', 'video']) {
     testWidgets(
       '$kind error dismissal survives revisiting and background updates',
