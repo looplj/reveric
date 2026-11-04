@@ -7,6 +7,8 @@ body:
       value: |
         提交前请搜索[已有问题](https://github.com/looplj/reveric/issues)。崩溃或结果错误请使用「错误报告」。
 
+        标题请简要概括希望改善的地方，下面补充具体操作和影响。不需要先想好解决办法。
+
         示例和附件请移除私人内容。
 
   - type: dropdown
@@ -26,23 +28,28 @@ body:
     attributes:
       label: 当前表现与影响
       description: 请注明页面或功能、操作过程，以及具体哪里慢或不方便。
-      placeholder: 在分镜节点较多的画布中平移时……
+      placeholder: |
+        页面或功能：
+        操作过程：
+        具体哪里慢或不方便：
+        发生频率及影响：
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: 期望改善
-      description: 怎样能让这项操作更方便或更快？
+      label: 期望改善（选填）
+      description: 希望这项操作变成什么样？描述期望效果即可，不需要提供实现方案。
     validations:
-      required: true
+      required: false
 
   - type: input
     id: version
     attributes:
       label: Reveric 版本
-      description: 源码构建请补充提交哈希。
+      description: 请填写完整版本号；源码构建请补充提交哈希。
+      placeholder: 例如：0.6.2
     validations:
       required: true
 
@@ -62,11 +69,15 @@ body:
     id: measurements
     attributes:
       label: 环境与观测数据
-      description: 性能问题请补充系统版本、设备、数据规模，以及已有的耗时或 CPU、内存观测值，可提供估算值。
-      placeholder: 章节字数、画布节点数、时间线长度、素材分辨率等……
+      description: 性能问题请尽量补充以下信息。不清楚的项目可注明「不清楚」，耗时和数据规模可估算，无需专门运行性能工具。
+      placeholder: |
+        系统版本与设备：
+        数据规模（如章节字数、画布节点数、素材分辨率）：
+        大致耗时：
+        已有的 CPU 或内存观测值（没有可留空）：
 
   - type: textarea
     id: suggestion
     attributes:
       label: 优化思路（选填）
-      description: 如有想法、对比示例或截图，可在此补充。
+      description: 如有具体改法、对比示例或截图，可在此补充。

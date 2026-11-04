@@ -7,22 +7,19 @@ body:
       value: |
         提问前可先查看 [README](https://github.com/looplj/reveric#readme) 和[已有问题](https://github.com/looplj/reveric/issues)。
 
-        请勿公开 API 密钥、私人作品正文或个人信息。
+        标题请简要概括疑问，下面补充使用场景和卡住的地方。遇到报错或非预期行为请使用「错误报告」。
 
-  - type: textarea
-    id: question
-    attributes:
-      label: 问题
-      description: 你想了解什么？
-    validations:
-      required: true
+        请勿公开 API 密钥、私人作品正文或个人信息。
 
   - type: textarea
     id: context
     attributes:
-      label: 场景与已尝试的方法
-      description: 你想完成什么操作？已经尝试过哪些方法？
-      placeholder: 我正在为 AI 聊天配置模型供应商……
+      label: 使用场景与具体疑问
+      description: 请说明想完成的操作，以及具体哪一步不清楚。已尝试过的方法和结果也可写在这里。
+      placeholder: |
+        想完成什么操作：
+        哪一步不清楚，想了解什么：
+        已尝试的方法及结果（尚未尝试可注明）：
     validations:
       required: true
 
@@ -45,11 +42,46 @@ body:
   - type: input
     id: environment
     attributes:
-      label: 版本与平台（如相关）
-      description: 请填写 Reveric 版本及 Windows、macOS 或 Android 系统版本；源码构建请补充提交哈希。
+      label: 版本与平台
+      description: 请填写完整 Reveric 版本及系统版本；源码构建请补充提交哈希。尚未安装时注明「尚未安装」和准备使用的平台。
+      placeholder: 例如：Reveric 0.6.2，Windows 11（x64）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interface-format
+    attributes:
+      label: 接口格式（选填）
+      description: 模型配置问题请选择应用中配置的接口格式，不要按模型名称推测。选择「其他」时请在下方说明。
+      options:
+        - OpenAI 兼容
+        - OpenAI
+        - xAI
+        - Anthropic
+        - Qwen
+        - Gemini
+        - DeepSeek
+        - Moonshot
+        - Zhipu
+        - Doubao
+        - MiniMax
+        - Agnes
+        - Codex
+        - 88API
+        - OOKiAPI
+        - OpenRouter
+        - 火山引擎
+        - 秘塔科技
+        - AtlasCloud
+        - 不涉及
+        - 不清楚
+        - 其他
 
   - type: textarea
     id: additional
     attributes:
-      label: 补充信息
-      description: 模型配置问题可补充供应商和模型 ID，不要填写密钥。
+      label: 相关配置与参考（选填）
+      description: |
+        模型配置问题请补充服务来源（官方、第三方中转或本地）、供应商名称及完整模型 ID，也可附配置截图。
+        截图请遮住密钥。不清楚的项目注明「不清楚」。
+        其他问题可补充正在参考的说明链接或截图。

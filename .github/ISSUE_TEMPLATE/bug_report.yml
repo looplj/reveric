@@ -7,41 +7,38 @@ body:
       value: |
         提交前请搜索[已有问题](https://github.com/looplj/reveric/issues)。
 
-        反馈内容公开。请移除截图和日志中的 API 密钥、未公开的作品正文及个人信息，不要在此上传数据库或完整诊断包。
+        标题请简要概括问题，下面补充操作过程和实际结果。
 
-  - type: textarea
-    id: description
-    attributes:
-      label: 出现了什么问题？
-      description: 描述当时的操作和实际发生的情况。
-    validations:
-      required: true
+        反馈内容公开。请移除截图和日志中的 API 密钥、未公开的作品正文及个人信息，不要在此上传数据库或完整诊断包。
 
   - type: textarea
     id: steps
     attributes:
-      label: 复现步骤
+      label: 复现步骤与实际结果
       description: 如果偶尔发生，请描述最近一次的操作和发生频率。
       placeholder: |
-        1. 打开一部小说
-        2. 选择章节后……
-        3. ……
+        1. 打开哪个页面或功能：
+        2. 选择了什么配置或模型：
+        3. 输入了什么内容（请用可公开的示例）：
+        4. 点击了哪个按钮：
+        5. 实际出现了什么情况：
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: 期望行为
+      label: 期望行为（选填）
       description: 你期望发生什么？
     validations:
-      required: true
+      required: false
 
   - type: input
     id: version
     attributes:
       label: Reveric 版本
       description: 请填写完整版本号；源码构建请补充提交哈希。
+      placeholder: 例如：0.6.2
     validations:
       required: true
 
@@ -89,14 +86,56 @@ body:
   - type: textarea
     id: ai-context
     attributes:
-      label: AI 配置（如相关）
-      description: 请注明供应商、完整模型 ID、接口协议，以及是否经过网关或使用本地模型，不要填写密钥。
+      label: AI 配置
+      description: 非 AI 问题填「不涉及」；不清楚的项目注明「不清楚」，也可附供应商及模型配置截图。请遮住密钥。
+      placeholder: |
+        服务来源：官方服务 / 第三方中转 / 本地部署
+        供应商名称：
+        完整模型 ID（请直接复制，不要只填系列名称）：
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interface-format
+    attributes:
+      label: 接口格式
+      description: 请选择应用中配置的接口格式，不要按模型名称推测。非 AI 问题选「不涉及」；选择「其他」时请在 AI 配置中说明。
+      options:
+        - OpenAI 兼容
+        - OpenAI
+        - xAI
+        - Anthropic
+        - Qwen
+        - Gemini
+        - DeepSeek
+        - Moonshot
+        - Zhipu
+        - Doubao
+        - MiniMax
+        - Agnes
+        - Codex
+        - 88API
+        - OOKiAPI
+        - OpenRouter
+        - 火山引擎
+        - 秘塔科技
+        - AtlasCloud
+        - 不涉及
+        - 不清楚
+        - 其他
+    validations:
+      required: true
 
   - type: textarea
     id: evidence
     attributes:
       label: 错误信息、日志或截图
-      description: 请提供移除隐私信息后的相关片段，并注明问题发生的大致时间。
+      description: |
+        请粘贴完整错误文案或上传截图，不要只填写 400、500 等状态码。如果界面仅显示状态码，也请注明。
+        没有报错时请描述异常画面；无法提供截图或日志时请说明原因。
+        日志只需提供问题发生时的相关片段，并注明大致时间。请移除密钥、私人作品内容和个人信息，不要上传数据库或完整诊断包。
+    validations:
+      required: true
 
   - type: textarea
     id: additional
