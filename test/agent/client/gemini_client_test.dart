@@ -7,6 +7,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:reveric/shared/agent/client.dart';
 import 'package:reveric/shared/agent/client/gemini_client.dart';
@@ -322,6 +323,40 @@ void main() {
       },
     );
   });
+
+  test(
+    'Gemini dedicated stream preserves custom host and normalizes version',
+    () async {
+      final requests = <Uri>[];
+      final client = GeminiClient(
+        apiKey: 'relay-key',
+        model: 'gemini-test',
+        baseUrl: ' https://relay.example/proxy/v1beta/?route=chat ',
+        streamHttpClientFactory: () => MockClient((request) async {
+          requests.add(request.url);
+          return http.Response(
+            _finishReasonStream('STOP'),
+            200,
+            headers: {'content-type': 'text/event-stream'},
+          );
+        }),
+      );
+      final events = await client
+          .chatStream(
+            messages: [AgentMessage.user(id: 'user', content: 'hello')],
+          )
+          .toList();
+      expect(events, isNotEmpty);
+      expect(requests, hasLength(1));
+      expect(requests.single.host, 'relay.example');
+      expect(
+        requests.single.path,
+        '/proxy/v1beta/models/gemini-test:streamGenerateContent',
+      );
+      expect(requests.single.queryParameters['route'], 'chat');
+      expect(requests.single.queryParameters['key'], 'relay-key');
+    },
+  );
 
   group('GeminiClient.chatStream', () {
     test(

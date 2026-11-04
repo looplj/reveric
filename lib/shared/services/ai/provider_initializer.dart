@@ -183,6 +183,7 @@ class AiProviderInitializer {
       case AiProviderType.gemini:
         return GeminiClient(
           apiKey: _config.effectiveApiKey,
+          baseUrl: _config.effectiveBaseUrl,
           model: _chatModel,
           httpClient: _httpClient,
           streamHttpClientFactory: _createStreamHttpClient,

@@ -33,6 +33,28 @@ import 'provider_history_preflight.dart'
 import 'trace_headers_http_client.dart'
     show TraceHeadersHttpClient, TraceHeadersProvider;
 
+/// Gemini 原生接口根地址。SDK 与直连请求都会自行拼接 /v1beta，
+/// 这里去掉用户填写的版本后缀，保留中转服务的路径前缀和查询参数。
+Uri geminiApiRoot(String? baseUrl) {
+  final trimmed = baseUrl?.trim() ?? '';
+  if (trimmed.isEmpty) {
+    return Uri.parse('https://generativelanguage.googleapis.com');
+  }
+  final uri = Uri.parse(trimmed);
+  final path = uri.path
+      .replaceFirst(RegExp(r'/+$'), '')
+      .replaceFirst(RegExp(r'/v1beta$'), '');
+  return uri.replace(path: path);
+}
+
+/// 不经 SDK 直接请求 `models/{model}:{method}` 时使用的完整地址。
+Uri geminiModelEndpoint(String? baseUrl, String model, String method) {
+  final root = geminiApiRoot(baseUrl);
+  return root.replace(
+    path: '${root.path}/v1beta/models/${Uri.encodeComponent(model)}:$method',
+  );
+}
+
 class GeminiClient implements ProviderClient {
   GeminiClient({
     required String apiKey,
@@ -51,7 +73,7 @@ class GeminiClient implements ProviderClient {
                  ? gai.AuthPlacement.header
                  : gai.AuthPlacement.queryParam,
            ),
-           baseUrl: baseUrl ?? 'https://generativelanguage.googleapis.com',
+           baseUrl: geminiApiRoot(baseUrl).toString(),
            defaultHeaders: defaultHeaders ?? const {},
          ),
          httpClient: traceHeadersProvider != null

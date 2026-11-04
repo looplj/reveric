@@ -14,6 +14,7 @@ import '../../models/ai_provider.dart';
 import '../../logger/app_logger.dart';
 import '../novel_content.dart';
 import '../../agent/client.dart';
+import '../../agent/client/gemini_client.dart' show geminiModelEndpoint;
 import 'prompts/use_cases/task_prompt_use_case.dart';
 
 final _log = AppLogger.forModule('Embedding');
@@ -428,8 +429,10 @@ class AiEmbeddingService {
   }
 
   Future<String> _segmenterCallGemini(String model, String prompt) async {
-    final url = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=${_config.effectiveApiKey}',
+    final url = geminiModelEndpoint(
+      _config.effectiveBaseUrl,
+      model,
+      'generateContent',
     );
     final body = jsonEncode({
       'contents': [
@@ -442,7 +445,10 @@ class AiEmbeddingService {
     });
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': _config.effectiveApiKey,
+      },
       body: body,
     );
     if (response.statusCode != 200) {
