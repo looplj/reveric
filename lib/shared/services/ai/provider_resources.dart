@@ -133,7 +133,9 @@ Map<String, dynamic>? _video(AiProvider provider, String model) {
   return {
     'capabilities': {
       'modes': [
-        'text',
+        if (channel.protocolOptions.requiredMode == null ||
+            channel.protocolOptions.requiredMode == VideoMode.text)
+          'text',
         if (caps.frameRoles.contains(VideoInputRole.first_frame)) 'first_frame',
         if (caps.frameRoles.contains(VideoInputRole.first_frame) &&
             caps.frameRoles.contains(VideoInputRole.last_frame))

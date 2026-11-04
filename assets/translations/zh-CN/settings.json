@@ -144,6 +144,7 @@
   "settings.provider_description_xai": "接入 xAI 的 Grok 模型，支持对话和图像生成。",
   "settings.provider_description_anthropic": "接入 Anthropic 的 Claude 系列对话模型。",
   "settings.provider_description_qwen": "接入千问平台，支持对话、图像、视频和语音生成。",
+  "settings.provider_description_qwen_token_plan": "使用套餐专属 API Key 接入千问 Token Plan，支持对话、图像、视频和语音生成。",
   "settings.provider_description_gemini": "接入 Google Gemini 模型，支持对话和图像生成。",
   "settings.provider_description_deepseek": "接入 DeepSeek 的对话与推理模型。",
   "settings.provider_description_moonshot": "接入 Moonshot 的 Kimi 系列对话模型。",

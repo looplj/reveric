@@ -4,6 +4,8 @@
 //   lib/shared/models/video/channels.dart
 //   lib/shared/models/video/capabilities.dart
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/services/ai/provider_resources.dart';
 import 'package:reveric/shared/models/video/catalog.dart';
 import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/models/video/capabilities.dart';
@@ -38,6 +40,88 @@ const approvedOpenRouterModels = {
 };
 
 void main() {
+  test(
+    'Token Plan lists split HappyHorse models with mode-specific limits',
+    () {
+      expect(videoModelsForProvider('qwen_token_plan'), [
+        'happyhorse-1.1-t2v',
+        'happyhorse-1.1-i2v',
+        'happyhorse-1.1-r2v',
+      ]);
+      expect(videoModelsForProvider('qwen'), [
+        'wan3.0-video',
+        'wan3.0-video-prime',
+      ]);
+      for (final (suffix, mode, role, count) in [
+        ('t2v', VideoMode.text, null, 0),
+        ('i2v', VideoMode.first_frame, VideoInputRole.first_frame, 1),
+        ('r2v', VideoMode.reference, VideoInputRole.reference_image, 9),
+      ]) {
+        final model = 'happyhorse-1.1-$suffix';
+        final channel = lookupVideoChannelModel('qwen_token_plan', model)!;
+        final provider = aiProviderBuiltinById(
+          'openai',
+        )!.copyWith(type: 'qwen_token_plan', videoModels: [model]);
+        final resource = providerModelResource(provider, 'video', model);
+        expect(resource['capabilities']['modes'], [mode.name]);
+        expect(channel.durations, {
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+        });
+        expect(channel.resolutions, {'480P', '720P', '1080P'});
+        expect(channel.capabilities.maxReferences, count);
+        const caps = VideoCapabilities('qwen_token_plan');
+        VideoRequest req({VideoMode? chosenMode, int duration = 5}) =>
+            VideoRequest(
+              modelId: model,
+              prompt: 'scene',
+              mode: chosenMode ?? mode,
+              resolution: '720P',
+              ratio: suffix == 'i2v' ? 'adaptive' : '16:9',
+              durationSeconds: duration,
+            );
+        final roles = role == null
+            ? <VideoInputRole>[]
+            : List.filled(count, role);
+        caps.validateParameters(req(), roles);
+        for (final duration in [2, 16]) {
+          expect(
+            () => caps.validateParameters(req(duration: duration), roles),
+            throwsA(isA<VideoException>()),
+          );
+        }
+        for (final wrongMode in VideoMode.values.where(
+          (value) => value != mode,
+        )) {
+          expect(
+            () => caps.validateParameters(req(chosenMode: wrongMode), roles),
+            throwsA(isA<VideoException>()),
+          );
+        }
+        if (role != null) {
+          expect(
+            () => caps.validateParameters(req(), []),
+            throwsA(isA<VideoException>()),
+          );
+          expect(
+            () => caps.validateParameters(req(), List.filled(count + 1, role)),
+            throwsA(isA<VideoException>()),
+          );
+        }
+      }
+    },
+  );
   test(
     'AtlasCloud channel limits remain distinct from native and OpenRouter channels',
     () {

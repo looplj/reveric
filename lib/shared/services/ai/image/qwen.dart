@@ -34,7 +34,10 @@ class QwenImageClient extends ImageClient {
     final base = Uri.parse(config.effectiveBaseUrl);
     final basePath = base.path.replaceFirst(RegExp(r'/+$'), '');
     final options = channel?.protocolOptions as QwenImageOptions?;
-    final modern = options?.usesImagesApi ?? false;
+    // Token Plan uses the native multimodal endpoint for all image models.
+    final modern =
+        config.typeEnum != AiProviderType.qwen_token_plan &&
+        (options?.usesImagesApi ?? false);
     final uri = base.replace(
       path: modern
           ? '$basePath/images/generations'

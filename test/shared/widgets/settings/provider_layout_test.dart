@@ -20,6 +20,7 @@ import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/settings/ai_providers_section.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
+import 'package:reveric/shared/widgets/settings/provider_draft.dart';
 import 'package:reveric/shared/widgets/settings/provider_logo.dart';
 import 'package:reveric/shared/widgets/settings/provider_overview.dart';
 import 'package:reveric/shared/widgets/settings/provider_type_picker.dart';
@@ -58,6 +59,72 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.android,
+  ]) {
+    testWidgets(
+      'Qwen Token Plan draft and referral link on $platform',
+      (tester) async {
+        expect(
+          providerTypePickerTypes(),
+          contains(AiProviderType.qwen_token_plan),
+        );
+        final launched = <String>[];
+        const channel = MethodChannel('plugins.flutter.io/url_launcher');
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          (call) async {
+            if (call.method == 'launch') {
+              launched.add((call.arguments as Map)['url'] as String);
+            }
+            return true;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            channel,
+            null,
+          ),
+        );
+        late AiProvider draft;
+        await tester.pumpWidget(
+          _wrap(
+            Builder(
+              builder: (context) {
+                draft = newProviderDraft(
+                  context,
+                  AiProviderType.qwen_token_plan,
+                );
+                return ProviderOverview(config: draft);
+              },
+            ),
+            false,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(draft.type, 'qwen_token_plan');
+        expect(draft.name, 'Qwen Token Plan');
+        expect(
+          draft.baseUrl,
+          'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1',
+        );
+        expect(
+          find.text(
+            'Access Qwen Token Plan for chat, image, video, and speech generation using your plan API key.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.byType(RevericButton));
+        await tester.pumpAndSettle();
+        expect(launched, [providerChannelUrls['qwen_token_plan']]);
+        expect(tester.takeException(), isNull);
+      },
+      variant: TargetPlatformVariant.only(platform),
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+  }
   for (final width in [320.0, 760.0]) {
     for (final dark in [false, true]) {
       testWidgets(

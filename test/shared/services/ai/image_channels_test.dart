@@ -63,96 +63,104 @@ void main() {
     await support.delete(recursive: true);
   });
 
-  for (final model in imageChannelModels[ImageProtocol.qwen_image]!.keys) {
-    test(
-      '$model uses its documented synchronous endpoint for generation and editing',
-      () async {
-        final service = AiImageGenerationService(
-          _provider('qwen'),
-          model: model,
-        );
-        final modern = model.startsWith('qwen-') && !model.contains('2.0');
-        var count = 0;
-        await http.runWithClient(
-          () async {
-            for (final editing in [false, true]) {
-              final result = editing
-                  ? await service.editImages(
-                      'combine',
-                      imageData: _references,
-                      size: '2688x1536',
-                    )
-                  : await service.generateImage('combine', size: '2688x1536');
+  for (final type in ['qwen', 'qwen_token_plan']) {
+    for (final model in imageChannelModels[ImageProtocol.qwen_image]!.keys) {
+      test(
+        '$type $model uses its documented synchronous endpoint for generation and editing',
+        () async {
+          final service = AiImageGenerationService(
+            _provider(type),
+            model: model,
+          );
+          final modern =
+              type == 'qwen' &&
+              model.startsWith('qwen-') &&
+              !model.contains('2.0');
+          final root = type == 'qwen_token_plan'
+              ? 'https://token-plan.maas.qianwenaiapi.com'
+              : 'https://proxy.example/prefix';
+          var count = 0;
+          await http.runWithClient(
+            () async {
+              for (final editing in [false, true]) {
+                final result = editing
+                    ? await service.editImages(
+                        'combine',
+                        imageData: _references,
+                        size: '2688x1536',
+                      )
+                    : await service.generateImage('combine', size: '2688x1536');
+                expect(
+                  File(result.localFilePath!).readAsBytesSync(),
+                  base64Decode(_png),
+                );
+                expect(result.mimeSubtype, 'png');
+              }
+            },
+            () => MockClient((request) async {
+              final editing = count++ == 1;
+              expect(request.method, 'POST');
+              expect(request.headers['Authorization'], 'Bearer test-key');
               expect(
-                File(result.localFilePath!).readAsBytesSync(),
-                base64Decode(_png),
-              );
-              expect(result.mimeSubtype, 'png');
-            }
-          },
-          () => MockClient((request) async {
-            final editing = count++ == 1;
-            expect(request.method, 'POST');
-            expect(request.headers['Authorization'], 'Bearer test-key');
-            expect(
-              request.url.toString(),
-              modern
-                  ? 'https://proxy.example/prefix/compatible-mode/v1/images/generations'
-                  : 'https://proxy.example/prefix/api/v1/services/aigc/multimodal-generation/generation',
-            );
-            final body = jsonDecode(request.body) as Map;
-            expect(body['model'], model);
-            if (modern) {
-              expect(body, {
-                'model': model,
-                'prompt': 'combine',
-                'n': 1,
-                'size': '2688x1536',
-                'watermark': false,
-                'prompt_extend': true,
-                if (editing) 'image': _references,
-              });
-            } else {
-              expect(body['parameters'], {
-                'n': 1,
-                'size': '2688*1536',
-                'watermark': false,
-                if (model.startsWith('qwen-')) 'prompt_extend': true,
-              });
-              expect(body['input']['messages'][0]['content'], [
-                if (editing) ..._references.map((image) => {'image': image}),
-                {'text': 'combine'},
-              ]);
-            }
-            return http.Response(
-              jsonEncode(
+                request.url.toString(),
                 modern
-                    ? {
-                        'data': [
-                          {'url': _image},
-                        ],
-                      }
-                    : {
-                        'output': {
-                          'choices': [
-                            {
-                              'message': {
-                                'content': [
-                                  {'image': _image},
-                                ],
-                              },
-                            },
+                    ? '$root/compatible-mode/v1/images/generations'
+                    : '$root/api/v1/services/aigc/multimodal-generation/generation',
+              );
+              final body = jsonDecode(request.body) as Map;
+              expect(body['model'], model);
+              if (modern) {
+                expect(body, {
+                  'model': model,
+                  'prompt': 'combine',
+                  'n': 1,
+                  'size': '2688x1536',
+                  'watermark': false,
+                  'prompt_extend': true,
+                  if (editing) 'image': _references,
+                });
+              } else {
+                expect(body['parameters'], {
+                  'n': 1,
+                  'size': '2688*1536',
+                  'watermark': false,
+                  if (model.startsWith('qwen-')) 'prompt_extend': true,
+                });
+                expect(body['input']['messages'][0]['content'], [
+                  if (editing) ..._references.map((image) => {'image': image}),
+                  {'text': 'combine'},
+                ]);
+              }
+              return http.Response(
+                jsonEncode(
+                  modern
+                      ? {
+                          'data': [
+                            {'url': _image},
                           ],
+                        }
+                      : {
+                          'output': {
+                            'choices': [
+                              {
+                                'message': {
+                                  'content': [
+                                    {'image': _image},
+                                  ],
+                                },
+                              },
+                            ],
+                          },
                         },
-                      },
-              ),
-              200,
-            );
-          }),
-        );
-        expect(count, 2);
-      },
-    );
+                ),
+                200,
+              );
+            }),
+          );
+          expect(count, 2);
+        },
+      );
+    }
   }
 
   test(

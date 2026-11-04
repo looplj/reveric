@@ -6,6 +6,7 @@
 //   lib/shared/models/audio/request.dart
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/models/provider_brand.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/models/audio/request.dart';
@@ -13,6 +14,34 @@ import 'package:reveric/shared/services/production/generate_orchestrator.dart';
 import 'package:reveric/shared/models/video/request.dart';
 
 void main() {
+  test('Qwen Token Plan persists independently and uses its own channel', () {
+    final provider = aiProviderBuiltinById('openai')!.copyWith(
+      id: 'token-plan',
+      builtin: false,
+      type: 'qwen_token_plan',
+      baseUrl: 'https://maas.qianwenaiapi.com/compatible-mode/v1',
+      apiKey: 'test-key',
+      imageModels: ['qwen-image-3.0-pro'],
+    );
+    final restored = AiProvider.fromJson(provider.toJson());
+    expect(customAiProviderTypes, contains(AiProviderType.qwen_token_plan));
+    expect(restored.typeEnum, AiProviderType.qwen_token_plan);
+    expect(
+      restored.effectiveBaseUrl,
+      'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1',
+    );
+    expect(restored.supportedModelKinds, AiModelKind.values.toSet());
+    expect(
+      ProductionImageCapabilities(restored, 'qwen-image-3.0-pro').isSupported,
+      true,
+    );
+    expect(providerLogoAsset(restored.type), providerLogoAsset('qwen'));
+    expect(
+      providerChannelUrls[restored.type],
+      'https://www.qianwenai.com/benefits/tokenplan?shareCode=subTask..12980046..10274..,subTask..12980046..10274..',
+    );
+  });
+
   test('MiniMax chat uses the Anthropic-compatible entry of its base URL', () {
     expect(
       aiProviderTypeConfigs[AiProviderType.minimax]!.supportedModelKinds,

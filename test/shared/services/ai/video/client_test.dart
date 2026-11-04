@@ -216,6 +216,88 @@ Map<String, dynamic> result(
 };
 
 void main() {
+  for (final (suffix, mode, role) in [
+    ('t2v', VideoMode.text, null),
+    ('i2v', VideoMode.first_frame, VideoInputRole.first_frame),
+    ('r2v', VideoMode.reference, VideoInputRole.reference_image),
+  ]) {
+    test(
+      'Token Plan HappyHorse $suffix submits and polls native protocol',
+      () async {
+        final model = 'happyhorse-1.1-$suffix';
+        final req = VideoRequest(
+          modelId: model,
+          prompt: 'A bird flying',
+          mode: mode,
+          resolution: '720P',
+          ratio: suffix == 'i2v' ? 'adaptive' : '16:9',
+        );
+        final refs = role == null ? <VideoReference>[] : [reference(role)];
+        var calls = 0;
+        final api = WanVideoClient(
+          providerType: 'qwen_token_plan',
+          endpoint: wanVideoEndpoint(
+            'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1',
+          ),
+          apiKey: 'plan-key',
+          httpClient: MockClient((r) async {
+            calls++;
+            expect(r.headers['Authorization'], 'Bearer plan-key');
+            if (r.method == 'POST') {
+              expect(
+                r.url.toString(),
+                'https://token-plan.maas.qianwenaiapi.com/api/v1/services/aigc/video-generation/video-synthesis',
+              );
+              expect(r.headers['X-DashScope-Async'], 'enable');
+              expect(jsonDecode(r.body), {
+                'model': model,
+                'input': {
+                  'prompt': 'A bird flying',
+                  if (role != null)
+                    'media': [
+                      {'type': role.name, 'url': refs.single.url.toString()},
+                    ],
+                },
+                'parameters': {
+                  'resolution': '720P',
+                  'duration': 5,
+                  if (suffix != 'i2v') 'ratio': '16:9',
+                },
+              });
+              return http.Response(
+                jsonEncode({
+                  'output': {'task_id': 'task-1', 'task_status': 'PENDING'},
+                }),
+                200,
+              );
+            }
+            expect(r.method, 'GET');
+            expect(
+              r.url.toString(),
+              'https://token-plan.maas.qianwenaiapi.com/api/v1/tasks/task-1',
+            );
+            expect(r.headers.containsKey('X-DashScope-Async'), false);
+            return http.Response(
+              jsonEncode({
+                'output': {
+                  'task_status': 'SUCCEEDED',
+                  'video_url': 'https://result.example/video.mp4',
+                },
+              }),
+              200,
+            );
+          }),
+        );
+        addTearDown(api.httpClient.close);
+        final task = await api.submit(req, refs);
+        final result = await api.query(task);
+        expect(result.status, VideoRemoteStatus.succeeded);
+        expect(result.videoUrl.toString(), 'https://result.example/video.mp4');
+        expect(calls, 2);
+      },
+    );
+  }
+
   test(
     'AtlasCloud frame modes select the image route and preserve both frames',
     () async {

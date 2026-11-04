@@ -13,6 +13,8 @@ const providerChannelUrls = {
   'xai': 'https://console.x.ai/',
   'anthropic': 'https://platform.claude.com/settings/keys',
   'qwen': 'https://platform.qianwenai.com/api-keys',
+  'qwen_token_plan':
+      'https://www.qianwenai.com/benefits/tokenplan?shareCode=subTask..12980046..10274..,subTask..12980046..10274..',
   'gemini': 'https://aistudio.google.com/apikey',
   'deepseek': 'https://platform.deepseek.com/api_keys',
   'moonshot': 'https://platform.kimi.com/console/api-keys',
@@ -29,6 +31,7 @@ const providerLogoAssets = <String, String>{
   'anthropic': 'assets/icons/providers/anthropic.png',
   'deepseek': 'assets/icons/providers/deepseek.png',
   'qwen': 'assets/icons/providers/qwen.png',
+  'qwen_token_plan': 'assets/icons/providers/qwen.png',
   'gemini': 'assets/icons/providers/gemini.png',
   'moonshot': 'assets/icons/providers/moonshot.png',
   'zhipu': 'assets/icons/providers/zhipu.svg',

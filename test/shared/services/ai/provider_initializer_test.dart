@@ -174,48 +174,52 @@ void main() {
       );
     },
   );
-  test('Qwen custom URL uses Chat Completions and enable_thinking', () async {
-    final provider = aiProviderBuiltinById('openai')!.copyWith(
-      type: 'qwen',
-      baseUrl: 'https://proxy.example/prefix/compatible-mode/v1',
-      apiKey: 'qwen-key',
-    );
-    expect(provider.hasFixedBaseUrl, false);
-    final initializer = AiProviderInitializer(
-      config: provider,
-      chatModel: 'qwen3.8-flash',
-      httpClient: MockClient((r) async {
-        expect(
-          r.url.toString(),
-          'https://proxy.example/prefix/compatible-mode/v1/chat/completions',
-        );
-        expect(r.headers['Authorization'], 'Bearer qwen-key');
-        final body = jsonDecode(r.body) as Map;
-        expect(body['enable_thinking'], false);
-        expect(body.containsKey('thinking'), false);
-        expect(body.containsKey('reasoning_effort'), false);
-        return http.Response(
-          jsonEncode({
-            'choices': [
-              {
-                'index': 0,
-                'message': {'role': 'assistant', 'content': 'ok'},
-                'finish_reason': 'stop',
-              },
-            ],
-          }),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
-    );
-    final api = await initializer.initialize();
-    await api.chat(
-      messages: [AgentMessage.user(id: 'user', content: 'hello')],
-      options: const AgentConfig(reasoningEffort: 'none'),
-    );
-    initializer.dispose();
-  });
+  for (final type in ['qwen', 'qwen_token_plan']) {
+    test('$type uses Chat Completions and enable_thinking', () async {
+      final provider = aiProviderBuiltinById('openai')!.copyWith(
+        type: type,
+        baseUrl: 'https://proxy.example/prefix/compatible-mode/v1',
+        apiKey: 'qwen-key',
+      );
+      expect(provider.hasFixedBaseUrl, type == 'qwen_token_plan');
+      final initializer = AiProviderInitializer(
+        config: provider,
+        chatModel: 'qwen3.8-flash',
+        httpClient: MockClient((r) async {
+          expect(
+            r.url.toString(),
+            type == 'qwen_token_plan'
+                ? 'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions'
+                : 'https://proxy.example/prefix/compatible-mode/v1/chat/completions',
+          );
+          expect(r.headers['Authorization'], 'Bearer qwen-key');
+          final body = jsonDecode(r.body) as Map;
+          expect(body['enable_thinking'], false);
+          expect(body.containsKey('thinking'), false);
+          expect(body.containsKey('reasoning_effort'), false);
+          return http.Response(
+            jsonEncode({
+              'choices': [
+                {
+                  'index': 0,
+                  'message': {'role': 'assistant', 'content': 'ok'},
+                  'finish_reason': 'stop',
+                },
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+      final api = await initializer.initialize();
+      await api.chat(
+        messages: [AgentMessage.user(id: 'user', content: 'hello')],
+        options: const AgentConfig(reasoningEffort: 'none'),
+      );
+      initializer.dispose();
+    });
+  }
   test('Qwen default replaces only blank and known former fixed URL', () {
     for (final old in ['', 'https://dashscope.aliyuncs.com/apps/anthropic/']) {
       final provider = aiProviderBuiltinById(

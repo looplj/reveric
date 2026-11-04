@@ -1,9 +1,11 @@
-// 职责: 将 Wan 3.0 标准版及 prime 请求与回执转换为异步视频协议。
+// 职责: 将 Wan 与 HappyHorse 请求及回执转换为千问异步视频协议。
 // 关联文件:
 //   lib/shared/services/ai/video/client.dart
+//   lib/shared/models/video/channels.dart
 //   lib/shared/models/video/request.dart
 //   lib/shared/models/video/task_result.dart
 
+import '../../../models/video/channels.dart';
 import '../../../models/video/request.dart';
 import '../../../models/video/task_result.dart';
 import 'client.dart';
@@ -53,9 +55,14 @@ class WanVideoClient extends VideoClient {
     'parameters': {
       'resolution': request.resolution,
       'duration': request.durationSeconds,
-      'ratio': request.ratio,
-      'audio': request.audio,
-      'prompt_extend': request.promptExtend,
+      if (lookupVideoChannelModel(
+            providerType,
+            request.modelId,
+          )?.protocolOptions.requiredMode !=
+          VideoMode.first_frame)
+        'ratio': request.ratio,
+      'audio': ?request.audio,
+      'prompt_extend': ?request.promptExtend,
     },
   };
   @override

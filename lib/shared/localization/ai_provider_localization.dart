@@ -67,6 +67,8 @@ String localizedProviderTypeDescription(
     AiProviderType.xai => LocaleKeys.settingsProviderDescriptionXai,
     AiProviderType.anthropic => LocaleKeys.settingsProviderDescriptionAnthropic,
     AiProviderType.qwen => LocaleKeys.settingsProviderDescriptionQwen,
+    AiProviderType.qwen_token_plan =>
+      LocaleKeys.settingsProviderDescriptionQwenTokenPlan,
     AiProviderType.gemini => LocaleKeys.settingsProviderDescriptionGemini,
     AiProviderType.deepseek => LocaleKeys.settingsProviderDescriptionDeepseek,
     AiProviderType.moonshot => LocaleKeys.settingsProviderDescriptionMoonshot,

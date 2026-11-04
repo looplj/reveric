@@ -13,11 +13,15 @@ import 'request.dart';
 
 class VideoProtocolOptions {
   const VideoProtocolOptions({
+    this.requiredMode,
     this.framesRequireAdaptiveRatio = false,
     this.supportsOmniReferenceTaskType = false,
     this.supportsDraft = false,
     this.supportsProviderAssets = false,
   });
+
+  /// 分模式型号只接受该生成方式；空值沿用通用能力校验。
+  final VideoMode? requiredMode;
   final bool framesRequireAdaptiveRatio;
   final bool supportsOmniReferenceTaskType;
   final bool supportsDraft;
@@ -2387,6 +2391,89 @@ const _metasoH3Capabilities = VideoModelCapabilities(
 
 // Public model catalog and API examples: https://metaso.cn/minimax-h3
 const _providerVideoModels = <String, Map<String, VideoChannelModel>>{
+  // https://platform.qianwenai.com/docs/api-reference/video-generation/happyhorse-text-to-video/create-task
+  // https://platform.qianwenai.com/docs/api-reference/video-generation/happyhorse-image-to-video/create-task
+  // https://platform.qianwenai.com/docs/api-reference/video-generation/happyhorse-reference-to-video/create-task
+  'qwen_token_plan': {
+    'happyhorse-1.1-t2v': VideoChannelModel(
+      catalogId: 'happyhorse-1.1',
+      capabilities: VideoModelCapabilities(
+        resolutions: {'480P', '720P', '1080P'},
+        ratios: {
+          '16:9',
+          '9:16',
+          '1:1',
+          '4:3',
+          '3:4',
+          '4:5',
+          '5:4',
+          '9:21',
+          '21:9',
+        },
+        frameRoles: {},
+        maxReferences: 0,
+        allowsReferenceMode: false,
+        supportsAudioOnlyReference: false,
+        references: {VideoMediaKind.image: null},
+      ),
+      protocolOptions: VideoProtocolOptions(requiredMode: VideoMode.text),
+    ),
+    'happyhorse-1.1-i2v': VideoChannelModel(
+      catalogId: 'happyhorse-1.1',
+      capabilities: VideoModelCapabilities(
+        resolutions: {'480P', '720P', '1080P'},
+        ratios: {'adaptive'},
+        frameRoles: {VideoInputRole.first_frame},
+        maxReferences: 1,
+        allowsReferenceMode: false,
+        supportsAudioOnlyReference: false,
+        references: {
+          VideoMediaKind.image: VideoReferenceLimits(
+            maxCount: 1,
+            mimeTypes: ConfigValue({'image/jpeg', 'image/png', 'image/webp'}),
+            maxSizeMb: ConfigValue(20),
+            minDimension: ConfigValue(300),
+            minRatio: ConfigValue(0.4),
+            maxRatio: ConfigValue(2.5),
+          ),
+        },
+      ),
+      protocolOptions: VideoProtocolOptions(
+        requiredMode: VideoMode.first_frame,
+        framesRequireAdaptiveRatio: true,
+      ),
+    ),
+    'happyhorse-1.1-r2v': VideoChannelModel(
+      catalogId: 'happyhorse-1.1',
+      capabilities: VideoModelCapabilities(
+        resolutions: {'480P', '720P', '1080P'},
+        ratios: {
+          '16:9',
+          '9:16',
+          '1:1',
+          '4:3',
+          '3:4',
+          '4:5',
+          '5:4',
+          '9:21',
+          '21:9',
+        },
+        frameRoles: {},
+        maxReferences: 9,
+        allowsReferenceMode: true,
+        supportsAudioOnlyReference: false,
+        references: {
+          VideoMediaKind.image: VideoReferenceLimits(
+            maxCount: 9,
+            mimeTypes: ConfigValue({'image/jpeg', 'image/png', 'image/webp'}),
+            maxSizeMb: ConfigValue(20),
+            minDimension: ConfigValue(400),
+          ),
+        },
+      ),
+      protocolOptions: VideoProtocolOptions(requiredMode: VideoMode.reference),
+    ),
+  },
   'metaso': {
     'MiniMax-H3': VideoChannelModel(
       catalogId: 'MiniMax-H3',

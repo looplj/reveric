@@ -34,6 +34,8 @@ class VideoCapabilities {
     List<VideoInputRole> roles,
   ) {
     final model = channel.capabilities;
+    final requiredMode = channel.protocolOptions.requiredMode;
+    _check(requiredMode == null || request.mode == requiredMode, 'references');
     _check(request.prompt.trim().isNotEmpty, 'prompt');
     if (model.maxPromptCharacters != null) {
       _check(

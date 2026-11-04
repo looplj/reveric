@@ -144,6 +144,7 @@
   "settings.provider_description_xai": "Access xAI Grok models for chat and image generation.",
   "settings.provider_description_anthropic": "Access the Claude family of chat models from Anthropic.",
   "settings.provider_description_qwen": "Access the Qwen platform for chat, image, video, and speech generation.",
+  "settings.provider_description_qwen_token_plan": "Access Qwen Token Plan for chat, image, video, and speech generation using your plan API key.",
   "settings.provider_description_gemini": "Access Google Gemini models for chat and image generation.",
   "settings.provider_description_deepseek": "Access DeepSeek chat and reasoning models.",
   "settings.provider_description_moonshot": "Access the Kimi family of chat models from Moonshot.",

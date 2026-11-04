@@ -4796,6 +4796,8 @@ abstract final class LocaleKeys {
       'settings.provider_description_xai';
   static const settingsProviderDescriptionAnthropic =
       'settings.provider_description_anthropic';
+  static const settingsProviderDescriptionQwenTokenPlan =
+      'settings.provider_description_qwen_token_plan';
   static const settingsProviderDescriptionQwen =
       'settings.provider_description_qwen';
   static const settingsProviderDescriptionGemini =

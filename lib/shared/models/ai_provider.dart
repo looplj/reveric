@@ -39,6 +39,7 @@ enum AiProviderType {
   xai,
   anthropic,
   qwen,
+  qwen_token_plan,
   gemini,
   deepseek,
   moonshot,
@@ -176,6 +177,15 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     videoProtocol: VideoProtocol.wan_video,
     audioProtocol: AudioProtocol.qwen_tts,
   ),
+  AiProviderType.qwen_token_plan: AiProviderTypeConfig(
+    displayName: 'Qwen Token Plan',
+    modelIdSource: ModelIdSource.open,
+    textModelKinds: _chatOnlyKinds,
+    imageProtocol: ImageProtocol.qwen_image,
+    videoProtocol: VideoProtocol.wan_video,
+    audioProtocol: AudioProtocol.qwen_tts,
+    fixedBaseUrl: true,
+  ),
   AiProviderType.gemini: AiProviderTypeConfig(
     displayName: 'Gemini',
     modelIdSource: ModelIdSource.open,
@@ -248,6 +258,8 @@ final List<AiProviderType> customAiProviderTypes = List.unmodifiable(
 );
 
 String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
+  AiProviderType.qwen_token_plan =>
+    'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1',
   AiProviderType.metaso => 'https://metaso.cn/api/minimax',
   AiProviderType.api88 => 'https://api.88api.ai/v1',
   AiProviderType.ooki => 'https://api.ookiapi.com/v1',

@@ -150,6 +150,7 @@ class AiProviderInitializer {
       case AiProviderType.doubao:
       case AiProviderType.volcengine:
       case AiProviderType.qwen:
+      case AiProviderType.qwen_token_plan:
         return OpenAiClient(
           apiKey: _config.effectiveApiKey,
           baseUrl: _config.effectiveBaseUrl,
@@ -159,7 +160,9 @@ class AiProviderInitializer {
           traceHeadersProvider: _traceHeadersProvider,
           useOpenRouter: _config.typeEnum == AiProviderType.openrouter,
           useThinkingField: useThinkingField(_chatModel),
-          useEnableThinkingField: _config.typeEnum == AiProviderType.qwen,
+          useEnableThinkingField:
+              _config.typeEnum == AiProviderType.qwen ||
+              _config.typeEnum == AiProviderType.qwen_token_plan,
         );
       case AiProviderType.minimax:
         return AnthropicClient(
