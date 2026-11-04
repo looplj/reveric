@@ -32,98 +32,6 @@ enum AiMessageType {
   system_remind,
 }
 
-enum AiEmbeddingSourceType {
-  novel_description,
-  chapter_outline,
-  chapter_content,
-  character_summary,
-  item_content,
-  foreshadowing_setup,
-  foreshadowing_payoff,
-}
-
-enum AiChunkingStrategy { paragraph, heading_aware }
-
-@JsonSerializable(fieldRename: FieldRename.snake)
-class AiEmbeddingChunk {
-  final String sourceId;
-  final String sourceType;
-  final String chunkId;
-  final int chunkIndex;
-  final int startOffset;
-  final int endOffset;
-  final String text;
-  final Map<String, dynamic>? metadata;
-
-  const AiEmbeddingChunk({
-    required this.sourceId,
-    required this.sourceType,
-    required this.chunkId,
-    required this.chunkIndex,
-    required this.startOffset,
-    required this.endOffset,
-    required this.text,
-    this.metadata,
-  });
-
-  factory AiEmbeddingChunk.fromJson(Map<String, dynamic> json) =>
-      _$AiEmbeddingChunkFromJson(json);
-
-  Map<String, dynamic> toJson() => _$AiEmbeddingChunkToJson(this);
-}
-
-@JsonSerializable(fieldRename: FieldRename.snake)
-class AiEmbeddingSearchResult {
-  final String sourceId;
-  final String sourceType;
-  final String chunkId;
-  final String path;
-  final String title;
-  final String excerpt;
-  final double score;
-  final int chunkIndex;
-  final Map<String, dynamic>? metadata;
-
-  const AiEmbeddingSearchResult({
-    required this.sourceId,
-    required this.sourceType,
-    required this.chunkId,
-    required this.path,
-    required this.title,
-    required this.excerpt,
-    required this.score,
-    required this.chunkIndex,
-    this.metadata,
-  });
-
-  factory AiEmbeddingSearchResult.fromJson(Map<String, dynamic> json) =>
-      _$AiEmbeddingSearchResultFromJson(json);
-
-  Map<String, dynamic> toJson() => _$AiEmbeddingSearchResultToJson(this);
-}
-
-@JsonSerializable(fieldRename: FieldRename.snake)
-class AiEmbeddingConfig {
-  final AiChunkingStrategy strategy;
-  final int targetChunkChars;
-  final int maxChunkChars;
-  final int overlapChars;
-  final int maxResults;
-
-  const AiEmbeddingConfig({
-    this.strategy = AiChunkingStrategy.heading_aware,
-    this.targetChunkChars = 800,
-    this.maxChunkChars = 1200,
-    this.overlapChars = 120,
-    this.maxResults = 6,
-  });
-
-  factory AiEmbeddingConfig.fromJson(Map<String, dynamic> json) =>
-      _$AiEmbeddingConfigFromJson(json);
-
-  Map<String, dynamic> toJson() => _$AiEmbeddingConfigToJson(this);
-}
-
 class _AiMessageBlockListConverter
     implements JsonConverter<List<AiMessageBlock>, List<dynamic>> {
   const _AiMessageBlockListConverter();
@@ -366,7 +274,7 @@ class AiSessionContext {
     this.sourceNovelId,
     this.workType,
     this.novelName,
-    String? contentKind,
+    this._contentKind,
     this.currentSeasonId,
     this.currentEpisodeId,
     this.hasMultipleSeasons = false,
@@ -387,7 +295,7 @@ class AiSessionContext {
     this.materialNotes = const [],
     this.username,
     this.novelChatSessionCount,
-  }) : _contentKind = contentKind;
+  });
 
   bool get hasChapter => chapterId != null;
 

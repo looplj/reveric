@@ -1,7 +1,6 @@
-// 职责: Task Prompt Use Case — 构建 workspace/cover/chunk 等一次性任务 prompt
+// 职责: Task Prompt Use Case — 构建 workspace/cover 等一次性任务 prompt
 // 关联文件:
 //   lib/shared/services/ai/prompts.dart
-//   lib/shared/services/ai/embedding.dart
 //   lib/desktop/features/cover_studio/studio_page.dart
 
 import '../../prompt_template.dart';
@@ -49,20 +48,6 @@ class TaskPromptUseCase {
       vars['tags'] = tags.join('、');
     }
     return _render(PromptId.taskCoverAnalysis, vars);
-  }
-
-  String chunkSegmentation({
-    required String text,
-    required int targetChunkChars,
-    required int maxChunkChars,
-    required int overlapChars,
-  }) {
-    return _render(PromptId.taskChunkSegmentation, {
-      'text': text,
-      'target_chunk_chars': targetChunkChars.toString(),
-      'max_chunk_chars': maxChunkChars.toString(),
-      'overlap_chars': overlapChars.toString(),
-    });
   }
 
   static void _addIfNotEmpty(

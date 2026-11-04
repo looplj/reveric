@@ -116,6 +116,38 @@ void main() {
     expect((await service.getChapterById('next'))!.siblingOrder, 2);
   });
 
+  test('editing chapters preserves stored legacy vectors', () async {
+    await database
+        .into(database.aiEmbeddingDocuments)
+        .insert(
+          AiEmbeddingDocumentsCompanion.insert(
+            id: 'legacy-chunk',
+            sourceId: 'chapter:content',
+            sourceType: 'chapter_content',
+            path: '/chapters/chapter/content',
+            chunkIndex: 0,
+            content: '旧正文',
+            embeddingModel: 'legacy-model',
+            vector: [0.1, 0.2],
+          ),
+        );
+    await service.updateChapterContentPartial(
+      chapterId: 'chapter',
+      content: '新正文',
+    );
+    await service.updateFormattedChapterContent(
+      chapterId: 'chapter',
+      content: '　　新正文',
+    );
+    final stored = await database
+        .select(database.aiEmbeddingDocuments)
+        .getSingle();
+    expect(stored.id, 'legacy-chunk');
+    expect(stored.content, '旧正文');
+    expect(stored.embeddingModel, 'legacy-model');
+    expect(stored.vector, [0.1, 0.2]);
+  });
+
   test('partial save reads once without computing chapter numbers', () async {
     await service.updateChapterContentPartial(
       chapterId: 'chapter',
@@ -129,12 +161,13 @@ void main() {
     expect(saved.outline, '大纲');
     expect(saved.brief, '摘要');
     expect(saved.wordCount, 3);
-    expect(saved.embeddingSyncStatus, chapterEmbeddingSyncStatusPending);
+    expect(saved.embeddingSyncStatus, 'synced');
+    expect(saved.embeddingSyncModelId, 'model');
     expect(saved.chapterNum, 1);
   });
 
   test(
-    'full save reads the raw baseline and preserves unchanged embedding',
+    'full save reads the raw baseline and preserves legacy index metadata',
     () async {
       await service.updateChapterContent(
         chapterId: 'chapter',
@@ -151,16 +184,19 @@ void main() {
     },
   );
 
-  test('partial metadata save keeps content and embedding state', () async {
-    await service.updateChapterContentPartial(
-      chapterId: 'chapter',
-      brief: '新摘要',
-    );
-    final saved = (await service.getChapterById('chapter'))!;
-    expect(saved.content, '旧正文');
-    expect(saved.brief, '新摘要');
-    expect(saved.embeddingSyncStatus, 'synced');
-  });
+  test(
+    'partial metadata save keeps content and legacy index metadata',
+    () async {
+      await service.updateChapterContentPartial(
+        chapterId: 'chapter',
+        brief: '新摘要',
+      );
+      final saved = (await service.getChapterById('chapter'))!;
+      expect(saved.content, '旧正文');
+      expect(saved.brief, '新摘要');
+      expect(saved.embeddingSyncStatus, 'synced');
+    },
+  );
 
   test(
     'batch formatting keeps counts and never accesses novel metadata',
@@ -184,7 +220,8 @@ void main() {
       expect(saved.outline, '大纲');
       expect(saved.brief, '摘要');
       expect(saved.updatedAt.isAfter(DateTime.utc(2020)), isTrue);
-      expect(saved.embeddingSyncStatus, chapterEmbeddingSyncStatusPending);
+      expect(saved.embeddingSyncStatus, 'synced');
+      expect(saved.embeddingSyncModelId, 'model');
       expect(
         await formatAllChapterContents(
           contentService: formattingService,

@@ -25,7 +25,7 @@ void main() {
       expect(names, isNot(contains('CreateEntry')));
     });
 
-    test('Search is not exposed while embedding search is disabled', () {
+    test('Search is not exposed in the tool registry', () {
       final names = aiToolCatalog.map((e) => e.name).toList();
       expect(names, isNot(contains('Search')));
     });

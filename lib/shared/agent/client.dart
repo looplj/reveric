@@ -302,13 +302,11 @@ abstract class ProviderClient {
     AgentConfig? options,
   });
 
-  Future<List<double>> embed(String text, {String? model});
-
   void cancel();
 }
 
 // ---------------------------------------------------------------------------
-// 共享重试策略 — RetryDecorator（非流式 chat/embed）与 Agent（流式 round retry）共用
+// 共享重试策略 — RetryDecorator（非流式 chat）与 Agent（流式 round retry）共用
 // ---------------------------------------------------------------------------
 
 /// [DEBUG] 模拟流式中途断连的装饰器，用于 UI 测试 stream retry 效果。
@@ -365,11 +363,6 @@ class FlakyDecorator implements ProviderClient {
     AgentConfig? options,
   }) {
     return _inner.chat(messages: messages, tools: tools, options: options);
-  }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    return _inner.embed(text, model: model);
   }
 
   @override
@@ -486,7 +479,7 @@ bool _containsTransientHttpStatus(String message) {
   ).hasMatch(message);
 }
 
-/// 非流式 chat/embed 单次请求的总时长上限。
+/// 非流式 chat 单次请求的总时长上限。
 ///
 /// 非流式响应在服务端完成前不回任何字节，HTTP 层也没有读超时；移动端切后台
 /// 后连接可能变成半开状态，服务端已返回而客户端永远等不到。超时抛出
@@ -532,19 +525,11 @@ class RetryDecorator implements ProviderClient {
   }) {
     // 流式重试由 Agent 层统一负责（round 局部语义，见 agent.dart 的 stream retry 循环）：
     // emit 前后的短暂网络错误都由 Agent 处理，RetryDecorator 不再持有 emitted 守卫或
-    // 重试循环，这里纯转发 inner 流。非流式 chat/embed 的重试仍由本类承担。
+    // 重试循环，这里纯转发 inner 流。非流式 chat 的重试仍由本类承担。
     return _inner.chatStream(
       messages: messages,
       tools: tools,
       options: options,
-    );
-  }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) {
-    return _runWithRetry(
-      operation: 'embed',
-      run: () => _inner.embed(text, model: model),
     );
   }
 

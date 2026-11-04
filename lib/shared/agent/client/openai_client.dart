@@ -741,17 +741,6 @@ class OpenAiClient implements ProviderClient {
     'content_filter' => StreamFinishReason.contentFilter,
     _ => StreamFinishReason.unknown,
   };
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    final response = await _client.embeddings.create(
-      openai.EmbeddingRequest(
-        model: model ?? 'text-embedding-3-small',
-        input: openai.EmbeddingInput.text(text),
-      ),
-    );
-    return response.data.first.embedding;
-  }
 }
 
 /// 需要注入额外/原始字段的 chat completion 请求。

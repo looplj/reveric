@@ -1,4 +1,4 @@
-// 职责: 验证 OpenRouter 固定路由、推理参数、完整推理回传和嵌入响应。
+// 职责: 验证 OpenRouter 固定路由、推理参数、完整推理回传。
 // 关联文件:
 //   lib/shared/agent/client/openai_client.dart
 //   lib/shared/services/ai/provider_initializer.dart
@@ -76,67 +76,48 @@ http.Response response() => http.Response(
 );
 
 void main() {
-  test(
-    'fixed channel routes chat and embeddings and retains all model lists',
-    () async {
-      final provider = aiProviderBuiltinById('openai')!.copyWith(
-        type: 'openrouter',
-        apiKey: 'key',
-        baseUrl: 'https://ignored.invalid',
-        enabled: true,
-        models: ['openai/gpt-5.4'],
-        imageModels: ['openai/gpt-image-1'],
-        embeddingModels: ['openai/text-embedding-3-small'],
-        videoModels: ['google/veo-3.1'],
-        audioModels: ['bytedance-seed/seed-audio-1-0'],
-      );
-      final restored = AiProvider.fromJson(provider.toJson());
-      expect(restored.supportedModelKinds, AiModelKind.values.toSet());
-      expect(restored.hasFixedBaseUrl, isTrue);
-      expect(restored.isValid, isTrue);
-      expect(restored.copyWith(apiKey: '').isValid, isFalse);
-      expect(customAiProviderTypes, contains(AiProviderType.openrouter));
-      expect(
-        AiSettings(
-          providers: [provider],
-        ).availableModelOptions.first.reasoningEfforts,
-        contains('high'),
-      );
-      final initializer = AiProviderInitializer(
-        config: restored,
-        chatModel: provider.models.first,
-        httpClient: MockClient((r) async {
-          expect(r.url.origin, 'https://openrouter.ai');
-          expect(r.headers['Authorization'], 'Bearer key');
-          if (r.url.path.endsWith('/embeddings')) {
-            expect(
-              (jsonDecode(r.body) as Map)['model'],
-              provider.embeddingModels.first,
-            );
-            return http.Response(
-              '{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]}],"model":"embed","usage":{"prompt_tokens":1,"total_tokens":1}}',
-              200,
-              headers: {'content-type': 'application/json'},
-            );
-          }
-          expect(r.url.path, '/api/v1/chat/completions');
-          expect((jsonDecode(r.body) as Map)['reasoning'], {'effort': 'high'});
-          return response();
-        }),
-      );
-      addTearDown(initializer.dispose);
-      final client = await initializer.initialize();
-      final result = await client.chat(
-        messages: [AgentMessage.user(id: 'u', content: 'hi')],
-        options: const AgentConfig(reasoningEffort: 'high'),
-      );
-      expect(result.thinking, 'think');
-      expect(
-        await client.embed('hello', model: provider.embeddingModels.first),
-        [0.1, 0.2],
-      );
-    },
-  );
+  test('fixed channel routes chat and retains all model lists', () async {
+    final provider = aiProviderBuiltinById('openai')!.copyWith(
+      type: 'openrouter',
+      apiKey: 'key',
+      baseUrl: 'https://ignored.invalid',
+      enabled: true,
+      models: ['openai/gpt-5.4'],
+      imageModels: ['openai/gpt-image-1'],
+      videoModels: ['google/veo-3.1'],
+      audioModels: ['bytedance-seed/seed-audio-1-0'],
+    );
+    final restored = AiProvider.fromJson(provider.toJson());
+    expect(restored.supportedModelKinds, AiModelKind.values.toSet());
+    expect(restored.hasFixedBaseUrl, isTrue);
+    expect(restored.isValid, isTrue);
+    expect(restored.copyWith(apiKey: '').isValid, isFalse);
+    expect(customAiProviderTypes, contains(AiProviderType.openrouter));
+    expect(
+      AiSettings(
+        providers: [provider],
+      ).availableModelOptions.first.reasoningEfforts,
+      contains('high'),
+    );
+    final initializer = AiProviderInitializer(
+      config: restored,
+      chatModel: provider.models.first,
+      httpClient: MockClient((r) async {
+        expect(r.url.origin, 'https://openrouter.ai');
+        expect(r.headers['Authorization'], 'Bearer key');
+        expect(r.url.path, '/api/v1/chat/completions');
+        expect((jsonDecode(r.body) as Map)['reasoning'], {'effort': 'high'});
+        return response();
+      }),
+    );
+    addTearDown(initializer.dispose);
+    final client = await initializer.initialize();
+    final result = await client.chat(
+      messages: [AgentMessage.user(id: 'u', content: 'hi')],
+      options: const AgentConfig(reasoningEffort: 'high'),
+    );
+    expect(result.thinking, 'think');
+  });
 
   for (final effort in [null, 'none', 'on', 'max']) {
     test('reasoning $effort uses the OpenRouter request envelope', () async {

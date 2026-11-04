@@ -158,11 +158,6 @@ class _FakeProviderClient implements ProviderClient {
   }
 
   @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    return const [];
-  }
-
-  @override
   void cancel() {}
 }
 

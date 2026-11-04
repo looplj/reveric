@@ -96,9 +96,6 @@ class _FlakyStreamClient implements ProviderClient {
   }
 
   @override
-  Future<List<double>> embed(String text, {String? model}) async => const [];
-
-  @override
   void cancel() {}
 }
 

@@ -869,8 +869,7 @@ Future<List<String>> fetchProviderModels(
         headers = <String, String>{'Content-Type': 'application/json'};
       case AiProviderType.openrouter:
         url = baseUri.replace(
-          path:
-              '$basePath/${kind == AiModelKind.embedding ? 'embeddings/models' : 'models'}',
+          path: '$basePath/models',
           queryParameters: kind == AiModelKind.chat
               ? {'output_modalities': 'text'}
               : kind == AiModelKind.audio

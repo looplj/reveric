@@ -11,11 +11,7 @@ import '../../agent/message.dart' show AgentMessage;
 import 'debug_ai_provider.dart';
 
 class DebugInjectedProviderClient implements ProviderClient {
-  DebugInjectedProviderClient({
-    required ProviderClient inner,
-    required DebugAiProviderScenario scenario,
-  }) : _inner = inner,
-       _scenario = scenario;
+  DebugInjectedProviderClient({required this._inner, required this._scenario});
 
   final ProviderClient _inner;
   final DebugAiProviderScenario _scenario;
@@ -178,11 +174,6 @@ class DebugInjectedProviderClient implements ProviderClient {
       isPartial: true,
       thoughtSignature: last.thoughtSignature,
     );
-  }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) {
-    return _inner.embed(text, model: model);
   }
 
   @override

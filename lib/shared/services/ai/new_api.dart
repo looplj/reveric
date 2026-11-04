@@ -113,7 +113,6 @@ class NewApiClient {
                       'gemini',
                     }.contains,
                   ),
-            AiModelKind.embedding => false,
           };
         })
         .map((model) => model.id)

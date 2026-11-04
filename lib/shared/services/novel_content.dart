@@ -1,4 +1,4 @@
-// 职责: 小说内容库读写服务，负责章节/条目持久化、字数同步与 embedding 文档管理。
+// 职责: 小说内容库读写服务，负责章节/条目持久化、字数同步。
 // 关联文件:
 //   lib/shared/database/novel_content_database.dart
 //   lib/shared/services/novel_actions.dart
@@ -17,7 +17,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../database/novel_content_database.dart';
 import '../database/novel_content_daos/chapter_dao.dart';
-import '../models/ai_chat_models.dart';
 import '../models/chapter_comment.dart';
 import '../models/content_status.dart';
 import '../models/screenplay.dart';
@@ -553,7 +552,7 @@ class NovelContentService {
     );
   }
 
-  /// 重命名卷（仅更新 title，不动 content/wordCount/embedding）。
+  /// 重命名卷（仅更新 title，不动 content/wordCount）。
   /// 列表由 watchChapterTree stream 自动刷新。
   Future<void> renameVolume(String volumeId, String title) {
     return (_database.update(
@@ -697,10 +696,6 @@ class NovelContentService {
     // 归一化都会让「自己刚存的内容」在回流时被误判成外部改写并回灌，吃掉用户
     // 正在输入的段末空行。空白的展示与导出由各消费方自行 trim。
     final wordCount = _countWords(content);
-    final contentChanged =
-        title != existing.title ||
-        outline != existing.outline ||
-        content != existing.content;
     try {
       await (_database.update(
         _database.chapters,
@@ -711,19 +706,6 @@ class NovelContentService {
           content: Value(content),
           brief: Value(brief),
           wordCount: Value(wordCount),
-          embeddingSyncStatus: contentChanged
-              ? const Value(chapterEmbeddingSyncStatusPending)
-              : Value(existing.embeddingSyncStatus),
-          embeddingSyncedAt: contentChanged
-              ? const Value.absent()
-              : existing.embeddingSyncedAt == null
-              ? const Value.absent()
-              : Value(existing.embeddingSyncedAt!),
-          embeddingSyncModelId: contentChanged
-              ? const Value.absent()
-              : existing.embeddingSyncModelId == null
-              ? const Value.absent()
-              : Value(existing.embeddingSyncModelId!),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -773,9 +755,6 @@ class NovelContentService {
               .write(
                 ChaptersCompanion(
                   content: Value(content),
-                  embeddingSyncStatus: const Value(
-                    chapterEmbeddingSyncStatusPending,
-                  ),
                   updatedAt: Value(DateTime.now()),
                 ),
               );
@@ -854,32 +833,10 @@ class NovelContentService {
     });
   }
 
-  Future<void> updateChapterEmbeddingSyncStatus({
-    required String chapterId,
-    required String status,
-    DateTime? syncedAt,
-    String? modelId,
-  }) {
-    return (_database.update(
-      _database.chapters,
-    )..where((table) => table.id.equals(chapterId))).write(
-      ChaptersCompanion(
-        embeddingSyncStatus: Value(status),
-        embeddingSyncedAt: syncedAt == null
-            ? const Value.absent()
-            : Value(syncedAt),
-        embeddingSyncModelId: modelId == null
-            ? const Value.absent()
-            : Value(modelId),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
-
   /// 更新 chronicler 的写后分析字段（紧张度 / 情绪标签 / 章内事件）。
   ///
   /// 直写 DB，不走 working change：这些是结构化分析结果，不是用户会逐字审阅的正文，
-  /// 做成可回滚文本 diff 既无意义也读不懂（与 volume_id、embedding 同类直写）。
+  /// 做成可回滚文本 diff 既无意义也读不懂（与 volume_id 同类直写）。
   /// 省略值表示本次不动；clearTension 显式清除紧张度评分。
   Future<void> updateChapterAnalysis({
     required String chapterId,
@@ -941,10 +898,6 @@ class NovelContentService {
     )..where((table) => table.id.equals(chapterId))).write(
       ChaptersCompanion(stat: Value(stat), updatedAt: Value(DateTime.now())),
     );
-  }
-
-  Future<void> deleteEmbeddingDocumentsBySource(String sourceId) {
-    return _database.aiEmbeddingDocumentDao.deleteBySource(sourceId);
   }
 
   Future<String> createCharacterProfile({
@@ -1537,50 +1490,6 @@ class NovelContentService {
     );
   }
 
-  Future<void> replaceEmbeddingDocuments({
-    required String sourceId,
-    required String sourceType,
-    required String path,
-    required String title,
-    required String embeddingModel,
-    required String? providerId,
-    required List<AiEmbeddingChunk> chunks,
-    required List<List<double>> vectors,
-  }) async {
-    if (chunks.length != vectors.length) {
-      throw ArgumentError('chunks and vectors length must match');
-    }
-
-    final now = DateTime.now();
-    final documents = <AiEmbeddingDocumentsCompanion>[];
-    for (var i = 0; i < chunks.length; i++) {
-      final chunk = chunks[i];
-      final vector = vectors[i];
-      documents.add(
-        AiEmbeddingDocumentsCompanion.insert(
-          id: chunk.chunkId,
-          sourceId: sourceId,
-          sourceType: sourceType,
-          path: path,
-          title: Value(title),
-          chunkIndex: chunk.chunkIndex,
-          content: chunk.text,
-          embeddingModel: embeddingModel,
-          providerId: Value(providerId),
-          vector: vector,
-          metadata: Value(chunk.metadata),
-          createdAt: Value(now),
-          updatedAt: Value(now),
-        ),
-      );
-    }
-
-    await _database.aiEmbeddingDocumentDao.replace(
-      sourceId: sourceId,
-      documents: documents,
-    );
-  }
-
   void _assertAllowedStatus(
     String value,
     List<String> allowedValues, {
@@ -1593,10 +1502,6 @@ class NovelContentService {
         'Allowed values: ${allowedValues.join(', ')}',
       );
     }
-  }
-
-  Future<List<AiEmbeddingDocument>> getEmbeddingDocuments() {
-    return _database.aiEmbeddingDocumentDao.getAll();
   }
 
   int _countWords(String content) {

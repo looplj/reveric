@@ -515,7 +515,7 @@ final class AiServiceProvider
   }
 }
 
-String _$aiServiceHash() => r'c91fdeb7d35566210f12bda2e18203188ab596de';
+String _$aiServiceHash() => r'3879bf10897f04ccaea1b48b73d4a36f785c3d46';
 
 /// AI 服务 Provider
 
@@ -598,7 +598,7 @@ final class AiServiceAsyncProvider
   }
 }
 
-String _$aiServiceAsyncHash() => r'66dc9f3b08d2ce1e70658bdfbde6eb1fb54a2908';
+String _$aiServiceAsyncHash() => r'f324522d97fb1ae67cd350624a336f26dd1c11af';
 
 /// AI 服务异步 Provider（用于执行 AI 操作）
 

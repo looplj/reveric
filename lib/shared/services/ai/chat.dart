@@ -50,7 +50,6 @@ class AiClient {
     return AiClient(
       c.provider,
       chatModel: c.chatModel,
-      segmenterModel: c.segmenterModel,
       novelContentService: c.novelContentService,
       workingOverlayService: c.workingOverlayService,
       sessionContext: c.sessionContext,
@@ -96,7 +95,6 @@ class AiClient {
     this._config, {
     required this._chatModel,
     this._reasoningEffort,
-    String? segmenterModel,
     this._novelContentService,
     this._workingOverlayService,
     this._sessionContext,
@@ -191,15 +189,6 @@ class AiClient {
 
   ProviderClient? _client;
 
-  // TODO: embedding 功能暂时屏蔽
-  // late final AiEmbeddingService embedding = AiEmbeddingService(
-  //   providerClient: _client,
-  //   config: _config,
-  //   novelContentService: _novelContentService,
-  //   embeddingModel: _embeddingModel,
-  //   segmenterModel: _segmenterModel,
-  // );
-
   List<String>? _chapterToolNames;
   AiToolManager? _toolManager;
 
@@ -263,8 +252,6 @@ class AiClient {
     final manager = AiToolManager(
       _novelContentService!,
       workingOverlayService: _workingOverlayService!,
-      // TODO: embedding 功能暂时屏蔽
-      // embeddingSearch: embedding.searchEmbeddings,
       novelReader: _novelReader,
       novelWriter: _novelWriter,
       novelDraftClearer: _novelDraftClearer,

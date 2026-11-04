@@ -243,9 +243,4 @@ class CodexClient implements ProviderClient {
     _cancelled = true;
     _active?.cancel();
   }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    throw UnsupportedError('Codex does not support embeddings');
-  }
 }

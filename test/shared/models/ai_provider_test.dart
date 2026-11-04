@@ -48,10 +48,8 @@ void main() {
       defaultChatModelId: 'custom::chat',
       defaultChatReasoningEffort: 'high',
       defaultImageModelId: 'custom::image',
-      defaultEmbeddingModelId: 'custom::embedding',
       defaultPlannerModelId: 'custom::chat',
       defaultWriterModelId: 'custom::keep',
-      defaultSegmenterModelId: 'custom::chat',
     );
 
     test('loading and copying preserve unsupported provider selections', () {
@@ -105,15 +103,12 @@ void main() {
       expect(updated.defaultChatModelId, isNull);
       expect(updated.defaultChatReasoningEffort, isNull);
       expect(updated.defaultPlannerModelId, isNull);
-      expect(updated.defaultSegmenterModelId, isNull);
       expect(updated.defaultWriterModelId, 'custom::keep');
       expect(updated.defaultImageModelId, 'custom::image');
-      expect(updated.defaultEmbeddingModelId, 'custom::embedding');
       final mediaRemoved = original.updateConfig(
-        provider.copyWith(imageModels: [], embeddingModels: []),
+        provider.copyWith(imageModels: []),
       );
       expect(mediaRemoved.defaultImageModelId, isNull);
-      expect(mediaRemoved.defaultEmbeddingModelId, isNull);
       expect(mediaRemoved.defaultChatModelId, 'custom::chat');
       expect(mediaRemoved.defaultChatReasoningEffort, 'high');
     });
@@ -127,9 +122,7 @@ void main() {
       expect(removed.defaultChatModelId, isNull);
       expect(removed.defaultChatReasoningEffort, isNull);
       expect(removed.defaultImageModelId, isNull);
-      expect(removed.defaultEmbeddingModelId, isNull);
       expect(removed.defaultPlannerModelId, isNull);
-      expect(removed.defaultSegmenterModelId, isNull);
       expect(removed.defaultWriterModelId, 'other::chat');
     });
 
@@ -194,7 +187,6 @@ void main() {
       expect(provider.availableImageModels, config.imageModels);
       expect(provider.availableVideoModels, config.videoModels);
       expect(provider.availableAudioModels, config.audioModels);
-      expect(provider.availableEmbeddingModels, isEmpty);
       expect(provider.isValid, isTrue);
       expect(provider.copyWith(apiKey: '').isValid, isFalse);
       expect(
@@ -284,7 +276,6 @@ void main() {
     expect(provider.enableValidationMessage, isNull);
     expect(provider.effectiveBaseUrl, 'https://chatgpt.com/backend-api/codex');
     expect(provider.supportsModelKind(AiModelKind.image), true);
-    expect(provider.supportsModelKind(AiModelKind.embedding), false);
   });
   test(
     'removing a preset clears model defaults and edits do not restore it',
@@ -300,18 +291,14 @@ void main() {
         providers: [preset],
         defaultChatModelId: 'deepseek::chat',
         defaultImageModelId: 'deepseek::image',
-        defaultEmbeddingModelId: 'deepseek::embedding',
         defaultPlannerModelId: 'deepseek::chat',
         defaultWriterModelId: 'deepseek::chat',
-        defaultSegmenterModelId: 'deepseek::chat',
       );
       final removed = settings.removeConfig('deepseek');
       expect(removed.defaultChatModelId, isNull);
       expect(removed.defaultImageModelId, isNull);
-      expect(removed.defaultEmbeddingModelId, isNull);
       expect(removed.defaultPlannerModelId, isNull);
       expect(removed.defaultWriterModelId, isNull);
-      expect(removed.defaultSegmenterModelId, isNull);
       expect(
         removed
             .updateConfig(aiProviderBuiltinById('openai')!)

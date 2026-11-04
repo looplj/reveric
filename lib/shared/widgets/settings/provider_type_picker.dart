@@ -64,10 +64,9 @@ String providerKindLabel(BuildContext context, AiModelKind kind) =>
       AiModelKind.image => LocaleKeys.settingsProviderKindImage,
       AiModelKind.video => LocaleKeys.settingsProviderKindVideo,
       AiModelKind.audio => LocaleKeys.settingsProviderKindAudio,
-      AiModelKind.embedding => LocaleKeys.settingsProviderEmbeddingModelsLabel,
     });
 
-/// 类型的可选能力（不含 embedding，选择时不作为区分依据）。
+/// 类型的可选能力。
 List<AiModelKind> providerTypePickerKinds(AiProviderType type) {
   final kinds = aiProviderTypeConfigs[type]?.supportedModelKinds ?? const {};
   return [

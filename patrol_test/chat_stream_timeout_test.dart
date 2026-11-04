@@ -88,6 +88,7 @@ void main() {
 
     final client = _NeverCompletingProviderClient();
     addTearDown(client.close);
+    const inactivityTimeout = Duration(milliseconds: 100);
     final agent = Agent.custom(
       id: 'stream_timeout_agent',
       systemPrompt: 'Test silent stream handling.',
@@ -95,7 +96,7 @@ void main() {
       config: const AgentConfig(),
       toolManager: FakeAgentToolDispatcher(),
       initialMessages: _largeHistory(),
-      streamInactivityTimeout: const Duration(milliseconds: 100),
+      streamInactivityTimeout: inactivityTimeout,
     );
 
     final sessionNotifier = container.read(
@@ -152,9 +153,16 @@ void main() {
       reason: '请求必须携带大量既有历史，覆盖现场的高消息量条件',
     );
 
-    // Widget test 使用 fake clock，逐步 pump 让 timeout + 两次退避重试完整推进。
-    for (var step = 0; step < 50 && !finished; step++) {
-      await $.pump(const Duration(milliseconds: 100));
+    // 按实际重试策略推进 fake clock，每次尝试额外留一帧处理收尾。
+    const pumpStep = Duration(milliseconds: 100);
+    var waitBudget = (inactivityTimeout + pumpStep) * (maxStreamRetries + 1);
+    for (var attempt = 1; attempt <= maxStreamRetries; attempt++) {
+      waitBudget += streamRetryDelay(attempt);
+    }
+    final maxSteps = (waitBudget.inMilliseconds / pumpStep.inMilliseconds)
+        .ceil();
+    for (var step = 0; step < maxSteps && !finished; step++) {
+      await $.pump(pumpStep);
     }
     expect(finished, isTrue, reason: '静默流不能无限保持 in-flight');
     final outcome = await turnFuture;
@@ -232,9 +240,6 @@ class _NeverCompletingProviderClient implements ProviderClient {
   }) {
     throw UnimplementedError();
   }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async => const [];
 
   @override
   void cancel() {}

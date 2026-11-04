@@ -23,8 +23,6 @@ enum AiInterruptReason { cancel, steering }
 class AiServiceConfig {
   final AiProvider provider;
   final String chatModel;
-  final String? segmenterModel;
-  final String? embeddingModel;
   final NovelContentService? novelContentService;
   final WorkingOverlayService? workingOverlayService;
   final AiSessionContext? sessionContext;
@@ -71,8 +69,6 @@ class AiServiceConfig {
   const AiServiceConfig({
     required this.provider,
     required this.chatModel,
-    this.segmenterModel,
-    this.embeddingModel,
     this.novelContentService,
     this.workingOverlayService,
     this.sessionContext,

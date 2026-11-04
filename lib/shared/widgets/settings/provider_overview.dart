@@ -31,8 +31,6 @@ String providerCapabilitySummary(BuildContext context, AiProvider config) =>
             AiModelKind.image => LocaleKeys.settingsProviderImageModelsLabel,
             AiModelKind.video => LocaleKeys.settingsProviderVideoModelsLabel,
             AiModelKind.audio => LocaleKeys.settingsProviderAudioModelsLabel,
-            AiModelKind.embedding =>
-              LocaleKeys.settingsProviderEmbeddingModelsLabel,
           }),
         )
         .join(' · ');

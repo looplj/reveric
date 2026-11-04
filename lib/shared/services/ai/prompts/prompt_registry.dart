@@ -162,18 +162,6 @@ abstract final class PromptRegistry {
 
     // Tasks.
     PromptDefinition(
-      id: PromptId.taskChunkSegmentation,
-      kind: PromptKind.task,
-      owner: 'embedding',
-      templatePath: 'assets/prompts/task/chunk_segmentation',
-      variables: [
-        'text',
-        'target_chunk_chars',
-        'max_chunk_chars',
-        'overlap_chars',
-      ],
-    ),
-    PromptDefinition(
       id: PromptId.taskCouncilRound,
       kind: PromptKind.task,
       owner: 'council',

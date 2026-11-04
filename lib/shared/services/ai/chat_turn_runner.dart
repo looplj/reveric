@@ -1024,7 +1024,6 @@ class ChatTurnRunner {
     final service = AiClient(
       config,
       chatModel: session.model!,
-      segmenterModel: session.model!,
       novelContentService: contentService,
       workingOverlayService: workingOverlay,
       crossWorkAccess: crossWorkAccess,
@@ -1301,7 +1300,6 @@ class ChatTurnRunner {
       config,
       chatModel: session.model!,
       reasoningEffort: session.reasoningEffort,
-      segmenterModel: session.model!,
       novelContentService: contentService,
       workingOverlayService: workingOverlay,
       crossWorkAccess: crossWorkAccess,

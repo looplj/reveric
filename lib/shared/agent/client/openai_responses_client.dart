@@ -713,11 +713,6 @@ class OpenAIResponsesClient implements ProviderClient {
       },
     );
   }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    throw UnsupportedError('Responses API does not support text embedding');
-  }
 }
 
 class _OpenResponsesPartialToolCall {

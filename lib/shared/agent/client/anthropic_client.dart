@@ -590,9 +590,4 @@ class AnthropicClient implements ProviderClient {
           : _mapStopReason(response.stopReason!),
     );
   }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    throw UnsupportedError('Anthropic does not support text embedding');
-  }
 }

@@ -23012,8 +23012,6 @@ abstract class _$NovelContentDatabase extends GeneratedDatabase {
   late final AiChatMessageDao aiChatMessageDao = AiChatMessageDao(
     this as NovelContentDatabase,
   );
-  late final AiEmbeddingDocumentDao aiEmbeddingDocumentDao =
-      AiEmbeddingDocumentDao(this as NovelContentDatabase);
   late final WorkingChangeDao workingChangeDao = WorkingChangeDao(
     this as NovelContentDatabase,
   );

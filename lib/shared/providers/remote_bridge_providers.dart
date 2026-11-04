@@ -507,7 +507,6 @@ final assistantCoordinatorProvider = Provider<AssistantCoordinator>((ref) {
       AiServiceConfig(
         provider: config,
         chatModel: model,
-        segmenterModel: model,
         sourceSessionId: sessionId,
       ),
       httpClient: httpClient,

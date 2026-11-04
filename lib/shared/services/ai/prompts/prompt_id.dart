@@ -24,7 +24,6 @@ abstract final class PromptId {
   static const agentThemeGuardian = 'agent.theme_guardian';
   static const agentExplorer = 'agent.explorer';
 
-  static const taskChunkSegmentation = 'task.chunk_segmentation';
   static const taskCouncilRound = 'task.council_round';
   static const taskCouncilSummary = 'task.council_summary';
   static const taskCoverAnalysis = 'task.cover_analysis';

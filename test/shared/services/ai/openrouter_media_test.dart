@@ -29,21 +29,14 @@ void main() {
     baseUrl: 'https://ignored.invalid',
   );
   test(
-    'model discovery routes embedding and chat separately from media catalogs',
+    'model discovery routes chat and audio separately from media catalogs',
     () async {
-      for (final kind in [
-        AiModelKind.chat,
-        AiModelKind.embedding,
-        AiModelKind.audio,
-      ]) {
+      for (final kind in [AiModelKind.chat, AiModelKind.audio]) {
         final models = await http.runWithClient(
           () => fetchProviderModels(provider, kind: kind),
           () => MockClient((r) async {
             expect(r.url.origin, 'https://openrouter.ai');
-            expect(r.url.path, switch (kind) {
-              AiModelKind.embedding => '/api/v1/embeddings/models',
-              _ => '/api/v1/models',
-            });
+            expect(r.url.path, '/api/v1/models');
             expect(r.url.queryParameters['output_modalities'], switch (kind) {
               AiModelKind.chat => 'text',
               AiModelKind.audio => 'speech',

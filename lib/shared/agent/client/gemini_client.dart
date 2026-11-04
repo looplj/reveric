@@ -524,15 +524,4 @@ class GeminiClient implements ProviderClient {
       _abortCompleter = null;
     }
   }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    final response = await _client.models.embedContent(
-      model: model ?? 'text-embedding-004',
-      request: gai.EmbedContentRequest(
-        content: gai.Content(parts: [gai.TextPart(text)]),
-      ),
-    );
-    return response.embedding.values;
-  }
 }

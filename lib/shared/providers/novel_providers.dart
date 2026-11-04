@@ -156,102 +156,12 @@ WorkingOverlayService workingOverlayService(Ref ref, String databasePath) {
   final contentDatabase = ref.watch(novelContentDatabaseProvider(databasePath));
   final contentService = ref.watch(novelContentServiceProvider(databasePath));
   final novelActions = ref.watch(novelActionsProvider);
-  // TODO: embedding 功能暂时屏蔽
-  // final chapterEmbeddingSyncQueue = ref.watch(
-  //   chapterEmbeddingSyncQueueProvider(databasePath),
-  // );
   return WorkingOverlayService(
     contentDatabase,
     contentService,
     novelActionsService: novelActions,
-    // chapterEmbeddingSyncQueue: chapterEmbeddingSyncQueue,
   );
 }
-
-// TODO: embedding 功能暂时屏蔽 - chapterEmbeddingSyncQueueProvider
-// @Riverpod(keepAlive: true)
-// ChapterEmbeddingSyncQueue chapterEmbeddingSyncQueue(
-//   Ref ref,
-//   String databasePath,
-// ) {
-//   final contentService = ref.watch(novelContentServiceProvider(databasePath));
-//   final segmenterOption = ref.watch(
-//     resolvedAiModelOptionForRoleProvider(
-//       role: AiModelRole.segmenter,
-//       databasePath: databasePath,
-//     ),
-//   );
-//   final embeddingOption = ref.watch(
-//     resolvedAiModelOptionForKindProvider(
-//       kind: AiModelKind.embedding,
-//       databasePath: databasePath,
-//     ),
-//   );
-//   final aiSettings = ref.watch(aiSettingsProvider);
-//   final config = embeddingOption == null
-//       ? null
-//       : aiSettings.findConfigById(embeddingOption.providerId);
-//
-//   final resolvedModel = (() {
-//     if (config == null || !config.isValid) return null;
-//     if (embeddingOption?.providerId != config.id) return null;
-//     return embeddingOption?.model;
-//   })();
-//
-//   final queue = ChapterEmbeddingSyncQueue(
-//     contentService: contentService,
-//     embeddingModel: resolvedModel,
-//     serviceFactory: () async {
-//       final resolvedConfig = config;
-//       final resolvedEmbeddingOption = embeddingOption;
-//       if (resolvedConfig == null ||
-//           !resolvedConfig.isValid ||
-//           resolvedEmbeddingOption == null) {
-//         return null;
-//       }
-//       final embeddingModel = resolvedEmbeddingOption.model.trim();
-//       if (embeddingModel.isEmpty) {
-//         return null;
-//       }
-//       final segmenterModel = segmenterOption?.providerId == resolvedConfig.id
-//           ? segmenterOption?.model
-//           : null;
-//       final service = AiClient(
-//         resolvedConfig,
-//         chatModel: embeddingModel,
-//         segmenterModel: segmenterModel,
-//         embeddingModel: embeddingModel,
-//         novelContentService: contentService,
-//       );
-//       await service.initialize();
-//       return service;
-//     },
-//   );
-//   ref.onDispose(() => queue.dispose());
-//   unawaited(() async {
-//     final state = await contentService.getNovelState(
-//       novelStateKeyEmbeddingSync,
-//     );
-//     if (state?.status == novelStateStatusPaused) {
-//       queue.setPaused(true);
-//     } else {
-//       await queue.drainPending();
-//     }
-//   }());
-//   ref.listen(chaptersProvider(databasePath), (prev, next) {
-//     final chapters = next.asData?.value;
-//     if (chapters == null) return;
-//     final hasPending = chapters.any(
-//       (c) =>
-//           c.embeddingSyncStatus == chapterEmbeddingSyncStatusPending ||
-//           c.embeddingSyncStatus == chapterEmbeddingSyncStatusSyncing,
-//     );
-//     if (hasPending && queue.isIdle) {
-//       unawaited(queue.drainPending());
-//     }
-//   });
-//   return queue;
-// }
 
 @riverpod
 Stream<List<Chapter>> chapters(Ref ref, String databasePath) {

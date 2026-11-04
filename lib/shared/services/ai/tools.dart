@@ -3630,9 +3630,7 @@ typedef AiNovelWriter = Future<void> Function(Map<String, dynamic> fields);
 // 清除快速开书占位标记（「加入书架」）：由 Run 的 add-to-library 命令显式触发，
 // 不耦合任何写入动作。内部预检测，已非 draft 时无 DB 写入。
 typedef AiNovelDraftClearer = Future<void> Function();
-// TODO: embedding 功能暂时屏蔽
-// typedef AiEmbeddingSearchCallback =
-//     Future<List<AiEmbeddingSearchResult>> Function(String query, {int? limit});
+
 typedef AiToolCallRequestedCallback =
     void Function(
       String callId,
@@ -3726,8 +3724,7 @@ abstract class _AiToolManagerBase {
     bool force = false,
     ({String oldText, String newText, bool replaceAll})? edit,
   });
-  // TODO: embedding 功能暂时屏蔽
-  // AiEmbeddingSearchCallback? get embeddingSearch;
+
   AiNovelReader? get novelReader;
   AiNovelWriter? get novelWriter;
   AiNovelDraftClearer? get novelDraftClearer;
@@ -4016,8 +4013,6 @@ class AiToolManager extends _AiToolManagerBase
   AiToolManager(
     this._primaryContentService, {
     required this.workingOverlayService,
-    // TODO: embedding 功能暂时屏蔽
-    // this.embeddingSearch,
     AiNovelReader? novelReader,
     this.crossWorkAccess,
     this.providerReader,
@@ -4089,10 +4084,6 @@ class AiToolManager extends _AiToolManagerBase
 
   @override
   final String? currentEpisodeId;
-
-  // TODO: embedding 功能暂时屏蔽
-  // @override
-  // final AiEmbeddingSearchCallback? embeddingSearch;
 
   @override
   AiNovelReader? get novelReader => _currentResourceCallContext == null

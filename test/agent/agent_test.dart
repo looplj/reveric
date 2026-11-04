@@ -71,11 +71,6 @@ class _ThinkingFakeClient implements ProviderClient {
   }
 
   @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    return [];
-  }
-
-  @override
   void cancel() {}
 }
 
@@ -117,9 +112,6 @@ class _NeverCompletingStreamClient implements ProviderClient {
   }) {
     throw UnimplementedError();
   }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async => const [];
 
   @override
   void cancel() {
@@ -248,11 +240,6 @@ class _ToolCallThenDoneClient implements ProviderClient {
   }
 
   @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    return [];
-  }
-
-  @override
   void cancel() {}
 }
 
@@ -288,11 +275,6 @@ class _ToolFailureRoundTripClient implements ProviderClient {
     }
     yield TextDelta('handled failure');
     yield StreamComplete();
-  }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    return [];
   }
 
   @override
@@ -348,11 +330,6 @@ class _NestedAgentToolContextClient implements ProviderClient {
     }
     yield TextDelta('done');
     yield StreamComplete();
-  }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    return [];
   }
 
   @override
@@ -432,9 +409,6 @@ class _FlakyStreamClient implements ProviderClient {
   }) async {
     throw UnimplementedError();
   }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async => const [];
 
   @override
   void cancel() {}

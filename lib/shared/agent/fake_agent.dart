@@ -129,15 +129,11 @@ class FakeProviderClient implements ProviderClient {
   FakeProviderClient({
     this._responses = const [FakeProviderClientResponse.text('fake response')],
     this._responder,
-    this._embedding = const [],
-    this._embeddingsByText = const {},
     this.repeatLastResponse = true,
   });
 
   final List<FakeProviderClientResponse> _responses;
   final FakeProviderClientResponder? _responder;
-  final List<double> _embedding;
-  final Map<String, List<double>> _embeddingsByText;
   final bool repeatLastResponse;
 
   final List<FakeProviderClientRequest> capturedChatRequests = [];
@@ -191,11 +187,6 @@ class FakeProviderClient implements ProviderClient {
       }
       yield event;
     }
-  }
-
-  @override
-  Future<List<double>> embed(String text, {String? model}) async {
-    return _embeddingsByText[text] ?? _embedding;
   }
 
   @override

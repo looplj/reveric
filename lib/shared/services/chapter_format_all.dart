@@ -13,7 +13,7 @@ import 'novel_content.dart';
 ///
 /// 不走 working overlay stage：批量排版是确定性纯文本变换，无需逐字段历史；
 /// 单章仍可从章节历史回滚。每章经 [NovelContentService.updateFormattedChapterContent]
-/// 独立写回正文、更新时间及 embedding 同步状态，保留字数、不更新小说记录。
+/// 独立写回正文及更新时间，保留字数、不更新小说记录。
 ///
 /// 执行时重新读取 [chapterIds] 的最新正文，已规范或已删除的章节跳过写入。
 /// [onProgress] 在每章处理后回调 `(已处理章数, 总章数)`，供进度 UI 使用。

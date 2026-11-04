@@ -2,7 +2,6 @@
 // 关联文件:
 //   lib/shared/services/novel_content.dart
 //   lib/shared/services/documents_service.dart
-//   lib/shared/services/ai/chapter_embedding_sync.dart
 //   lib/shared/database/novel_content_database.dart
 //   lib/shared/services/screenplay_service.dart
 //   lib/shared/services/rollback_repair_orchestrator.dart
@@ -21,7 +20,6 @@ import 'working_change_summary.dart';
 import 'rollback_repair_orchestrator.dart';
 import '../utils/random_id.dart';
 import '../utils/resource_path.dart';
-import '../services/ai/chapter_embedding_sync.dart';
 import 'novel_actions.dart';
 import 'novel_content.dart';
 import 'screenplay_service.dart';
@@ -172,15 +170,12 @@ class WorkingOverlayService {
   WorkingOverlayService(
     this._contentDatabase,
     this._contentService, {
-    required NovelActionsService novelActionsService,
-    ChapterEmbeddingSyncQueue? chapterEmbeddingSyncQueue,
-  }) : _novelActionsService = novelActionsService,
-       _chapterEmbeddingSyncQueue = chapterEmbeddingSyncQueue;
+    required this._novelActionsService,
+  });
 
   final NovelContentDatabase _contentDatabase;
   final NovelContentService _contentService;
   final NovelActionsService _novelActionsService;
-  final ChapterEmbeddingSyncQueue? _chapterEmbeddingSyncQueue;
 
   Stream<List<WorkingChange>> watchWorkingChanges() {
     return _contentDatabase.workingChangeDao.watchAll();
@@ -861,19 +856,6 @@ class WorkingOverlayService {
         );
       }
     });
-    final chapterIdsForEmbedding = rows
-        .where(
-          (row) =>
-              row.resourceType == 'chapters' &&
-              (row.field == 'summary' || row.field == 'content') &&
-              row.resourceId != null &&
-              row.resourceId!.trim().isNotEmpty,
-        )
-        .map((row) => row.resourceId!)
-        .toSet();
-    for (final chapterId in chapterIdsForEmbedding) {
-      await _chapterEmbeddingSyncQueue?.enqueue(chapterId);
-    }
     return commitId;
   }
 

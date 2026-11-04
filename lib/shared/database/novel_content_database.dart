@@ -21,7 +21,6 @@
 //   .agents/rules/db-migration.md
 // ⚠️ 修改此文件后必须运行 `make codegen`，否则 .drift.dart / .g.dart 不会更新
 // ⚠️ 新增字段时需要同步更新：DB → service → AI tools（schema/read/write/create/edit） → tool card i18n（fieldLabel/translation）
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -54,7 +53,6 @@ import '../utils/storage_paths.dart';
 import '../utils/windows_safe_path.dart';
 import 'novel_content_daos/agent_rule_dao.dart';
 import 'novel_content_daos/ai_chat_message_dao.dart';
-import 'novel_content_daos/ai_embedding_document_dao.dart';
 import 'novel_content_daos/canvas_dao.dart';
 import 'novel_content_daos/change_commit_dao.dart';
 import 'novel_content_daos/chapter_dao.dart';
@@ -84,10 +82,6 @@ const String characterGenderOther = 'other';
 const String characterGenderUnknown = 'unknown';
 
 const String chapterEmbeddingSyncStatusPending = 'pending';
-const String chapterEmbeddingSyncStatusSyncing = 'syncing';
-const String chapterEmbeddingSyncStatusSynced = 'synced';
-const String chapterEmbeddingSyncStatusError = 'error';
-const String novelStateKeyEmbeddingSync = 'embedding_sync';
 const String novelStateStatusIdle = 'idle';
 const String novelStateStatusRunning = 'running';
 const String novelStateStatusPaused = 'paused';
@@ -433,82 +427,6 @@ const List<String> characterGenders = <String>[
   characterGenderOther,
   characterGenderUnknown,
 ];
-
-class EmbeddingSyncState {
-  final String? providerId;
-  final String? modelId;
-  final int totalChapters;
-  final int syncedChapters;
-  final String? errorMessage;
-  final DateTime? startedAt;
-
-  const EmbeddingSyncState({
-    this.providerId,
-    this.modelId,
-    this.totalChapters = 0,
-    this.syncedChapters = 0,
-    this.errorMessage,
-    this.startedAt,
-  });
-
-  factory EmbeddingSyncState.fromJson(Map<String, dynamic> json) {
-    return EmbeddingSyncState(
-      providerId: json['provider_id'] as String?,
-      modelId: json['model_id'] as String?,
-      totalChapters: (json['total'] as num?)?.toInt() ?? 0,
-      syncedChapters: (json['synced'] as num?)?.toInt() ?? 0,
-      errorMessage: json['error'] as String?,
-      startedAt: json['started_at'] != null
-          ? DateTime.tryParse(json['started_at'] as String)
-          : null,
-    );
-  }
-
-  factory EmbeddingSyncState.fromJsonString(String? json) {
-    if (json == null || json.isEmpty) {
-      return const EmbeddingSyncState();
-    }
-    try {
-      final decoded = jsonDecode(json) as Map<String, dynamic>;
-      return EmbeddingSyncState.fromJson(decoded);
-    } catch (_) {
-      return const EmbeddingSyncState();
-    }
-  }
-
-  Map<String, dynamic> toJson() => {
-    if (providerId != null) 'provider_id': providerId,
-    if (modelId != null) 'model_id': modelId,
-    'total': totalChapters,
-    'synced': syncedChapters,
-    if (errorMessage != null) 'error': errorMessage,
-    if (startedAt != null) 'started_at': startedAt!.toIso8601String(),
-  };
-
-  String? toJsonString() {
-    final json = toJson();
-    if (json.isEmpty) return null;
-    return jsonEncode(json);
-  }
-
-  EmbeddingSyncState copyWith({
-    String? providerId,
-    String? modelId,
-    int? totalChapters,
-    int? syncedChapters,
-    String? errorMessage,
-    DateTime? startedAt,
-  }) {
-    return EmbeddingSyncState(
-      providerId: providerId ?? this.providerId,
-      modelId: modelId ?? this.modelId,
-      totalChapters: totalChapters ?? this.totalChapters,
-      syncedChapters: syncedChapters ?? this.syncedChapters,
-      errorMessage: errorMessage ?? this.errorMessage,
-      startedAt: startedAt ?? this.startedAt,
-    );
-  }
-}
 
 class CharacterProfiles extends Table {
   TextColumn get id => text()();
@@ -1630,7 +1548,6 @@ class ProductionClips extends Table {
     ChapterDao,
     ForeshadowingDao,
     AiChatMessageDao,
-    AiEmbeddingDocumentDao,
     WorkingChangeDao,
     ChangeCommitDao,
     NovelStateDao,
