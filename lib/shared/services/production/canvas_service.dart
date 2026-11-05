@@ -607,6 +607,24 @@ class ProductionCanvasService {
     }
   }
 
+  /// 从主体照片集移除关联，保留资产、头像和片段已采用的图片。
+  Future<void> removeSubjectPhoto(ProductionClipRow clip, String assetId) =>
+      write(clip.subjectId ?? clip.id, () async {
+        final photos = await subjectPhotos(clip);
+        if (clip.characterId case final id?) {
+          await NovelContentService(db).updateCharacterAvatarAndPhotos(
+            entryId: id,
+            photos: photos.where((photo) => photo.assetId != assetId).toList(),
+          );
+        } else if (clip.locationId case final id?) {
+          await LocationsService(db).removePhoto(id: id, assetId: assetId);
+        } else if (clip.itemId case final id?) {
+          await NovelContentService(db).removeItemPhoto(id, assetId);
+        } else {
+          throw const StoryboardException('source_missing');
+        }
+      });
+
   /// Called inside the same content transaction as adoption and its task marker.
   Future<void> appendSubjectPhoto(
     ProductionClipRow clip,

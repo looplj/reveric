@@ -1,4 +1,4 @@
-// 职责: 为桌面图片节点打开主体选择，并展示主体资料、选用其共享照片。
+// 职责: 为桌面图片节点打开主体选择，并展示主体资料并选用、移除其共享照片。
 // 关联文件:
 //   lib/shared/services/production/canvas_service.dart
 //   lib/desktop/features/production/node_card.dart
@@ -53,7 +53,7 @@ Future<String?> showProductionSubjectProfile(
   builder: (_) => ProductionSubjectProfileDialog(service: service, clip: clip),
 );
 
-/// 主体资料：左侧完整资料，右侧照片可点选采用、可改名；窄窗口改为上下排列。
+/// 主体资料：左侧完整资料，右侧照片可点选采用、改名和移除；窄窗口改为上下排列。
 class ProductionSubjectProfileDialog extends HookWidget {
   const ProductionSubjectProfileDialog({
     super.key,
@@ -82,6 +82,28 @@ class ProductionSubjectProfileDialog extends HookWidget {
       ),
     );
     final data = profile.data;
+    final removing = useState(false);
+
+    Future<void> removePhoto(String assetId) async {
+      if (removing.value) {
+        return;
+      }
+      removing.value = true;
+      try {
+        await service.removeSubjectPhoto(clip, assetId);
+      } catch (_) {
+        // service 已记录包含主体 ID 的数据库诊断日志。
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.t(LocaleKeys.commonDeleteFailed))),
+          );
+        }
+      } finally {
+        if (context.mounted) {
+          removing.value = false;
+        }
+      }
+    }
 
     Widget photoGrid({required bool scrollable}) {
       final photos = data!.photos;
@@ -113,14 +135,12 @@ class ProductionSubjectProfileDialog extends HookWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: SubjectPickerTile(
-                  key: ValueKey('subject-photo-$assetId'),
+                child: _RemovablePhotoTile(
+                  service: service,
+                  assetId: assetId,
                   selected: assetId == clip.adoptedAssetId,
                   onTap: () => Navigator.of(context).pop(assetId),
-                  cover: ProductionAssetThumb(
-                    service: service,
-                    assetId: assetId,
-                  ),
+                  onRemove: removing.value ? null : () => removePhoto(assetId),
                 ),
               ),
               SubjectPhotoName(
@@ -226,6 +246,75 @@ class ProductionSubjectProfileDialog extends HookWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ],
+    );
+  }
+}
+
+/// 照片卡：悬停时在画面右上角露出移除按钮，避免常驻遮挡照片。
+class _RemovablePhotoTile extends HookWidget {
+  const _RemovablePhotoTile({
+    required this.service,
+    required this.assetId,
+    required this.selected,
+    required this.onTap,
+    required this.onRemove,
+  });
+  final ProductionCanvasService service;
+  final String assetId;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final hovered = useState(false);
+    // 卡片内边距 + 少量留白，让按钮落在画面角内而不压住卡片边框。
+    const inset = RevericSpacing.xs + RevericSpacing.xxs;
+    return MouseRegion(
+      onEnter: (_) => hovered.value = true,
+      onExit: (_) => hovered.value = false,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          SubjectPickerTile(
+            key: ValueKey('subject-photo-$assetId'),
+            selected: selected,
+            onTap: onTap,
+            cover: ProductionAssetThumb(service: service, assetId: assetId),
+          ),
+          if (hovered.value)
+            Positioned(
+              top: inset,
+              right: inset,
+              child: Tooltip(
+                message: context.t(LocaleKeys.commonDelete),
+                child: Material(
+                  color: colors.surface.withValues(alpha: .9),
+                  shape: CircleBorder(
+                    side: BorderSide(color: colors.borderSubtle),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    key: ValueKey('remove-subject-photo-$assetId'),
+                    onTap: onRemove,
+                    hoverColor: colors.hover,
+                    child: SizedBox.square(
+                      dimension: RevericSizes.thumbRemoveSize,
+                      child: Center(
+                        child: RevericIcon(
+                          RevericIcons.close,
+                          size: RevericSizes.thumbRemoveIconSize,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

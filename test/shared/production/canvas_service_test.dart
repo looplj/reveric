@@ -897,7 +897,11 @@ void main() {
         second,
       );
       expect((await service.shots.getShot(two.clipId!))!.adoptedAssetId, first);
-      await photos([second]);
+      await service.removeSubjectPhoto(bound, first);
+      expect(await service.subjectPhotos(bound), const [
+        SubjectPhoto(assetId: second),
+      ]);
+      expect(await appDb.assetDao.getAsset(first), isNotNull);
       expect(
         (await service.requireAsset(
           (await service.shots.getShot(two.clipId!))!.adoptedAssetId!,

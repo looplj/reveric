@@ -157,6 +157,10 @@ class RevericSizes {
   static const double iconButtonIconSize = 20;
   static const double iconButtonIconSizeMobile = 22;
 
+  /// 缩略图角上的圆形移除按钮（悬停时露出的小 ×）。
+  static const double thumbRemoveSize = 22;
+  static const double thumbRemoveIconSize = 12;
+
   /// 移动端图标按钮和筛选项的最小触控区域。
   static const double touchTargetSize = 48;
 

@@ -515,87 +515,145 @@ void main() {
       },
     );
   }
-  testWidgets(
-    'subject profile shows character fields and adopts a shared photo',
-    (tester) async {
-      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
-      final main = app.AppDatabase.forTest(NativeDatabase.memory());
-      final shots = StoryboardService(db);
-      final service = ProductionCanvasService(
-        shots,
-        MediaLibraryService(
-          main,
-          MediaService(FfmpegRunner()),
-          Directory.systemTemp,
-        ),
-        'work',
-      );
-      String? picked;
-      try {
-        final episode = (await ScreenplayService(
-          db,
-        ).createInitialStructure()).episodeId;
-        final canvas = await shots.ensureCanvas(episode);
-        await db
-            .into(db.characterProfiles)
-            .insert(
-              CharacterProfilesCompanion.insert(
-                id: 'hero',
-                name: 'Clyde',
-                identity: const Value('Painter'),
-                appearance: const Value('Black hair, slim build'),
-                photos: const Value([SubjectPhoto(assetId: 'front')]),
-              ),
-            );
-        final node = await service.addSubject(canvas.id, characterId: 'hero');
-        final clip = (await shots.getShot(node.clipId!))!;
-        await tester.binding.setSurfaceSize(const Size(1200, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [appDatabaseProvider.overrideWithValue(main)],
-            child: _wrap(
-              Builder(
-                builder: (context) => TextButton(
-                  onPressed: () async {
-                    picked = await showProductionSubjectProfile(
-                      context,
-                      service,
-                      clip,
-                    );
-                  },
-                  child: const Text('Open'),
+  for (final character in [true, false]) {
+    testWidgets(
+      '${character ? 'character' : 'location'} profile removes photos and still adopts',
+      (tester) async {
+        final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+        final main = app.AppDatabase.forTest(NativeDatabase.memory());
+        final shots = StoryboardService(db);
+        final service = ProductionCanvasService(
+          shots,
+          MediaLibraryService(
+            main,
+            MediaService(FfmpegRunner()),
+            Directory.systemTemp,
+          ),
+          'work',
+        );
+        String? picked;
+        try {
+          final episode = (await ScreenplayService(
+            db,
+          ).createInitialStructure()).episodeId;
+          final canvas = await shots.ensureCanvas(episode);
+          if (character) {
+            await db
+                .into(db.characterProfiles)
+                .insert(
+                  CharacterProfilesCompanion.insert(
+                    id: 'hero',
+                    name: 'Clyde',
+                    identity: const Value('Painter'),
+                    appearance: const Value('Black hair, slim build'),
+                    photos: const Value([
+                      SubjectPhoto(assetId: 'front'),
+                      SubjectPhoto(assetId: 'side'),
+                    ]),
+                  ),
+                );
+          } else {
+            await db
+                .into(db.locations)
+                .insert(
+                  LocationsCompanion.insert(
+                    id: 'hero',
+                    name: 'Studio',
+                    description: const Value('Painter studio'),
+                    photos: const Value([
+                      SubjectPhoto(assetId: 'front'),
+                      SubjectPhoto(assetId: 'side'),
+                    ]),
+                  ),
+                );
+          }
+          final node = await service.addSubject(
+            canvas.id,
+            characterId: character ? 'hero' : null,
+            locationId: character ? null : 'hero',
+          );
+          final clip = (await shots.getShot(node.clipId!))!;
+          await tester.binding.setSurfaceSize(const Size(1200, 900));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [appDatabaseProvider.overrideWithValue(main)],
+              child: _wrap(
+                Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () async {
+                      picked = await showProductionSubjectProfile(
+                        context,
+                        service,
+                        clip,
+                      );
+                    },
+                    child: const Text('Open'),
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Open'));
-        // drift 的 watch 查询要真实事件循环推进，假时钟下不会出结果。
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Profile'), findsOneWidget);
-        expect(find.text('Identity'), findsOneWidget);
-        expect(find.text('Painter'), findsOneWidget);
-        expect(find.text('Character Appearance'), findsOneWidget);
-        expect(find.text('Black hair, slim build'), findsOneWidget);
-        expect(find.text('Photos'), findsOneWidget);
-        expect(find.text('Close'), findsOneWidget);
-        await tester.tap(find.byKey(const ValueKey('subject-photo-front')));
-        await tester.pumpAndSettle();
-        expect(picked, 'front');
-        expect(tester.takeException(), isNull);
-      } finally {
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pumpAndSettle();
-        await db.close();
-        await main.close();
-      }
-    },
-  );
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Open'));
+          // drift 的 watch 查询要真实事件循环推进，假时钟下不会出结果。
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Profile'), findsOneWidget);
+          if (character) {
+            expect(find.text('Identity'), findsOneWidget);
+            expect(find.text('Painter'), findsOneWidget);
+            expect(find.text('Character Appearance'), findsOneWidget);
+            expect(find.text('Black hair, slim build'), findsOneWidget);
+          } else {
+            expect(find.text('Painter studio'), findsOneWidget);
+          }
+          expect(find.text('Photos'), findsOneWidget);
+          expect(find.text('Close'), findsOneWidget);
+          final remove = find.byKey(
+            const ValueKey('remove-subject-photo-side'),
+          );
+          expect(remove, findsNothing);
+          final mouse = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(
+            location: tester.getCenter(
+              find.byKey(const ValueKey('subject-photo-side')),
+            ),
+          );
+          addTearDown(mouse.removePointer);
+          await tester.pump();
+          await tester.tap(remove);
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('subject-photo-side')),
+            findsNothing,
+          );
+          expect(find.byType(ProductionSubjectProfileDialog), findsOneWidget);
+          expect(picked, isNull);
+          expect(
+            await tester.runAsync(() => service.subjectPhotos(clip)),
+            const [SubjectPhoto(assetId: 'front')],
+          );
+          await tester.tap(find.byKey(const ValueKey('subject-photo-front')));
+          await tester.pumpAndSettle();
+          expect(picked, 'front');
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+          await db.close();
+          await main.close();
+        }
+      },
+    );
+  }
   testWidgets(
     'soft-deleting an asset invalidates its media card without deleting the file',
     (tester) async {
