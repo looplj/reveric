@@ -57,6 +57,7 @@ void main() {
             model,
             size,
             quality,
+            complexity,
           }) async {
             imageCalls++;
             return const AiImageGenerationResult(
