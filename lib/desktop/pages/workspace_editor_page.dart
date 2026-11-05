@@ -26,12 +26,14 @@ class WorkspaceEditorPage extends ConsumerWidget {
     required this.novelId,
     this.initialSessionId,
     this.initialChatKickoffPrompt,
+    this.initialChatKickoffTitle,
     this.openChatOnEntry = false,
   });
 
   final String novelId;
   final String? initialSessionId;
   final String? initialChatKickoffPrompt;
+  final String? initialChatKickoffTitle;
   final bool openChatOnEntry;
 
   @override
@@ -50,6 +52,7 @@ class WorkspaceEditorPage extends ConsumerWidget {
               initialSessionId: initialSessionId,
 
               initialChatKickoffPrompt: initialChatKickoffPrompt,
+              initialChatKickoffTitle: initialChatKickoffTitle,
               openChatOnEntry: openChatOnEntry,
             );
           },

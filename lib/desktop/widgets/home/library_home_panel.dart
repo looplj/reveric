@@ -43,6 +43,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
     required this.onQuickStart,
     required this.onCreateNovel,
     required this.onImportNovel,
+    required this.onImportScreenplay,
     required this.onCreateDemoNovel,
     required this.onDeleteNovel,
     required this.onAdaptNovel,
@@ -61,6 +62,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
   /// 新建本库类型的作品。
   final VoidCallback onCreateNovel;
   final VoidCallback onImportNovel;
+  final VoidCallback onImportScreenplay;
   final VoidCallback onCreateDemoNovel;
   final ValueSetter<Novel> onDeleteNovel;
   final ValueSetter<Novel> onAdaptNovel;
@@ -142,7 +144,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
                   ),
                   sliver: SliverToBoxAdapter(
                     child: GreetingHeader(
-                      // 快速开书和 TXT 导入都落在小说库。
+                      // 快速开书只落在小说库；剧本库导入走 AI 改编。
                       onQuickStart: isScreenplay ? null : onQuickStart,
                       onCreateNovel: onCreateNovel,
                       createLabel: context.t(
@@ -150,7 +152,14 @@ class HomeLibraryPanel extends HookConsumerWidget {
                             ? LocaleKeys.libraryCreateScreenplay
                             : LocaleKeys.libraryCreateNovel,
                       ),
-                      onImportNovel: isScreenplay ? null : onImportNovel,
+                      onImport: isScreenplay
+                          ? onImportScreenplay
+                          : onImportNovel,
+                      importLabel: context.t(
+                        isScreenplay
+                            ? LocaleKeys.libraryImportScreenplay
+                            : LocaleKeys.libraryImportTxt,
+                      ),
                       username: username,
                       featuredTitle: recent.firstOrNull?.title,
                       headerGestureExclusionKey: headerGestureExclusionKey,
@@ -221,7 +230,10 @@ class HomeLibraryPanel extends HookConsumerWidget {
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: isScreenplay
-                        ? EmptyScreenplayState(onCreate: onCreateNovel)
+                        ? EmptyScreenplayState(
+                            onCreate: onCreateNovel,
+                            onImport: onImportScreenplay,
+                          )
                         : EmptyLibraryState(
                             onCreate: onCreateNovel,
                             onImport: onImportNovel,
@@ -384,9 +396,14 @@ class EmptyLibraryState extends StatelessWidget {
 }
 
 class EmptyScreenplayState extends StatelessWidget {
-  const EmptyScreenplayState({super.key, required this.onCreate});
+  const EmptyScreenplayState({
+    super.key,
+    required this.onCreate,
+    required this.onImport,
+  });
 
   final VoidCallback onCreate;
+  final VoidCallback onImport;
 
   @override
   Widget build(BuildContext context) {
@@ -413,6 +430,12 @@ class EmptyScreenplayState extends StatelessWidget {
             FilledButton(
               onPressed: onCreate,
               child: Text(context.t(LocaleKeys.libraryCreateScreenplay)),
+            ),
+            const SizedBox(height: RevericSpacing.lg),
+            OutlinedButton.icon(
+              onPressed: onImport,
+              icon: const RevericIcon(RevericIcons.upload, size: 16),
+              label: Text(context.t(LocaleKeys.libraryImportScreenplay)),
             ),
           ],
         ),

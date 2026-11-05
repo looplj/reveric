@@ -215,12 +215,16 @@ void main() {
       expect(_inGrid('Screenplay 0'), findsWidgets);
       expect(find.byTooltip('Drafts'), findsNothing);
 
-      // 剧本页没有快速开书和导入，新建直接进剧本表单，类型不可切换。
+      // 剧本页没有快速开书，只有新建和导入剧本；新建进剧本表单，类型不可切换。
       await tester.tap(find.byTooltip('New').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Quick Start'), findsNothing);
+      expect(find.text('Import TXT'), findsNothing);
+      expect(find.text('Import Screenplay'), findsOneWidget);
+      await tester.tap(find.text('New Screenplay'));
       await tester.pumpAndSettle();
       expect(find.byType(MobileNovelCreatePage), findsOneWidget);
       expect(find.text('New Screenplay'), findsOneWidget);
-      expect(find.text('Quick Start'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();

@@ -102,7 +102,7 @@ class _IdeaForm extends HookWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Header(
+        PromptDialogHeader(
           title: context.t(LocaleKeys.libraryQuickStart),
           subtitle: context.t(LocaleKeys.libraryQuickStartIdeaHelp),
           onClose: close,
@@ -160,16 +160,20 @@ class _IdeaForm extends HookWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
+/// 输入提示后启动 AI 的弹窗头部，快速开书与剧本导入共用。
+class PromptDialogHeader extends StatelessWidget {
+  const PromptDialogHeader({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.onClose,
+    this.icon = RevericIcons.auto_awesome,
   });
 
   final String title;
   final String subtitle;
   final VoidCallback onClose;
+  final String icon;
 
   @override
   Widget build(BuildContext context) {
@@ -193,11 +197,7 @@ class _Header extends StatelessWidget {
               color: colors.accent.withValues(alpha: 0.13),
               borderRadius: BorderRadius.circular(RevericRadius.large),
             ),
-            child: RevericIcon(
-              RevericIcons.auto_awesome,
-              size: 18,
-              color: colors.accent,
-            ),
+            child: RevericIcon(icon, size: 18, color: colors.accent),
           ),
           const SizedBox(width: RevericSpacing.lg),
           Expanded(

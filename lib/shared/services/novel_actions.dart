@@ -21,6 +21,7 @@ import '../logger/app_logger.dart';
 import '../utils/short_entity_id.dart';
 import '../utils/storage_paths.dart';
 import 'image_library_service.dart';
+import 'documents_service.dart';
 import 'novel_content.dart';
 import 'screenplay_service.dart';
 
@@ -242,6 +243,33 @@ class NovelActionsService {
       tags: const [],
       draft: true,
     );
+  }
+
+  /// 导入剧本：以源文件名建一部空剧本，原文整份存为同名资料，交给 AI 按提示词改编。
+  /// 书架上已有同名作品时依次追加「 (2)」「 (3)」…，资料标题保持 [title]，返回新作品 id。
+  Future<String> createImportedScreenplay({
+    required String title,
+    required String sourceContent,
+  }) async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await createNovel(
+          title: attempt == 1 ? title : '$title ($attempt)',
+          description: '',
+          contentKind: contentKindScreenplay,
+          populateContent: (content) =>
+              DocumentsService(content).createDocument(
+                type: documentTypeMaterial,
+                title: title,
+                content: sourceContent,
+              ),
+        );
+      } on NovelTitleConflictException {
+        if (attempt >= 99) {
+          rethrow;
+        }
+      }
+    }
   }
 
   /// 「加入书架」：清除快速开书占位标记，让作品正式进入书库。

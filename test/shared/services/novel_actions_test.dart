@@ -81,6 +81,41 @@ void main() {
     );
 
     test(
+      'createImportedScreenplay stores the source as a material and dedupes the title',
+      () async {
+        await _configureTemporaryStorage('imported_screenplay');
+        await appDb.novelDao.create(
+          id: 'existing',
+          title: '原著',
+          description: '',
+        );
+        final service = NovelActionsService(
+          appDb,
+          seedScreenplayWorkspace: (_, _) async {},
+        );
+
+        final id = await service.createImportedScreenplay(
+          title: '原著',
+          sourceContent: '第一行\n第二行',
+        );
+
+        final screenplay = await appDb.novelDao.get(id);
+        expect(screenplay?.title, '原著 (2)');
+        expect(screenplay?.contentKind, contentKindScreenplay);
+        final contentDb = NovelContentDatabase(
+          screenplay!.contentDatabasePath!,
+        );
+        addTearDown(contentDb.close);
+        final materials = await (contentDb.select(
+          contentDb.documents,
+        )..where((row) => row.type.equals(documentTypeMaterial))).get();
+        expect(materials, hasLength(1));
+        expect(materials.single.title, '原著');
+        expect(materials.single.content, '第一行\n第二行');
+      },
+    );
+
+    test(
       'keeps a duplicate-title draft out of the shelf when publishing conflicts',
       () async {
         await appDb.novelDao.create(

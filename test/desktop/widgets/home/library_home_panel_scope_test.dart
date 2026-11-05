@@ -121,6 +121,7 @@ void main() {
                     onQuickStart: () {},
                     onCreateNovel: () {},
                     onImportNovel: () {},
+                    onImportScreenplay: () {},
                     onCreateDemoNovel: () {},
                     onDeleteNovel: (_) {},
                     onAdaptNovel: (_) {},

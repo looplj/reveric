@@ -67,6 +67,7 @@
   "common.more_actions": "更多操作",
   "common.reset": "重置为默认",
   "common.select_image": "选择图片",
+  "common.select_file": "选择文件",
   "common.remove": "移除",
   "common.root_directory": "根目录",
   "common.this_folder": "该文件夹",

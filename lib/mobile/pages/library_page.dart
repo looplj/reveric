@@ -36,6 +36,8 @@ import '../../shared/components/reveric_icon_button.dart';
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
 import '../../shared/widgets/quick_start_idea.dart';
+import '../../shared/services/screenplay_import.dart';
+import '../../shared/widgets/screenplay/import_dialog.dart';
 import '../../shared/models/content_status.dart';
 import '../../shared/models/content_kind.dart';
 import '../features/library/filters.dart';
@@ -64,6 +66,9 @@ import '../../shared/widgets/collections/location.dart';
 import '../../shared/widgets/collections/empty.dart';
 import '../../shared/widgets/collections/work_menu.dart';
 import '../../shared/components/reveric_search_field.dart';
+import '../../shared/logger/app_logger.dart';
+
+final _log = AppLogger.forModule('Library');
 
 void _openCreate(BuildContext context, String contentKind) {
   Navigator.of(context).push(
@@ -326,6 +331,67 @@ class MobileLibraryPage extends HookConsumerWidget {
       }
     }
 
+    // 导入剧本：以文件名建剧本并把原文存为资料，进编辑器后由 AI 按提示词分段读取改编。
+    Future<void> importScreenplay() async {
+      final request = await showScreenplayImport(context, mobile: true);
+      if (!context.mounted || request == null) {
+        return;
+      }
+      final actions = ref.read(novelActionsProvider);
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+      final kickoffTitle = context.t(LocaleKeys.libraryImportScreenplay);
+      final untitled = context.t(LocaleKeys.libraryUntitledNovel);
+      try {
+        final title = request.source.title.isEmpty
+            ? untitled
+            : request.source.title;
+        final id = await actions.createImportedScreenplay(
+          title: title,
+          sourceContent: request.source.content,
+        );
+        final created = await actions.getNovel(id);
+        if (!context.mounted) {
+          return;
+        }
+        if (created == null) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(context.t(LocaleKeys.libraryCreateNovelFailed)),
+            ),
+          );
+          return;
+        }
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => MobileWorkspaceEditorPage(
+              novel: created,
+              initialChatKickoffPrompt: buildScreenplayImportKickoffPrompt(
+                prompt: request.prompt,
+                materialTitle: title,
+                lineCount: request.source.lineCount,
+              ),
+              initialChatKickoffTitle: kickoffTitle,
+            ),
+          ),
+        );
+      } catch (error, stackTrace) {
+        _log.error(
+          'importScreenplay failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        if (!context.mounted) {
+          return;
+        }
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(context.t(LocaleKeys.libraryCreateNovelFailed)),
+          ),
+        );
+      }
+    }
+
     Future<void> updateStatus(Novel novel, String status) async {
       final actions = ref.read(novelActionsProvider);
       final messenger = ScaffoldMessenger.of(context);
@@ -377,15 +443,19 @@ class MobileLibraryPage extends HookConsumerWidget {
       );
     }
 
-    // 快速开书和 TXT 导入都落在小说库；剧本页直接进新建剧本。
-    void showCreateSheet() => isScreenplay
-        ? _openCreate(context, contentKind)
-        : _showCreateSheet(
-            context: context,
-            onCreate: () => _openCreate(context, contentKind),
-            onQuickStart: quickStart,
-            onImport: openImportNovel,
-          );
+    // 快速开书只落在小说库；剧本库导入走 AI 改编。
+    void showCreateSheet() => _showCreateSheet(
+      context: context,
+      createLabelKey: isScreenplay
+          ? LocaleKeys.libraryCreateScreenplay
+          : LocaleKeys.libraryCreateNovel,
+      onCreate: () => _openCreate(context, contentKind),
+      onQuickStart: isScreenplay ? null : quickStart,
+      importLabelKey: isScreenplay
+          ? LocaleKeys.libraryImportScreenplay
+          : LocaleKeys.libraryImportTxt,
+      onImport: isScreenplay ? importScreenplay : openImportNovel,
+    );
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -661,8 +731,10 @@ class _SectionLabel extends StatelessWidget {
 
 void _showCreateSheet({
   required BuildContext context,
+  required String createLabelKey,
   required VoidCallback onCreate,
-  required VoidCallback onQuickStart,
+  required VoidCallback? onQuickStart,
+  required String importLabelKey,
   required VoidCallback onImport,
 }) {
   final colors = RevericTheme.colorsOf(context);
@@ -685,13 +757,14 @@ void _showCreateSheet({
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            item(RevericIcons.add, LocaleKeys.libraryCreateNovel, onCreate),
-            item(
-              RevericIcons.auto_awesome,
-              LocaleKeys.libraryQuickStart,
-              onQuickStart,
-            ),
-            item(RevericIcons.upload, LocaleKeys.libraryImportTxt, onImport),
+            item(RevericIcons.add, createLabelKey, onCreate),
+            if (onQuickStart != null)
+              item(
+                RevericIcons.auto_awesome,
+                LocaleKeys.libraryQuickStart,
+                onQuickStart,
+              ),
+            item(RevericIcons.upload, importLabelKey, onImport),
           ],
         ),
       );

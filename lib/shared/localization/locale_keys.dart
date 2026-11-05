@@ -2299,6 +2299,7 @@ abstract final class LocaleKeys {
   static const commonNone = 'common.none';
   static const commonSelectedCountFmt = 'common.selected_count_fmt';
   static const commonSelectImage = 'common.select_image';
+  static const commonSelectFile = 'common.select_file';
   static const commonSend = 'common.send';
   static const commonSetup = 'common.setup';
   static const commonStatus = 'common.status';
@@ -3225,6 +3226,12 @@ abstract final class LocaleKeys {
   static const libraryImportTxtFailed = 'library.import_txt_failed';
   static const libraryImportTxtSuccess = 'library.import_txt_success';
   static const libraryImportTxtSummary = 'library.import_txt_summary';
+  static const libraryImportScreenplay = 'library.import_screenplay';
+  static const libraryImportScreenplayHelp = 'library.import_screenplay_help';
+  static const libraryImportScreenplayTooLarge =
+      'library.import_screenplay_too_large';
+  static const libraryImportScreenplayLineTooLong =
+      'library.import_screenplay_line_too_long';
   static const libraryQuickStartIdeaHint = 'library.quick_start_idea_hint';
   static const libraryQuickStartIdeaHelp = 'library.quick_start_idea_help';
   static const libraryQuickStartConfirm = 'library.quick_start_confirm';

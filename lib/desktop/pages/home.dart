@@ -79,6 +79,8 @@ import '../widgets/desktop_save_shortcut.dart';
 import '../widgets/novel_create_submitter.dart';
 import '../widgets/novel_form_dialog.dart';
 import '../widgets/novel_import_dialog.dart';
+import '../../shared/services/screenplay_import.dart';
+import '../../shared/widgets/screenplay/import_dialog.dart';
 import '../widgets/home/library_home_panel.dart';
 import '../widgets/settings/settings_dialog.dart';
 import '../widgets/agent_management/subagent_edit_panel.dart';
@@ -495,6 +497,54 @@ class NovelHomePage extends HookConsumerWidget {
       );
     }
 
+    // 导入剧本：以文件名建剧本并把原文存为资料，进编辑器后由 AI 按提示词分段读取改编。
+    Future<void> importScreenplay() async {
+      final request = await showScreenplayImport(context, mobile: false);
+      if (!context.mounted || request == null) {
+        return;
+      }
+      final actions = ref.read(novelActionsProvider);
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+      final kickoffTitle = context.t(LocaleKeys.libraryImportScreenplay);
+      try {
+        final title = request.source.title.isEmpty
+            ? context.t(LocaleKeys.libraryUntitledNovel)
+            : request.source.title;
+        final screenplayId = await actions.createImportedScreenplay(
+          title: title,
+          sourceContent: request.source.content,
+        );
+        if (!context.mounted) {
+          return;
+        }
+        novelSerial.value += 1;
+        navigator.push(
+          MaterialPageRoute(
+            builder: (_) => WorkspaceEditorPage(
+              novelId: screenplayId,
+              initialChatKickoffPrompt: buildScreenplayImportKickoffPrompt(
+                prompt: request.prompt,
+                materialTitle: title,
+                lineCount: request.source.lineCount,
+              ),
+              initialChatKickoffTitle: kickoffTitle,
+            ),
+          ),
+        );
+      } catch (error) {
+        _log.error('importScreenplay caught error=$error', error: error);
+        if (!context.mounted) {
+          return;
+        }
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(context.t(LocaleKeys.libraryCreateNovelFailed)),
+          ),
+        );
+      }
+    }
+
     /// 从一本小说出发新建改编剧本：类型、来源与原著信息预填，其余交给用户确认。
     void adaptNovel(Novel novel) {
       showNovelAdaptationDialog(context, ref, novel);
@@ -813,6 +863,7 @@ class NovelHomePage extends HookConsumerWidget {
         onQuickStart: quickStartNovel,
         onCreateNovel: () => openCreateNovelDialog(contentKind),
         onImportNovel: openImportNovelDialog,
+        onImportScreenplay: importScreenplay,
         onCreateDemoNovel: () => createDemoNovelWithNavigation(context, ref),
         onDeleteNovel: (novel) => deleteNovel(novel),
         onAdaptNovel: adaptNovel,

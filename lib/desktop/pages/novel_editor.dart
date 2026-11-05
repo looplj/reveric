@@ -260,6 +260,7 @@ class NovelEditorPage extends HookConsumerWidget {
     required this.novelId,
     this.initialSessionId,
     this.initialChatKickoffPrompt,
+    this.initialChatKickoffTitle,
     this.openChatOnEntry = false,
   });
 
@@ -269,6 +270,9 @@ class NovelEditorPage extends HookConsumerWidget {
   /// 快速开书时携带的开场提示词：非空则进入后展开沉浸聊天并
   /// 自动发送该消息，触发创作向导引导用户完善设定。
   final String? initialChatKickoffPrompt;
+
+  /// 开场会话标题，缺省为「快速开书」。
+  final String? initialChatKickoffTitle;
 
   /// 新建小说进入时直接展开聊天，等待用户输入，不自动发送消息。
   final bool openChatOnEntry;
@@ -3594,7 +3598,7 @@ class NovelEditorPage extends HookConsumerWidget {
     final kickoffPrompt = initialChatKickoffPrompt?.trim();
     final hasKickoff = kickoffPrompt != null && kickoffPrompt.isNotEmpty;
     final kickoffLabel = hasKickoff
-        ? context.t(LocaleKeys.libraryQuickStart)
+        ? initialChatKickoffTitle ?? context.t(LocaleKeys.libraryQuickStart)
         : '';
     final kickoffTitle = kickoffLabel;
     useEffect(() {

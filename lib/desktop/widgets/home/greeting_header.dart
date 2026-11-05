@@ -36,7 +36,8 @@ class GreetingHeader extends StatelessWidget {
     required this.onQuickStart,
     required this.onCreateNovel,
     required this.createLabel,
-    required this.onImportNovel,
+    required this.onImport,
+    required this.importLabel,
     required this.username,
     required this.featuredTitle,
     required this.headerGestureExclusionKey,
@@ -47,8 +48,9 @@ class GreetingHeader extends StatelessWidget {
   final VoidCallback onCreateNovel;
   final String createLabel;
 
-  /// 为 null 时不显示 TXT 导入（剧本库）。
-  final VoidCallback? onImportNovel;
+  /// 小说库导入 TXT，剧本库导入后交给 AI 改编。
+  final VoidCallback onImport;
+  final String importLabel;
   final String? username;
   final String? featuredTitle;
   final GlobalKey headerGestureExclusionKey;
@@ -125,12 +127,11 @@ class GreetingHeader extends StatelessWidget {
               spacing: RevericSpacing.sm,
               runSpacing: RevericSpacing.sm,
               children: [
-                if (onImportNovel case final onImport?)
-                  OutlinedButton.icon(
-                    onPressed: onImport,
-                    icon: const RevericIcon(RevericIcons.upload, size: 16),
-                    label: Text(context.t(LocaleKeys.libraryImportTxt)),
-                  ),
+                OutlinedButton.icon(
+                  onPressed: onImport,
+                  icon: const RevericIcon(RevericIcons.upload, size: 16),
+                  label: Text(importLabel),
+                ),
                 // 新建作品 — 有快速开书时是次按钮（outlined），走完整表单对话框；
                 // 没有时它就是唯一的主操作。
                 if (onQuickStart case final quickStart?) ...[
