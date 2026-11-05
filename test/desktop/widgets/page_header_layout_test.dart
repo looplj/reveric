@@ -80,6 +80,7 @@ void main() {
                 child: GreetingHeader(
                   onQuickStart: () {},
                   onCreateNovel: () => taps++,
+                  createLabel: 'New Novel',
                   onImportNovel: () {},
                   username: 'Writer',
                   featuredTitle: 'A very long novel title that keeps on going',

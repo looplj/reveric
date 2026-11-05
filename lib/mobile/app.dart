@@ -1,4 +1,4 @@
-// 职责: 移动端应用壳 — 底部 Tab 导航（作品/助手/设置），PageView 切换动效 + KeepAlive 保活各 Tab。
+// 职责: 移动端应用壳 — 底部 Tab 导航（小说/剧本/助手/设置），PageView 切换动效 + KeepAlive 保活各 Tab。
 // 关联文件:
 //   lib/mobile/widgets/tab_bar.dart
 //   lib/mobile/providers/tab_providers.dart
@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../shared/models/content_kind.dart';
 import '../shared/theme/theme.dart';
 import 'pages/library_page.dart';
 import 'pages/chat_page.dart';
@@ -53,7 +54,12 @@ class MobileApp extends HookConsumerWidget {
         controller: pageController,
         physics: const NeverScrollableScrollPhysics(),
         children: const [
-          _KeepAliveTab(child: MobileLibraryPage()),
+          _KeepAliveTab(
+            child: MobileLibraryPage(contentKind: contentKindNovel),
+          ),
+          _KeepAliveTab(
+            child: MobileLibraryPage(contentKind: contentKindScreenplay),
+          ),
           _KeepAliveTab(child: MobileChatPage()),
           _KeepAliveTab(child: SettingsPage()),
         ],

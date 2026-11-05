@@ -24,22 +24,37 @@ Future<String?> showCollectionName(
   BuildContext context, {
   required bool mobile,
   LibraryCollection? collection,
+  String? contentKind,
   Set<String> workIds = const {},
-}) => showCollectionSurface<String>(
-  context,
-  mobile: mobile,
-  builder: (_) =>
-      _NameForm(mobile: mobile, collection: collection, workIds: workIds),
-);
+}) {
+  assert(
+    collection != null || contentKind != null,
+    'New collections need the content kind of their library',
+  );
+  return showCollectionSurface<String>(
+    context,
+    mobile: mobile,
+    builder: (_) => _NameForm(
+      mobile: mobile,
+      collection: collection,
+      contentKind: contentKind,
+      workIds: workIds,
+    ),
+  );
+}
 
 class _NameForm extends HookConsumerWidget {
   const _NameForm({
     required this.mobile,
     this.collection,
+    this.contentKind,
     required this.workIds,
   });
   final bool mobile;
+
+  /// 传入时为重命名；否则新建一个 [contentKind] 类型的集合。
   final LibraryCollection? collection;
+  final String? contentKind;
   final Set<String> workIds;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -64,7 +79,11 @@ class _NameForm extends HookConsumerWidget {
           await dao.rename(existing.id, name);
           id = existing.id;
         } else {
-          id = await dao.create(name: name, workIds: workIds);
+          id = await dao.create(
+            name: name,
+            contentKind: contentKind!,
+            workIds: workIds,
+          );
         }
         if (context.mounted) {
           Navigator.of(context).pop(id);

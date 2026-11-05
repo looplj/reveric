@@ -66,7 +66,7 @@ void main() {
       expect(
         (await db.customSelect('PRAGMA user_version').getSingle())
             .data['user_version'],
-        1,
+        NovelContentDatabase.currentSchemaVersion,
       );
     } finally {
       await db.close();
@@ -187,7 +187,7 @@ void main() {
       expect(
         (await db.customSelect('PRAGMA user_version').getSingle())
             .data['user_version'],
-        1,
+        NovelContentDatabase.currentSchemaVersion,
       );
       await db
           .into(db.canvases)

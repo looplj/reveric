@@ -129,6 +129,7 @@ void main() {
       );
       final id = await db.novelCollectionDao.create(
         name: 'Rule',
+        contentKind: 'novel',
         filterMode: 'rule',
         filter: filter,
       );
@@ -184,6 +185,7 @@ void main() {
       );
       final id = await db.novelCollectionDao.create(
         name: 'Original',
+        contentKind: 'novel',
         filterMode: 'rule',
         filter: original,
       );

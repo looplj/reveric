@@ -1,4 +1,4 @@
-// 职责: 移动端底部 Tab 栏 — 作品/AI/设置 三个根 Tab 的图标+文字与选中态。
+// 职责: 移动端底部 Tab 栏 — 小说/剧本/AI/设置 四个根 Tab 的图标+文字与选中态。
 // 关联文件:
 //   lib/mobile/app.dart
 //   lib/shared/theme/theme.dart
@@ -22,7 +22,11 @@ class MobileTabItem {
 const List<MobileTabItem> mobileTabItems = [
   MobileTabItem(
     icon: RevericIcons.menu_book_rounded,
-    labelKey: LocaleKeys.mobileTabLibrary,
+    labelKey: LocaleKeys.mobileTabNovels,
+  ),
+  MobileTabItem(
+    icon: RevericIcons.movie_outlined,
+    labelKey: LocaleKeys.mobileTabScreenplays,
   ),
   MobileTabItem(
     icon: RevericIcons.auto_awesome,

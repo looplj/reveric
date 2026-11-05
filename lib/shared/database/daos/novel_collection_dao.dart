@@ -1,4 +1,4 @@
-// 职责: 持久化不分类型的作品集合及多对多归属，按类型筛选查询并事务化批量加入与软删除。
+// 职责: 持久化按作品类型划分的集合及多对多归属，按类型筛选查询并事务化批量加入与软删除。
 // 关联文件:
 //   lib/shared/database/app_database.dart
 //   lib/shared/providers/novel_collection_providers.dart
@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../logger/app_logger.dart';
 import '../../models/collections/filter.dart';
+import '../../models/content_kind.dart';
 import '../queries/collection_filter.dart';
 import '../app_database.dart';
 
@@ -182,8 +183,10 @@ class NovelCollectionDao extends DatabaseAccessor<AppDatabase>
     return row;
   }
 
+  /// [contentKind] 是集合所属的库；成员只能是同类型作品。
   Future<String> create({
     required String name,
+    required String contentKind,
     Iterable<String> workIds = const [],
     String filterMode = 'manual',
     CollectionFilter? filter,
@@ -201,12 +204,14 @@ class NovelCollectionDao extends DatabaseAccessor<AppDatabase>
       if (filter != null) {
         CollectionFilter.parse(filter.raw).requireValid();
       }
+      validateContentKind(contentKind);
       await into(novelCollections).insert(
         NovelCollectionsCompanion.insert(
           id: id,
           name: _name(name),
           filterMode: Value(filterMode),
           filter: Value(filter),
+          contentKind: Value(contentKind),
         ),
       );
       if (filterMode == 'manual') {
@@ -306,6 +311,10 @@ class NovelCollectionDao extends DatabaseAccessor<AppDatabase>
               .get();
       if (works.length != ids.length) {
         throw ArgumentError('All members must be visible works');
+      }
+      final kind = collection.contentKind;
+      if (kind != null && works.any((w) => w.contentKind != kind)) {
+        throw ArgumentError('Members must match the collection content kind');
       }
     }
     final now = DateTime.now();

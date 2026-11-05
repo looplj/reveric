@@ -1,4 +1,4 @@
-// 职责: 验证移动新建页以入口类型开场、可在页内切换小说 / 剧本；横幅随类型换内容且下方字段不重建。
+// 职责: 验证移动新建页按入口锁定小说 / 剧本，横幅和专属字段随类型呈现。
 // 关联文件:
 //   lib/mobile/pages/novel_create_page.dart
 //   lib/shared/providers/dictionary_providers.dart
@@ -13,7 +13,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:reveric/shared/components/reveric_segmented_control.dart';
 import 'package:reveric/mobile/pages/novel_create_page.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
@@ -29,9 +28,7 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
 
-  testWidgets('work kind starts from the entry and can be switched in place', (
-    tester,
-  ) async {
+  testWidgets('work kind is locked to the entry', (tester) async {
     tester.view.physicalSize = const Size(390, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -60,11 +57,6 @@ void main() {
       ),
     );
 
-    Finder kindTab(String label) => find.descendant(
-      of: find.byType(RevericSegmentedControl<String>),
-      matching: find.text(label),
-    );
-
     // 剧本入口：落在剧本，有计划集数，横幅槽位是从小说改编。
     await tester.pumpWidget(
       app(
@@ -78,15 +70,23 @@ void main() {
     expect(find.text('Planned episodes'), findsOneWidget);
     expect(find.text('Quick Start'), findsNothing);
     expect(find.text('Adapt a novel'), findsOneWidget);
-    final titleElement = tester.element(find.text('Work name'));
+    expect(find.text('New Screenplay'), findsOneWidget);
+    expect(find.text('Novel'), findsNothing);
 
-    // 页内切到小说：横幅换成快速开书，剧本专属字段收起。改编横幅内嵌了原著选择，
-    // 窄屏比快速开书高，下方表单会上移，但字段不能被重建。
-    await tester.tap(kindTab('Novel'));
+    // 小说入口：横幅是快速开书，没有剧本专属字段，也不能切到剧本。
+    await tester.pumpWidget(
+      app(
+        const MobileNovelCreatePage(
+          key: ValueKey('novel'),
+          contentKind: contentKindNovel,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Planned episodes'), findsNothing);
     expect(find.text('Quick Start'), findsOneWidget);
-    expect(tester.element(find.text('Work name')), same(titleElement));
+    expect(find.text('New Novel'), findsOneWidget);
+    expect(find.text('Screenplay'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

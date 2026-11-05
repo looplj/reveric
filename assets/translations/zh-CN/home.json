@@ -34,7 +34,7 @@
   "home.filter_category_all": "全部分类",
   "home.filter_uncategorized": "未分类",
   "home.filter_and_sort": "筛选与排序",
-  "home.create_card_title": "新建作品",
+  "home.create_card_title": "新建小说",
   "home.create_card_subtitle": "从一个想法开始\n你的新故事",
   "home.create_screenplay_card_title": "新建剧本",
   "home.create_screenplay_card_subtitle": "从第一季第一集开始",
@@ -49,6 +49,5 @@
   "home.nav_works": "作品",
   "home.resume_eyebrow": "继续写",
   "home.resume_recent": "最近",
-  "home.resume_last_written": "上次写于 {time}",
-  "home.create_work_card_subtitle": "小说或剧本\n从一个想法开始"
+  "home.resume_last_written": "上次写于 {time}"
 }

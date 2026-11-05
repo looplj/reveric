@@ -7,14 +7,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 底部 Tab 索引常量（与 [MobileApp] 的 PageView 顺序一致）。
 abstract final class MobileTab {
-  static const library = 0;
-  static const assistant = 1;
-  static const settings = 2;
+  static const novels = 0;
+  static const screenplays = 1;
+  static const assistant = 2;
+  static const settings = 3;
 }
 
 class _MobileTabIndexNotifier extends Notifier<int> {
   @override
-  int build() => MobileTab.library;
+  int build() => MobileTab.novels;
 
   void set(int index) => state = index;
 }

@@ -47,7 +47,7 @@ class NovelLibrarySliver extends StatelessWidget {
   const NovelLibrarySliver({
     super.key,
     required this.novels,
-    this.contentKind,
+    required this.contentKind,
     this.showCreateCard = true,
     required this.onCreateNovel,
     required this.onDeleteNovel,
@@ -60,9 +60,8 @@ class NovelLibrarySliver extends StatelessWidget {
 
   final List<Novel> novels;
 
-  /// 作品区的类型筛选，null 为小说与剧本混排 — 只用于新建卡片的文案，
-  /// 条目自己按 `novel.contentKind` 渲染。
-  final String? contentKind;
+  /// 当前库的作品类型 — 只用于新建卡片的文案，条目自己按 `novel.contentKind` 渲染。
+  final String contentKind;
   final bool showCreateCard;
   final VoidCallback onCreateNovel;
   final ValueSetter<Novel> onDeleteNovel;
@@ -114,7 +113,7 @@ class NovelLibrarySliver extends StatelessWidget {
 class _CreateNovelCard extends StatelessWidget {
   const _CreateNovelCard({required this.onTap, required this.contentKind});
   final VoidCallback onTap;
-  final String? contentKind;
+  final String contentKind;
 
   @override
   Widget build(BuildContext context) {
@@ -162,12 +161,11 @@ class _CreateNovelCard extends StatelessWidget {
                   ),
                   const SizedBox(height: RevericSpacing.xs),
                   Text(
-                    context.t(switch (contentKind) {
-                      contentKindScreenplay =>
-                        LocaleKeys.homeCreateScreenplayCardSubtitle,
-                      contentKindNovel => LocaleKeys.homeCreateCardSubtitle,
-                      _ => LocaleKeys.homeCreateWorkCardSubtitle,
-                    }),
+                    context.t(
+                      contentKind == contentKindScreenplay
+                          ? LocaleKeys.homeCreateScreenplayCardSubtitle
+                          : LocaleKeys.homeCreateCardSubtitle,
+                    ),
                     textAlign: TextAlign.center,
                     style: typo.uiSmall.copyWith(color: colors.textMuted),
                   ),

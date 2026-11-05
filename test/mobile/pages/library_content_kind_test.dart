@@ -1,4 +1,4 @@
-// 职责: 验证作品页类型筛选的导航稳定与滚动保持，以及混排、筛选、统计、导出和剧本入口。
+// 职责: 验证小说 / 剧本作品页各自独立（作品、继续写、草稿、新建入口），以及剧本的筛选、统计、导出和工作台入口。
 // 关联文件:
 //   lib/mobile/pages/library_page.dart
 //   lib/mobile/features/screenplay/library_meta.dart
@@ -25,7 +25,7 @@ import 'package:reveric/shared/widgets/novel_export_form.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/mobile/pages/library_page.dart';
-import 'package:reveric/mobile/widgets/segmented_tabs.dart';
+import 'package:reveric/mobile/pages/novel_create_page.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
@@ -55,9 +55,8 @@ void main() {
   });
   setUp(() => rootBundle.clear());
 
-  testWidgets('shelves separate content kinds and open screenplay workspaces', (
-    tester,
-  ) async {
+  testWidgets('each page shelves only its own kind and opens screenplay '
+      'workspaces', (tester) async {
     tester.view.physicalSize = const Size(320, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -97,28 +96,28 @@ void main() {
           novelContentDatabaseProvider(path).overrideWithValue(contentDb),
           novelsProvider.overrideWith((ref) => Stream.value([novel, script])),
         ],
-        child: _wrap(const MobileLibraryPage()),
+        child: _wrap(const MobileLibraryPage(contentKind: contentKindNovel)),
       ),
     );
     await tester.pumpAndSettle();
-    // 默认全部类型：小说和剧本在同一个网格里。
+    // 小说页里没有剧本。
     expect(_inGrid('Compact test novel'), findsWidgets);
-    expect(find.byType(MobileScreenplayMetaLabel), findsOneWidget);
-    final tabs = tester.element(find.byType(MobileSegmentedTabs));
-    final tabsRect = tester.getRect(find.byType(MobileSegmentedTabs));
-    final search = tester.element(find.byType(TextField));
-    await tester.tap(_typeTab('Screenplay'));
-    await tester.pump();
-    expect(
-      find.byType(MobileSegmentedTabs),
-      findsOneWidget,
-      reason: 'Navigation must remain visible while the new shelf loads',
+    expect(find.byType(MobileScreenplayMetaLabel), findsNothing);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWithValue(appDb),
+          novelContentDatabaseProvider(path).overrideWithValue(contentDb),
+          novelsProvider.overrideWith((ref) => Stream.value([novel, script])),
+        ],
+        child: _wrap(
+          const MobileLibraryPage(contentKind: contentKindScreenplay),
+        ),
+      ),
     );
-    expect(tester.element(find.byType(MobileSegmentedTabs)), same(tabs));
-    expect(tester.getRect(find.byType(MobileSegmentedTabs)), tabsRect);
-    expect(tester.element(find.byType(TextField)), same(search));
     await tester.pumpAndSettle();
-    expect(_inGrid('Compact test novel'), findsNothing);
+    expect(find.text('Compact test novel'), findsNothing);
     expect(find.byType(MobileScreenplayMetaLabel), findsOneWidget);
     expect(find.text('1 eps · 1 scenes'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'absent');
@@ -156,7 +155,7 @@ void main() {
   });
 
   testWidgets(
-    'switching work type keeps navigation and scroll position in place',
+    'novel and screenplay pages keep resume, drafts and create apart',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -165,8 +164,8 @@ void main() {
       addTearDown(db.close);
       final works = [
         _novel(id: 'draft', title: 'Draft work', draft: true),
-        for (var i = 0; i < 12; i++) _novel(id: 'novel_$i', title: 'Novel $i'),
-        for (var i = 0; i < 8; i++)
+        for (var i = 0; i < 4; i++) _novel(id: 'novel_$i', title: 'Novel $i'),
+        for (var i = 0; i < 4; i++)
           _novel(
             id: 'script_$i',
             title: 'Screenplay $i',
@@ -184,59 +183,44 @@ void main() {
           'finished': 'Finished',
         },
       );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appDatabaseProvider.overrideWithValue(db),
-            novelsProvider.overrideWith((ref) => Stream.value(works)),
-          ],
-          child: _wrap(
-            const MobileLibraryPage(),
-            theme: RevericThemeData.revericDark,
+      Future<void> pumpPage(String contentKind) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appDatabaseProvider.overrideWithValue(db),
+              novelsProvider.overrideWith((ref) => Stream.value(works)),
+            ],
+            child: _wrap(
+              MobileLibraryPage(
+                key: ValueKey(contentKind),
+                contentKind: contentKind,
+              ),
+              theme: RevericThemeData.revericDark,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final tabs = find.byType(MobileSegmentedTabs);
-      final tabsElement = tester.element(tabs);
-      final createRect = tester.getRect(find.byTooltip('New').first);
-      await _capture(tester, 'works');
-
-      ScrollPosition position() => tester
-          .state<ScrollableState>(
-            find
-                .descendant(
-                  of: find.byType(CustomScrollView),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
-          )
-          .position;
-
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -280));
-      await tester.pumpAndSettle();
-      final offset = position().pixels;
-      expect(offset, greaterThan(200));
-      final tabsRect = tester.getRect(tabs);
-      // 类型是同一个作品库里的筛选：换类型不换页面，导航和滚动位置都留在原地。
-      await tester.tap(_typeTab('Screenplay'));
-      await tester.pump();
-      expect(tester.element(tabs), same(tabsElement));
-      expect(tester.getRect(tabs), tabsRect);
-      await tester.pumpAndSettle();
-      expect(position().pixels, closeTo(offset, 1));
-      expect(tester.getRect(find.byTooltip('New').first), createRect);
-      expect(_inGrid('Novel 0'), findsNothing);
-      await _capture(tester, 'screenplays');
-
-      // 在前一次加载完成前再次切换，导航仍是同一个对象。
-      for (final label in ['Novel', 'Screenplay', 'All']) {
-        await tester.tap(_typeTab(label));
-        await tester.pump(const Duration(milliseconds: 16));
-        expect(tester.element(tabs), same(tabsElement));
+        );
+        await tester.pumpAndSettle();
       }
+
+      await pumpPage(contentKindNovel);
+      await _capture(tester, 'novels');
+      // 继续写、最近和网格都只有小说；小说草稿挂在小说页。
+      expect(find.textContaining('Screenplay '), findsNothing);
+      expect(_inGrid('Novel 0'), findsWidgets);
+      expect(find.byTooltip('Drafts'), findsOneWidget);
+
+      await pumpPage(contentKindScreenplay);
+      await _capture(tester, 'screenplays');
+      expect(find.textContaining('Novel '), findsNothing);
+      expect(_inGrid('Screenplay 0'), findsWidgets);
+      expect(find.byTooltip('Drafts'), findsNothing);
+
+      // 剧本页没有快速开书和导入，新建直接进剧本表单，类型不可切换。
+      await tester.tap(find.byTooltip('New').first);
       await tester.pumpAndSettle();
-      expect(find.byType(CustomScrollView), findsOneWidget);
+      expect(find.byType(MobileNovelCreatePage), findsOneWidget);
+      expect(find.text('New Screenplay'), findsOneWidget);
+      expect(find.text('Quick Start'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
@@ -247,11 +231,6 @@ void main() {
 /// 继续写和最近也会列出作品，断言只看作品网格。
 Finder _inGrid(String title) =>
     find.descendant(of: find.byType(SliverGrid), matching: find.text(title));
-
-Finder _typeTab(String label) => find.descendant(
-  of: find.byType(MobileSegmentedTabs),
-  matching: find.text(label),
-);
 
 Novel _novel({
   int wordCount = 0,

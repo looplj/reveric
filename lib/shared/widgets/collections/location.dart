@@ -31,8 +31,8 @@ class CollectionLocation {
     required this.onBack,
   });
 
-  /// 作品区的类型筛选，null 表示全部类型；集合本身不分类型。
-  final String? contentKind;
+  /// 当前库的作品类型；[collections] 只含本库可见的集合。
+  final String contentKind;
   final bool mobile;
   final AsyncValue<List<LibraryCollection>> collections;
   final LibraryCollection? current;
@@ -49,15 +49,15 @@ class CollectionLocation {
 class LibraryCollectionRegion extends HookConsumerWidget {
   const LibraryCollectionRegion({
     super.key,
-    this.contentKind,
+    required this.contentKind,
     this.mobile = false,
     this.initialCollectionId,
     required this.builder,
     this.onChange,
   });
 
-  /// 作品与计数按此类型筛选，null 表示全部类型。
-  final String? contentKind;
+  /// 当前库的作品类型：只列共用集合和本类型集合，作品与计数也按它筛选。
+  final String contentKind;
   final bool mobile;
 
   /// 旧的集合路由落到书架时预选的集合。
@@ -67,7 +67,9 @@ class LibraryCollectionRegion extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedId = useState<String?>(initialCollectionId);
-    final collections = ref.watch(orderedCollectionsProvider);
+    final collections = ref
+        .watch(orderedCollectionsProvider)
+        .whenData((all) => all.where((c) => c.visibleIn(contentKind)).toList());
     final counts = ref.watch(collectionCountsProvider(contentKind));
     final builtin = collections.value
         ?.where((c) => c.builtin && c.unavailableReason == null)

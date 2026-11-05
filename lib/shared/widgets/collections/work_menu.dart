@@ -51,6 +51,7 @@ List<RevericMenuItem> collectionWorkMenuItems(
         context,
         mobile: mobile,
         workIds: {novel.id},
+        contentKind: novel.contentKind,
         position: position,
       ),
     ),

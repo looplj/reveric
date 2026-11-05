@@ -2151,6 +2151,17 @@ class $NovelCollectionsTable extends NovelCollections
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   ).withConverter<CollectionFilter?>($NovelCollectionsTable.$converterfiltern);
+  static const VerificationMeta _contentKindMeta = const VerificationMeta(
+    'contentKind',
+  );
+  @override
+  late final GeneratedColumn<String> contentKind = GeneratedColumn<String>(
+    'content_kind',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2195,6 +2206,7 @@ class $NovelCollectionsTable extends NovelCollections
     builtin,
     filterMode,
     filter,
+    contentKind,
     createdAt,
     updatedAt,
     deletedAt,
@@ -2234,6 +2246,15 @@ class $NovelCollectionsTable extends NovelCollections
       context.handle(
         _filterModeMeta,
         filterMode.isAcceptableOrUnknown(data['filter_mode']!, _filterModeMeta),
+      );
+    }
+    if (data.containsKey('content_kind')) {
+      context.handle(
+        _contentKindMeta,
+        contentKind.isAcceptableOrUnknown(
+          data['content_kind']!,
+          _contentKindMeta,
+        ),
       );
     }
     if (data.containsKey('created_at')) {
@@ -2285,6 +2306,10 @@ class $NovelCollectionsTable extends NovelCollections
           data['${effectivePrefix}filter'],
         ),
       ),
+      contentKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_kind'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2317,6 +2342,10 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
   final bool builtin;
   final String filterMode;
   final CollectionFilter? filter;
+
+  /// 集合所属的作品类型；null 表示小说库和剧本库共用（只有默认集合）。
+  /// 取值由 Dart 侧 [validateContentKind] 校验。
+  final String? contentKind;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime deletedAt;
@@ -2326,6 +2355,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
     required this.builtin,
     required this.filterMode,
     this.filter,
+    this.contentKind,
     required this.createdAt,
     required this.updatedAt,
     required this.deletedAt,
@@ -2342,6 +2372,9 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
         $NovelCollectionsTable.$converterfiltern.toSql(filter),
       );
     }
+    if (!nullToAbsent || contentKind != null) {
+      map['content_kind'] = Variable<String>(contentKind);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['deleted_at'] = Variable<DateTime>(deletedAt);
@@ -2357,6 +2390,9 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
       filter: filter == null && nullToAbsent
           ? const Value.absent()
           : Value(filter),
+      contentKind: contentKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contentKind),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),
@@ -2374,6 +2410,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
       builtin: serializer.fromJson<bool>(json['builtin']),
       filterMode: serializer.fromJson<String>(json['filterMode']),
       filter: serializer.fromJson<CollectionFilter?>(json['filter']),
+      contentKind: serializer.fromJson<String?>(json['contentKind']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
@@ -2388,6 +2425,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
       'builtin': serializer.toJson<bool>(builtin),
       'filterMode': serializer.toJson<String>(filterMode),
       'filter': serializer.toJson<CollectionFilter?>(filter),
+      'contentKind': serializer.toJson<String?>(contentKind),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime>(deletedAt),
@@ -2400,6 +2438,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
     bool? builtin,
     String? filterMode,
     Value<CollectionFilter?> filter = const Value.absent(),
+    Value<String?> contentKind = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? deletedAt,
@@ -2409,6 +2448,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
     builtin: builtin ?? this.builtin,
     filterMode: filterMode ?? this.filterMode,
     filter: filter.present ? filter.value : this.filter,
+    contentKind: contentKind.present ? contentKind.value : this.contentKind,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt ?? this.deletedAt,
@@ -2422,6 +2462,9 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
           ? data.filterMode.value
           : this.filterMode,
       filter: data.filter.present ? data.filter.value : this.filter,
+      contentKind: data.contentKind.present
+          ? data.contentKind.value
+          : this.contentKind,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -2436,6 +2479,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
           ..write('builtin: $builtin, ')
           ..write('filterMode: $filterMode, ')
           ..write('filter: $filter, ')
+          ..write('contentKind: $contentKind, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -2450,6 +2494,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
     builtin,
     filterMode,
     filter,
+    contentKind,
     createdAt,
     updatedAt,
     deletedAt,
@@ -2463,6 +2508,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
           other.builtin == this.builtin &&
           other.filterMode == this.filterMode &&
           other.filter == this.filter &&
+          other.contentKind == this.contentKind &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -2474,6 +2520,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
   final Value<bool> builtin;
   final Value<String> filterMode;
   final Value<CollectionFilter?> filter;
+  final Value<String?> contentKind;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime> deletedAt;
@@ -2484,6 +2531,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
     this.builtin = const Value.absent(),
     this.filterMode = const Value.absent(),
     this.filter = const Value.absent(),
+    this.contentKind = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -2495,6 +2543,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
     this.builtin = const Value.absent(),
     this.filterMode = const Value.absent(),
     this.filter = const Value.absent(),
+    this.contentKind = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -2507,6 +2556,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
     Expression<bool>? builtin,
     Expression<String>? filterMode,
     Expression<String>? filter,
+    Expression<String>? contentKind,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -2518,6 +2568,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
       if (builtin != null) 'builtin': builtin,
       if (filterMode != null) 'filter_mode': filterMode,
       if (filter != null) 'filter': filter,
+      if (contentKind != null) 'content_kind': contentKind,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -2531,6 +2582,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
     Value<bool>? builtin,
     Value<String>? filterMode,
     Value<CollectionFilter?>? filter,
+    Value<String?>? contentKind,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime>? deletedAt,
@@ -2542,6 +2594,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
       builtin: builtin ?? this.builtin,
       filterMode: filterMode ?? this.filterMode,
       filter: filter ?? this.filter,
+      contentKind: contentKind ?? this.contentKind,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -2569,6 +2622,9 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
         $NovelCollectionsTable.$converterfiltern.toSql(filter.value),
       );
     }
+    if (contentKind.present) {
+      map['content_kind'] = Variable<String>(contentKind.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -2592,6 +2648,7 @@ class NovelCollectionsCompanion extends UpdateCompanion<NovelCollection> {
           ..write('builtin: $builtin, ')
           ..write('filterMode: $filterMode, ')
           ..write('filter: $filter, ')
+          ..write('contentKind: $contentKind, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -24939,6 +24996,7 @@ typedef $$NovelCollectionsTableCreateCompanionBuilder =
       Value<bool> builtin,
       Value<String> filterMode,
       Value<CollectionFilter?> filter,
+      Value<String?> contentKind,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime> deletedAt,
@@ -24951,6 +25009,7 @@ typedef $$NovelCollectionsTableUpdateCompanionBuilder =
       Value<bool> builtin,
       Value<String> filterMode,
       Value<CollectionFilter?> filter,
+      Value<String?> contentKind,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime> deletedAt,
@@ -24990,6 +25049,11 @@ class $$NovelCollectionsTableFilterComposer
   get filter => $composableBuilder(
     column: $table.filter,
     builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get contentKind => $composableBuilder(
+    column: $table.contentKind,
+    builder: (column) => ColumnFilters(column),
   );
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
@@ -25042,6 +25106,11 @@ class $$NovelCollectionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get contentKind => $composableBuilder(
+    column: $table.contentKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -25083,6 +25152,11 @@ class $$NovelCollectionsTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<CollectionFilter?, String> get filter =>
       $composableBuilder(column: $table.filter, builder: (column) => column);
+
+  GeneratedColumn<String> get contentKind => $composableBuilder(
+    column: $table.contentKind,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -25136,6 +25210,7 @@ class $$NovelCollectionsTableTableManager
                 Value<bool> builtin = const Value.absent(),
                 Value<String> filterMode = const Value.absent(),
                 Value<CollectionFilter?> filter = const Value.absent(),
+                Value<String?> contentKind = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime> deletedAt = const Value.absent(),
@@ -25146,6 +25221,7 @@ class $$NovelCollectionsTableTableManager
                 builtin: builtin,
                 filterMode: filterMode,
                 filter: filter,
+                contentKind: contentKind,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -25158,6 +25234,7 @@ class $$NovelCollectionsTableTableManager
                 Value<bool> builtin = const Value.absent(),
                 Value<String> filterMode = const Value.absent(),
                 Value<CollectionFilter?> filter = const Value.absent(),
+                Value<String?> contentKind = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime> deletedAt = const Value.absent(),
@@ -25168,6 +25245,7 @@ class $$NovelCollectionsTableTableManager
                 builtin: builtin,
                 filterMode: filterMode,
                 filter: filter,
+                contentKind: contentKind,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,

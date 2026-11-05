@@ -29,16 +29,28 @@ Future<void> showCollectionWorkPicker(
   BuildContext context, {
   required bool mobile,
   required String collectionId,
+  required String contentKind,
 }) => showCollectionSurface<void>(
   context,
   mobile: mobile,
-  builder: (_) => _WorkPicker(mobile: mobile, collectionId: collectionId),
+  builder: (_) => _WorkPicker(
+    mobile: mobile,
+    collectionId: collectionId,
+    contentKind: contentKind,
+  ),
 );
 
 class _WorkPicker extends HookConsumerWidget {
-  const _WorkPicker({required this.mobile, required this.collectionId});
+  const _WorkPicker({
+    required this.mobile,
+    required this.collectionId,
+    required this.contentKind,
+  });
   final bool mobile;
   final String collectionId;
+
+  /// 集合所在库的作品类型，只列这一类作品。
+  final String contentKind;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final search = useDebouncedSearch();
@@ -50,7 +62,11 @@ class _WorkPicker extends HookConsumerWidget {
     final collection = collections.value
         ?.where((c) => c.id == collectionId)
         .firstOrNull;
-    final available = novels.value?.shelfVisible.toList() ?? <Novel>[];
+    final available =
+        novels.value?.shelfVisible
+            .where((n) => n.contentKind == contentKind)
+            .toList() ??
+        <Novel>[];
     final memberships = ref.watch(
       collectionMembershipsProvider(
         collectionWorkIdsKey(available.map((n) => n.id)),

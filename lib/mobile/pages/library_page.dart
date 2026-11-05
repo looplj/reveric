@@ -1,4 +1,4 @@
-// 职责: 移动端作品页 — 问候与新建入口固定在顶，继续写、最近和按类型筛选的作品库同屏滚动。
+// 职责: 移动端小说 / 剧本作品页 — 问候与新建入口固定在顶，本类型的继续写、最近和作品库同屏滚动。
 // 关联文件:
 //   lib/shared/widgets/confirm_dialog.dart
 //   lib/mobile/features/library/filters.dart
@@ -38,7 +38,6 @@ import '../../shared/localization/locale_keys.dart';
 import '../../shared/widgets/quick_start_idea.dart';
 import '../../shared/models/content_status.dart';
 import '../../shared/models/content_kind.dart';
-import '../widgets/segmented_tabs.dart';
 import '../features/library/filters.dart';
 import '../features/library/resume.dart';
 import '../features/library/shelf_options_sheet.dart';
@@ -103,7 +102,14 @@ void _openReader(BuildContext context, Novel novel) {
 }
 
 class MobileLibraryPage extends HookConsumerWidget {
-  const MobileLibraryPage({super.key, this.collectionId});
+  const MobileLibraryPage({
+    super.key,
+    required this.contentKind,
+    this.collectionId,
+  });
+
+  /// 本页呈现的作品类型（[contentKindNovel] / [contentKindScreenplay]），小说和剧本各占一个底部 Tab。
+  final String contentKind;
 
   /// 旧的集合路由落到书架并选中该集合。
   final String? collectionId;
@@ -120,27 +126,9 @@ class MobileLibraryPage extends HookConsumerWidget {
     final effectiveQuery = rawQuery.trim().isEmpty
         ? ''
         : (debounced ?? '').trim().toLowerCase();
-    // 作品区的类型筛选，null 为小说与剧本混排。
-    final contentKind = useState<String?>(null);
     final selectedCategory = useState<String?>(null);
     final sortOrder = useState(LibrarySortOrder.updated);
-    const typeTabs = [null, contentKindNovel, contentKindScreenplay];
-    void selectType(int index) {
-      final next = typeTabs[index];
-      if (next == contentKind.value) {
-        return;
-      }
-      // 换类型时分类可能不再存在，清掉；离开小说时字数排序失效，回到最近编辑。
-      // 集合和搜索保留，继续在新类型里用。
-      selectedCategory.value = null;
-      if (!librarySortOrdersFor(next).contains(sortOrder.value)) {
-        sortOrder.value = LibrarySortOrder.updated;
-      }
-      contentKind.value = next;
-    }
-
-    final shelfKind = contentKind.value;
-    final isScreenplay = shelfKind == contentKindScreenplay;
+    final isScreenplay = contentKind == contentKindScreenplay;
     final isDeleting = useState(false);
 
     Future<void> deleteNovel(Novel novel) async {
@@ -389,12 +377,15 @@ class MobileLibraryPage extends HookConsumerWidget {
       );
     }
 
-    void showCreateSheet() => _showCreateSheet(
-      context: context,
-      onCreate: () => _openCreate(context, shelfKind ?? contentKindNovel),
-      onQuickStart: quickStart,
-      onImport: openImportNovel,
-    );
+    // 快速开书和 TXT 导入都落在小说库；剧本页直接进新建剧本。
+    void showCreateSheet() => isScreenplay
+        ? _openCreate(context, contentKind)
+        : _showCreateSheet(
+            context: context,
+            onCreate: () => _openCreate(context, contentKind),
+            onQuickStart: quickStart,
+            onImport: openImportNovel,
+          );
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -405,8 +396,11 @@ class MobileLibraryPage extends HookConsumerWidget {
           error: (error, _) => Center(
             child: Text(context.t(LocaleKeys.libraryDatabaseLoadFailed)),
           ),
-          data: (allNovels) {
-            // 继续写和最近不受类型筛选影响；搜索时收起，结果直接顶到搜索框下面。
+          data: (everything) {
+            final allNovels = everything
+                .where((n) => n.contentKind == contentKind)
+                .toList();
+            // 搜索时收起继续写和最近，结果直接顶到搜索框下面。
             final recent = allNovels.shelfVisible.sortedForShelf(
               LibrarySortOrder.updated,
             );
@@ -418,7 +412,8 @@ class MobileLibraryPage extends HookConsumerWidget {
                   onOpenDrafts: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => const MobileLibraryDraftsPage(),
+                        builder: (_) =>
+                            MobileLibraryDraftsPage(contentKind: contentKind),
                       ),
                     );
                   },
@@ -426,7 +421,7 @@ class MobileLibraryPage extends HookConsumerWidget {
                 ),
                 Expanded(
                   child: LibraryCollectionRegion(
-                    contentKind: shelfKind,
+                    contentKind: contentKind,
                     mobile: true,
                     initialCollectionId: collectionId,
                     // 切集合清掉分类筛选，搜索和排序沿用。
@@ -465,7 +460,7 @@ class MobileLibraryPage extends HookConsumerWidget {
                       return CurrentCollectionScope(
                         collection: location.current,
                         child: CustomScrollView(
-                          key: const PageStorageKey('mobile-library'),
+                          key: PageStorageKey('mobile-library-$contentKind'),
                           primary: false,
                           slivers: [
                             // 收起顶部时靠 key 对齐，搜索框不会被重建而丢焦点。
@@ -488,52 +483,24 @@ class MobileLibraryPage extends HookConsumerWidget {
                               ),
                             SliverToBoxAdapter(
                               key: const ValueKey('library-filters'),
-                              child: Column(
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      RevericSpacing.x3l,
-                                      RevericSpacing.xs,
-                                      RevericSpacing.x3l,
-                                      RevericSpacing.md,
-                                    ),
-                                    child: MobileSegmentedTabs(
-                                      tabs: [
-                                        context.t(LocaleKeys.commonFilterAll),
-                                        context.t(
-                                          LocaleKeys.libraryContentKindNovel,
-                                        ),
-                                        context.t(
-                                          LocaleKeys
-                                              .libraryContentKindScreenplay,
-                                        ),
-                                      ],
-                                      selectedIndex: typeTabs.indexOf(
-                                        shelfKind,
-                                      ),
-                                      onSelected: selectType,
-                                    ),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  RevericSpacing.x3l,
+                                  RevericSpacing.xs,
+                                  RevericSpacing.x3l,
+                                  RevericSpacing.xs,
+                                ),
+                                child: RevericSearchField(
+                                  controller: searchController,
+                                  hint: context.t(
+                                    LocaleKeys.librarySearchPlaceholder,
                                   ),
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      RevericSpacing.x3l,
-                                      0,
-                                      RevericSpacing.x3l,
-                                      RevericSpacing.xs,
-                                    ),
-                                    child: RevericSearchField(
-                                      controller: searchController,
-                                      hint: context.t(
-                                        LocaleKeys.librarySearchPlaceholder,
-                                      ),
-                                      // 触摸目标保持原高度，组件默认的 36 在手机上偏小。
-                                      height: RevericSizes.buttonHeight,
-                                      radius: RevericRadius.pill,
-                                      fillColor: colors.surface,
-                                      highlightWhenFilled: true,
-                                    ),
-                                  ),
-                                ],
+                                  // 触摸目标保持原高度，组件默认的 36 在手机上偏小。
+                                  height: RevericSizes.buttonHeight,
+                                  radius: RevericRadius.pill,
+                                  fillColor: colors.surface,
+                                  highlightWhenFilled: true,
+                                ),
                               ),
                             ),
                             SliverPersistentHeader(
@@ -546,7 +513,7 @@ class MobileLibraryPage extends HookConsumerWidget {
                                 onOpenFilter: () => showMobileShelfOptionsSheet(
                                   context,
                                   novels: novels,
-                                  contentKind: shelfKind,
+                                  contentKind: contentKind,
                                   sortOrder: sortOrder.value,
                                   onSortChanged: (value) =>
                                       sortOrder.value = value,

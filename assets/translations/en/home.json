@@ -34,7 +34,7 @@
   "home.filter_category_all": "All categories",
   "home.filter_uncategorized": "Uncategorized",
   "home.filter_and_sort": "Filter & sort",
-  "home.create_card_title": "New work",
+  "home.create_card_title": "New novel",
   "home.create_card_subtitle": "Start from an idea\nbegin your new story",
   "home.create_screenplay_card_title": "New screenplay",
   "home.create_screenplay_card_subtitle": "Start from season 1, episode 1",
@@ -49,6 +49,5 @@
   "home.nav_works": "Works",
   "home.resume_eyebrow": "Continue writing",
   "home.resume_recent": "Recent",
-  "home.resume_last_written": "Last written {time}",
-  "home.create_work_card_subtitle": "A novel or a screenplay\nStart from an idea"
+  "home.resume_last_written": "Last written {time}"
 }

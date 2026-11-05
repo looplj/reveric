@@ -38,10 +38,12 @@ void main() {
       final before = await db.novelDao.get('a');
       final first = await db.novelCollectionDao.create(
         name: '  Series  ',
+        contentKind: contentKindNovel,
         workIds: ['a'],
       );
       final second = await db.novelCollectionDao.create(
         name: 'Series',
+        contentKind: contentKindNovel,
         workIds: ['a', 'b'],
       );
       await db.novelCollectionDao.setMembership(first, [
@@ -72,7 +74,10 @@ void main() {
   test(
     'invalid batches and create-with-members roll back completely',
     () async {
-      final id = await db.novelCollectionDao.create(name: 'Empty');
+      final id = await db.novelCollectionDao.create(
+        name: 'Empty',
+        contentKind: contentKindNovel,
+      );
       await db.novelDao.softDelete('b');
       for (final invalid in ['draft', 'b', 'missing']) {
         await expectLater(
@@ -84,12 +89,19 @@ void main() {
         );
         expect((await db.select(db.novelCollectionMembers).get()), isEmpty);
         await expectLater(
-          db.novelCollectionDao.create(name: invalid, workIds: ['a', invalid]),
+          db.novelCollectionDao.create(
+            name: invalid,
+            contentKind: contentKindNovel,
+            workIds: ['a', invalid],
+          ),
           throwsArgumentError,
         );
       }
       await expectLater(
-        db.novelCollectionDao.create(name: '   '),
+        db.novelCollectionDao.create(
+          name: '   ',
+          contentKind: contentKindNovel,
+        ),
         throwsArgumentError,
       );
       expect((await db.select(db.novelCollections).get()).length, 1);
@@ -102,28 +114,45 @@ void main() {
   );
 
   test(
-    'manual collections mix novels and screenplays; browsing filters by kind',
+    'manual collections belong to one content kind and reject other members',
     () async {
-      final id = await db.novelCollectionDao.create(
-        name: 'Series',
-        workIds: ['a', 'script'],
-      );
       final dao = db.novelCollectionDao;
-      Future<Set<String>> ids(String? kind) async =>
-          (await dao.getWorks(id, contentKind: kind)).map((n) => n.id).toSet();
-      expect(await ids(null), {'a', 'script'});
-      expect(await ids(contentKindNovel), {'a'});
-      expect(await ids(contentKindScreenplay), {'script'});
-      final definitions = await dao.getDefinitions();
-      expect((await dao.counts(definitions))[id], 2);
+      await expectLater(
+        dao.create(
+          name: 'Series',
+          contentKind: contentKindNovel,
+          workIds: ['a', 'script'],
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        dao.create(name: 'Series', contentKind: 'comic'),
+        throwsArgumentError,
+      );
+      final id = await dao.create(
+        name: 'Scripts',
+        contentKind: contentKindScreenplay,
+        workIds: ['script'],
+      );
+      await expectLater(
+        dao.setMembership(id, ['a'], included: true),
+        throwsArgumentError,
+      );
+      final collection = (await dao.getDefinitions()).single;
+      expect(collection.contentKind, contentKindScreenplay);
       expect(
-        (await dao.counts(definitions, contentKind: contentKindScreenplay))[id],
+        (await dao.getWorks(
+          id,
+          contentKind: contentKindScreenplay,
+        )).map((n) => n.id),
+        ['script'],
+      );
+      expect(
+        (await dao.counts([
+          collection,
+        ], contentKind: contentKindScreenplay))[id],
         1,
       );
-      expect((await dao.watchMembership({'a', 'script'}).first)[id], {
-        'a',
-        'script',
-      });
     },
   );
 
@@ -132,10 +161,12 @@ void main() {
     () async {
       final id = await db.novelCollectionDao.create(
         name: 'Series',
+        contentKind: contentKindNovel,
         workIds: ['a', 'b'],
       );
       final other = await db.novelCollectionDao.create(
         name: 'Other',
+        contentKind: contentKindNovel,
         workIds: ['a'],
       );
       final original = (await db.select(db.novelCollectionMembers).get()).first;
@@ -177,7 +208,11 @@ void main() {
   test(
     'deleted works disappear from counts and covers and return on restore',
     () async {
-      await db.novelCollectionDao.create(name: 'Series', workIds: ['a']);
+      await db.novelCollectionDao.create(
+        name: 'Series',
+        contentKind: contentKindNovel,
+        workIds: ['a'],
+      );
       await db.novelDao.softDelete('a');
       expect((await manualSnapshots(db)).single.works, isEmpty);
       await db.novelDao.restore('a');
@@ -199,6 +234,7 @@ void main() {
       );
       await persistent.novelCollectionDao.create(
         name: 'Saved',
+        contentKind: contentKindNovel,
         workIds: ['kept'],
       );
       await persistent.close();

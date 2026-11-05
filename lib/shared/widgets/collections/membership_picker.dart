@@ -30,9 +30,14 @@ Future<void> showCollectionMembership(
   BuildContext context, {
   required bool mobile,
   required Set<String> workIds,
+  required String contentKind,
   Offset? position,
 }) {
-  final picker = CollectionMembershipPicker(mobile: mobile, workIds: workIds);
+  final picker = CollectionMembershipPicker(
+    mobile: mobile,
+    workIds: workIds,
+    contentKind: contentKind,
+  );
   if (mobile) {
     return showCollectionSurface<void>(
       context,
@@ -92,9 +97,13 @@ class CollectionMembershipPicker extends HookConsumerWidget {
     super.key,
     required this.mobile,
     required this.workIds,
+    required this.contentKind,
   });
   final bool mobile;
   final Set<String> workIds;
+
+  /// [workIds] 的作品类型；只列这一类的手动集合，新建的集合也归这一类。
+  final String contentKind;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final collections = ref.watch(novelCollectionsProvider);
@@ -114,7 +123,9 @@ class CollectionMembershipPicker extends HookConsumerWidget {
                 child: Text(context.t(LocaleKeys.libraryCollectionLoadFailed)),
               ),
               data: (all) {
-                final list = all.where((c) => c.manual).toList();
+                final list = all
+                    .where((c) => c.manual && c.visibleIn(contentKind))
+                    .toList();
                 if (list.isEmpty) {
                   return Center(
                     child: Text(context.t(LocaleKeys.libraryCollectionNone)),
@@ -194,6 +205,7 @@ class CollectionMembershipPicker extends HookConsumerWidget {
                 : () => showCollectionName(
                     context,
                     mobile: mobile,
+                    contentKind: contentKind,
                     workIds: workIds,
                   ),
           ),

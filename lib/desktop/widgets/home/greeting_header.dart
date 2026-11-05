@@ -35,15 +35,20 @@ class GreetingHeader extends StatelessWidget {
     super.key,
     required this.onQuickStart,
     required this.onCreateNovel,
+    required this.createLabel,
     required this.onImportNovel,
     required this.username,
     required this.featuredTitle,
     required this.headerGestureExclusionKey,
   });
 
-  final VoidCallback onQuickStart;
+  /// 为 null 时不显示快速开书（剧本库）。
+  final VoidCallback? onQuickStart;
   final VoidCallback onCreateNovel;
-  final VoidCallback onImportNovel;
+  final String createLabel;
+
+  /// 为 null 时不显示 TXT 导入（剧本库）。
+  final VoidCallback? onImportNovel;
   final String? username;
   final String? featuredTitle;
   final GlobalKey headerGestureExclusionKey;
@@ -120,24 +125,34 @@ class GreetingHeader extends StatelessWidget {
               spacing: RevericSpacing.sm,
               runSpacing: RevericSpacing.sm,
               children: [
-                OutlinedButton.icon(
-                  onPressed: onImportNovel,
-                  icon: const RevericIcon(RevericIcons.upload, size: 16),
-                  label: Text(context.t(LocaleKeys.libraryImportTxt)),
-                ),
-                // 新建作品 — 次按钮（outlined）：走完整表单对话框。
-                OutlinedButton.icon(
-                  onPressed: onCreateNovel,
-                  icon: const RevericIcon(RevericIcons.add, size: 16),
-                  label: Text(context.t(LocaleKeys.libraryCreateNovel)),
-                ),
-                // 快速开书 — 主按钮（accent）：占位建书后进编辑器走创作向导。
-                RevericButton.primary(
-                  onPressed: onQuickStart,
-                  icon: RevericIcons.auto_awesome,
-                  label: context.t(LocaleKeys.libraryQuickStart),
-                  size: RevericButtonSize.prominent,
-                ),
+                if (onImportNovel case final onImport?)
+                  OutlinedButton.icon(
+                    onPressed: onImport,
+                    icon: const RevericIcon(RevericIcons.upload, size: 16),
+                    label: Text(context.t(LocaleKeys.libraryImportTxt)),
+                  ),
+                // 新建作品 — 有快速开书时是次按钮（outlined），走完整表单对话框；
+                // 没有时它就是唯一的主操作。
+                if (onQuickStart case final quickStart?) ...[
+                  OutlinedButton.icon(
+                    onPressed: onCreateNovel,
+                    icon: const RevericIcon(RevericIcons.add, size: 16),
+                    label: Text(createLabel),
+                  ),
+                  // 快速开书 — 主按钮（accent）：占位建书后进编辑器走创作向导。
+                  RevericButton.primary(
+                    onPressed: quickStart,
+                    icon: RevericIcons.auto_awesome,
+                    label: context.t(LocaleKeys.libraryQuickStart),
+                    size: RevericButtonSize.prominent,
+                  ),
+                ] else
+                  RevericButton.primary(
+                    onPressed: onCreateNovel,
+                    icon: RevericIcons.add,
+                    label: createLabel,
+                    size: RevericButtonSize.prominent,
+                  ),
               ],
             ),
           ),

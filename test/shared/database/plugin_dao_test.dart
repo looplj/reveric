@@ -73,7 +73,13 @@ void main() {
                   )
                   .getSingle())
               .read<String>('sql'),
-          entry.value,
+          // v4 只给集合表追加了类型列，其余表结构原样保留。
+          entry.key == 'novel_collections'
+              ? entry.value.replaceFirst(
+                  ', PRIMARY KEY ("id"))',
+                  ', "content_kind" TEXT NULL, PRIMARY KEY ("id"))',
+                )
+              : entry.value,
         );
         expect(
           (await db

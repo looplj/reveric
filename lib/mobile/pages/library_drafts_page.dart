@@ -1,4 +1,4 @@
-// 职责: 移动端草稿箱 — 列出尚未加入书架的快速开书作品，支持打开、入库与删除。
+// 职责: 移动端草稿箱 — 列出本类型尚未加入书架的作品，支持打开、入库与删除。
 // 关联文件:
 //   lib/mobile/pages/library_page.dart
 //   lib/mobile/pages/workspace_editor_page.dart
@@ -29,7 +29,10 @@ import '../widgets/novel_cover.dart';
 import 'workspace_editor_page.dart';
 
 class MobileLibraryDraftsPage extends ConsumerWidget {
-  const MobileLibraryDraftsPage({super.key});
+  const MobileLibraryDraftsPage({super.key, required this.contentKind});
+
+  /// 只列这一类作品的草稿，跟随打开它的小说 / 剧本 Tab。
+  final String contentKind;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -117,8 +120,12 @@ class MobileLibraryDraftsPage extends ConsumerWidget {
             child: Text(context.t(LocaleKeys.libraryDatabaseLoadFailed)),
           ),
           data: (allNovels) {
-            final drafts = allNovels.drafts
-              ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+            final drafts =
+                allNovels
+                    .where((n) => n.contentKind == contentKind)
+                    .toList()
+                    .drafts
+                  ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
             const horizontalPadding = RevericSpacing.x3l * 2;
             const crossAxisSpacing = RevericSpacing.x2l;
             const infoZone = 78.0;

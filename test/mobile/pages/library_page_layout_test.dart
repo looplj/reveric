@@ -64,7 +64,7 @@ void main() {
               appDatabaseProvider.overrideWithValue(db),
               novelsProvider.overrideWith((ref) => Stream.value([_novel()])),
             ],
-            child: const MobileLibraryPage(),
+            child: const MobileLibraryPage(contentKind: contentKindNovel),
           ),
         ),
       );
@@ -106,7 +106,7 @@ void main() {
               (ref) => Stream.value([_novel(wordCount: 37000)]),
             ),
           ],
-          child: const MobileLibraryPage(),
+          child: const MobileLibraryPage(contentKind: contentKindNovel),
         ),
         locale: const Locale('zh', 'CN'),
       ),
@@ -138,7 +138,7 @@ void main() {
       _wrap(
         ProviderScope(
           overrides: [appDatabaseProvider.overrideWithValue(db)],
-          child: const MobileLibraryPage(),
+          child: const MobileLibraryPage(contentKind: contentKindNovel),
         ),
       ),
     );

@@ -41,6 +41,7 @@ class CollectionEmpty extends StatelessWidget {
                 context,
                 mobile: location.mobile,
                 collectionId: location.current!.id,
+                contentKind: location.contentKind,
               ),
             ),
     ),

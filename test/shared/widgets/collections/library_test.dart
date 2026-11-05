@@ -6,6 +6,7 @@
 //   lib/shared/widgets/collections/shelf.dart
 // 遵循的 Rules:
 //   .agents/rules/testing.md
+import 'dart:convert';
 import 'dart:io';
 import '../../database/collection_test_helpers.dart';
 import 'dart:ui' as ui;
@@ -24,7 +25,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/desktop/widgets/home/library_home_panel.dart';
 import 'package:reveric/desktop/widgets/novel_list.dart';
-import 'package:reveric/mobile/widgets/segmented_tabs.dart';
 import 'package:reveric/shared/components/reveric_dialog.dart';
 import 'package:reveric/mobile/pages/library_page.dart';
 import 'package:reveric/shared/components/reveric_checkbox.dart';
@@ -32,6 +32,7 @@ import 'package:reveric/shared/database/app_database.dart' hide AppSettings;
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/content_kind.dart';
+import 'package:reveric/shared/providers/novel_collection_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
@@ -73,6 +74,7 @@ void main() {
       addTearDown(db.close);
       final id = await db.novelCollectionDao.create(
         name: 'Screen series',
+        contentKind: contentKindScreenplay,
         workIds: [],
       );
       final works = await db.novelDao.getAll();
@@ -82,10 +84,11 @@ void main() {
           db,
           Scaffold(
             body: HomeLibraryPanel(
+              contentKind: contentKindScreenplay,
               novelsAsync: AsyncData(works),
               headerGestureExclusionKey: GlobalKey(),
               onQuickStart: () {},
-              onCreateNovel: (_) {},
+              onCreateNovel: () {},
               onImportNovel: () {},
               onCreateDemoNovel: () {},
               onDeleteNovel: (_) {},
@@ -108,12 +111,13 @@ void main() {
       expect(find.byType(CollectionEmpty), findsOneWidget);
       await tester.tap(find.text('Add works'));
       await tester.pumpAndSettle();
-      // 集合不分类型：添加作品时小说与剧本都可选。
+      // 集合不分类型，但剧本库里添加作品只列剧本。
       Finder inPicker(String title) => find.descendant(
         of: find.byType(RevericDialog),
         matching: find.text(title),
       );
-      expect(inPicker('Novel A'), findsOneWidget);
+      expect(inPicker('Novel A'), findsNothing);
+      expect(inPicker('Script A'), findsOneWidget);
       await tester.tap(inPicker('Script B'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add').last);
@@ -164,11 +168,16 @@ void main() {
       addTearDown(db.close);
       final id = await db.novelCollectionDao.create(
         name: 'Novel series',
+        contentKind: contentKindNovel,
         workIds: ['a', 'b'],
       );
       _size(tester, const Size(375, 812));
       await tester.pumpWidget(
-        _wrap(db, const MobileLibraryPage(), mobile: true),
+        _wrap(
+          db,
+          const MobileLibraryPage(contentKind: contentKindNovel),
+          mobile: true,
+        ),
       );
       await tester.pumpAndSettle();
       await _capture(tester, 'mobile-shelf');
@@ -201,7 +210,11 @@ void main() {
     ) async {
       final db = await _database();
       addTearDown(db.close);
-      await db.novelCollectionDao.create(name: 'Mixed', workIds: ['a']);
+      await db.novelCollectionDao.create(
+        name: 'Mixed',
+        contentKind: contentKindNovel,
+        workIds: ['a'],
+      );
       _size(tester, mobile ? const Size(375, 812) : const Size(1200, 800));
       await tester.pumpWidget(
         _wrap(
@@ -213,6 +226,7 @@ void main() {
                   context,
                   mobile: mobile,
                   workIds: {'a', 'b'},
+                  contentKind: contentKindNovel,
                 ),
                 child: const Text('Open'),
               ),
@@ -380,25 +394,23 @@ void main() {
   });
 
   testWidgets(
-    'mobile keeps search across collections and work types; word sort is novel-only',
+    'mobile keeps search across collections; word sort is novel-only',
     (tester) async {
       final db = await _database();
       addTearDown(db.close);
       _size(tester, const Size(375, 812));
       await tester.pumpWidget(
-        _wrap(db, const MobileLibraryPage(), mobile: true),
+        _wrap(
+          db,
+          const MobileLibraryPage(contentKind: contentKindNovel),
+          mobile: true,
+        ),
       );
       await tester.pumpAndSettle();
-      Finder typeTab(String label) => find.descendant(
-        of: find.byType(MobileSegmentedTabs),
-        matching: find.text(label),
-      );
       Finder inGrid(String title) => find.descendant(
         of: find.byType(SliverGrid),
         matching: find.text(title),
       );
-      await tester.tap(typeTab('Novel'));
-      await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Novel B');
       await tester.pumpAndSettle(const Duration(milliseconds: 300));
       expect(inGrid('Novel A'), findsNothing);
@@ -427,30 +439,98 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      // 换类型保留搜索；字数只对小说成立，离开小说就不再提供。
-      await tester.tap(typeTab('Screenplay'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).controller!.text,
-        'Novel B',
+      // 剧本页是另一个库：只有剧本，字数排序只对小说成立，不提供。
+      await tester.pumpWidget(
+        _wrap(
+          db,
+          // 应用里两个 Tab 是两个实例；这里加 key 免得复用小说页的搜索状态。
+          const MobileLibraryPage(
+            key: ValueKey('screenplays'),
+            contentKind: contentKindScreenplay,
+          ),
+          mobile: true,
+        ),
       );
-      await tester.enterText(find.byType(TextField), '');
-      await tester.pumpAndSettle(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
       expect(inGrid('Script A'), findsWidgets);
-      expect(inGrid('Novel B'), findsNothing);
+      expect(find.text('Novel A'), findsNothing);
+      expect(find.text('Novel B'), findsNothing);
       await tester.tap(find.byTooltip('Filter & sort'));
       await tester.pumpAndSettle();
       expect(find.text('Most words'), findsNothing);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      await tester.tap(typeTab('All'));
-      await tester.pumpAndSettle();
-      // 全部类型下小说和剧本混排；第二行在视口外，先滚过去。
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
-      await tester.pumpAndSettle();
-      expect(inGrid('Novel A'), findsWidgets);
-      expect(inGrid('Script B'), findsWidgets);
       expect(find.text('This collection has been deleted'), findsNothing);
+      await _dispose(tester);
+    },
+  );
+
+  testWidgets(
+    'each library lists shared and own-kind collections; reordering keeps the other library in place',
+    (tester) async {
+      final db = await _database();
+      addTearDown(db.close);
+      final dao = db.novelCollectionDao;
+      final novelShelf = await dao.create(
+        name: 'Novel shelf',
+        contentKind: contentKindNovel,
+        workIds: ['a'],
+      );
+      final scriptA = await dao.create(
+        name: 'Script shelf A',
+        contentKind: contentKindScreenplay,
+        workIds: ['s1'],
+      );
+      final scriptB = await dao.create(
+        name: 'Script shelf B',
+        contentKind: contentKindScreenplay,
+        workIds: ['s2'],
+      );
+      // 同一秒创建的集合按随机 ID 排，先存一份确定的顺序。
+      await saveCollectionOrder(db, [
+        'collection:all',
+        'collection:in_progress',
+        'collection:finished',
+        scriptA,
+        novelShelf,
+        scriptB,
+      ]);
+      _size(tester, const Size(375, 812));
+      await tester.pumpWidget(
+        _wrap(
+          db,
+          const MobileLibraryPage(contentKind: contentKindScreenplay),
+          mobile: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      // 默认集合两个库共用；小说集合不出现在剧本库。
+      for (final id in ['collection:in_progress', scriptA, scriptB]) {
+        expect(find.byKey(ValueKey('collection-$id')), findsOneWidget);
+      }
+      expect(find.byKey(ValueKey('collection-$novelShelf')), findsNothing);
+
+      await tester.ensureVisible(find.byKey(ValueKey('collection-$scriptB')));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.byKey(ValueKey('collection-$scriptB')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Move left'));
+      await tester.pumpAndSettle();
+      // 只在剧本集合的位置里重排，小说集合留在原位。
+      expect(
+        await tester.runAsync(
+          () => db.appSettingsDao.get('library.collection_order'),
+        ),
+        jsonEncode([
+          'collection:all',
+          'collection:in_progress',
+          'collection:finished',
+          scriptB,
+          novelShelf,
+          scriptA,
+        ]),
+      );
       await _dispose(tester);
     },
   );
@@ -464,7 +544,10 @@ void main() {
       await tester.pumpWidget(
         _wrap(
           db,
-          const MobileLibraryPage(collectionId: 'collection:finished'),
+          const MobileLibraryPage(
+            contentKind: contentKindNovel,
+            collectionId: 'collection:finished',
+          ),
           mobile: true,
         ),
       );
@@ -480,8 +563,8 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      // 旧的集合路由落到作品页并选中该集合：标题栏和类型切换都在。
-      expect(find.byType(MobileSegmentedTabs), findsOneWidget);
+      // 旧的集合路由落到作品页并选中该集合：标题栏和搜索都在。
+      expect(find.byType(TextField), findsOneWidget);
       expect(inGrid('Novel A'), findsNothing);
       await longPressTab('collection-collection:all');
       expect(find.text('Move left'), findsNothing);

@@ -29,7 +29,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../shared/components/reveric_button.dart';
-import '../../shared/components/reveric_segmented_control.dart';
 import '../../shared/widgets/novel/adapt_banner.dart';
 import '../../shared/widgets/novel/start_banner.dart';
 import '../../shared/components/reveric_input_decoration.dart';
@@ -93,8 +92,8 @@ class MobileNovelCreatePage extends HookConsumerWidget {
     this.prefill,
   });
 
-  /// 新建作品的初始类型，由入口决定（作品页类型筛选、改编），页面顶部可再切换。
-  /// 编辑模式沿用原作品的类型，不可切换。
+  /// 新建作品的类型，由入口所在的库（小说 / 剧本 Tab、改编）决定，页面内不可切换。
+  /// 编辑模式沿用原作品的类型。
   final String contentKind;
 
   /// 传入已有作品时进入编辑模式；为 null 时为新建模式。
@@ -132,7 +131,6 @@ class MobileNovelCreatePage extends HookConsumerWidget {
       },
       keys: [novel?.id],
     );
-    // 取表单当前值而非入口值：新建模式下可在顶部切换小说 / 剧本。
     final currentKind = useListenableSelector(
       form,
       () =>
@@ -392,16 +390,6 @@ class MobileNovelCreatePage extends HookConsumerWidget {
       }
     }
 
-    // 换类型只换内容不增删槽位；改编等类型不属于小说时回到原创。
-    void changeContentKind(String next) {
-      form.updateValue(NovelFormField.contentKind, next, notify: true);
-      final type =
-          form.getValue<String>(NovelFormField.type) ?? novelTypeOriginal;
-      if (!creatableNovelTypesFor(next).contains(type)) {
-        form.updateValue(NovelFormField.type, novelTypeOriginal, notify: true);
-      }
-    }
-
     void pickAdaptationSource(String? sourceId) {
       selectAdaptationSource(
         context,
@@ -425,9 +413,13 @@ class MobileNovelCreatePage extends HookConsumerWidget {
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         title: Text(
-          _isEditMode
-              ? context.t(LocaleKeys.libraryEditWorkInfo)
-              : context.t(LocaleKeys.libraryCreateWork),
+          context.t(
+            _isEditMode
+                ? LocaleKeys.libraryEditWorkInfo
+                : isScreenplay
+                ? LocaleKeys.libraryCreateScreenplay
+                : LocaleKeys.libraryCreateNovel,
+          ),
           style: typo.uiSemibold.copyWith(color: colors.textPrimary),
         ),
         actions: [
@@ -454,28 +446,10 @@ class MobileNovelCreatePage extends HookConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 类型切换和横幅的槽位在新建模式下固定存在，切换只换内容：
-                // 下方表单项都带 form.fieldKey 的 GlobalKey，增删子节点会让它们整体
-                // 位移并触发 element move，EditableText 内的 OverlayPortal 会因此撞
-                // traversalParentIdentifier。
+                // 横幅槽位在新建模式下固定存在：下方表单项都带 form.fieldKey 的
+                // GlobalKey，增删子节点会让它们整体位移并触发 element move，
+                // EditableText 内的 OverlayPortal 会因此撞 traversalParentIdentifier。
                 if (!_isEditMode) ...[
-                  RevericSegmentedControl<String>(
-                    selected: currentKind,
-                    onChanged: isBusy.value ? (_) {} : changeContentKind,
-                    segments: [
-                      RevericSegment(
-                        value: contentKindNovel,
-                        label: context.t(LocaleKeys.libraryContentKindNovel),
-                      ),
-                      RevericSegment(
-                        value: contentKindScreenplay,
-                        label: context.t(
-                          LocaleKeys.libraryContentKindScreenplay,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: RevericSpacing.x2l),
                   // 快速开书只建小说（占位建书走小说内容库）；剧本换成从小说改编。
                   isScreenplay
                       ? NovelAdaptBanner(

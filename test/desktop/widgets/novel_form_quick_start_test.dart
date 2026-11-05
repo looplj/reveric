@@ -1,4 +1,4 @@
-// 职责: 验证桌面新建表单切换小说 / 剧本时横幅换成对应入口、对话框不变形，改编横幅选原著后按原著预填。
+// 职责: 验证桌面新建表单按入口锁定小说 / 剧本、横幅换成对应入口，改编横幅选原著后按原著预填。
 // 关联文件:
 //   lib/desktop/widgets/novel_form_dialog.dart
 //   lib/shared/providers/dictionary_providers.dart
@@ -14,7 +14,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/shared/components/dialog_feedback.dart';
-import 'package:reveric/shared/components/reveric_segmented_control.dart';
 import 'package:reveric/shared/components/reveric_select.dart';
 import 'package:reveric/desktop/widgets/novel_form_dialog.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -32,32 +31,30 @@ void main() {
   });
   setUp(() => rootBundle.clear());
 
-  testWidgets('switching work kind swaps the banner without resizing', (
+  testWidgets('work kind is locked to the entry and picks the banner', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
+    // 小说库：快速开书横幅，没有计划集数，也没有类型切换。
     await _pumpDialog(tester, contentKindNovel);
+    expect(find.text('New Novel'), findsOneWidget);
     expect(find.text('Quick Start'), findsOneWidget);
     expect(find.text('Planned episodes'), findsNothing);
-    final dialogRect = tester.getRect(find.byType(Dialog));
+    expect(find.text('Screenplay'), findsNothing);
 
-    // 快速开书只建小说；剧本同一槽位换成从小说改编，作者行并入计划集数，尺寸不变。
-    await tester.tap(kindTab('Screenplay'));
-    await tester.pumpAndSettle();
+    // 剧本库：同一槽位换成从小说改编，作者行并入计划集数。
+    await _pumpDialog(tester, contentKindScreenplay);
+    expect(find.text('New Screenplay'), findsOneWidget);
     expect(find.text('Quick Start'), findsNothing);
     expect(find.text('Adapt a novel'), findsOneWidget);
     expect(find.text('Planned episodes'), findsOneWidget);
-    expect(tester.getRect(find.byType(Dialog)), dialogRect);
+    expect(find.text('Novel'), findsNothing);
 
     // 书架上没有小说时，横幅里的原著下拉提示空书架。
     expect(find.text('No novels on your shelf yet'), findsOneWidget);
-
-    await tester.tap(kindTab('Novel'));
-    await tester.pumpAndSettle();
-    expect(find.text('Quick Start'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -108,11 +105,6 @@ void main() {
   });
 }
 
-Finder kindTab(String label) => find.descendant(
-  of: find.byType(RevericSegmentedControl<String>),
-  matching: find.text(label),
-);
-
 Future<void> _pumpDialog(
   WidgetTester tester,
   String contentKind, {
@@ -141,6 +133,7 @@ Future<void> _pumpDialog(
               data: RevericThemeData.reveric,
               child: DialogFeedback.scope(
                 builder: (_) => NovelFormDialog.create(
+                  key: ValueKey(contentKind),
                   initialContentKind: contentKind,
                   onQuickStart: () {},
                   onSubmit:

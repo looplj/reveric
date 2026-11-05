@@ -1,4 +1,4 @@
-// 职责: 桌面端书库作品区的一行工具栏 — 左侧集合标签，右侧搜索、类型与分类筛选、作品排序与草稿箱。
+// 职责: 桌面端书库作品区的一行工具栏 — 左侧集合标签，右侧搜索、分类筛选、作品排序与草稿箱。
 // 关联文件:
 //   lib/desktop/widgets/home/library_home_panel.dart
 //   lib/desktop/widgets/home/novel_home_helpers.dart
@@ -23,7 +23,6 @@ import '../../../shared/components/reveric_context_menu.dart';
 import '../../../shared/components/reveric_search_field.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
-import '../../../shared/models/content_kind.dart';
 import '../../../shared/models/novel.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/collections/location.dart';
@@ -33,28 +32,13 @@ import '../../../shared/widgets/novel/library_shelf_labels.dart';
 /// 工具区宽度低于此值时，搜索收成图标，点开或有内容时再展开。
 const double _compactSearchBelow = 1080;
 
-/// 作品区的类型筛选；[value] 为 null 表示小说与剧本都显示。
-class WorksTypeFilter {
-  const WorksTypeFilter({required this.value, required this.onChanged});
-
-  final String? value;
-  final ValueSetter<String?> onChanged;
-}
-
-String worksTypeLabel(BuildContext context, String? contentKind) =>
-    context.t(switch (contentKind) {
-      contentKindNovel => LocaleKeys.libraryContentKindNovel,
-      contentKindScreenplay => LocaleKeys.libraryContentKindScreenplay,
-      _ => LocaleKeys.libraryContentKindAll,
-    });
-
 class AllWorksHeader extends StatelessWidget {
   const AllWorksHeader({
     super.key,
     required this.location,
     required this.searchController,
     required this.searchHint,
-    required this.typeFilter,
+    required this.contentKind,
     required this.hasDrafts,
     required this.showDrafts,
     required this.onToggleDrafts,
@@ -70,7 +54,9 @@ class AllWorksHeader extends StatelessWidget {
   /// 只搜当前作品类型、当前集合。
   final TextEditingController searchController;
   final String searchHint;
-  final WorksTypeFilter typeFilter;
+
+  /// 当前库的作品类型，决定可用的排序方式。
+  final String contentKind;
   final bool hasDrafts;
   final bool showDrafts;
   final VoidCallback onToggleDrafts;
@@ -98,26 +84,6 @@ class AllWorksHeader extends StatelessWidget {
               controller: searchController,
               hint: searchHint,
               compact: constraints.maxWidth < _compactSearchBelow,
-            ),
-            const SizedBox(width: RevericSpacing.sm),
-            _MenuPill(
-              label: worksTypeLabel(context, typeFilter.value),
-              isActive: typeFilter.value != null,
-              entries: [
-                for (final kind in [
-                  null,
-                  contentKindNovel,
-                  contentKindScreenplay,
-                ]) ...[
-                  _choice(
-                    context,
-                    label: worksTypeLabel(context, kind),
-                    selected: typeFilter.value == kind,
-                    onTap: () => typeFilter.onChanged(kind),
-                  ),
-                  if (kind == null) const RevericMenuDivider(),
-                ],
-              ],
             ),
             if (categoryCounts.length > 1 || selectedCategory != null) ...[
               const SizedBox(width: RevericSpacing.sm),
@@ -150,7 +116,7 @@ class AllWorksHeader extends StatelessWidget {
               label: librarySortText(context, sortOrder),
               tooltip: context.t(LocaleKeys.homeSort),
               entries: [
-                for (final order in librarySortOrdersFor(typeFilter.value))
+                for (final order in librarySortOrdersFor(contentKind))
                   _choice(
                     context,
                     label: librarySortText(context, order),

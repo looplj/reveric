@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/models/content_kind.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/novel_collection.dart';
@@ -30,7 +31,10 @@ void main() {
   test(
     'normalizes order and preserves new/deleted IDs across containers',
     () async {
-      final manual = await db.novelCollectionDao.create(name: 'Manual');
+      final manual = await db.novelCollectionDao.create(
+        name: 'Manual',
+        contentKind: contentKindNovel,
+      );
       var container = ProviderContainer.test(
         overrides: [appDatabaseProvider.overrideWithValue(db)],
       );
@@ -111,7 +115,10 @@ void main() {
       expect((await next(counts))['collection:all'], 0);
       await works.cancel();
       await counts.cancel();
-      final id = await db.novelCollectionDao.create(name: 'Manual');
+      final id = await db.novelCollectionDao.create(
+        name: 'Manual',
+        contentKind: contentKindNovel,
+      );
       await db.novelDao.restore('work');
       final members = StreamIterator(db.novelCollectionDao.watchWorks(id));
       expect(await next(members), isEmpty);

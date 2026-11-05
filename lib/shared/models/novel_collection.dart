@@ -19,6 +19,12 @@ class LibraryCollection {
   String get id => record.id;
   String get name => record.name;
   bool get builtin => record.builtin;
+
+  /// null 表示小说库和剧本库共用。
+  String? get contentKind => record.contentKind;
+
+  /// 是否出现在 [kind] 这个库里。
+  bool visibleIn(String kind) => contentKind == null || contentKind == kind;
   bool get manual =>
       !builtin && record.filterMode == 'manual' && unavailableReason == null;
 }

@@ -32,7 +32,6 @@ import '../../shared/components/reveric_button.dart';
 import '../../shared/database/app_database.dart';
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
-import '../../shared/components/reveric_segmented_control.dart';
 import '../../shared/components/reveric_select.dart';
 import '../../shared/components/reveric_surfaces.dart';
 import '../../shared/components/reveric_tags_editor.dart';
@@ -97,7 +96,7 @@ class NovelFormDialog extends HookConsumerWidget {
 
   final Novel? novel;
 
-  /// 创建模式下小说 / 剧本切换的初始值 — 按剧本筛选或改编进来时直接落在剧本。编辑模式不使用。
+  /// 创建模式下的作品类型，由入口所在的库决定，表单内不可切换。编辑模式不使用。
   final String initialContentKind;
 
   /// 创建模式下的字段预填 — 「改编」入口据此带入原著信息。编辑模式不使用。
@@ -115,7 +114,7 @@ class NovelFormDialog extends HookConsumerWidget {
 
   bool get _isEditMode => novel != null;
 
-  /// 编辑沿用原值，不可再换；新建以入口给的类型开场，可在标题栏切换。
+  /// 编辑沿用原值；新建用入口给的类型。两种模式都不可切换。
   String get _initialContentKind =>
       novel?.contentKind ?? prefill?.contentKind ?? initialContentKind;
 
@@ -202,16 +201,6 @@ class NovelFormDialog extends HookConsumerWidget {
         );
       }
       return null;
-    }
-
-    // 换类型只换内容不增删槽位：横幅、作者行和左栏的位置都不动，对话框不变形。
-    void changeContentKind(String next) {
-      form.updateValue(NovelFormField.contentKind, next, notify: true);
-      final type =
-          form.getValue<String>(NovelFormField.type) ?? novelTypeOriginal;
-      if (!creatableNovelTypesFor(next).contains(type)) {
-        form.updateValue(NovelFormField.type, novelTypeOriginal, notify: true);
-      }
     }
 
     // 剧本横幅选原著：按原著预填后展开「更多信息」，带入的简介和标签不被藏起来。
@@ -370,33 +359,10 @@ class NovelFormDialog extends HookConsumerWidget {
                   title: context.t(
                     _isEditMode
                         ? LocaleKeys.libraryEditWorkInfo
-                        : LocaleKeys.libraryCreateWork,
+                        : isScreenplay
+                        ? LocaleKeys.libraryCreateScreenplay
+                        : LocaleKeys.libraryCreateNovel,
                   ),
-                  kindSwitch: _isEditMode
-                      ? null
-                      : SizedBox(
-                          width: 160,
-                          child: RevericSegmentedControl<String>(
-                            selected: contentKind,
-                            onChanged: isBusy.value
-                                ? (_) {}
-                                : changeContentKind,
-                            segments: [
-                              RevericSegment(
-                                value: contentKindNovel,
-                                label: context.t(
-                                  LocaleKeys.libraryContentKindNovel,
-                                ),
-                              ),
-                              RevericSegment(
-                                value: contentKindScreenplay,
-                                label: context.t(
-                                  LocaleKeys.libraryContentKindScreenplay,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                   onClose: isBusy.value
                       ? null
                       : () => Navigator.of(context).pop(),
@@ -950,17 +916,10 @@ class _RevericFormTextField extends HookWidget {
 
 /// 对话框标题栏：标题 + 关闭按钮，底部分割线与内容区分离。
 class _DialogHeader extends StatelessWidget {
-  const _DialogHeader({
-    required this.title,
-    required this.onClose,
-    this.kindSwitch,
-  });
+  const _DialogHeader({required this.title, required this.onClose});
 
   final String title;
   final VoidCallback? onClose;
-
-  /// 新建时的小说 / 剧本切换，放在关闭按钮左边。
-  final Widget? kindSwitch;
 
   @override
   Widget build(BuildContext context) {
@@ -990,10 +949,6 @@ class _DialogHeader extends StatelessWidget {
               style: typo.heading2.copyWith(color: colors.textPrimary),
             ),
           ),
-          if (kindSwitch case final kindSwitch?) ...[
-            kindSwitch,
-            const SizedBox(width: RevericSpacing.md),
-          ],
           IconButton(
             onPressed: onClose,
             tooltip: context.t(LocaleKeys.commonClose),

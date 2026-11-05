@@ -1,4 +1,4 @@
-// 职责: 桌面端首页 — 展示作品库（小说与剧本同库）、最近 AI 会话与全局智能体入口。
+// 职责: 桌面端首页 — 分别展示小说库与剧本库、最近 AI 会话与全局智能体入口。
 // 关联文件:
 //   lib/shared/components/reveric_dialog.dart
 //   lib/shared/widgets/confirm_dialog.dart
@@ -110,7 +110,10 @@ sealed class _HomeContentSelection {
 }
 
 final class _HomeLibrarySelection extends _HomeContentSelection {
-  const _HomeLibrarySelection();
+  const _HomeLibrarySelection(this.contentKind);
+
+  /// 小说库与剧本库各是一个独立入口。
+  final String contentKind;
 }
 
 final class _HomeSubAgentSelection extends _HomeContentSelection {
@@ -267,13 +270,17 @@ class NovelHomePage extends HookConsumerWidget {
     final novelsAsync = ref.watch(novelsProvider);
     final recentSessionsAsync = ref.watch(_recentSessionsProvider(3));
     final selection = useState<_HomeContentSelection>(
-      const _HomeLibrarySelection(),
+      const _HomeLibrarySelection(contentKindNovel),
     );
     final novelSerial = useState(1);
     final isDeletingNovel = useState(false);
     // 顶部问候栏按钮（新建作品、导入 TXT）和 DesktopWindowFrame 的标题栏拖拽层重叠；
     // 将它注册为排除区域，避免双击按钮时触发窗口最大化/还原。
-    final greetingHeaderKey = useMemoized(() => GlobalKey(), []);
+    // 小说库和剧本库同时挂载，各用一个 key，只登记当前可见的那个。
+    final greetingHeaderKeys = useMemoized(
+      () => {contentKindNovel: GlobalKey(), contentKindScreenplay: GlobalKey()},
+      [],
+    );
     // 编辑面板标题栏按钮（Save / Cancel / Delete 等）同样在标题栏拖拽层内；
     // 共用一个 key，因为同一时刻只有一个面板可见。
     final editPanelHeaderKey = useMemoized(() => GlobalKey(), []);
@@ -450,7 +457,8 @@ class NovelHomePage extends HookConsumerWidget {
       );
     }
 
-    void openCreateNovelDialog({String initialContentKind = contentKindNovel}) {
+    void openCreateNovelDialog(String contentKind) {
+      final isNovel = contentKind == contentKindNovel;
       final novels = novelsAsync.maybeWhen(
         data: (list) => list,
         orElse: () => <Novel>[],
@@ -461,18 +469,21 @@ class NovelHomePage extends HookConsumerWidget {
         context: context,
         builder: (_) => DialogFeedback.scope(
           builder: (dialogContext) => NovelFormDialog.create(
-            initialContentKind: initialContentKind,
+            initialContentKind: contentKind,
             onSubmit: createWorkSubmitter(
               context,
               ref,
               feedbackContext: dialogContext,
             ),
-            onQuickStart: () {
-              // 先关表单对话框，再走占位建书 + 进编辑器。
-              Navigator.of(context, rootNavigator: true).pop();
-              quickStartNovel();
-            },
-            onCreateDemoNovel: hasDemo
+            // 快速开书和演示作品都只建小说，剧本库不提供。
+            onQuickStart: !isNovel
+                ? null
+                : () {
+                    // 先关表单对话框，再走占位建书 + 进编辑器。
+                    Navigator.of(context, rootNavigator: true).pop();
+                    quickStartNovel();
+                  },
+            onCreateDemoNovel: !isNovel || hasDemo
                 ? null
                 : () => createDemoNovelWithNavigation(
                     context,
@@ -610,7 +621,11 @@ class NovelHomePage extends HookConsumerWidget {
       _HomeContentSelection nextSelection,
     ) {
       return switch ((currentSelection, nextSelection)) {
-        (_HomeLibrarySelection(), _HomeLibrarySelection()) => true,
+        (
+          _HomeLibrarySelection(contentKind: final currentKind),
+          _HomeLibrarySelection(contentKind: final nextKind),
+        ) =>
+          currentKind == nextKind,
         (
           _HomeSubAgentSelection(agent: final currentAgent),
           _HomeSubAgentSelection(agent: final nextAgent),
@@ -755,7 +770,7 @@ class NovelHomePage extends HookConsumerWidget {
         _HomeGlobalSkillSelection() => const _HomeSkillListSelection(),
         _HomeShortcutActionSelection() =>
           const _HomeShortcutActionListSelection(),
-        _ => const _HomeLibrarySelection(),
+        _ => const _HomeLibrarySelection(contentKindNovel),
       };
     }
 
@@ -789,13 +804,14 @@ class NovelHomePage extends HookConsumerWidget {
 
     final contentSelection = selection.value;
 
-    HomeLibraryPanel buildLibraryPanel() {
+    HomeLibraryPanel buildLibraryPanel(String contentKind) {
       return HomeLibraryPanel(
+        key: ValueKey(contentKind),
+        contentKind: contentKind,
         novelsAsync: novelsAsync,
-        headerGestureExclusionKey: greetingHeaderKey,
+        headerGestureExclusionKey: greetingHeaderKeys[contentKind]!,
         onQuickStart: quickStartNovel,
-        onCreateNovel: (contentKind) =>
-            openCreateNovelDialog(initialContentKind: contentKind),
+        onCreateNovel: () => openCreateNovelDialog(contentKind),
         onImportNovel: openImportNovelDialog,
         onCreateDemoNovel: () => createDemoNovelWithNavigation(context, ref),
         onDeleteNovel: (novel) => deleteNovel(novel),
@@ -953,12 +969,20 @@ class NovelHomePage extends HookConsumerWidget {
           selectContent(_HomePluginPageSelection(target));
         },
         onUnavailable: () {
-          selection.value = const _HomeLibrarySelection();
+          selection.value = const _HomeLibrarySelection(contentKindNovel);
         },
         onRegisterHasChanges: (hasChanges) =>
             pluginPageHasChanges.value = hasChanges,
       ),
-      _HomeLibrarySelection() => buildLibraryPanel(),
+      // 两个库同时挂载、只切换可见的那个：集合作品流不会随切换被释放重查，
+      // 切换时不再先闪加载态再出内容；搜索、筛选和滚动位置也各自保留。
+      _HomeLibrarySelection(:final contentKind) => IndexedStack(
+        index: contentKind == contentKindScreenplay ? 1 : 0,
+        children: [
+          buildLibraryPanel(contentKindNovel),
+          buildLibraryPanel(contentKindScreenplay),
+        ],
+      ),
     };
 
     final appBackgroundActive = ref.watch(appBackgroundActiveProvider);
@@ -973,7 +997,11 @@ class NovelHomePage extends HookConsumerWidget {
           appBackgroundActive,
         ),
         body: DesktopWindowFrame(
-          titleBarGestureExclusionKeys: [greetingHeaderKey, editPanelHeaderKey],
+          titleBarGestureExclusionKeys: [
+            if (contentSelection case _HomeLibrarySelection(:final contentKind))
+              greetingHeaderKeys[contentKind]!,
+            editPanelHeaderKey,
+          ],
           child: Row(
             children: [
               _buildSidebar(
@@ -1034,7 +1062,9 @@ class NovelHomePage extends HookConsumerWidget {
       data: (sessions) => sessions,
       orElse: () => <AiChatSession>[],
     );
-    final librarySelected = selection is _HomeLibrarySelection;
+    final libraryKind = selection is _HomeLibrarySelection
+        ? selection.contentKind
+        : null;
     final modelSettingsSelected =
         selection is _HomeAgentModelSettingsSelection ||
         selection is _HomeSubAgentPromptSelection;
@@ -1067,14 +1097,27 @@ class NovelHomePage extends HookConsumerWidget {
                   context,
                   title: context.t(LocaleKeys.homeSectionWorks),
                 ),
-                // 小说和剧本合在一个作品库里：类型是作品的属性，在作品区按类型筛选。
+                // 小说和剧本各是一个独立的库，不在同一个作品区里混排。
                 _buildLeafNavItem(
                   context,
                   icon: RevericIcons.menu_book_rounded,
-                  title: context.t(LocaleKeys.homeNavWorks),
-                  isSelected: librarySelected,
+                  title: context.t(LocaleKeys.libraryContentKindNovel),
+                  isSelected: libraryKind == contentKindNovel,
                   onTap: () {
-                    onContentSelected(const _HomeLibrarySelection());
+                    onContentSelected(
+                      const _HomeLibrarySelection(contentKindNovel),
+                    );
+                  },
+                ),
+                _buildLeafNavItem(
+                  context,
+                  icon: RevericIcons.movie_outlined,
+                  title: context.t(LocaleKeys.libraryContentKindScreenplay),
+                  isSelected: libraryKind == contentKindScreenplay,
+                  onTap: () {
+                    onContentSelected(
+                      const _HomeLibrarySelection(contentKindScreenplay),
+                    );
                   },
                 ),
                 const SizedBox(height: RevericSpacing.md),

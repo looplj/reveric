@@ -39,7 +39,11 @@ Future<void> createCollection(
   BuildContext context,
   CollectionLocation location,
 ) async {
-  final id = await showCollectionName(context, mobile: location.mobile);
+  final id = await showCollectionName(
+    context,
+    mobile: location.mobile,
+    contentKind: location.contentKind,
+  );
   if (context.mounted && id != null) {
     location.open(id);
   }
@@ -52,23 +56,31 @@ Future<void> moveCollection(
   String id,
   int to,
 ) async {
-  final ids = <String>[
+  final visible = <String>[
     for (final c in location.collections.value ?? <LibraryCollection>[]) c.id,
   ];
-  final from = ids.indexOf(id);
+  final from = visible.indexOf(id);
   if (from <= 0) {
     return;
   }
-  ids.removeAt(from);
-  ids.insert(to.clamp(1, ids.length), id);
+  visible.removeAt(from);
+  visible.insert(to.clamp(1, visible.length), id);
+  final container = ProviderScope.containerOf(context, listen: false);
+  // 顺序是两个库共用的一份：另一个库的集合留在原位，只按新顺序重填本库的位置。
+  final slots = visible.toSet();
+  final reordered = visible.iterator;
+  final all = container.read(orderedCollectionsProvider).value;
+  final ids = all == null
+      ? visible
+      : [
+          for (final c in all)
+            if (slots.contains(c.id) && reordered.moveNext())
+              reordered.current
+            else
+              c.id,
+        ];
   try {
-    await saveCollectionOrder(
-      ProviderScope.containerOf(
-        context,
-        listen: false,
-      ).read(appDatabaseProvider),
-      ids,
-    );
+    await saveCollectionOrder(container.read(appDatabaseProvider), ids);
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

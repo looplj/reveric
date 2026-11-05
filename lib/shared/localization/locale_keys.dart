@@ -3056,7 +3056,6 @@ abstract final class LocaleKeys {
   static const homeResumeEyebrow = 'home.resume_eyebrow';
   static const homeResumeRecent = 'home.resume_recent';
   static const homeResumeLastWritten = 'home.resume_last_written';
-  static const homeCreateWorkCardSubtitle = 'home.create_work_card_subtitle';
   static const homeSortRecent = 'home.sort_recent';
   static const homeSortCreated = 'home.sort_created';
   static const homeSortTitle = 'home.sort_title';
@@ -3126,7 +3125,6 @@ abstract final class LocaleKeys {
   static const libraryCategoryFemale = 'library.category_female';
   static const libraryContentKindNovel = 'library.content_kind_novel';
   static const libraryContentKindScreenplay = 'library.content_kind_screenplay';
-  static const libraryContentKindAll = 'library.content_kind_all';
   static const libraryAuthorName = 'library.author_name';
   static const libraryCreateDemoNovel = 'library.create_demo_novel';
   static const libraryCreateDemoNovelDesc = 'library.create_demo_novel_desc';
@@ -3137,7 +3135,6 @@ abstract final class LocaleKeys {
   static const libraryCreateNovel = 'library.create_novel';
   static const libraryCreateNovelFailed = 'library.create_novel_failed';
   static const libraryCreateScreenplay = 'library.create_screenplay';
-  static const libraryCreateWork = 'library.create_work';
   static const libraryCreateWorkFailed = 'library.create_work_failed';
   static const libraryMoreInfo = 'library.more_info';
   static const libraryMoreInfoHint = 'library.more_info_hint';
@@ -3594,7 +3591,8 @@ abstract final class LocaleKeys {
   static const mobileAssistantPromptsTitle = 'mobile.assistant_prompts_title';
   static const mobileAssistantEnableHint = 'mobile.assistant_enable_hint';
   static const mobileTabAssistant = 'mobile.tab_assistant';
-  static const mobileTabLibrary = 'mobile.tab_library';
+  static const mobileTabNovels = 'mobile.tab_novels';
+  static const mobileTabScreenplays = 'mobile.tab_screenplays';
   static const mobileTabSettings = 'mobile.tab_settings';
   // ── monologue ────────────────────────────────────────
   static const monologueContinue = 'monologue.continue';
