@@ -22,6 +22,7 @@ import 'image/codex.dart';
 import 'image/gemini.dart';
 import 'image/openai.dart';
 import 'image/openrouter.dart';
+import 'image/purefox.dart';
 import 'new_api.dart';
 import 'image/qwen.dart';
 
@@ -204,6 +205,7 @@ class AiImageGenerationService {
       clientFactory: _codexImageClientFactory,
     ),
     ImageProtocol.gemini_image => GeminiImageClient(_config),
+    ImageProtocol.purefox_media => PurefoxImageClient(_config),
     null => null,
   };
 

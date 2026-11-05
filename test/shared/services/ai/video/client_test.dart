@@ -25,6 +25,7 @@ import 'package:reveric/shared/services/ai/video/openrouter.dart';
 import 'package:reveric/shared/services/ai/video/agnes.dart';
 import 'package:reveric/shared/services/ai/video/client.dart';
 import 'package:reveric/shared/services/ai/video/minimax.dart';
+import 'package:reveric/shared/services/ai/video/purefox.dart';
 import 'package:reveric/shared/services/ai/video/wan.dart';
 import '../../../../helpers/media_provider_types.dart';
 
@@ -139,6 +140,13 @@ VideoClient client(VideoProtocol protocol, http.Client transport) =>
         endpoint: Uri.parse('https://example.com/proxy'),
         apiKey: 'secret',
       ),
+      // PureFox 走 NDJSON 流，回执不是 JSON，专项用例在 purefox_test.dart。
+      VideoProtocol.purefox_media => PurefoxVideoClient(
+        httpClient: transport,
+        providerType: videoProviderType(protocol),
+        endpoint: Uri.parse('https://example.com/proxy/v1'),
+        apiKey: 'secret',
+      ),
     };
 
 Map<String, dynamic> receipt(VideoProtocol protocol) => switch (protocol) {
@@ -158,6 +166,9 @@ Map<String, dynamic> receipt(VideoProtocol protocol) => switch (protocol) {
   VideoProtocol.wan_video => {
     'output': {'task_id': 'task-1', 'task_status': 'PENDING'},
   },
+  VideoProtocol.purefox_media => throw UnimplementedError(
+    'PureFox receipts are NDJSON frames, covered by purefox_test.dart',
+  ),
 };
 Map<String, dynamic> result(
   VideoProtocol protocol,
@@ -213,6 +224,9 @@ Map<String, dynamic> result(
       if (withUrl) 'video_url': 'https://result.example/movie.mp4',
     },
   },
+  VideoProtocol.purefox_media => throw UnimplementedError(
+    'PureFox results are NDJSON frames, covered by purefox_test.dart',
+  ),
 };
 
 void main() {
@@ -543,7 +557,10 @@ void main() {
       );
     },
   );
-  for (final protocol in VideoProtocol.values) {
+  for (final protocol in VideoProtocol.values.where(
+    // PureFox 的型号目录由 /v1/models 运行时登记，NDJSON 协议在 purefox_test.dart 覆盖。
+    (protocol) => protocol != VideoProtocol.purefox_media,
+  )) {
     test(
       '$protocol preserves output review failure on a successful poll',
       () async {

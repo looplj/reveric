@@ -42,6 +42,7 @@ import 'provider_overview.dart';
 import 'provider_logo.dart';
 import '../../models/ai_provider.dart';
 import '../../services/ai/new_api.dart';
+import '../../services/ai/purefox_media.dart';
 import '../../models/network_proxy.dart';
 import '../../models/image/channels.dart';
 import '../../models/audio/channels.dart';
@@ -815,6 +816,16 @@ Future<List<String>> fetchProviderModels(
   if (config.typeConfig.usesNewApi) {
     return NewApiClient(config).modelIds(kind);
   }
+  if (config.typeEnum == AiProviderType.purefox_media) {
+    final catalog = await fetchPurefoxMediaModels(config);
+    catalog.register();
+    return catalog.idsOfKind(switch (kind) {
+      AiModelKind.image => 'image',
+      AiModelKind.video => 'video',
+      AiModelKind.audio => 'audio',
+      _ => '',
+    });
+  }
   if (kind == AiModelKind.audio &&
       config.typeEnum != AiProviderType.openrouter) {
     return audioModelsForProvider(config.type);
@@ -1004,6 +1015,7 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
         final statusCode = switch (e) {
           _ModelsFetchHttpException() => e.statusCode,
           CodexHttpException() => e.statusCode,
+          PurefoxMediaModelsException() => e.statusCode,
           _ => null,
         };
         _error = (

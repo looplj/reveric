@@ -4033,6 +4033,10 @@ abstract final class LocaleKeys {
   static const settingsAiApiKey = 'settings.ai_api_key';
   static const settingsBuiltinProviderMetaso =
       'settings.builtin_provider_metaso';
+  static const settingsBuiltinProviderPurefox =
+      'settings.builtin_provider_purefox';
+  static const settingsBuiltinProviderPurefoxMedia =
+      'settings.builtin_provider_purefox_media';
   static const settingsProviderDescriptionMetaso =
       'settings.provider_description_metaso';
   static const settingsProviderSearchHint = 'settings.provider_search_hint';
@@ -4827,6 +4831,10 @@ abstract final class LocaleKeys {
       'settings.provider_description_agnes';
   static const settingsProviderDescriptionAtlascloud =
       'settings.provider_description_atlascloud';
+  static const settingsProviderDescriptionPurefox =
+      'settings.provider_description_purefox';
+  static const settingsProviderDescriptionPurefoxMedia =
+      'settings.provider_description_purefox_media';
 
   static const settingsProviderUnsupportedBadge =
       'settings.provider_unsupported_badge';

@@ -24,7 +24,8 @@ const _videoFormats = {'video/mp4', 'video/quicktime'};
 const _audioFormats = {'audio/mpeg', 'audio/wav', 'audio/x-wav'};
 
 /// 官方 ID 对应的模型目录；渠道名称通过 [lookupVideoModel] 匹配已登记别名。
-const Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
+/// 运行时目录：获取模型后可登记站点返回的动态型号。
+final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
   // AtlasCloud endpoint specifications: https://www.atlascloud.ai/docs/openapi-index
   'kwaivgi-kling-v4.0': VideoModelCatalogEntry(
     capabilities: VideoModelCapabilities(

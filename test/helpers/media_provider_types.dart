@@ -16,6 +16,7 @@ String videoProviderType(VideoProtocol protocol) => switch (protocol) {
   VideoProtocol.agnes_video => 'agnes',
   VideoProtocol.openrouter_video => 'openrouter',
   VideoProtocol.atlascloud_video => 'atlascloud',
+  VideoProtocol.purefox_media => 'purefox_media',
 };
 
 String audioProviderType(AudioProtocol protocol) => switch (protocol) {
@@ -39,4 +40,5 @@ String imageProviderType(ImageProtocol protocol) => switch (protocol) {
   ImageProtocol.openai_images => 'openai_compatible',
   ImageProtocol.codex_image => 'codex',
   ImageProtocol.gemini_image => 'gemini',
+  ImageProtocol.purefox_media => 'purefox_media',
 };
