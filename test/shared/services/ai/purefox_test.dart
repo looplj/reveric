@@ -31,6 +31,13 @@ const _png =
 const _videoId = 'site-video-model';
 const _imageId = 'site-image-model';
 
+/// 与内置目录撞名的站点型号，用于验证 PureFox 条目不污染其它供应商。
+const _collidingImageId = 'gemini-3-pro-image-preview';
+const _collidingVideoId = 'kwaivgi-kling-v4.0';
+const _openAiImageId = 'gpt-image-2';
+
+String _catalogId(String modelId) => '$purefoxMediaCatalogPrefix$modelId';
+
 /// 站点真实信封：duration 是 {mode, options}，参考上限分三类。
 String _payload() => jsonEncode({
   'object': 'list',
@@ -80,8 +87,49 @@ Future<PurefoxMediaModelCatalog> _registerCatalog() async {
   return catalog;
 }
 
-VideoRequest _videoRequest({VideoMode mode = VideoMode.text}) => VideoRequest(
-  modelId: _videoId,
+/// 站点真实返回中存在与内置目录同名的型号；登记时必须落在 PureFox 命名空间。
+String _collidingPayload() => jsonEncode({
+  'data': [
+    {
+      'id': _collidingImageId,
+      'kind': 'image',
+      'qualities': ['1K'],
+      'refImages': 1,
+    },
+    {
+      'id': _openAiImageId,
+      'kind': 'image',
+      'qualities': ['1K'],
+      'refImages': 1,
+    },
+    {
+      'id': _collidingVideoId,
+      'kind': 'video',
+      'qualities': ['480p'],
+      'duration': {
+        'mode': 'options',
+        'options': [4],
+      },
+      'refImages': 1,
+    },
+  ],
+});
+
+Future<void> _registerCollidingCatalog() async {
+  final catalog = await fetchPurefoxMediaModels(
+    _media(),
+    httpClient: MockClient(
+      (_) async => http.Response(_collidingPayload(), 200),
+    ),
+  );
+  catalog.register();
+}
+
+VideoRequest _videoRequest({
+  VideoMode mode = VideoMode.text,
+  String modelId = _videoId,
+}) => VideoRequest(
+  modelId: modelId,
   prompt: 'A bird flying',
   mode: mode,
   resolution: '720p',
@@ -127,8 +175,14 @@ void main() {
         );
     purefoxMediaImageModels.remove(_imageId);
     purefoxMediaVideoModels.remove(_videoId);
-    imageModelsCatalog.remove(_imageId);
-    videoModelsCatalog.remove(_videoId);
+    imageModelsCatalog.remove(_catalogId(_imageId));
+    videoModelsCatalog.remove(_catalogId(_videoId));
+    purefoxMediaImageModels.remove(_collidingImageId);
+    purefoxMediaImageModels.remove(_openAiImageId);
+    imageModelsCatalog.remove(_catalogId(_openAiImageId));
+    purefoxMediaVideoModels.remove(_collidingVideoId);
+    imageModelsCatalog.remove(_catalogId(_collidingImageId));
+    videoModelsCatalog.remove(_catalogId(_collidingVideoId));
     await support.delete(recursive: true);
   });
 
@@ -304,26 +358,29 @@ void main() {
     transport.close();
   });
 
-  test('video keeps the receipt when the stream breaks after headers', () async {
-    await _registerCatalog();
-    final transport = MockClient((request) async {
-      // 响应头已带 jobId，响应体读到一半断流。
-      return http.Response(
-        '{"jobId":"job-1","stat',
-        200,
-        headers: {'x-job-id': 'job-1'},
+  test(
+    'video keeps the receipt when the stream breaks after headers',
+    () async {
+      await _registerCatalog();
+      final transport = MockClient((request) async {
+        // 响应头已带 jobId，响应体读到一半断流。
+        return http.Response(
+          '{"jobId":"job-1","stat',
+          200,
+          headers: {'x-job-id': 'job-1'},
+        );
+      });
+      final api = PurefoxVideoClient(
+        httpClient: transport,
+        providerType: 'purefox_media',
+        endpoint: Uri.parse('https://img.purefox.org/v1'),
+        apiKey: 'purefox-key',
       );
-    });
-    final api = PurefoxVideoClient(
-      httpClient: transport,
-      providerType: 'purefox_media',
-      endpoint: Uri.parse('https://img.purefox.org/v1'),
-      apiKey: 'purefox-key',
-    );
-    final receipt = await api.submit(_videoRequest(), []);
-    expect(receipt.taskId, 'job-1');
-    transport.close();
-  });
+      final receipt = await api.submit(_videoRequest(), []);
+      expect(receipt.taskId, 'job-1');
+      transport.close();
+    },
+  );
 
   test('video reports an unknown submission without a job id', () async {
     await _registerCatalog();
@@ -526,5 +583,115 @@ void main() {
       ),
     );
     expect(posts, 1);
+  });
+
+  test('PureFox registration never overwrites other providers', () async {
+    // 这些 ID 同时存在于内置目录，PureFox 登记前先记录纯内置能力。
+    final geminiCatalogBefore = imageModelsCatalog[_collidingImageId];
+    final openaiCatalogBefore = imageModelsCatalog[_openAiImageId];
+    final videoCatalogBefore = videoModelsCatalog[_collidingVideoId];
+    expect(geminiCatalogBefore, isNotNull);
+    expect(openaiCatalogBefore, isNotNull);
+    expect(videoCatalogBefore, isNotNull);
+    final geminiCapabilities = lookupImageChannelModel(
+      'gemini',
+      _collidingImageId,
+    )!.capabilities;
+    final openaiCapabilities = lookupImageChannelModel(
+      'openai',
+      _openAiImageId,
+    )!.capabilities;
+    final atlasCapabilities = lookupVideoChannelModel(
+      'atlascloud',
+      'kwaivgi/kling-v4.0',
+    )!.capabilities;
+
+    await _registerCollidingCatalog();
+
+    // 其它供应商读取的目录条目必须仍是原来的对象。
+    expect(imageModelsCatalog[_collidingImageId], same(geminiCatalogBefore));
+    expect(imageModelsCatalog[_openAiImageId], same(openaiCatalogBefore));
+    expect(videoModelsCatalog[_collidingVideoId], same(videoCatalogBefore));
+    expect(
+      lookupImageChannelModel(
+        'gemini',
+        _collidingImageId,
+      )!.capabilities.resolutions,
+      geminiCapabilities.resolutions,
+    );
+    expect(
+      lookupImageChannelModel('openai', _openAiImageId)!.capabilities.ratios,
+      openaiCapabilities.ratios,
+    );
+    expect(
+      lookupVideoChannelModel(
+        'atlascloud',
+        'kwaivgi/kling-v4.0',
+      )!.capabilities.durations,
+      atlasCapabilities.durations,
+    );
+
+    // PureFox 自己的条目仍按站点返回登记，只是换到命名空间内。
+    final purefox = lookupImageChannelModel('purefox_media', _collidingImageId);
+    expect(purefox, isNotNull);
+    expect(purefox!.capabilities.resolutions, {'1K'});
+    expect(purefox.capabilities.maxReferences, 1);
+    expect(
+      imageModelsCatalog.containsKey(_catalogId(_collidingImageId)),
+      isTrue,
+    );
+
+    final video = lookupVideoChannelModel('purefox_media', _collidingVideoId);
+    expect(video, isNotNull);
+    expect(video!.capabilities.resolutions, {'480p'});
+    expect(video.capabilities.durations, {4});
+    expect(
+      videoModelsCatalog.containsKey(_catalogId(_collidingVideoId)),
+      isTrue,
+    );
+  });
+
+  test('requests strip the PureFox catalog prefix', () async {
+    await _registerCollidingCatalog();
+    final image = AiImageGenerationService(_media(), model: _collidingImageId);
+    expect(
+      purefoxUpstreamModel(_catalogId(_collidingImageId)),
+      _collidingImageId,
+    );
+
+    final seen = <http.Request>[];
+    await http.runWithClient(
+      () => image.generateImage('a cat', aspectRatio: '1:1', resolution: '1K'),
+      () => MockClient((request) async {
+        seen.add(request);
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'url': 'data:image/png;base64,$_png'},
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+    expect(jsonDecode(seen.single.body)['model'], _collidingImageId);
+
+    final api = PurefoxVideoClient(
+      httpClient: MockClient((_) async => http.Response('', 200)),
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    expect(
+      api.encode(
+        _videoRequest(modelId: _catalogId(_collidingVideoId)),
+        [],
+      )['model'],
+      _collidingVideoId,
+    );
+    expect(
+      api.encode(_videoRequest(modelId: _collidingVideoId), [])['model'],
+      _collidingVideoId,
+    );
   });
 }

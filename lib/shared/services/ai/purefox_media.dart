@@ -19,6 +19,16 @@ import 'media_diagnostics.dart';
 
 final _log = AppLogger.forModule('PurefoxMedia');
 
+/// PureFox 型号写入共享目录时使用的前缀：站点型号名与各家官方型号同名，不加前缀
+/// 会覆盖其它供应商读取的能力。渠道键保持原始型号名，提交时再剥掉前缀。
+const purefoxMediaCatalogPrefix = 'purefox_media/';
+
+/// 提交给上游时把目录前缀还原成站点认识的原始型号名。
+String purefoxUpstreamModel(String modelId) =>
+    modelId.startsWith(purefoxMediaCatalogPrefix)
+    ? modelId.substring(purefoxMediaCatalogPrefix.length)
+    : modelId;
+
 /// 上游返回非 200 时抛出，携带状态码供界面映射为可读提示。
 class PurefoxMediaModelsException implements Exception {
   const PurefoxMediaModelsException(this.statusCode);
@@ -120,26 +130,29 @@ class PurefoxMediaModelCatalog {
   ];
 
   /// 把站点返回的型号登记进运行时目录：能力写进 model 目录，渠道表只引用 id。
-  /// 目录不预置任何型号，站点返回什么就登记什么，因此直接覆盖同名条目。
+  /// 目录键统一加 [purefoxMediaCatalogPrefix]：PureFox 代理的正是各家官方型号名
+  /// （gpt-image-*、gemini-*-image 等），直接按原 ID 写入会覆盖其它供应商读取的
+  /// 共享能力。渠道表仍以原始 ID 为键，已保存的选择不受影响。
   void register() {
     for (final model in models) {
       if (!model.isUsable) {
         continue;
       }
+      final catalogId = '$purefoxMediaCatalogPrefix${model.id}';
       switch (model.kind) {
         case 'image':
-          imageModelsCatalog[model.id] = ImageModelCatalogEntry(
+          imageModelsCatalog[catalogId] = ImageModelCatalogEntry(
             capabilities: ImageModelCapabilities(
               resolutions: model.qualities.toSet(),
               maxReferences: model.refImages,
             ),
           );
           purefoxMediaImageModels[model.id] = ImageChannelModel(
-            catalogId: model.id,
+            catalogId: catalogId,
             includedInPresets: false,
           );
         case 'video':
-          videoModelsCatalog[model.id] = VideoModelCatalogEntry(
+          videoModelsCatalog[catalogId] = VideoModelCatalogEntry(
             capabilities: VideoModelCapabilities(
               resolutions: model.qualities.toSet(),
               durations: model.durations.toSet(),
@@ -149,7 +162,7 @@ class PurefoxMediaModelCatalog {
             ),
           );
           purefoxMediaVideoModels[model.id] = VideoChannelModel(
-            catalogId: model.id,
+            catalogId: catalogId,
           );
         case 'audio':
           // 站点目前没有音频生成端点；有也不登记，音频目录不由本客户端管理。

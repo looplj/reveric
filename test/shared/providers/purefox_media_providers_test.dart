@@ -16,9 +16,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/video/catalog.dart';
 import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/providers/purefox_media_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/services/ai/purefox_media.dart';
 
 const _videoId = 'startup-video-model';
 
@@ -48,6 +50,7 @@ void main() {
 
   tearDown(() async {
     purefoxMediaVideoModels.remove(_videoId);
+    videoModelsCatalog.remove('$purefoxMediaCatalogPrefix$_videoId');
     await database.close();
   });
 

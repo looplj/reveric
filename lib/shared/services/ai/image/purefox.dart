@@ -8,6 +8,7 @@
 //   assets/translations/zh-CN/ai.json
 import '../../../models/ai_provider.dart';
 import '../image.dart';
+import '../purefox_media.dart';
 import 'client.dart';
 
 /// 网关用 quality 档位（1K/2K/4K）而不是像素尺寸；传了 size 时由服务端忽略档位。
@@ -37,7 +38,7 @@ class PurefoxImageClient extends ImageClient {
     }
     final editing = request.images.isNotEmpty;
     final body = <String, dynamic>{
-      'model': request.model,
+      'model': purefoxUpstreamModel(request.model),
       'prompt': request.prompt,
       'n': 1,
       'response_format': 'url',

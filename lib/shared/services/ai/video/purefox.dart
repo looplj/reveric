@@ -19,6 +19,7 @@ import '../../../models/video/request.dart';
 import '../../../models/video/task_result.dart';
 import '../../../utils/ai_error.dart';
 import '../media_diagnostics.dart';
+import '../purefox_media.dart';
 import '../purefox_stream.dart';
 import 'client.dart';
 
@@ -53,7 +54,7 @@ class PurefoxVideoClient extends VideoClient {
     VideoRequest request,
     List<VideoReference> references,
   ) => {
-    'model': request.modelId,
+    'model': purefoxUpstreamModel(request.modelId),
     'prompt': request.prompt,
     'quality': request.resolution,
     'ratio': request.ratio,
