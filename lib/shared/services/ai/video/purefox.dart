@@ -25,9 +25,10 @@ import 'client.dart';
 final _log = AppLogger.forModule('PurefoxVideo');
 
 /// 站点文档：https://img.purefox.org/docs
-/// - POST /v1/generate 返回 NDJSON，首帧带 jobId，末帧带终态；
-/// - 断流后只带 jobId 重发即继续同一任务，不重复扣费；
-/// - 参考素材先 POST /v1/uploads 拿预签名地址，PUT 后把 key 放进 refs。
+/// - POST /v1/generate 返回 NDJSON，响应头 `X-Job-Id` 与首帧同时给出 jobId，
+///   且在参考素材下载之前写出，因此即使读不到响应体也能拿到任务 ID；
+/// - 轮询走 `GET /v1/jobs/{jobId}`，响应字段与 NDJSON 终态帧一致；
+/// - 参考素材放公网 http(s) 直链，由网关服务端代为下载。
 class PurefoxVideoClient extends VideoClient {
   PurefoxVideoClient({
     required super.httpClient,
@@ -37,17 +38,15 @@ class PurefoxVideoClient extends VideoClient {
     super.timeout = const Duration(minutes: 30),
   });
 
-  static const _uploadTimeout = Duration(minutes: 5);
-
   /// 单次读流的静默上限；站点每 25 秒发一次心跳，超过这个时间没有帧说明连接已死。
   static const _frameTimeout = Duration(seconds: 90);
 
   @override
   String get createPath => 'generate';
 
-  /// 查询与提交是同一个端点，任务 ID 只出现在请求体里。
+  /// 单任务查询快照；提交仍是 /v1/generate。
   @override
-  String queryPath(String id) => 'generate';
+  String queryPath(String id) => 'jobs/$id';
 
   @override
   Map<String, dynamic> encode(
@@ -91,22 +90,38 @@ class PurefoxVideoClient extends VideoClient {
     VideoCapabilities(providerType).validate(request, references);
     final body = encode(request, references);
     if (references.isNotEmpty) {
-      body['refs'] = await _uploadReferences(references);
+      body['refs'] = _referenceRefs(references);
     }
+    // 响应头与首帧同时带 jobId，且先于参考素材下载写出；先用响应头兜底，
+    // 避免首字节迟迟不到时把已受理的任务判成 submission_unknown。
+    String? headerJobId;
     Map<String, dynamic>? frame;
-    await _stream(body, (value) {
-      frame = value;
-      return purefoxJobId(value) != null ||
-          purefoxIsTerminal(value) ||
-          value['status'] != null;
-    });
-    final receipt = frame;
-    if (receipt == null) {
-      throw const VideoException(VideoErrorCode.submission_unknown);
+    try {
+      await _stream(
+        body,
+        (value) {
+          frame = value;
+          return purefoxJobId(value) != null ||
+              purefoxIsTerminal(value) ||
+              value['status'] != null;
+        },
+        onResponse: (response) {
+          headerJobId = _jobIdHeader(response.headers);
+        },
+      );
+    } catch (error) {
+      // 任务已受理时响应头一定带了 jobId；此时读流失败不能再判成提交未知。
+      if (headerJobId == null) {
+        rethrow;
+      }
+      _log.warning(
+        'POST ${url(createPath).origin}${url(createPath).path} '
+        'stream failed after receipt task=$headerJobId '
+        'type=${error.runtimeType} message=${safeMediaDiagnostic(error, apiKey)}',
+      );
     }
-    final id = purefoxJobId(receipt);
+    final id = headerJobId ?? (frame == null ? null : purefoxJobId(frame!));
     if (id == null) {
-      // 立即拿到终态（例如重连已完成的 jobId）也按成功提交处理。
       throw const VideoException(VideoErrorCode.submission_unknown);
     }
     return VideoSubmission(
@@ -116,34 +131,24 @@ class PurefoxVideoClient extends VideoClient {
     );
   }
 
-  /// 断流重连：只带 jobId 重发，直到拿到终态帧。
+  /// 读取单任务快照；运行中返回 running，终态直接带回产物或错误。
   @override
   Future<VideoTaskResult> query(VideoSubmission task) async {
     final expected = queryUrl(task.taskId, task.modelId);
     if (task.pollingUrl != expected) {
       throw const VideoException(VideoErrorCode.configuration_required);
     }
-    Map<String, dynamic>? terminal;
+    final Map<String, dynamic> frame;
     try {
-      // 只读首帧：运行中返回 running，任务已完成时直接回终态帧。
-      await _stream({'jobId': task.taskId}, (frame) {
-        if (purefoxIsTerminal(frame)) {
-          terminal = frame;
-        }
-        return true;
-      });
+      frame = await _get(expected);
     } on VideoException {
       rethrow;
     } catch (error) {
       _log.warning(
-        'POST ${expected.origin}${expected.path} task=${task.taskId} '
+        'GET ${expected.origin}${expected.path} task=${task.taskId} '
         'type=${error.runtimeType} message=${safeMediaDiagnostic(error, apiKey)}',
       );
       throw const VideoException(VideoErrorCode.invalid_response);
-    }
-    final frame = terminal;
-    if (frame == null) {
-      return const VideoTaskResult(status: VideoRemoteStatus.running);
     }
     final result = decodeResult(frame);
     if (result.status != VideoRemoteStatus.failed) {
@@ -170,11 +175,46 @@ class PurefoxVideoClient extends VideoClient {
     );
   }
 
+  Future<Map<String, dynamic>> _get(Uri uri) async {
+    final request = http.Request('GET', uri)..followRedirects = false;
+    request.headers.addAll({
+      'Authorization': 'Bearer $apiKey',
+      'Accept': 'application/json',
+    });
+    final response = await httpClient.send(request).timeout(timeout);
+    final text = await _readBody(response.stream);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _httpFailure(
+        response.statusCode,
+        text,
+        _retryAfter(response.headers['retry-after']),
+        uri: uri,
+        submitting: false,
+      );
+    }
+    try {
+      final value = jsonDecode(text);
+      if (value is Map<String, dynamic>) {
+        return value;
+      }
+    } on FormatException {
+      // 落到统一的 invalid_response。
+    }
+    throw const VideoException(VideoErrorCode.invalid_response);
+  }
+
+  /// 响应头 `X-Job-Id`；缺失或为空时返回 null，交给首帧判断。
+  String? _jobIdHeader(Map<String, String> headers) {
+    final id = headers['x-job-id']?.trim();
+    return id == null || id.isEmpty ? null : id;
+  }
+
   /// 读取 NDJSON 直到 [stop] 返回 true；网络断开按明确失败处理，避免重复扣费。
   Future<void> _stream(
     Map<String, dynamic> body,
-    bool Function(Map<String, dynamic> frame) stop,
-  ) async {
+    bool Function(Map<String, dynamic> frame) stop, {
+    void Function(http.StreamedResponse response)? onResponse,
+  }) async {
     final uri = url(createPath);
     VideoException? httpFailure;
     try {
@@ -196,6 +236,7 @@ class PurefoxVideoClient extends VideoClient {
         );
         throw httpFailure;
       }
+      onResponse?.call(response);
       final frames = StreamIterator(purefoxFrames(response.stream));
       try {
         while (await frames.moveNext().timeout(_frameTimeout)) {
@@ -224,124 +265,21 @@ class PurefoxVideoClient extends VideoClient {
     }
   }
 
-  Future<List<String>> _uploadReferences(
-    List<VideoReference> references,
-  ) async {
-    final keys = <String>[];
+  /// 网关接受公网直链并由服务端代为下载，因此直接引用即可；
+  /// 它拉不到的 scheme（如渠道私域 `asset://`）在这里明确拒绝，不做静默上传。
+  List<String> _referenceRefs(List<VideoReference> references) {
+    final refs = <String>[];
     for (final reference in references) {
-      final bytes = await _download(reference.url);
-      final key = await _upload(reference.mimeType, bytes);
-      keys.add(key);
-    }
-    return keys;
-  }
-
-  Future<List<int>> _download(Uri url) async {
-    if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty) {
-      throw const VideoException(
-        VideoErrorCode.invalid_request,
-        field: 'reference',
-      );
-    }
-    final client = http.Client();
-    try {
-      final response = await client.get(url).timeout(_uploadTimeout);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
+      final url = reference.url;
+      if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty) {
         throw const VideoException(
           VideoErrorCode.invalid_request,
           field: 'reference',
         );
       }
-      return response.bodyBytes;
-    } on VideoException {
-      rethrow;
-    } catch (error) {
-      _log.warning(
-        'GET ${url.origin}${url.path} '
-        'type=${error.runtimeType} message=${safeMediaDiagnostic(error, apiKey)}',
-      );
-      throw const VideoException(
-        VideoErrorCode.invalid_request,
-        field: 'reference',
-      );
-    } finally {
-      client.close();
+      refs.add(url.toString());
     }
-  }
-
-  Future<String> _upload(String mimeType, List<int> bytes) async {
-    final kind = switch (mimeType.split('/').first) {
-      'image' => 'image',
-      'video' => 'video',
-      'audio' => 'audio',
-      _ => null,
-    };
-    if (kind == null) {
-      throw const VideoException(
-        VideoErrorCode.invalid_request,
-        field: 'mime_type',
-      );
-    }
-    final session = await _json(
-      'POST',
-      url('uploads'),
-      body: {'kind': kind, 'mime': mimeType},
-    );
-    final key = session['key'];
-    final uploadUrl = session['url'];
-    if (key is! String || key.trim().isEmpty || uploadUrl is! String) {
-      throw const VideoException(VideoErrorCode.invalid_response);
-    }
-    final target = Uri.parse(uploadUrl);
-    final client = http.Client();
-    try {
-      final response = await client
-          .put(
-            target,
-            // 预签名地址把 Content-Type 签进了签名，必须与申请时完全一致。
-            headers: {'Content-Type': mimeType},
-            body: bytes,
-          )
-          .timeout(_uploadTimeout);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw const VideoException(VideoErrorCode.invalid_response);
-      }
-      return key.trim();
-    } finally {
-      client.close();
-    }
-  }
-
-  Future<Map<String, dynamic>> _json(
-    String method,
-    Uri uri, {
-    Map<String, dynamic>? body,
-  }) async {
-    final request = http.Request(method, uri)
-      ..followRedirects = false
-      ..headers.addAll({
-        'Authorization': 'Bearer $apiKey',
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      });
-    if (body != null) {
-      request.body = jsonEncode(body);
-    }
-    final response = await httpClient.send(request).timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final text = await _readBody(response.stream);
-      throw _httpFailure(
-        response.statusCode,
-        text,
-        _retryAfter(response.headers['retry-after']),
-      );
-    }
-    final text = await _readBody(response.stream);
-    try {
-      return jsonDecode(text) as Map<String, dynamic>;
-    } on FormatException {
-      throw const VideoException(VideoErrorCode.invalid_response);
-    }
+    return refs;
   }
 
   Future<String> _readBody(Stream<List<int>> stream) async {
@@ -355,16 +293,37 @@ class PurefoxVideoClient extends VideoClient {
     return utf8.decode(bytes, allowMalformed: true);
   }
 
-  VideoException _httpFailure(int status, String body, Duration? retryAfter) {
-    final message = tryReadProviderMessage(body);
-    final code = tryReadProviderErrorCode(body);
+  /// 错误体优先按 JSON 解析；供应商错误信息只从 JSON 结构里取，
+  /// 纯文本错误体原样保留给日志，不当作 message 使用。
+  Object _jsonOrText(String body) {
+    try {
+      final value = jsonDecode(body);
+      if (value is Map<String, dynamic> || value is String) {
+        return value;
+      }
+    } on FormatException {
+      // 非 JSON 错误体。
+    }
+    return const <String, dynamic>{};
+  }
+
+  VideoException _httpFailure(
+    int status,
+    String body,
+    Duration? retryAfter, {
+    Uri? uri,
+    bool submitting = true,
+  }) {
+    final message = tryReadProviderMessage(_jsonOrText(body));
+    final code = tryReadProviderErrorCode(_jsonOrText(body));
     final failure = AiRunFailure.http(
       statusCode: status,
       providerMessage: message,
       providerCode: code,
     );
+    final target = uri ?? url(createPath);
     _log.warning(
-      'HTTP ${url(createPath).origin}${url(createPath).path} '
+      'HTTP ${target.origin}${target.path} '
       'status=$status message=${safeMediaDiagnostic(message ?? body, apiKey)}',
     );
     return VideoException(
@@ -372,7 +331,11 @@ class PurefoxVideoClient extends VideoClient {
         401 || 403 => VideoErrorCode.authentication,
         429 => VideoErrorCode.rate_limited,
         >= 500 => VideoErrorCode.unavailable,
-        >= 400 && < 500 => VideoErrorCode.rejected,
+        404 => VideoErrorCode.not_found,
+        >= 400 && < 500 =>
+          !submitting && message?.contains('任务不存在') == true
+              ? VideoErrorCode.not_found
+              : VideoErrorCode.rejected,
         _ => VideoErrorCode.invalid_response,
       },
       statusCode: status,

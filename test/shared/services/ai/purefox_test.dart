@@ -80,13 +80,23 @@ Future<PurefoxMediaModelCatalog> _registerCatalog() async {
   return catalog;
 }
 
-VideoRequest _videoRequest() => VideoRequest(
+VideoRequest _videoRequest({VideoMode mode = VideoMode.text}) => VideoRequest(
   modelId: _videoId,
   prompt: 'A bird flying',
-  mode: VideoMode.text,
+  mode: mode,
   resolution: '720p',
   ratio: '16:9',
   durationSeconds: 5,
+);
+
+final _pngBytes = base64Decode(_png);
+
+VideoReference _reference(String url) => VideoReference(
+  role: VideoInputRole.reference_image,
+  url: Uri.parse(url),
+  mimeType: 'image/png',
+  fileSize: _pngBytes.length,
+  mediaInfo: const VideoMediaInfo(width: 1, height: 1),
 );
 
 void main() {
@@ -262,28 +272,15 @@ void main() {
     }, () => MockClient((_) => throw StateError('must not send')));
   });
 
-  test('video submit reads the NDJSON receipt and uploads references', () async {
+  test('video submit reads the receipt from the X-Job-Id header', () async {
     await _registerCatalog();
     final seen = <http.Request>[];
     final transport = MockClient((request) async {
       seen.add(request);
-      if (request.url.path.endsWith('/uploads')) {
-        return http.Response(
-          jsonEncode({
-            'key': 'uploads/reference.png',
-            'url': 'https://upload.example/signed',
-          }),
-          200,
-        );
-      }
-      if (request.method == 'PUT') {
-        expect(request.headers['Content-Type'], 'image/png');
-        return http.Response('', 200);
-      }
       return http.Response(
-        '{"jobId":"job-1","status":"running"}\n\n'
-        '{"jobId":"job-1","status":"succeeded","result":"https://result.example/movie.mp4"}\n',
+        '{"jobId":"job-1","status":"queued"}\n',
         200,
+        headers: {'x-job-id': 'job-1'},
       );
     });
     final api = PurefoxVideoClient(
@@ -295,6 +292,7 @@ void main() {
     final receipt = await api.submit(_videoRequest(), []);
     expect(receipt.taskId, 'job-1');
     expect(seen.single.url.path, '/v1/generate');
+    expect(receipt.pollingUrl.path, '/v1/jobs/job-1');
     expect(jsonDecode(seen.single.body), {
       'model': _videoId,
       'prompt': 'A bird flying',
@@ -306,14 +304,116 @@ void main() {
     transport.close();
   });
 
-  test('video polls the same endpoint with only the job ID', () async {
+  test('video keeps the receipt when the stream breaks after headers', () async {
+    await _registerCatalog();
+    final transport = MockClient((request) async {
+      // 响应头已带 jobId，响应体读到一半断流。
+      return http.Response(
+        '{"jobId":"job-1","stat',
+        200,
+        headers: {'x-job-id': 'job-1'},
+      );
+    });
+    final api = PurefoxVideoClient(
+      httpClient: transport,
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    final receipt = await api.submit(_videoRequest(), []);
+    expect(receipt.taskId, 'job-1');
+    transport.close();
+  });
+
+  test('video reports an unknown submission without a job id', () async {
+    await _registerCatalog();
+    final transport = MockClient(
+      (request) async => http.Response('not json', 200),
+    );
+    final api = PurefoxVideoClient(
+      httpClient: transport,
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    await expectLater(
+      api.submit(_videoRequest(), []),
+      throwsA(
+        isA<VideoException>().having(
+          (e) => e.code,
+          'code',
+          VideoErrorCode.submission_unknown,
+        ),
+      ),
+    );
+    transport.close();
+  });
+
+  test('video passes public reference URLs straight to the gateway', () async {
+    await _registerCatalog();
+    final seen = <http.Request>[];
+    final transport = MockClient((request) async {
+      seen.add(request);
+      expect(request.method, 'POST');
+      return http.Response('{"jobId":"job-1","status":"running"}\n', 200);
+    });
+    final api = PurefoxVideoClient(
+      httpClient: transport,
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    await api.submit(_videoRequest(mode: VideoMode.reference), [
+      _reference('https://bucket.example/references/a.png'),
+    ]);
+    // 公网直链不需要预签名上传：一次 POST /v1/generate 就是全部请求。
+    expect(seen, hasLength(1));
+    expect(seen.single.url.path, '/v1/generate');
+    expect(jsonDecode(seen.single.body)['refs'], [
+      'https://bucket.example/references/a.png',
+    ]);
+    transport.close();
+  });
+
+  test('video rejects references the gateway cannot download', () async {
+    await _registerCatalog();
+    var requests = 0;
+    final transport = MockClient((request) async {
+      requests++;
+      return http.Response('{"jobId":"job-1","status":"running"}\n', 200);
+    });
+    final api = PurefoxVideoClient(
+      httpClient: transport,
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    await expectLater(
+      api.submit(_videoRequest(mode: VideoMode.reference), [
+        _reference('asset://private-asset'),
+      ]),
+      throwsA(
+        isA<VideoException>().having((e) => e.field, 'field', 'reference'),
+      ),
+    );
+    expect(requests, 0);
+    transport.close();
+  });
+
+  test('video polls the job snapshot endpoint', () async {
     await _registerCatalog();
     final seen = <http.Request>[];
     final api = PurefoxVideoClient(
       httpClient: MockClient((request) async {
         seen.add(request);
         return http.Response(
-          '{"jobId":"job-1","status":"succeeded","result":"/files/movie.mp4"}\n',
+          jsonEncode({
+            'jobId': 'job-1',
+            'status': 'succeeded',
+            'result': '/files/movie.mp4',
+            'creditsCharged': 10,
+            'refunded': false,
+          }),
           200,
         );
       }),
@@ -333,7 +433,44 @@ void main() {
       result.videoUrl.toString(),
       'https://img.purefox.org/files/movie.mp4',
     );
-    expect(jsonDecode(seen.single.body), {'jobId': 'job-1'});
+    expect(seen.single.method, 'GET');
+    expect(seen.single.url.path, '/v1/jobs/job-1');
+  });
+
+  test('video poll maps a missing job to not_found', () async {
+    await _registerCatalog();
+    final api = PurefoxVideoClient(
+      httpClient: MockClient(
+        (request) async => http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'error': {'code': '4001', 'message': '任务不存在'},
+            }),
+          ),
+          400,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+      providerType: 'purefox_media',
+      endpoint: Uri.parse('https://img.purefox.org/v1'),
+      apiKey: 'purefox-key',
+    );
+    await expectLater(
+      api.query(
+        VideoSubmission(
+          taskId: 'job-1',
+          modelId: _videoId,
+          pollingUrl: api.queryUrl('job-1', _videoId),
+        ),
+      ),
+      throwsA(
+        isA<VideoException>().having(
+          (e) => e.code,
+          'code',
+          VideoErrorCode.not_found,
+        ),
+      ),
+    );
   });
 
   test('video failure keeps a redacted provider message', () async {
@@ -341,7 +478,11 @@ void main() {
     final api = PurefoxVideoClient(
       httpClient: MockClient(
         (_) async => http.Response(
-          '{"jobId":"job-1","status":"failed","error":{"code":"4001","message":"content rejected"}}\n',
+          jsonEncode({
+            'jobId': 'job-1',
+            'status': 'failed',
+            'error': {'code': '4001', 'message': 'content rejected'},
+          }),
           200,
         ),
       ),
