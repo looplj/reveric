@@ -71,10 +71,9 @@ class CoverBriefState {
 
 class CoverBriefService {
   CoverBriefService({
-    required Future<AiClient?> Function() clientFactory,
-    Duration timeout = coverBriefReadTimeout,
-  }) : _clientFactory = clientFactory,
-       _timeout = timeout;
+    required this._clientFactory,
+    this._timeout = coverBriefReadTimeout,
+  });
 
   final Future<AiClient?> Function() _clientFactory;
   final Duration _timeout;

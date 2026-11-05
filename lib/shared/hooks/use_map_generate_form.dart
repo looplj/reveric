@@ -35,10 +35,9 @@ class MapGenerateForm {
     required this.hasImage,
     required this.parentMap,
     required this.parentMapName,
-    required void Function() resetPrompt,
-    required void Function(MapDesignDraft draft) applyDraft,
-  }) : _resetPrompt = resetPrompt,
-       _applyDraft = applyDraft;
+    required this._resetPrompt,
+    required this._applyDraft,
+  });
 
   final ValueNotifier<String?> styleId;
   final TextEditingController customStyleController;

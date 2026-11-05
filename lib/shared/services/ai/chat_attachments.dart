@@ -52,8 +52,7 @@ class NamedChatFile extends XFile {
 }
 
 class ChatDraftAttachment {
-  const ChatDraftAttachment(this.file, {String? name, this.imageNumber})
-    : _name = name;
+  const ChatDraftAttachment(this.file, {this._name, this.imageNumber});
   final XFile file;
   final String? _name;
   final int? imageNumber;

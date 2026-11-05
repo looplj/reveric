@@ -607,11 +607,11 @@ class _ResourceDefinition {
     required this.fields,
     this.children = const [],
     this.listing,
-    required List<_ResourceOperation> operations,
+    required this._operations,
     this.itemType,
     this.documentType,
     this.optionalChild = false,
-  }) : _operations = operations;
+  });
   final String segment;
   final _ResourceAddress address;
   final String description;
@@ -2298,7 +2298,7 @@ class ParsedPath {
 
   /// 私有构造函数，通过 [parse] 方法创建实例
   ParsedPath._({
-    _ResolvedResourcePath? resource,
+    this._resource,
     this.workId,
     required this.collection,
     this.id,
@@ -2306,8 +2306,7 @@ class ParsedPath {
     this.field,
     this.queryParameters = const {},
     required this.originalPath,
-  }) : _resource = resource,
-       _scope = _currentResourceCallContext?.scope;
+  }) : _scope = _currentResourceCallContext?.scope;
 
   static final _multiSlash = RegExp(r'/+');
   static final _edgeSlash = RegExp(r'^/|/$');

@@ -51,11 +51,10 @@ class RevericDialog extends StatelessWidget {
     required this.content,
     this.actions = const [],
     this.width = RevericSizes.dialogWidth,
-    bool scrollable = false,
+    this._scrollable = false,
   }) : title = null,
        leading = null,
-       _header = title,
-       _scrollable = scrollable;
+       _header = title;
 
   final String? title;
   final Widget? content;

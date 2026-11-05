@@ -170,9 +170,9 @@ class AiSessionPersistenceService {
   AiSessionPersistenceService(
     this._appDatabase,
     this._novelId, {
-    NovelContentDatabase? novelContentDatabase,
+    this._novelContentDatabase,
     this.operationRecords,
-  }) : _novelContentDatabase = novelContentDatabase;
+  });
 
   final Iterable<ToolOperationRecord> Function(String sessionId)?
   operationRecords;

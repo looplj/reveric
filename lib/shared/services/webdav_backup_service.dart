@@ -59,8 +59,7 @@ class WebDavDownloadResult extends WebDavOperationResult {
 final _log = AppLogger.forModule('WebDavBackup');
 
 class WebDavBackupService {
-  const WebDavBackupService({required WebDavTransport transport})
-    : _transport = transport;
+  const WebDavBackupService({required this._transport});
 
   final WebDavTransport _transport;
 

@@ -117,8 +117,8 @@ class CrossWorkLease {
   CrossWorkLease({
     required this.work,
     required this.service,
-    required void Function() release,
-  }) : _release = release;
+    required this._release,
+  });
 
   final CrossWorkDescriptor work;
   final NovelContentService service;
@@ -161,16 +161,12 @@ typedef CrossWorkDatabaseOpener = NovelContentDatabase Function(String path);
 /// 从应用主库解析作品，并从内容库缓存工厂借用只读连接。
 class CrossWorkResolver implements CrossWorkAccess {
   CrossWorkResolver({
-    required AppDatabase appDatabase,
-    required String currentDatabasePath,
-    required NovelContentService currentContentService,
+    required this._appDatabase,
+    required this._currentDatabasePath,
+    required this._currentContentService,
     required String currentWorkId,
-    CrossWorkDatabaseOpener databaseOpener = NovelContentDatabase.new,
-  }) : _appDatabase = appDatabase,
-       _currentDatabasePath = currentDatabasePath,
-       _currentContentService = currentContentService,
-       _currentWorkId = currentWorkId.trim(),
-       _databaseOpener = databaseOpener;
+    this._databaseOpener = NovelContentDatabase.new,
+  }) : _currentWorkId = currentWorkId.trim();
 
   final AppDatabase _appDatabase;
   final String _currentDatabasePath;

@@ -12,9 +12,9 @@ import 'package:flutter/foundation.dart';
 
 class DocumentSaveCoordinator<T> extends ChangeNotifier {
   DocumentSaveCoordinator({
-    required Future<void> Function(T snapshot) save,
+    required this._save,
     this.debounce = const Duration(milliseconds: 600),
-  }) : _save = save;
+  });
 
   final Future<void> Function(T snapshot) _save;
   final Duration debounce;

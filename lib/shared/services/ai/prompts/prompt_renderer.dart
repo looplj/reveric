@@ -7,8 +7,7 @@ import '../prompt_template.dart';
 import 'prompt_registry.dart';
 
 class PromptRenderer {
-  const PromptRenderer({required PromptTemplateService templates})
-    : _templates = templates;
+  const PromptRenderer({required this._templates});
 
   final PromptTemplateService _templates;
 

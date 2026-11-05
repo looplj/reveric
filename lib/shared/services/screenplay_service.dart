@@ -47,8 +47,8 @@ class ScreenplayService {
     this._database, {
     this.novelActionsService,
     this.novelId,
-    ShortEntityIdBuilder idBuilder = buildShortEntityId,
-  }) : _idBuilder = idBuilder;
+    this._idBuilder = buildShortEntityId,
+  });
 
   final NovelContentDatabase _database;
   late final EntityRelationsService _relations = EntityRelationsService(

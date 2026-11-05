@@ -19,10 +19,7 @@ import 'use_cases/task_prompt_use_case.dart';
 import 'use_cases/title_prompt_use_case.dart';
 
 class AiPromptService {
-  AiPromptService({
-    this.composer = const PromptComposer(),
-    PromptRenderer? renderer,
-  }) : _renderer = renderer {
+  AiPromptService({this.composer = const PromptComposer(), this._renderer}) {
     _chatPanel = ChatPromptUseCase(composer: composer, renderer: _renderer);
     _assistant = AssistantPromptUseCase(renderer: _renderer);
     _agent = AgentPromptUseCase(renderer: _renderer);

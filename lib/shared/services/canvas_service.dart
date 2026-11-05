@@ -64,9 +64,8 @@ class CanvasService {
   CanvasService(
     this._database, {
     ShortEntityIdBuilder idBuilder = buildShortEntityId,
-    CanvasLayoutComputer layoutComputer = _computeCanvasLayout,
-  }) : _buildEntityId = idBuilder,
-       _layoutComputer = layoutComputer;
+    this._layoutComputer = _computeCanvasLayout,
+  }) : _buildEntityId = idBuilder;
 
   final NovelContentDatabase _database;
   final ShortEntityIdBuilder _buildEntityId;

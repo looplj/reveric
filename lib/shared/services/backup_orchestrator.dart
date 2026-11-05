@@ -13,10 +13,9 @@ import 'webdav_backup_service.dart';
 
 class BackupOrchestrator {
   const BackupOrchestrator({
-    required BackupService backupService,
-    required WebDavBackupService webDavBackupService,
-  }) : _backupService = backupService,
-       _webDavBackupService = webDavBackupService;
+    required this._backupService,
+    required this._webDavBackupService,
+  });
 
   final BackupService _backupService;
   final WebDavBackupService _webDavBackupService;

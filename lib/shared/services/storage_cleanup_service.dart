@@ -116,16 +116,13 @@ final _log = AppLogger.forModule('StorageCleanup');
 
 class StorageCleanupService {
   StorageCleanupService({
-    required AppDatabase appDatabase,
-    required NovelMaintenanceCoordinator coordinator,
-    required Set<String> Function() runningSessionIds,
+    required this._appDatabase,
+    required this._coordinator,
+    required this._runningSessionIds,
     Future<void> Function(String, Iterable<String>)? deleteSessionFiles,
     int retentionDays = 30,
     int checkIntervalMinutes = 60,
-  }) : _appDatabase = appDatabase,
-       _coordinator = coordinator,
-       _runningSessionIds = runningSessionIds,
-       _deleteSessionFiles =
+  }) : _deleteSessionFiles =
            deleteSessionFiles ??
            ((novelId, ids) =>
                SessionFiles(novelId: novelId).deleteSessions(ids)),

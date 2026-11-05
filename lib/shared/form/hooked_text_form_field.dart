@@ -67,7 +67,7 @@ class HookedTextFormField<F extends FieldSchema> extends HookWidget {
   const HookedTextFormField.explicit({
     super.key,
     required this.fieldHook,
-    required FormFieldsController<F> form,
+    required this._form,
     this.controller,
     this.fieldKey,
     this.label,
@@ -103,7 +103,7 @@ class HookedTextFormField<F extends FieldSchema> extends HookWidget {
     this.onSaved,
     this.restorationId,
     this.notifyOnChange = false,
-  }) : _form = form;
+  });
 
   final FormFieldsController<F>? _form;
 

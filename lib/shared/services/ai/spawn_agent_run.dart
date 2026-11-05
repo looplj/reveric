@@ -30,8 +30,8 @@ class SpawnAgentResources {
   SpawnAgentResources({
     required this.client,
     required this.toolManager,
-    required void Function() release,
-  }) : _release = release;
+    required this._release,
+  });
 
   final ProviderClient client;
   final AgentToolDispatcher toolManager;
@@ -85,12 +85,10 @@ class SpawnAgentRun {
     )
     reportInitializationFailure,
     required void Function(SpawnAgentRun)? onFinished,
-    void Function(SpawnAgentRun)? onStatusChanged,
-    void Function(SpawnAgentRun, AgentEvent)? onEvent,
-    Future<void>? Function(SpawnAgentRun)? waitForStart,
-  }) : _onStatusChanged = onStatusChanged,
-       _onEvent = onEvent,
-       _waitForStart = waitForStart {
+    this._onStatusChanged,
+    this._onEvent,
+    this._waitForStart,
+  }) {
     _spawnAgentLog.info(
       'run initializing runId=$runId subSessionId=$subSessionId '
       'parentSessionId=$parentSessionId sourceTurnId=$sourceTurnId callId=$callId',

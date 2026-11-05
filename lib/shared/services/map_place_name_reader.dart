@@ -32,12 +32,10 @@ const mapVisionMaxImageBytes = 1024 * 1024;
 /// 使用用户默认聊天模型识别文字位置，并按地名匹配候选地点。
 class MapPlaceNameReader {
   MapPlaceNameReader({
-    required AiProvider config,
-    required String model,
-    http.Client? httpClient,
-  }) : _config = config,
-       _model = model,
-       _httpClient = httpClient;
+    required this._config,
+    required this._model,
+    this._httpClient,
+  });
 
   final AiProvider _config;
   final String _model;

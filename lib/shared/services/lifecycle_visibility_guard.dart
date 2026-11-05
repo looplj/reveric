@@ -69,16 +69,12 @@ final _log = AppLogger.forModule('Lifecycle');
 /// 停帧、不会空转；只有回灌之后仍然停在 hidden，才退回强改 resumed 兜底。
 class LifecycleVisibilityGuard with WidgetsBindingObserver {
   LifecycleVisibilityGuard({
-    required WindowLifecycleChannel channel,
-    Duration startupPollInterval = const Duration(milliseconds: 300),
-    int startupPolls = 30,
-    Duration reseedGracePeriod = const Duration(milliseconds: 400),
-    Duration watchdogInterval = const Duration(seconds: 5),
-  }) : _channel = channel,
-       _startupPollInterval = startupPollInterval,
-       _startupPolls = startupPolls,
-       _reseedGracePeriod = reseedGracePeriod,
-       _watchdogInterval = watchdogInterval;
+    required this._channel,
+    this._startupPollInterval = const Duration(milliseconds: 300),
+    this._startupPolls = 30,
+    this._reseedGracePeriod = const Duration(milliseconds: 400),
+    this._watchdogInterval = const Duration(seconds: 5),
+  });
 
   final WindowLifecycleChannel _channel;
   final Duration _startupPollInterval;
