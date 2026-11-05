@@ -139,6 +139,27 @@ void main() {
     ]);
   });
 
+  test('init keeps close-to-tray when the platform lacks setToolTip', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(trayManagerChannel, (call) async {
+          calls.add('tray.${call.method}');
+          if (call.method == 'setToolTip') {
+            throw MissingPluginException(
+              'No implementation found for method setToolTip',
+            );
+          }
+          return true;
+        });
+
+    await SystemTrayService().init();
+
+    expect(calls, contains('tray.setToolTip'));
+    expect(
+      calls,
+      containsAllInOrder(['tray.setIcon', 'window.setPreventClose']),
+    );
+  });
+
   test(
     'tray exit removes the marker before releasing the instance lock',
     () async {

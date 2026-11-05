@@ -86,6 +86,9 @@ enum MediaFailure {
   busy,
   timeout,
 
+  /// 当前平台缺少执行该操作所需的原生媒体工具。
+  tool_unavailable,
+
   /// 要处理音轨，但媒体没有音轨。
   no_audio,
 }

@@ -1,4 +1,4 @@
-// 职责: 初始化桌面共享 FFmpeg 运行库，并统一播放与编码的日志回调归属。
+// 职责: 按平台初始化桌面播放运行库与共享 FFmpeg 库，并统一播放与编码的日志回调归属。
 // 关联文件:
 //   lib/shared/services/production/playback_service.dart
 //   lib/shared/services/production/ffmpeg_runner.dart
@@ -13,6 +13,10 @@ Future<void>? _initialization;
 Future<void> initializeMediaRuntime() => _initialization ??= _initialize();
 
 Future<void> _initialize() async {
+  if (Platform.isLinux) {
+    await _initializeLinux();
+    return;
+  }
   if (!Platform.isMacOS && !Platform.isWindows) {
     throw UnsupportedError('Production playback requires Windows or macOS');
   }
@@ -78,4 +82,23 @@ Future<void> _initialize() async {
   ).lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
     'av_log_set_callback',
   )(callback);
+}
+
+/// Linux 由 FVP 插件自带 MDK 运行库与 FFmpeg 共享库，直接使用，不经过 FFmpegKit。
+/// FFmpegKit 没有 Linux 实现，编码/探测已改走系统 ffmpeg。
+Future<void> _initializeLinux() async {
+  final directory = p.dirname(Platform.resolvedExecutable);
+  final runtime = <String>['libmdk.so.0', 'libffmpeg.so.9', 'libc++.so.1'];
+  for (final name in runtime) {
+    final path = p.join(directory, 'lib', name);
+    // 缺少运行库时要在建播放器前失败，而不是让 dlopen 抛出不可读的错误。
+    if (!File(path).existsSync()) {
+      throw StateError('Missing Linux playback runtime: $path');
+    }
+  }
+  await fvp.registerWith(
+    options: <String, dynamic>{
+      'platforms': <String>['linux'],
+    },
+  );
 }

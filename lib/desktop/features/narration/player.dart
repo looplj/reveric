@@ -29,8 +29,8 @@ class DesktopNarrationPlayer implements NarrationPlayer {
     VideoPlayerController Function(File) createController =
         VideoPlayerController.file,
   }) async {
-    if (!Platform.isWindows && !Platform.isMacOS) {
-      throw UnsupportedError('Narration requires Windows or macOS');
+    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+      throw UnsupportedError('Narration requires Windows, macOS or Linux');
     }
     await initializeRuntime();
     final temp = await getTemporaryDirectory();

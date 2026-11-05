@@ -39,6 +39,8 @@ dev_dependencies:
 flutter:
   plugin:
     platforms:
+      linux:
+        pluginClass: FvpPlugin
       macos:
         pluginClass: FvpPlugin
       windows:

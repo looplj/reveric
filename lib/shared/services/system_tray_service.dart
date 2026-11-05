@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 
@@ -66,7 +67,7 @@ class SystemTrayService with TrayListener {
 
     try {
       await trayManager.setIcon(_iconPath, isTemplate: true);
-      await trayManager.setToolTip('Reveric');
+      await _setToolTip('Reveric');
       await _updateMenu();
 
       await windowManager.setPreventClose(true);
@@ -76,6 +77,17 @@ class SystemTrayService with TrayListener {
       _log.info('System tray initialized');
     } catch (e) {
       _log.warning('Failed to initialize system tray: $e');
+    }
+  }
+
+  /// Linux 端的 tray_manager 没有实现 setToolTip：原生方法返回
+  /// not_implemented，Dart 侧抛 MissingPluginException。托盘悬停提示不是必需
+  /// 能力，但异常不能继续冒泡 —— 它会把后面的关闭到托盘注册一起吞掉。
+  Future<void> _setToolTip(String tooltip) async {
+    try {
+      await trayManager.setToolTip(tooltip);
+    } on MissingPluginException catch (error) {
+      _log.warning('tray setToolTip unsupported: $error');
     }
   }
 
