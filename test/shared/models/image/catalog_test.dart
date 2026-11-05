@@ -303,6 +303,8 @@ void main() {
     expect(routed, [
       'google/gemini-nano-banana-2.1',
       'black-forest-labs/flux-3-image',
+      'openai/gpt-image-2.6-sunburst',
+      'openai/gpt-image-2.6-flare',
       'openai/gpt-image-2.5-sunburst',
       'openai/gpt-image-2.5-flare',
       'bytedance-seed/seedream-5-0-pro',
@@ -424,6 +426,76 @@ void main() {
         '4K',
       ),
       throwsFormatException,
+    );
+  });
+
+  test('gpt image 2.6 complexity comes from the catalog', () {
+    for (final id in ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare']) {
+      final entry = lookupImageModel(id)!;
+      expect(entry.capabilities.complexityLevels, {'low', 'medium', 'high'});
+      expect(entry.requestDefaults.complexity, 'high');
+    }
+    expect(
+      lookupImageModel('gpt-image-2.5-sunburst')!.capabilities.complexityLevels,
+      isEmpty,
+    );
+    expect(
+      lookupImageModel('gpt-image-2')!.capabilities.complexityLevels,
+      isEmpty,
+    );
+
+    const sunburst = 'gpt-image-2.6-sunburst';
+    expect(imageComplexityFor('openai', sunburst, null), 'high');
+    expect(imageComplexityFor('openai', sunburst, 'low'), 'low');
+    expect(imageComplexityFor('openai', sunburst, 'max'), 'high');
+    expect(imageComplexityFor('openai', 'gpt-image-2', 'high'), isNull);
+    expect(
+      imageComplexityLevels('openrouter', 'openai/gpt-image-2.6-sunburst'),
+      {'low', 'medium', 'high'},
+    );
+    const resolutions = {'1K', '2K', '4K'};
+    expect(
+      lookupImageModel('gpt-image-2.6-sunburst')!.capabilities.resolutions,
+      resolutions,
+    );
+    expect(
+      lookupImageModel('gpt-image-2.5-sunburst')!.capabilities.resolutions,
+      resolutions,
+    );
+    expect(
+      lookupImageChannelModel(
+        'openrouter',
+        'openai/gpt-image-2.6-sunburst',
+      )!.capabilities.resolutions,
+      resolutions,
+    );
+    expect(
+      lookupImageChannelModel(
+        'openrouter',
+        'openai/gpt-image-2.5-flare',
+      )!.capabilities.resolutions,
+      resolutions,
+    );
+    expect(lookupImageModel('gpt-5.4-image-2')!.capabilities.resolutions, {
+      'auto',
+    });
+    expect(
+      imageComplexityFor('openrouter', 'openai/gpt-image-2.6-flare', null),
+      'high',
+    );
+    expect(
+      imageComplexityLevels(
+        'atlascloud',
+        'openai/gpt-image-2.6-sunburst/text-to-image',
+      ),
+      isEmpty,
+    );
+    expect(
+      imageComplexityLevels(
+        'atlascloud',
+        'openai/gpt-image-2.5-sunburst/text-to-image',
+      ),
+      isEmpty,
     );
   });
 }

@@ -4,7 +4,11 @@
 //   lib/shared/models/image/config.dart
 //   lib/shared/services/ai/image.dart
 //   lib/shared/models/ai_provider.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 
+import '../../localization/locale_keys.dart';
 import '../ai_provider.dart' show ModelIdSource, aiProviderTypeConfigFor;
 import 'catalog.dart';
 export 'catalog.dart';
@@ -110,6 +114,25 @@ final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
 const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
   // https://www.atlascloud.ai/docs/openapi-index
   ImageProtocol.atlascloud_image: {
+    // https://static.atlascloud.ai/model/schema/openai-gpt-image-2.6-sunburst-text-to-image.json
+    'openai/gpt-image-2.6-sunburst/text-to-image': ImageChannelModel(
+      catalogId: 'gpt-image-2.6-sunburst',
+      capabilities: _atlasGptImage25Capabilities,
+      requestDefaults: _atlasGptImage25Defaults,
+      protocolOptions: AtlasCloudImageOptions(
+        editModel: 'openai/gpt-image-2.6-sunburst/edit',
+        qualityLevels: {'auto', 'low', 'medium', 'high', 'xhigh', 'max'},
+      ),
+    ),
+    'openai/gpt-image-2.6-flare/text-to-image': ImageChannelModel(
+      catalogId: 'gpt-image-2.6-flare',
+      capabilities: _atlasGptImage25Capabilities,
+      requestDefaults: _atlasGptImage25Defaults,
+      protocolOptions: AtlasCloudImageOptions(
+        editModel: 'openai/gpt-image-2.6-flare/edit',
+        qualityLevels: {'auto', 'low', 'medium', 'high', 'xhigh', 'max'},
+      ),
+    ),
     // https://static.atlascloud.ai/model/schema/openai-gpt-image-2.5-sunburst-text-to-image.json
     'openai/gpt-image-2.5-sunburst/text-to-image': ImageChannelModel(
       catalogId: 'gpt-image-2.5-sunburst',
@@ -376,6 +399,14 @@ const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
       catalogId: 'ming-image-0.1-design',
       includedInPresets: false,
       requestDefaults: ImageRequestDefaults(outputFormat: ConfigValue('png')),
+    ),
+    'openai/gpt-image-2.6-sunburst': ImageChannelModel(
+      catalogId: 'gpt-image-2.6-sunburst',
+      requestDefaults: _openrouterDefaults,
+    ),
+    'openai/gpt-image-2.6-flare': ImageChannelModel(
+      catalogId: 'gpt-image-2.6-flare',
+      requestDefaults: _openrouterDefaults,
     ),
     'openai/gpt-image-2.5-sunburst': ImageChannelModel(
       catalogId: 'gpt-image-2.5-sunburst',
@@ -793,6 +824,56 @@ ImageChannelModel? lookupImageChannelModel(
       .firstOrNull;
 }
 
+({ImageModelCapabilities capabilities, ImageRequestDefaults defaults})?
+_imageSpec(String providerType, String? modelId) {
+  final channel = lookupImageChannelModel(providerType, modelId);
+  if (channel != null) {
+    return (
+      capabilities: channel.capabilities,
+      defaults: channel.requestDefaults,
+    );
+  }
+  final entry = lookupImageModel(modelId);
+  if (entry == null) {
+    return null;
+  }
+  return (capabilities: entry.capabilities, defaults: entry.requestDefaults);
+}
+
+Set<String> imageComplexityLevels(String providerType, String? modelId) =>
+    _imageSpec(providerType, modelId)?.capabilities.complexityLevels ??
+    const {};
+
+/// 型号没有复杂度档位时返回 null。有档位但没选中、或选中值不在目录里时，用目录默认值。
+String? imageComplexityFor(
+  String providerType,
+  String? modelId,
+  String? selected,
+) {
+  final spec = _imageSpec(providerType, modelId);
+  if (spec == null || spec.capabilities.complexityLevels.isEmpty) {
+    return null;
+  }
+  if (selected != null &&
+      spec.capabilities.complexityLevels.contains(selected)) {
+    return selected;
+  }
+  final fallback = spec.defaults.complexity;
+  if (fallback != null &&
+      spec.capabilities.complexityLevels.contains(fallback)) {
+    return fallback;
+  }
+  return null;
+}
+
+/// 目录外的档位返回 null，由界面直接显示原值。
+String? imageComplexityLabelKey(String level) => switch (level) {
+  'low' => LocaleKeys.commonComplexityLow,
+  'medium' => LocaleKeys.commonComplexityMedium,
+  'high' => LocaleKeys.commonComplexityHigh,
+  _ => null,
+};
+
 List<String> imageModelsForProvider(String providerType) =>
     imageChannelModels[aiProviderTypeConfigFor(providerType)?.imageProtocol]
         ?.entries
@@ -849,6 +930,8 @@ const _atlasGptImage25Capabilities = ImageModelCapabilities(
   maxReferences: 16,
   maxPixels: ConfigValue(8294400),
   maxAspectRatio: ConfigValue(3),
+  // 这组 schema 没有 complexity，空集盖掉目录里 2.6 的复杂度档位。
+  complexityLevels: {},
   sizes: {
     '1K': {
       '1:1': '1024x1024',

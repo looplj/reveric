@@ -45,6 +45,7 @@ class ImageGenerationRequest {
     required this.model,
     this.size,
     this.quality,
+    this.complexity,
     this.aspectRatio,
     this.resolution,
     this.images = const [],
@@ -54,6 +55,7 @@ class ImageGenerationRequest {
   final String model;
   final String? size;
   final String? quality;
+  final String? complexity;
   final String? aspectRatio;
   final String? resolution;
   final List<String> images;

@@ -39,22 +39,31 @@ const referenceRequiredMethods = {
 
 /// 预设独立于用户提示词；只在提交时展开。
 class ImageGenerationPreset {
-  const ImageGenerationPreset({this.method = ImageGenerationMethod.free});
+  const ImageGenerationPreset({
+    this.method = ImageGenerationMethod.free,
+    this.complexity,
+  });
   final ImageGenerationMethod method;
+
+  /// 用户选的复杂度。提交时由生图服务按型号校验：不支持该档时用目录默认值，型号没有复杂度时不发送。
+  final String? complexity;
 
   factory ImageGenerationPreset.fromStyle(Map<String, dynamic>? style) {
     final json = style?['imageGeneration'];
     if (json == null) {
       return const ImageGenerationPreset();
     }
+    final stored = (json as Map)['complexity'];
     return ImageGenerationPreset(
-      method: ImageGenerationMethod.values.byName(
-        (json as Map)['method'] as String,
-      ),
+      method: ImageGenerationMethod.values.byName(json['method'] as String),
+      complexity: stored is String && stored.isNotEmpty ? stored : null,
     );
   }
 
-  Map<String, dynamic> toJson() => {'method': method.name};
+  Map<String, dynamic> toJson() => {
+    'method': method.name,
+    if (complexity != null) 'complexity': complexity,
+  };
 
   String assemble(String userPrompt, String? inputId) {
     if (method == ImageGenerationMethod.free) {

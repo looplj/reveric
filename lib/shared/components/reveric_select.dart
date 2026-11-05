@@ -1,14 +1,22 @@
-// 职责: Reveric 通用下拉选择 — 自定义触发器 + 浮层菜单，支持图标/标题/副标题富选项
+// 职责: Reveric 通用下拉选择 — 自定义触发器 + 浮层菜单，支持图标/标题/副标题富选项，长列表可搜索过滤。
 // 关联文件:
 //   lib/shared/theme/theme.dart
 //   lib/shared/components/reveric_dropdowns.dart
+//   lib/shared/components/reveric_search_field.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
+//   .agents/rules/search-debounce.md
 
 import 'package:flutter/material.dart';
 
+import '../localization/app_localization.dart';
+import '../localization/locale_keys.dart';
 import '../theme/theme.dart';
+import 'reveric_search_field.dart';
 
 /// 单个下拉选项。
 ///
@@ -73,6 +81,7 @@ class RevericSelect<T> extends StatefulWidget {
     this.textStyle,
     this.alignEnd = false,
     this.dropUp = false,
+    this.searchable = false,
     this.onEmptyTap,
     this.footerAction,
   });
@@ -117,6 +126,9 @@ class RevericSelect<T> extends StatefulWidget {
 
   /// 菜单向上展开（触发器贴近屏幕底部时，如画布上的生成输入框底栏）。
   final bool dropUp;
+
+  /// 菜单顶部显示搜索框，按标题和副标题过滤。长列表（如模型）才打开。
+  final bool searchable;
 
   /// 没有任何选项时点触发器的去处（如打开设置去配置）；为空时空列表下触发器不可点。
   final VoidCallback? onEmptyTap;
@@ -328,6 +340,7 @@ class _RevericSelectState<T> extends State<RevericSelect<T>> {
             colors: colors,
             typo: typo,
             onPick: _pick,
+            searchable: widget.searchable,
             footerAction: widget.footerAction == null
                 ? null
                 : (
@@ -377,6 +390,7 @@ class _RevericSelectMenu<T> extends StatefulWidget {
     required this.colors,
     required this.typo,
     required this.onPick,
+    this.searchable = false,
     this.footerAction,
   });
 
@@ -387,6 +401,7 @@ class _RevericSelectMenu<T> extends StatefulWidget {
   final RevericColors colors;
   final RevericTypography typo;
   final ValueChanged<RevericSelectItem<T>> onPick;
+  final bool searchable;
   final ({String label, VoidCallback onTap})? footerAction;
 
   @override
@@ -396,6 +411,7 @@ class _RevericSelectMenu<T> extends StatefulWidget {
 class _RevericSelectMenuState<T> extends State<_RevericSelectMenu<T>> {
   // 在菜单层维护唯一悬停项，避免相邻项之间快速移动时多个项同时高亮。
   int? _hoveredIndex;
+  String _query = '';
 
   /// 选中项可能落在长列表（如 0–59 分钟）的靠后位置，打开时先滚到它，
   /// 否则用户每次都得从头翻。
@@ -425,6 +441,10 @@ class _RevericSelectMenuState<T> extends State<_RevericSelectMenu<T>> {
     final width = widget.width;
     final maxHeight = widget.maxHeight;
     final colors = widget.colors;
+    final visible = [
+      for (final item in widget.items)
+        if (_matches(item)) item,
+    ];
     return Material(
       type: MaterialType.transparency,
       child: TweenAnimationBuilder<double>(
@@ -459,40 +479,73 @@ class _RevericSelectMenuState<T> extends State<_RevericSelectMenu<T>> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  clipBehavior: Clip.antiAlias,
-                  children: [
-                    for (final (index, item) in widget.items.indexed)
-                      Padding(
-                        key: item.value == widget.value ? _selectedKey : null,
-                        padding: EdgeInsets.only(
-                          bottom: index == widget.items.length - 1
-                              ? 0
-                              : RevericSpacing.xxs,
-                        ),
-                        child: _RevericSelectOption<T>(
-                          item: item,
-                          selected: item.value == widget.value,
-                          hovered: _hoveredIndex == index,
-                          colors: colors,
-                          typo: widget.typo,
-                          onHoverChanged: (hovering) {
-                            setState(() {
-                              if (hovering) {
-                                _hoveredIndex = index;
-                              } else if (_hoveredIndex == index) {
-                                _hoveredIndex = null;
-                              }
-                            });
-                          },
-                          onPick: () => widget.onPick(item),
-                        ),
-                      ),
-                  ],
+              if (widget.searchable) ...[
+                RevericDebouncedSearchField(
+                  hint: context.t(LocaleKeys.commonSearch),
+                  autofocus: true,
+                  height: RevericSizes.fieldHeightSm,
+                  onDebouncedChanged: (query) {
+                    if (!mounted) {
+                      return;
+                    }
+                    setState(() {
+                      _query = query;
+                      _hoveredIndex = null;
+                    });
+                  },
                 ),
+                const SizedBox(height: RevericSpacing.xs),
+              ],
+              Flexible(
+                child: visible.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: RevericSpacing.md,
+                        ),
+                        child: Center(
+                          child: Text(
+                            context.t(LocaleKeys.commonNoResults),
+                            style: widget.typo.uiSmall.copyWith(
+                              color: colors.textMuted,
+                            ),
+                          ),
+                        ),
+                      )
+                    : ListView(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        clipBehavior: Clip.antiAlias,
+                        children: [
+                          for (final (index, item) in visible.indexed)
+                            Padding(
+                              key: item.value == widget.value
+                                  ? _selectedKey
+                                  : null,
+                              padding: EdgeInsets.only(
+                                bottom: index == visible.length - 1
+                                    ? 0
+                                    : RevericSpacing.xxs,
+                              ),
+                              child: _RevericSelectOption<T>(
+                                item: item,
+                                selected: item.value == widget.value,
+                                hovered: _hoveredIndex == index,
+                                colors: colors,
+                                typo: widget.typo,
+                                onHoverChanged: (hovering) {
+                                  setState(() {
+                                    if (hovering) {
+                                      _hoveredIndex = index;
+                                    } else if (_hoveredIndex == index) {
+                                      _hoveredIndex = null;
+                                    }
+                                  });
+                                },
+                                onPick: () => widget.onPick(item),
+                              ),
+                            ),
+                        ],
+                      ),
               ),
               if (widget.footerAction case final action?) ...[
                 Divider(height: RevericSpacing.sm, color: colors.border),
@@ -508,6 +561,18 @@ class _RevericSelectMenuState<T> extends State<_RevericSelectMenu<T>> {
         ),
       ),
     );
+  }
+
+  bool _matches(RevericSelectItem<T> item) {
+    final query = _query;
+    if (!widget.searchable || query.isEmpty) {
+      return true;
+    }
+    if (item.label.toLowerCase().contains(query)) {
+      return true;
+    }
+    final subtitle = item.subtitle;
+    return subtitle != null && subtitle.toLowerCase().contains(query);
   }
 }
 

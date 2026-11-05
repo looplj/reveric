@@ -107,6 +107,7 @@ Map<String, dynamic>? _image(AiProvider provider, String model) {
       'max_pixels': effective.maxPixels,
       'max_edit_pixels': effective.maxEditPixels,
       'max_aspect_ratio': effective.maxAspectRatio,
+      'complexity': effective.complexityLevels.toList(),
     },
     // Only channel defaults actually consumed by the adapter are advertised.
     'defaults': {
@@ -118,6 +119,7 @@ Map<String, dynamic>? _image(AiProvider provider, String model) {
         'watermark': defaults.watermark,
         'prompt_extend': defaults.promptExtend,
         'prompt_optimization': defaults.promptOptimization,
+        'complexity': defaults.complexity,
       },
     },
   };

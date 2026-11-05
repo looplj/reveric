@@ -19,6 +19,7 @@ class ImageModelCapabilities {
     this._maxPixels,
     this._maxEditPixels,
     this._maxAspectRatio,
+    this._complexityLevels,
   });
 
   final Set<String>? _ratios;
@@ -43,6 +44,10 @@ class ImageModelCapabilities {
   int? get maxEditPixels => _maxEditPixels?.value;
   final ConfigValue<double>? _maxAspectRatio;
   double? get maxAspectRatio => _maxAspectRatio?.value;
+  final Set<String>? _complexityLevels;
+
+  /// 空集表示该型号没有复杂度档位。
+  Set<String> get complexityLevels => _complexityLevels ?? const {};
 
   ImageModelCapabilities merge(ImageModelCapabilities overrides) =>
       ImageModelCapabilities(
@@ -57,6 +62,7 @@ class ImageModelCapabilities {
         maxPixels: overrides._maxPixels ?? _maxPixels,
         maxEditPixels: overrides._maxEditPixels ?? _maxEditPixels,
         maxAspectRatio: overrides._maxAspectRatio ?? _maxAspectRatio,
+        complexityLevels: overrides._complexityLevels ?? _complexityLevels,
       );
 
   String? size(String ratio, String resolution) {
@@ -114,6 +120,7 @@ class ImageRequestDefaults {
     this._watermark,
     this._promptExtend,
     this._promptOptimization,
+    this._complexity,
   });
 
   final ConfigValue<String>? _size;
@@ -130,6 +137,8 @@ class ImageRequestDefaults {
   bool? get promptExtend => _promptExtend?.value;
   final ConfigValue<String>? _promptOptimization;
   String? get promptOptimization => _promptOptimization?.value;
+  final ConfigValue<String>? _complexity;
+  String? get complexity => _complexity?.value;
 
   ImageRequestDefaults merge(ImageRequestDefaults overrides) =>
       ImageRequestDefaults(
@@ -141,5 +150,6 @@ class ImageRequestDefaults {
         promptExtend: overrides._promptExtend ?? _promptExtend,
         promptOptimization:
             overrides._promptOptimization ?? _promptOptimization,
+        complexity: overrides._complexity ?? _complexity,
       );
 }

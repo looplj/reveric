@@ -119,6 +119,7 @@ class CoverStudioState {
     this.ratioId = coverDefaultRatioId,
     this.resolutionId = coverDefaultResolutionId,
     this.qualityId = coverDefaultQualityId,
+    this.complexityId,
     this.advancedOpen = false,
     this.batchCount = coverBatchCount,
     this.references = const [],
@@ -141,6 +142,9 @@ class CoverStudioState {
   final String ratioId;
   final String resolutionId;
   final String qualityId;
+
+  /// 复杂度。null 表示尚未手选；提交时由生图服务按型号校验并补目录默认值。
+  final String? complexityId;
 
   /// 高级设置默认折叠：风格 / 色调 / 构图 / 档案 / 灵感都是点选追加的碎片。
   final bool advancedOpen;
@@ -183,6 +187,8 @@ class CoverStudioState {
     String? ratioId,
     String? resolutionId,
     String? qualityId,
+    String? complexityId,
+    bool clearComplexityId = false,
     bool? advancedOpen,
     int? batchCount,
     List<String>? references,
@@ -209,6 +215,9 @@ class CoverStudioState {
       ratioId: ratioId ?? this.ratioId,
       resolutionId: resolutionId ?? this.resolutionId,
       qualityId: qualityId ?? this.qualityId,
+      complexityId: clearComplexityId
+          ? null
+          : (complexityId ?? this.complexityId),
       advancedOpen: advancedOpen ?? this.advancedOpen,
       batchCount: batchCount ?? this.batchCount,
       references: references ?? this.references,
@@ -248,6 +257,7 @@ class CoverStudioController extends _$CoverStudioController {
   void setRatio(String id) => state = state.copyWith(ratioId: id);
   void setResolution(String id) => state = state.copyWith(resolutionId: id);
   void setQuality(String id) => state = state.copyWith(qualityId: id);
+  void setComplexity(String id) => state = state.copyWith(complexityId: id);
 
   void toggleAdvanced() =>
       state = state.copyWith(advancedOpen: !state.advancedOpen);
@@ -297,10 +307,13 @@ class CoverStudioController extends _$CoverStudioController {
       return;
     }
     final params = _decodeBatchParams(batch.paramsJson);
+    final complexityId = _complexityFromParams(params['complexity']);
     state = state.copyWith(
       ratioId: _resolvedRatioId(params['ratio']),
       resolutionId: _resolvedResolutionId(params['resolution']),
       qualityId: _resolvedQualityId(params['quality']),
+      complexityId: complexityId,
+      clearComplexityId: complexityId == null,
       batchCount: batch.requestedCount.clamp(
         coverBatchCountMin,
         coverBatchCountMax,
@@ -361,12 +374,15 @@ class CoverStudioController extends _$CoverStudioController {
     final ratioId = params['ratio'] as String? ?? state.ratioId;
     final resolutionId = params['resolution'] as String? ?? state.resolutionId;
     final qualityId = params['quality'] as String? ?? state.qualityId;
+    final complexityId = _complexityFromParams(params['complexity']);
     final references = _referencesFromParams(params['references']);
 
     state = state.copyWith(
       ratioId: ratioId,
       resolutionId: resolutionId,
       qualityId: qualityId,
+      complexityId: complexityId,
+      clearComplexityId: complexityId == null,
       references: references,
       selectedBatchId: batch.id,
       selectedOrdinal: 0,
@@ -407,6 +423,11 @@ class CoverStudioController extends _$CoverStudioController {
     }
     return next;
   }
+
+  /// 记录里没有复杂度，说明那一批没手选、用的是目录默认值；恢复成未选，
+  /// 不沿用当前面板上的选择。
+  static String? _complexityFromParams(Object? value) =>
+      value is String && value.isNotEmpty ? value : null;
 
   static String _resolvedRatioId(Object? value) =>
       coverRatioOf(value is String ? value : '').id;
@@ -541,10 +562,12 @@ class CoverStudioController extends _$CoverStudioController {
         model: selection.model,
         size: size,
         quality: quality,
+        complexity: state.complexityId,
         paramsJson: jsonEncode({
           'ratio': state.ratioId,
           'resolution': state.resolutionId,
           'quality': state.qualityId,
+          'complexity': ?state.complexityId,
           'size': size,
           'references': references
               .map((assetId) => {'asset_id': assetId})
@@ -631,6 +654,7 @@ class CoverStudioController extends _$CoverStudioController {
           coverResolutionOf(state.resolutionId),
         ),
         quality: coverQualityOf(state.qualityId).apiValue,
+        complexity: state.complexityId,
         references: state.references,
       );
       if (!ref.mounted) {
@@ -682,7 +706,7 @@ class CoverStudioController extends _$CoverStudioController {
     }
     final library = ref.read(imageLibraryServiceProvider);
     final database = ref.read(appDatabaseProvider);
-    return (prompt, {model, size, quality}) async {
+    return (prompt, {model, size, quality, complexity}) async {
       final paths = <String>[];
       for (final assetId in references) {
         final asset = await database.imageAssetDao.getAsset(assetId);
@@ -690,7 +714,13 @@ class CoverStudioController extends _$CoverStudioController {
         if (path != null) paths.add(path);
       }
       if (paths.isEmpty) {
-        return generation(prompt, model: model, size: size, quality: quality);
+        return generation(
+          prompt,
+          model: model,
+          size: size,
+          quality: quality,
+          complexity: complexity,
+        );
       }
       return multiEdit(
         prompt,
@@ -698,6 +728,7 @@ class CoverStudioController extends _$CoverStudioController {
         model: model,
         size: size,
         quality: quality,
+        complexity: complexity,
       );
     };
   }

@@ -46,6 +46,8 @@ class OpenAiImageClient extends ImageClient {
       'size': request.size ?? _generateSize,
       // 只有 OpenAI 兼容通道认这个参数；Doubao / Gemini 不发，避免请求被拒。
       if (quality != null && quality.isNotEmpty) 'quality': quality,
+      if (request.complexity case final String complexity)
+        'complexity': complexity,
     };
 
     final response = await dio.post<Map<String, dynamic>>(
@@ -106,6 +108,9 @@ class OpenAiImageClient extends ImageClient {
     final quality = request.quality;
     if (quality != null && quality.isNotEmpty) {
       form.fields.add(MapEntry('quality', quality));
+    }
+    if (request.complexity case final String complexity) {
+      form.fields.add(MapEntry('complexity', complexity));
     }
     for (final input in request.images) {
       final normalized = await imageInputAsDataUri(input);

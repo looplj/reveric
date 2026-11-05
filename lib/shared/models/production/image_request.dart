@@ -57,6 +57,7 @@ class ProductionImageRequest {
     required this.ratio,
     required this.resolution,
     required this.size,
+    this.complexity,
     List<ProductionImageReference> references = const [],
   }) : references = List.unmodifiable(references);
   final String providerId;
@@ -66,6 +67,7 @@ class ProductionImageRequest {
   final String ratio;
   final String resolution;
   final String? size;
+  final String? complexity;
   final List<ProductionImageReference> references;
   Map<String, dynamic> toJson() => {
     'version': 1,
@@ -76,6 +78,7 @@ class ProductionImageRequest {
     'ratio': ratio,
     'resolution': resolution,
     'size': size,
+    if (complexity != null) 'complexity': complexity,
     'references': references.map((r) => r.toJson()).toList(),
   };
   factory ProductionImageRequest.fromJson(Map<String, dynamic> json) {
@@ -90,6 +93,7 @@ class ProductionImageRequest {
       ratio: json['ratio'] as String,
       resolution: json['resolution'] as String,
       size: json['size'] as String?,
+      complexity: json['complexity'] as String?,
       references: (json['references'] as List)
           .map(
             (r) => ProductionImageReference.fromJson(r as Map<String, dynamic>),

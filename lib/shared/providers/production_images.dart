@@ -34,6 +34,7 @@ final productionImageInvokeProvider = Provider<ProductionImageInvoke>(
             size: request.size,
             aspectRatio: request.ratio,
             resolution: request.resolution,
+            complexity: request.complexity,
             onSubmitted: onSubmitted,
           )
         : image.editImages(
@@ -42,6 +43,7 @@ final productionImageInvokeProvider = Provider<ProductionImageInvoke>(
             size: request.size,
             aspectRatio: request.ratio,
             resolution: request.resolution,
+            complexity: request.complexity,
             onSubmitted: onSubmitted,
           );
   },

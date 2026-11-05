@@ -370,7 +370,7 @@
   "screenplay.production_generate_audio_hint": "关闭后生成无声视频",
   "screenplay.production_audio_on": "音频已开启",
   "screenplay.production_audio_off": "音频已关闭",
-  "screenplay.production_spec_resolution": "清晰度",
+  "screenplay.production_spec_resolution": "分辨率",
   "screenplay.production_spec_ratio": "比例",
   "screenplay.production_spec_note": "整部剧共用：新建视频默认使用，整集成片按此比例导出；已有节点不变",
   "screenplay.production_spec_tooltip": "剧本制作设置 · 新建视频和整集成片默认使用",

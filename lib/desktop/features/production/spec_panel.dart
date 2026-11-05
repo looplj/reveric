@@ -1,4 +1,4 @@
-// 职责: 「清晰度 + 比例」弹层本体（含音频生成与本次提交的样片选项），以及用它的节点输入框 pill 和顶栏剧本制作设置 chip。
+// 职责: 「分辨率、比例与复杂度」弹层本体（含音频生成与本次提交的样片选项），以及用它的节点输入框 pill 和顶栏剧本制作设置 chip。
 // 关联文件:
 //   lib/desktop/features/production/popover.dart
 //   lib/desktop/features/production/region.dart
@@ -9,6 +9,8 @@
 //   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/director.json
 //   assets/translations/zh-CN/director.json
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ import '../../../shared/components/reveric_popover.dart';
 import '../../../shared/components/reveric_switch.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
+import '../../../shared/models/image/channels.dart';
 import '../../../shared/models/production/settings.dart';
 import '../../../shared/providers/storyboard.dart';
 import '../../../shared/services/ai/video/draft.dart';
@@ -32,6 +35,12 @@ String productionRatioLabel(BuildContext context, String ratio) =>
 
 /// 存储和模型能力用小写（720p），界面统一显示大写（720P）。
 String productionResolutionLabel(String resolution) => resolution.toUpperCase();
+
+String productionComplexityLabel(BuildContext context, String level) =>
+    switch (imageComplexityLabelKey(level)) {
+      final key? => context.t(key),
+      _ => level,
+    };
 
 /// 按比例画的小框；比例不可解析（如自适应）时画正方形。
 class ProductionRatioBox extends StatelessWidget {
@@ -89,6 +98,9 @@ class ProductionSpecPanel extends StatelessWidget {
     required this.ratio,
     required this.resolution,
     required this.onChanged,
+    this.complexities = const [],
+    this.complexity,
+    this.onComplexity,
     this.note,
     this.sample,
     this.audio,
@@ -100,12 +112,15 @@ class ProductionSpecPanel extends StatelessWidget {
   final String ratio;
   final String resolution;
   final ProductionSpecChange onChanged;
+  final List<String> complexities;
+  final String? complexity;
+  final ValueChanged<String>? onComplexity;
   final bool? audio;
   final ValueChanged<bool>? onAudio;
   final String? note;
 
-  /// 模型支持样片时不为 null：清晰度末尾多一个「样片」，与清晰度互斥；
-  /// 只是这次提交的选项，选回任一清晰度即取消，不改保存的清晰度。
+  /// 模型支持样片时不为 null：分辨率末尾多一个「样片」，与分辨率互斥；
+  /// 只是这次提交的选项，选回任一分辨率即取消，不改保存的分辨率。
   final bool? sample;
   final ValueChanged<bool>? onSample;
 
@@ -263,6 +278,29 @@ class ProductionSpecPanel extends StatelessWidget {
                 ),
             ],
           ),
+          if (complexities.isNotEmpty) ...[
+            const SizedBox(height: RevericSpacing.lg),
+            title(LocaleKeys.commonComplexity),
+            Row(
+              children: [
+                for (var i = 0; i < complexities.length; i++) ...[
+                  if (i > 0) const SizedBox(width: RevericSpacing.sm),
+                  Expanded(
+                    child: option(
+                      selected: complexities[i] == complexity,
+                      height: 34,
+                      onTap: () => onComplexity?.call(complexities[i]),
+                      child: Center(
+                        child: Text(
+                          productionComplexityLabel(context, complexities[i]),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
           if (audio != null) ...[
             const SizedBox(height: RevericSpacing.lg),
             MergeSemantics(
@@ -329,7 +367,7 @@ class ProductionSpecPanel extends StatelessWidget {
   }
 }
 
-/// 节点输入框底栏的「比例 · 清晰度」pill；可选项来自当前模型的能力。
+/// 节点输入框底栏的「比例 · 分辨率」pill；可选项来自当前模型的能力。
 /// [sample] 不为 null 时可选样片，选中后 pill 写「480P 样片」，和实际提交的一致。
 class ProductionSpecPill extends StatelessWidget {
   const ProductionSpecPill({
@@ -339,6 +377,9 @@ class ProductionSpecPill extends StatelessWidget {
     required this.ratio,
     required this.resolution,
     required this.onChanged,
+    this.complexities = const [],
+    this.complexity,
+    this.onComplexity,
     this.sample,
     this.audio,
     this.onAudio,
@@ -348,6 +389,9 @@ class ProductionSpecPill extends StatelessWidget {
   final String ratio;
   final String resolution;
   final ProductionSpecChange onChanged;
+  final List<String> complexities;
+  final String? complexity;
+  final ValueChanged<String>? onComplexity;
   final bool? audio;
   final ValueChanged<bool>? onAudio;
   final ValueNotifier<bool>? sample;
@@ -370,13 +414,16 @@ class ProductionSpecPill extends StatelessWidget {
       up: true,
       trigger: (context, open, toggle) => ProductionPill(
         open: open,
-        onTap: ratios.isEmpty && resolutions.isEmpty ? null : toggle,
+        onTap: ratios.isEmpty && resolutions.isEmpty && complexities.isEmpty
+            ? null
+            : toggle,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               '${productionRatioLabel(context, ratio)} · '
               '${sampleOn == true ? context.t(LocaleKeys.productionSampleSpec, namedArgs: {'resolution': productionResolutionLabel(videoDraftResolution)}) : productionResolutionLabel(resolution)}'
+              '${complexity == null ? '' : ' · ${productionComplexityLabel(context, complexity!)}'}'
               '${audio == null ? '' : ' · '}',
               style: typo.uiSmall.copyWith(
                 color: colors.textPrimary,
@@ -406,6 +453,9 @@ class ProductionSpecPill extends StatelessWidget {
         resolutions: resolutions,
         ratio: ratio,
         resolution: resolution,
+        complexities: complexities,
+        complexity: complexity,
+        onComplexity: onComplexity,
         onChanged: onChanged,
         sample: sampleOn,
         audio: audio,

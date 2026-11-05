@@ -59,6 +59,7 @@ class CodexImageClient {
     List<String> referenceImages = const [],
     String? size,
     String? quality,
+    String? complexity,
   }) async {
     try {
       final models = chatModels
@@ -78,6 +79,7 @@ class CodexImageClient {
         referenceImages: referenceImages,
         size: size,
         quality: quality,
+        complexity: complexity,
       ).timeout(timeout);
     } on CodexAuthException {
       rethrow;
@@ -101,6 +103,7 @@ class CodexImageClient {
     required List<String> referenceImages,
     String? size,
     String? quality,
+    String? complexity,
   }) async {
     final auth = await _credentials();
     final sessionId = const Uuid().v4();
@@ -137,6 +140,8 @@ class CodexImageClient {
             'output_format': 'png',
             if (size != null && size.isNotEmpty) 'size': size,
             if (quality != null && quality.isNotEmpty) 'quality': quality,
+            if (complexity != null && complexity.isNotEmpty)
+              'complexity': complexity,
           },
         ],
         'tool_choice': 'required',

@@ -1,4 +1,4 @@
-// 职责: 验证样片在「比例 · 清晰度」里与清晰度互斥选择，pill 和发送按钮如实反映这次提交。
+// 职责: 验证样片在「比例 · 分辨率」里与分辨率互斥选择，pill 和发送按钮如实反映这次提交。
 // 关联文件:
 //   lib/desktop/features/production/spec_panel.dart
 //   lib/desktop/features/production/generate_button.dart

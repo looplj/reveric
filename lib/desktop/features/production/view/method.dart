@@ -141,7 +141,10 @@ void _select(FormFieldsController<ShotField> form, ImageGenerationMethod next) {
   if (_preset(form).method == next) {
     return;
   }
-  form.updateValue(ShotField.imagePreset, ImageGenerationPreset(method: next));
+  form.updateValue(
+    ShotField.imagePreset,
+    ImageGenerationPreset(method: next, complexity: _preset(form).complexity),
+  );
   if (next == ImageGenerationMethod.panorama) {
     form.updateValue(ShotField.ratio, '2:1');
   }

@@ -51,6 +51,23 @@ void main() {
     },
   );
 
+  test('image preset keeps a complexity level through style json', () {
+    const preset = ImageGenerationPreset(
+      method: ImageGenerationMethod.free,
+      complexity: 'low',
+    );
+    final restored = ImageGenerationPreset.fromStyle({
+      'imageGeneration': preset.toJson(),
+    });
+    expect(restored.complexity, 'low');
+    expect(
+      ImageGenerationPreset.fromStyle({
+        'imageGeneration': const ImageGenerationPreset().toJson(),
+      }).complexity,
+      isNull,
+    );
+  });
+
   test('all camera positions and framing expand with a live reference', () {
     for (final yaw in cameraYawFragments.entries) {
       for (final pitch in cameraPitchFragments.entries) {

@@ -24,7 +24,7 @@ class ProductionGenerateButton extends StatelessWidget {
   final VoidCallback onGenerate;
   final String? blocked;
 
-  /// 这次提交出样片；样片在「比例 · 清晰度」里选择。
+  /// 这次提交出样片；样片在「比例 · 分辨率」里选择。
   final bool draft;
   final bool repeat;
 

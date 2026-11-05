@@ -32,6 +32,7 @@ import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/logger/app_logger.dart';
 import '../../../shared/models/ai_provider.dart';
+import '../../../shared/models/image/channels.dart';
 import '../../../shared/models/production/image_request.dart';
 import '../../../shared/models/production/view_presets.dart';
 import '../../../shared/models/video/request.dart';
@@ -156,6 +157,9 @@ class _ImageForm extends HookConsumerWidget {
     final capability = provider == null
         ? null
         : ProductionImageCapabilities(provider, model.$2);
+    final complexities = provider == null
+        ? const <String>[]
+        : imageComplexityLevels(provider.type, model.$2).toList();
     String? blockedReason;
     if (!providers.hasData) {
       blockedReason = context.t(
@@ -475,6 +479,7 @@ class _ImageForm extends HookConsumerWidget {
                               value: value,
                               compact: true,
                               dropUp: true,
+                              searchable: true,
                               height: 30,
                               menuWidth: 240,
                               leadingIcon: RevericIcons.auto_awesome,
@@ -547,6 +552,23 @@ class _ImageForm extends HookConsumerWidget {
                         capability?.resolutions ?? [initial.clip.resolution],
                     ratio: ratio,
                     resolution: resolution,
+                    complexities: complexities,
+                    complexity: provider == null
+                        ? null
+                        : imageComplexityFor(
+                            provider.type,
+                            model.$2,
+                            preset.complexity,
+                          ),
+                    onComplexity: (value) {
+                      form.updateValue(
+                        ShotField.imagePreset,
+                        ImageGenerationPreset(
+                          method: preset.method,
+                          complexity: value,
+                        ),
+                      );
+                    },
                     onChanged: ({ratio, resolution}) {
                       if (ratio != null) {
                         form.updateValue(ShotField.ratio, ratio);

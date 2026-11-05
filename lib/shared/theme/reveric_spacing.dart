@@ -90,7 +90,7 @@ class RevericSizes {
   /// 视频节点底栏多了运镜、时长和生成方式，输入框更宽；窄画布时由锚定布局夹回。
   static const double productionVideoComposerWidth = 800;
 
-  /// 制作画布浮层：结果弹层、比例 · 清晰度弹层。
+  /// 制作画布浮层：结果弹层、比例 · 分辨率弹层。
   static const double productionResultsWidth = 400;
   static const double productionResultsMaxHeight = 360;
   static const double productionSpecWidth = 380;

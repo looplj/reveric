@@ -524,12 +524,13 @@ void main() {
                 contentService,
                 novelActionsService: NovelActionsService(appDb),
               ),
-              imageGenerationCallback: (prompt, {model, size, quality}) async {
-                prompts.add('$size:$prompt');
-                return AiImageGenerationResult(
-                  localFilePath: '/tmp/${size ?? 'unknown'}.png',
-                );
-              },
+              imageGenerationCallback:
+                  (prompt, {model, size, quality, complexity}) async {
+                    prompts.add('$size:$prompt');
+                    return AiImageGenerationResult(
+                      localFilePath: '/tmp/${size ?? 'unknown'}.png',
+                    );
+                  },
               agentSkillsCommandCallback: (command) async {
                 agentSkillCommands.add(command);
                 return {'ok': true, 'received': command};
@@ -924,7 +925,7 @@ void main() {
         imageEditCallback: edit,
         imageGenerationCallback:
             generate ??
-            (prompt, {model, size, quality}) async {
+            (prompt, {model, size, quality, complexity}) async {
               prompts.add('$size:$prompt');
               final file = await File('${imageRoot.path}/$size.png').writeAsBytes(
                 base64Decode(
@@ -1031,11 +1032,16 @@ void main() {
         // 没有页面订阅或全局作品上下文，调用期间才持有生图依赖。
         await useSubjectImageHost(
           approval: false,
-          generate: (prompt, {model, size, quality}) => container.withProvider(
-            imageGenerationCallbackProvider('work'),
-            (callback) =>
-                callback!(prompt, model: model, size: size, quality: quality),
-          ),
+          generate: (prompt, {model, size, quality, complexity}) =>
+              container.withProvider(
+                imageGenerationCallbackProvider('work'),
+                (callback) => callback!(
+                  prompt,
+                  model: model,
+                  size: size,
+                  quality: quality,
+                ),
+              ),
           edit: (prompt, {required imageData, model}) => container.withProvider(
             imageEditCallbackProvider('work'),
             (callback) => callback!(prompt, imageData: imageData, model: model),

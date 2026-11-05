@@ -53,6 +53,7 @@ class CodexImageGenerationClient extends ImageClient {
         referenceImages: references,
         size: request.size,
         quality: request.quality,
+        complexity: request.complexity,
       );
       return await parseImageResponse(
         response,

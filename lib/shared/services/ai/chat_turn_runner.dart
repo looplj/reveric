@@ -523,13 +523,20 @@ class ChatTurnRunner {
     String? model,
     String? size,
     String? quality,
+    String? complexity,
   }) => container.withProvider(imageGenerationCallbackProvider(novel.id), (
     callback,
   ) async {
     if (callback == null) {
       throw AiImageGenerationException(tr(LocaleKeys.aiNoImageModelConfigured));
     }
-    return callback(prompt, model: model, size: size, quality: quality);
+    return callback(
+      prompt,
+      model: model,
+      size: size,
+      quality: quality,
+      complexity: complexity,
+    );
   });
 
   Future<AiImageGenerationResult> _editImage(

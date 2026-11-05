@@ -35,6 +35,8 @@ class NewApiImageClient extends ImageClient {
       if (request.size ?? channel?.requestDefaults.size case final String size)
         'size': size,
       if (request.quality case final String quality) 'quality': quality,
+      if (request.complexity case final String complexity)
+        'complexity': complexity,
     };
     Map<String, dynamic> data;
     final base = config.effectiveBaseUrl;

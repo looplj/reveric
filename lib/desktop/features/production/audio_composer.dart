@@ -589,6 +589,7 @@ class _AudioForm extends HookConsumerWidget {
                               value: value,
                               compact: true,
                               dropUp: true,
+                              searchable: true,
                               height: 30,
                               menuWidth: 240,
                               leadingIcon: RevericIcons.auto_awesome,

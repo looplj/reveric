@@ -6,6 +6,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/editor.json
 //   assets/translations/zh-CN/editor.json
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/form.md
@@ -21,6 +23,8 @@ import '../../../third/form/flutter_hook_form.dart';
 import '../../database/app_database.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
+import '../../models/image/channels.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/cover_providers.dart';
 import '../../providers/cover_studio_providers.dart';
 import '../../services/cover_prompt_builder.dart';
@@ -354,6 +358,63 @@ class CoverQualitySection extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class CoverComplexitySection extends ConsumerWidget {
+  const CoverComplexitySection({super.key, required this.novelId});
+
+  final String novelId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selection = ref.watch(coverStudioImageModelSelectionProvider);
+    if (selection == null) {
+      return const SizedBox.shrink();
+    }
+    final levels = imageComplexityLevels(
+      selection.config.type,
+      selection.model,
+    );
+    if (levels.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final state = ref.watch(coverStudioControllerProvider(novelId));
+    final controller = ref.read(
+      coverStudioControllerProvider(novelId).notifier,
+    );
+    final selected = imageComplexityFor(
+      selection.config.type,
+      selection.model,
+      state.complexityId,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: RevericSpacing.x3l),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CoverSectionHead(
+            icon: RevericIcons.tune,
+            label: context.t(LocaleKeys.commonComplexity),
+          ),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final level in levels)
+                CoverChip(
+                  label: switch (imageComplexityLabelKey(level)) {
+                    final key? => context.t(key),
+                    _ => level,
+                  },
+                  selected: selected == level,
+                  onTap: () => controller.setComplexity(level),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

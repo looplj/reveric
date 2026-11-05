@@ -75,7 +75,7 @@ void main() {
       final future = orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality}) async {
+        callback: (prompt, {model, size, quality, complexity}) async {
           calls++;
           await Future<void>.delayed(const Duration(milliseconds: 20));
           return AiImageGenerationResult(localFilePath: source.path);
@@ -122,7 +122,7 @@ void main() {
     final result = await orchestrator.generateBatch(
       database: database,
       imageLibrary: buildImageLibraryService(database),
-      callback: (prompt, {model, size, quality}) async {
+      callback: (prompt, {model, size, quality, complexity}) async {
         orchestrator.stop();
         throw const AiImageGenerationException(
           '图片生成请求过于频繁，请稍后再试。',
@@ -150,7 +150,7 @@ void main() {
     final result = await CoverStudioOrchestrator().generateBatch(
       database: database,
       imageLibrary: buildImageLibraryService(database),
-      callback: (prompt, {model, size, quality}) async {
+      callback: (prompt, {model, size, quality, complexity}) async {
         if (stub.calls++ == 1) {
           throw const AiImageGenerationException(
             '提示词或图片内容未通过审核，请调整后重试。',
@@ -183,7 +183,7 @@ void main() {
     final result = await CoverStudioOrchestrator().generateBatch(
       database: database,
       imageLibrary: buildImageLibraryService(database),
-      callback: (prompt, {model, size, quality}) async =>
+      callback: (prompt, {model, size, quality, complexity}) async =>
           throw const AiImageGenerationException(
             '图片生成请求过于频繁，请稍后再试。',
             code: AiImageErrorCode.rate_limit,
@@ -210,7 +210,7 @@ void main() {
       final result = await CoverStudioOrchestrator().generateBatch(
         database: database,
         imageLibrary: buildImageLibraryService(database),
-        callback: (prompt, {model, size, quality}) async {
+        callback: (prompt, {model, size, quality, complexity}) async {
           calls++;
           throw const AiImageGenerationException(
             'AI 供应商余额不足，请检查供应商账户后重试。',
@@ -244,7 +244,7 @@ void main() {
       final batch = await orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality}) async {
+        callback: (prompt, {model, size, quality, complexity}) async {
           if (stub.calls++ == 1) {
             throw const AiImageGenerationException(
               '提示词或图片内容未通过审核，请调整后重试。',
@@ -265,7 +265,7 @@ void main() {
       final reworked = await orchestrator.regenerateSlot(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality}) async =>
+        callback: (prompt, {model, size, quality, complexity}) async =>
             AiImageGenerationResult(
               localFilePath: stub.nextSource(supportDir).path,
             ),
@@ -299,7 +299,7 @@ void main() {
       final batch = await orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality}) async =>
+        callback: (prompt, {model, size, quality, complexity}) async =>
             AiImageGenerationResult(
               localFilePath: stub.nextSource(supportDir).path,
             ),
@@ -315,7 +315,7 @@ void main() {
       await orchestrator.regenerateSlot(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality}) async =>
+        callback: (prompt, {model, size, quality, complexity}) async =>
             AiImageGenerationResult(
               localFilePath: stub.nextSource(supportDir).path,
             ),
@@ -341,7 +341,7 @@ void main() {
       final batch = await orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality}) async {
+        callback: (prompt, {model, size, quality, complexity}) async {
           if (stub.calls++ == 1) {
             throw const AiImageGenerationException(
               '登录已过期。',
@@ -361,7 +361,7 @@ void main() {
       final reworked = await orchestrator.regenerateSlot(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality}) async =>
+        callback: (prompt, {model, size, quality, complexity}) async =>
             throw const AiImageGenerationException(
               '登录已过期。',
               code: AiImageErrorCode.auth,

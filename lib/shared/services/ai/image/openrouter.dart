@@ -38,20 +38,28 @@ class OpenRouterImageClient extends ImageClient {
     }
     final defaults = channel?.requestDefaults;
     final size = request.size;
-    final data =
-        await postImageJson(Uri.parse('${config.effectiveBaseUrl}/images'), {
-          'model': request.model,
-          'prompt': request.prompt,
-          'n': 1,
-          'output_format': ?defaults?.outputFormat,
-          if (size != null && size != 'auto') 'size': size,
-          if (aspectRatio != null && aspectRatio != 'auto')
-            'aspect_ratio': aspectRatio,
-          if (resolution != null && resolution != 'auto')
-            'resolution': resolution,
-          'quality': ?(request.quality ?? defaults?.quality),
-          if (references.isNotEmpty) 'input_references': references,
-        });
+    final data = await postImageJson(
+      Uri.parse('${config.effectiveBaseUrl}/images'),
+      {
+        'model': request.model,
+        'prompt': request.prompt,
+        'n': 1,
+        'output_format': ?defaults?.outputFormat,
+        if (size != null && size != 'auto') 'size': size,
+        if (aspectRatio != null && aspectRatio != 'auto')
+          'aspect_ratio': aspectRatio,
+        if (resolution != null && resolution != 'auto')
+          'resolution': resolution,
+        'quality': ?(request.quality ?? defaults?.quality),
+        if (request.complexity case final String complexity)
+          'provider': {
+            'options': {
+              'openai': {'complexity': complexity},
+            },
+          },
+        if (references.isNotEmpty) 'input_references': references,
+      },
+    );
     return parseImageResponse(
       data,
       emptyMessage: tr(LocaleKeys.aiImageNoResult),

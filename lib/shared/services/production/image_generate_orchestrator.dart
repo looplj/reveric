@@ -119,6 +119,7 @@ class ProductionImageGenerateOrchestrator {
         ratio: clip.ratio,
         resolution: clip.resolution,
         size: capabilities.size(clip.ratio, clip.resolution),
+        complexity: preset.complexity,
         references: references,
       ),
     );

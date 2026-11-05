@@ -58,6 +58,7 @@ AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
     String? model,
     String? size,
     String? quality,
+    String? complexity,
   }) {
     return AiImageGenerationService(
       selection.config,
@@ -68,6 +69,7 @@ AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
       model: model,
       size: size,
       quality: quality,
+      complexity: complexity,
     );
   };
 }
@@ -77,11 +79,23 @@ AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
 AiImageGenerationCallback? mapImageGenerateCallback(Ref ref) {
   final selection = ref.watch(mapStudioImageModelSelectionProvider);
   if (selection == null) return null;
-  return (String prompt, {String? model, String? size, String? quality}) {
+  return (
+    String prompt, {
+    String? model,
+    String? size,
+    String? quality,
+    String? complexity,
+  }) {
     return AiImageGenerationService(
       selection.config,
       model: model ?? selection.model,
-    ).generateImage(prompt, model: model, size: size, quality: quality);
+    ).generateImage(
+      prompt,
+      model: model,
+      size: size,
+      quality: quality,
+      complexity: complexity,
+    );
   };
 }
 

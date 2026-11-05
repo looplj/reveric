@@ -135,14 +135,15 @@ void main() {
       '3:2',
       {'size': '1536x1024'},
     ),
-    for (final variant in ['sunburst', 'flare'])
-      (
-        'openai/gpt-image-2.5-$variant/text-to-image',
-        'openai/gpt-image-2.5-$variant/edit',
-        '4K',
-        '16:9',
-        {'size': '3840x2160', 'output_format': 'png'},
-      ),
+    for (final version in ['2.6', '2.5'])
+      for (final variant in ['sunburst', 'flare'])
+        (
+          'openai/gpt-image-$version-$variant/text-to-image',
+          'openai/gpt-image-$version-$variant/edit',
+          '4K',
+          '16:9',
+          {'size': '3840x2160', 'output_format': 'png'},
+        ),
   ];
   for (final (model, editModel, resolution, ratio, parameters) in samples) {
     test(

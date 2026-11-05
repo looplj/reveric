@@ -193,6 +193,7 @@ class _DesignerSheet extends ConsumerWidget {
                         const SizedBox(height: RevericSpacing.x3l),
                         CoverQualitySection(novelId: novel.id),
                         const SizedBox(height: RevericSpacing.x3l),
+                        CoverComplexitySection(novelId: novel.id),
                         CoverResolutionSection(novelId: novel.id),
                         const SizedBox(height: RevericSpacing.x3l),
                         CoverRatioSection(novelId: novel.id),

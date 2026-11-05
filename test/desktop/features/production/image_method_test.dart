@@ -40,7 +40,9 @@ void main() {
             form = useForm<ShotField>(
               listen: false,
               initialValues: {
-                ShotField.imagePreset: const ImageGenerationPreset(),
+                ShotField.imagePreset: const ImageGenerationPreset(
+                  complexity: 'low',
+                ),
                 ShotField.ratio: '1:1',
               },
             );
@@ -73,6 +75,8 @@ void main() {
     expect(find.byType(ProductionCaret), findsNothing);
     ImageGenerationMethod method() =>
         form.getValue<ImageGenerationPreset>(ShotField.imagePreset)!.method;
+    String? complexity() =>
+        form.getValue<ImageGenerationPreset>(ShotField.imagePreset)!.complexity;
     Future<void> select(String label) async {
       final button = find.byTooltip('Presets');
       await tester.tap(
@@ -90,12 +94,15 @@ void main() {
     await select('720° panorama');
     expect(method(), ImageGenerationMethod.panorama);
     expect(form.getValue<String>(ShotField.ratio), '2:1');
+    expect(complexity(), 'low');
     await select('Character turnaround');
     expect(method(), ImageGenerationMethod.character_turnaround);
     expect(find.text('Character turnaround'), findsOneWidget);
+    expect(complexity(), 'low');
     await tester.tap(find.byTooltip('Remove'));
     await tester.pumpAndSettle();
     expect(method(), ImageGenerationMethod.free);
+    expect(complexity(), 'low');
     expect(prompt.source, '保留我的描述');
     expect(find.byType(ProductionCaret), findsNothing);
     expect(find.byTooltip('Presets'), findsOneWidget);

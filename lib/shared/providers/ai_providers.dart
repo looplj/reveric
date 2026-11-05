@@ -2439,7 +2439,13 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
   }
   final defaultModel = preferredOption.model;
   final imageLibrary = ref.watch(imageLibraryServiceProvider);
-  return (String prompt, {String? model, String? size, String? quality}) async {
+  return (
+    String prompt, {
+    String? model,
+    String? size,
+    String? quality,
+    String? complexity,
+  }) async {
     // 生图工具只作用于作品内的角色和物品，结果按作品入库。
     final service = AiImageGenerationService(
       config,
@@ -2450,6 +2456,7 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
       model: model,
       size: size,
       quality: quality,
+      complexity: complexity,
     );
     final asset = await imageLibrary.importGenerated(
       result,
@@ -2473,11 +2480,23 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
 AiImageGenerationCallback? coverImageGenerationCallback(Ref ref) {
   final selection = ref.watch(coverStudioImageModelSelectionProvider);
   if (selection == null) return null;
-  return (String prompt, {String? model, String? size, String? quality}) {
+  return (
+    String prompt, {
+    String? model,
+    String? size,
+    String? quality,
+    String? complexity,
+  }) {
     return AiImageGenerationService(
       selection.config,
       model: model ?? selection.model,
-    ).generateImage(prompt, model: model, size: size, quality: quality);
+    ).generateImage(
+      prompt,
+      model: model,
+      size: size,
+      quality: quality,
+      complexity: complexity,
+    );
   };
 }
 
@@ -2491,6 +2510,7 @@ AiMultiImageEditCallback? coverImageMultiEditCallback(Ref ref) {
     String? model,
     String? size,
     String? quality,
+    String? complexity,
   }) {
     return AiImageGenerationService(
       selection.config,
@@ -2501,6 +2521,7 @@ AiMultiImageEditCallback? coverImageMultiEditCallback(Ref ref) {
       model: model,
       size: size,
       quality: quality,
+      complexity: complexity,
     );
   };
 }
@@ -2574,6 +2595,7 @@ AiMultiImageEditCallback? imageMultiEditCallback(Ref ref) {
     String? model,
     String? size,
     String? quality,
+    String? complexity,
   }) async {
     final service = AiImageGenerationService(
       config,
@@ -2585,6 +2607,7 @@ AiMultiImageEditCallback? imageMultiEditCallback(Ref ref) {
       model: model,
       size: size,
       quality: quality,
+      complexity: complexity,
     );
     return result;
   };
