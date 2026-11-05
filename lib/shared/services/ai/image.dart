@@ -14,6 +14,7 @@ import '../../utils/storage_paths.dart';
 import '../../models/image/channels.dart';
 import 'codex/image_client.dart';
 import 'image/agnes.dart';
+import 'image/moss.dart';
 import 'image/ark.dart';
 import 'image/atlascloud.dart';
 import 'image/client.dart';
@@ -181,16 +182,16 @@ class AiImageGenerationResult {
 class AiImageGenerationService {
   AiImageGenerationService(
     this._config, {
-    required String model,
-    CodexImageClient Function()? codexImageClientFactory,
-  }) : _model = model,
-       _codexImageClientFactory = codexImageClientFactory;
+    required this._model,
+    this._codexImageClientFactory,
+  });
 
   final AiProvider _config;
   final String _model;
   final CodexImageClient Function()? _codexImageClientFactory;
 
   ImageClient? _client() => switch (_config.typeConfig.imageProtocol) {
+    ImageProtocol.moss_image => MossImageClient(_config),
     ImageProtocol.agnes_image => AgnesImageClient(_config),
     ImageProtocol.qwen_image => QwenImageClient(_config),
     ImageProtocol.ark_image => ArkImageClient(_config),

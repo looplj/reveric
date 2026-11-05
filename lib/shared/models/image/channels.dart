@@ -14,6 +14,7 @@ import 'catalog.dart';
 export 'catalog.dart';
 
 enum ImageProtocol {
+  moss_image,
   agnes_image,
   qwen_image,
   ark_image,
@@ -95,6 +96,10 @@ const _openrouterDefaults = ImageRequestDefaults(
 
 final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
   ..._listedImageChannels,
+  ImageProtocol.moss_image: {
+    for (final id in ['moss-image-base-1.0', 'moss-image-sft-1.0'])
+      id: ImageChannelModel(catalogId: id),
+  },
   ImageProtocol.new_api_images: {
     ..._pixelSizeChannels,
     for (final id in imageModelsCatalog.keys.where(

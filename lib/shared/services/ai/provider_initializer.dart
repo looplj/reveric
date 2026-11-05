@@ -108,6 +108,8 @@ class AiProviderInitializer {
 
   Future<ProviderClient> _createClient() async {
     switch (_config.typeEnum) {
+      case AiProviderType.moss:
+        throw UnsupportedError('MOSS supports image and audio generation only');
       case AiProviderType.agnes:
         throw UnsupportedError(
           'Agnes is configured for image and video generation only',

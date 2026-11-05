@@ -434,6 +434,8 @@ abstract final class LocaleKeys {
       'screenplay.production.speechVoiceIdHint';
   static const productionSpeechInstructions =
       'screenplay.production.speechInstructions';
+  static const productionSpeechInstructionsRequired =
+      'screenplay.production_speech_instructions_required';
   static const productionSpeechInstructionsHint =
       'screenplay.production.speechInstructionsHint';
   static const productionSpeechUsingReference =
@@ -4819,6 +4821,8 @@ abstract final class LocaleKeys {
       'settings.provider_description_volcengine';
   static const settingsProviderDescriptionMinimax =
       'settings.provider_description_minimax';
+  static const settingsProviderDescriptionMoss =
+      'settings.provider_description_moss';
   static const settingsProviderDescriptionAgnes =
       'settings.provider_description_agnes';
   static const settingsProviderDescriptionAtlascloud =

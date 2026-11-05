@@ -87,7 +87,7 @@ class NarrationSetup extends HookConsumerWidget {
             if (lookupAudioChannelModel(
                   provider.type,
                   id,
-                )?.capabilities.speech ==
+                )?.capabilities.requiresVoice ==
                 true)
               (provider: provider, id: id),
     ];

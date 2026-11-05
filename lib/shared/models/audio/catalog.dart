@@ -32,6 +32,26 @@ const _minimaxMusicModel = AudioModelCatalogEntry(
 // https://docs.byteplus.com/en/docs/byteplusvoice/seedaudio-01
 // https://platform.minimax.io/docs/api-reference/music-generation
 final audioModelsCatalog = <String, AudioModelCatalogEntry>{
+  // https://platform.moss.cn/docs/reference/speech/
+  for (final id in ['moss-tts-1.5-flash', 'moss-tts-1.0-pro'])
+    id: AudioModelCatalogEntry(
+      capabilities: AudioModelCapabilities(
+        speech: true,
+        maxPromptCharacters: 4000,
+        voices: ['94aa4989-c7e9-5007-ae42-ab401823e6c9'],
+      ),
+      requestDefaults: AudioRequestDefaults(responseFormat: ConfigValue('mp3')),
+    ),
+  'moss-voice-generator-1.0': AudioModelCatalogEntry(
+    capabilities: AudioModelCapabilities(
+      speech: true,
+      requiresVoice: false,
+      requiresInstructions: true,
+      supportsInstructions: true,
+      maxPromptCharacters: 4000,
+    ),
+    requestDefaults: AudioRequestDefaults(responseFormat: ConfigValue('mp3')),
+  ),
   for (final id in ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'])
     id: AudioModelCatalogEntry(
       capabilities: AudioModelCapabilities(

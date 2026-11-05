@@ -11,6 +11,7 @@ import 'speech.dart';
 import 'atlascloud.dart';
 
 enum AudioProtocol {
+  moss_audio,
   seed_audio,
   minimax_music,
   openrouter_speech,
@@ -47,6 +48,14 @@ class AudioChannelModel {
 }
 
 final audioChannelModels = <AudioProtocol, Map<String, AudioChannelModel>>{
+  AudioProtocol.moss_audio: {
+    for (final id in [
+      'moss-tts-1.5-flash',
+      'moss-tts-1.0-pro',
+      'moss-voice-generator-1.0',
+    ])
+      id: AudioChannelModel(catalogId: id),
+  },
   AudioProtocol.new_api_speech: {
     for (final id in ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'])
       id: AudioChannelModel(catalogId: id),

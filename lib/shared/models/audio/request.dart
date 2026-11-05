@@ -160,10 +160,14 @@ class AudioCapabilities {
         request.prompt.runes.length > model.maxPromptCharacters) {
       throw const AudioException('audio_prompt_length');
     }
-    if (model.speech &&
+    if (model.requiresVoice &&
         request.references.isEmpty &&
         (request.parameters.voice?.trim().isEmpty ?? true)) {
       throw const AudioException('audio_voice_required');
+    }
+    if (model.requiresInstructions &&
+        (request.parameters.instructions?.trim().isEmpty ?? true)) {
+      throw const AudioException('invalid_config');
     }
     if ((request.parameters.instructions?.isNotEmpty ?? false) &&
         !model.supportsInstructions) {

@@ -152,6 +152,7 @@
   "settings.provider_description_doubao": "Access Doubao models through Volcengine Ark for chat, image and video generation.",
   "settings.provider_description_volcengine": "Access Volcengine model services for chat, image, video, and speech generation.",
   "settings.provider_description_minimax": "Access MiniMax for chat, video, speech, and music generation.",
+  "settings.provider_description_moss": "Generate images and speech with MOSS.",
   "settings.provider_description_agnes": "Access Agnes AI for image and video generation.",
   "settings.provider_description_atlascloud": "Access models from multiple providers through AtlasCloud for chat, image, video, and audio generation.",
   "settings.provider_unsupported_badge": "Unsupported in this version",

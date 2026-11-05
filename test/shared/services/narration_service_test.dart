@@ -65,6 +65,26 @@ void main() {
   });
   tearDown(() => db.close());
 
+  for (final model in ['moss-tts-1.5-flash', 'moss-voice-generator-1.0']) {
+    test(
+      'narration only accepts MOSS models with a reusable voice: $model',
+      () async {
+        final provider = (await db.aiProviderDao.getById('speech'))!;
+        await db.aiProviderDao.upsert(
+          provider.copyWith(type: 'moss', audioModels: [model]),
+        );
+        final pending = service.requireProvider(
+          NarrationSettings(providerId: 'speech', modelId: model),
+        );
+        if (model == 'moss-voice-generator-1.0') {
+          await expectLater(pending, throwsA(isA<AudioException>()));
+        } else {
+          expect((await pending).type, 'moss');
+        }
+      },
+    );
+  }
+
   test(
     'playback uses the returned MIME rather than requested format',
     () async {

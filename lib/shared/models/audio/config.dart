@@ -10,14 +10,11 @@ export '../model_config.dart' show ConfigValue;
 
 class AudioReferenceLimits {
   const AudioReferenceLimits({
-    int? maxCount,
-    Set<String>? mimeTypes,
-    int? maxBytes,
-    ConfigValue<int>? maxDurationMs,
-  }) : _maxCount = maxCount,
-       _mimeTypes = mimeTypes,
-       _maxBytes = maxBytes,
-       _maxDurationMs = maxDurationMs;
+    this._maxCount,
+    this._mimeTypes,
+    this._maxBytes,
+    this._maxDurationMs,
+  });
 
   final int? _maxCount;
   int get maxCount => _maxCount ?? 0;
@@ -39,23 +36,22 @@ class AudioReferenceLimits {
 
 class AudioModelCapabilities {
   const AudioModelCapabilities({
-    int? maxPromptCharacters,
-    Map<String, AudioReferenceLimits?>? references,
-    bool? allowsMixedReferences,
-    ConfigValue<int>? maxOutputDurationMs,
-    bool? supportsAudioReferencePlaceholders,
-    bool? speech,
-    bool? supportsInstructions,
-    List<String>? voices,
-  }) : _speech = speech,
-       _supportsInstructions = supportsInstructions,
-       _voices = voices,
-       _maxPromptCharacters = maxPromptCharacters,
-       _references = references,
-       _allowsMixedReferences = allowsMixedReferences,
-       _maxOutputDurationMs = maxOutputDurationMs,
-       _supportsAudioReferencePlaceholders = supportsAudioReferencePlaceholders;
+    this._maxPromptCharacters,
+    this._references,
+    this._allowsMixedReferences,
+    this._maxOutputDurationMs,
+    this._supportsAudioReferencePlaceholders,
+    this._speech,
+    this._requiresVoice,
+    this._requiresInstructions,
+    this._supportsInstructions,
+    this._voices,
+  });
 
+  final bool? _requiresInstructions;
+  bool get requiresInstructions => _requiresInstructions ?? false;
+  final bool? _requiresVoice;
+  bool get requiresVoice => _requiresVoice ?? speech;
   final bool? _speech;
   bool get speech => _speech ?? false;
   final bool? _supportsInstructions;
@@ -84,6 +80,9 @@ class AudioModelCapabilities {
     AudioModelCapabilities overrides,
   ) => AudioModelCapabilities(
     speech: overrides._speech ?? _speech,
+    requiresVoice: overrides._requiresVoice ?? _requiresVoice,
+    requiresInstructions:
+        overrides._requiresInstructions ?? _requiresInstructions,
     supportsInstructions:
         overrides._supportsInstructions ?? _supportsInstructions,
     voices: overrides._voices ?? _voices,
@@ -104,16 +103,12 @@ class AudioModelCapabilities {
 
 class AudioRequestDefaults {
   const AudioRequestDefaults({
-    ConfigValue<String>? voice,
-    ConfigValue<String>? instructions,
-    ConfigValue<String>? responseFormat,
-    ConfigValue<int>? sampleRate,
-    ConfigValue<int>? bitrate,
-  }) : _voice = voice,
-       _instructions = instructions,
-       _responseFormat = responseFormat,
-       _sampleRate = sampleRate,
-       _bitrate = bitrate;
+    this._voice,
+    this._instructions,
+    this._responseFormat,
+    this._sampleRate,
+    this._bitrate,
+  });
 
   final ConfigValue<String>? _voice;
   String? get voice => _voice?.value;

@@ -1,4 +1,5 @@
 {
+  "screenplay.production_speech_instructions_required": "请先填写声音描述，再生成语音。",
   "screenplay.production.addCompendiumHint": "使用图鉴条目的图片",
   "screenplay.production.audioReferenceLabel": "@音频{index}",
   "screenplay.opening": "正在打开剧本…",

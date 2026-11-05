@@ -20,6 +20,9 @@ class ImageModelCatalogEntry {
 }
 
 const imageModelsCatalog = <String, ImageModelCatalogEntry>{
+  // https://platform.moss.cn/docs/reference/images-generations/
+  'moss-image-base-1.0': _mossImage,
+  'moss-image-sft-1.0': _mossImage,
   // https://agnes-ai.com/zh-Hans/docs/agnes-image-20-flash
   'agnes-image-2.0-flash': ImageModelCatalogEntry(
     capabilities: ImageModelCapabilities(
@@ -873,3 +876,24 @@ String? recognizeImageModel(String? modelId) =>
 
 ImageModelCatalogEntry? lookupImageModel(String? modelId) =>
     imageModelsCatalog[recognizeImageModel(modelId)];
+
+const _mossImage = ImageModelCatalogEntry(
+  capabilities: ImageModelCapabilities(
+    ratios: {'1:1', '16:9', '9:16', '4:3', '3:4'},
+    resolutions: {'1K'},
+    sizes: {
+      '1K': {
+        '1:1': '1024x1024',
+        '16:9': '1536x864',
+        '9:16': '864x1536',
+        '4:3': '1024x768',
+        '3:4': '768x1024',
+      },
+    },
+    maxPixels: ConfigValue(2097152),
+  ),
+  requestDefaults: ImageRequestDefaults(
+    size: ConfigValue('1024x1024'),
+    responseFormat: ConfigValue('url'),
+  ),
+);

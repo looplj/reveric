@@ -19,6 +19,7 @@ String videoProviderType(VideoProtocol protocol) => switch (protocol) {
 };
 
 String audioProviderType(AudioProtocol protocol) => switch (protocol) {
+  AudioProtocol.moss_audio => 'moss',
   AudioProtocol.new_api_speech => 'api88',
   AudioProtocol.seed_audio => 'volcengine',
   AudioProtocol.minimax_music => 'minimax',
@@ -28,6 +29,7 @@ String audioProviderType(AudioProtocol protocol) => switch (protocol) {
 };
 
 String imageProviderType(ImageProtocol protocol) => switch (protocol) {
+  ImageProtocol.moss_image => 'moss',
   ImageProtocol.new_api_images => 'api88',
   ImageProtocol.agnes_image => 'agnes',
   ImageProtocol.qwen_image => 'qwen',

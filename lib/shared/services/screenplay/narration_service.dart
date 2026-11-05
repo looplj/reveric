@@ -67,7 +67,7 @@ class NarrationService {
         lookupAudioChannelModel(
               provider.type,
               settings.modelId,
-            )?.capabilities.speech !=
+            )?.capabilities.requiresVoice !=
             true) {
       throw const AudioException('invalid_config');
     }
