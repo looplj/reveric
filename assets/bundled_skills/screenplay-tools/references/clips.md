@@ -4,7 +4,7 @@
 
 ## 定位和配置
 
-通过 Read `/screenplay` 获取制作设置；`ratio`、`resolution` 和派生宽高只读，需要调整默认设置时使用制作设置界面。默认规格只初始化新内容，不覆盖已有片段。剧本制作设置没有 `fps`。
+通过 Read `/screenplay` 获取制作设置，用 Write 修改 `ratio`、`resolution`；派生的 `width`、`height` 只读。默认规格不覆盖已有片段；已有图片或视频条目的画幅、分辨率可通过 Write `/clips/{clip_id}` 修改 `ratio`、`resolution`，无需重建。图片条目未指定规格时使用 1:1、1K，不继承剧本的视频默认规格。剧本制作设置没有 `fps`。
 
 用 Read `/clips?episode_id=…` 读取本集全部制作条目；只看分镜加 `is_storyboard=true`，只看独立媒体加 `is_storyboard=false`。`kind` 可进一步筛选 `video`、`image` 或 `audio`；如 `/clips?episode_id=…&is_storyboard=true&kind=video` 只返回本集视频分镜。单场使用 `/clips?scene_id=…`，需要时再加 `kind`。筛选先于分页，按返回的 `has_more` 读齐目标范围。
 
@@ -35,6 +35,12 @@
 已有输入沿用 `id`，新增输入分配新的唯一身份；`ref_id` 必须来自实际读取。界面用途与实际发送角色分别核对：首尾帧组只发送 first_frame/last_frame，其余普通参考保留但不发送；全参考组可以保留 first_frame/last_frame 用途，提交时转为 reference_image，再追加起止画面的文字指令，不能将其宣称为原生边界帧约束。切换模式后核对实际发送的输入，不静默丢弃用户期待保留的参考，不建立循环依赖。需要从现有视频获取正式帧、派生图片或切分宫格素材时，读取 [制作画布](production-canvas.md)；取得派生素材后仍须按本附件绑定 inputs。Write 片段的 `inputs` 更新输入关系；连线是这些关系的展示，不向只读 edges 集合写入。
 
 保存后回读目标片段与当前画布连线，核对来源和目标节点；有参考缩略图不等于已有节点连线，不单独写 edges 来补线。
+
+## 人物与地点图集名称
+
+图片条目的 `title`、素材名称与人物／地点图集的 `photos.name` 分别维护。生成或采用图片后先回读关联主体的图集，以真实 `asset_id` 定位本次图片，不假定改节点标题会同步改名。
+
+用 Read `/characters/{id}/photos` 或 `/locations/{id}/photos` 读取完整图集，再通过同一路径的 Write `value` 提交完整数组。按 `/_schema/characters`、`/_schema/locations` 的 photos 契约保留各项 `asset_id`，只改目标项的 `name`；保留未改项和原顺序，不为重命名移除图片、重建资产或改变节点采用结果。写入后回读核对。尚未取得真实图片资产时只命名节点草稿，不伪造图集条目。命名内容按「剧本制片」的图片资产与参考附件选择。
 
 ## 提示词中的引用
 

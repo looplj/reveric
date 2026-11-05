@@ -1,4 +1,4 @@
-// 职责: 执行制作画布、剧本视觉风格和素材查询工具，保留事务与变更历史。
+// 职责: 执行制作画布、剧本制作设置与视觉风格和素材查询工具，保留事务与变更历史。
 // 关联文件:
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/services/ai/tools_production_schema.dart
@@ -34,19 +34,28 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
     ({String oldText, String newText, bool replaceAll})? edit,
   ) async {
     try {
-      final service = await _productionStyleService();
-      return await service.shots.write('UPDATE_STYLE', 'screenplay', () async {
-        final root = await service.db.screenplayDao.getRoot();
+      final service = StoryboardService(_contentService.database);
+      return await service.write('UPDATE_SETTINGS', 'screenplay', () async {
+        final root = await service.getSettings();
         if (root == null) {
           return _notFound(parsed, 'screenplay');
         }
+        final settings = <String, dynamic>{
+          for (final key in ['ratio', 'resolution'])
+            if (fields.containsKey(key)) key: fields[key],
+        };
+        final editsStyle = edit != null && operation.field == 'style_id';
         var next = fields.containsKey('style_id')
             ? fields['style_id'] as String?
             : root.styleId;
         var matches = 0;
         if (edit != null) {
           final replaced = AiToolManager._replaceExactText(
-            root.styleId ?? '',
+            switch (operation.field) {
+              'ratio' => root.ratio,
+              'resolution' => root.resolution,
+              _ => root.styleId ?? '',
+            },
             edit.oldText,
             edit.newText,
             path: parsed.displayPath,
@@ -55,14 +64,22 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           if (replaced.error != null) {
             return AiToolManager._replaceTextErrorResult(replaced);
           }
-          next = replaced.value;
+          if (editsStyle) {
+            next = replaced.value;
+          } else {
+            settings[operation.field!] = replaced.value;
+          }
           matches = replaced.matchCount;
         }
         if (next == 'none') {
           next = null;
         }
-        if (next != null) {
-          await service.requireStyle(next);
+        ProductionSettings.validate(
+          settings['ratio'] as String? ?? root.ratio,
+          settings['resolution'] as String? ?? root.resolution,
+        );
+        if (next != null && (fields.containsKey('style_id') || editsStyle)) {
+          await (await _productionStyleService()).requireStyle(next);
         }
         if (next != root.styleId) {
           final change = await workingOverlayService.stageTextChange(
@@ -80,18 +97,30 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           );
           _reportWorkingChange(change);
         }
+        final saved = settings.isEmpty
+            ? root
+            : await service.saveSettings(settings);
+        final updated =
+            next != root.styleId ||
+            saved.ratio != root.ratio ||
+            saved.resolution != root.resolution;
         return {
           'ok': true,
           'id': root.id,
           'path': 'screenplay',
           'style_id': next,
-          'updated': next != root.styleId,
-          if (edit != null) ...{
-            'edited': next != root.styleId,
-            'match_count': matches,
-          },
+          'ratio': saved.ratio,
+          'resolution': saved.resolution,
+          'updated': updated,
+          if (edit != null) ...{'edited': updated, 'match_count': matches},
         };
       });
+    } on FormatException catch (error) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.invalid_argument,
+        error.message,
+      );
     } on ToolOperationException catch (error) {
       return {'ok': false, 'error_code': error.code, 'error': error.message};
     } on StoryboardException {

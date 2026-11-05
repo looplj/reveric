@@ -591,16 +591,11 @@ void main() {
         final field = singleton['fields'][name] as Map;
         expect(field['read'], isTrue);
         expect(field['read_path'], isTrue);
-        expect(field['create'], isFalse);
-        expect(field['write'], isFalse);
-        expect(field['write_path'], isFalse);
-        expect(field['edit'], isFalse);
+        expect(field['create'], isTrue);
+        expect(field['write'], isTrue);
+        expect(field['write_path'], isTrue);
+        expect(field['edit'], isTrue);
       }
-      final readOnlyWrite = await manager.executeTool(
-        name: 'Write',
-        input: {'path': 'screenplay/ratio', 'value': '9:16'},
-      );
-      expect(readOnlyWrite['error_code'], 'invalid_argument');
       final remove = await manager.executeTool(
         name: 'Remove',
         input: {'path': 'screenplay', 'force': true},

@@ -2979,6 +2979,8 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
           enumValues: ProductionSettings.ratios,
         ),
         read: _FieldRead(path: true),
+        write: _FieldInputUse(field: true),
+        edit: _FieldEdit(),
       ),
       'resolution': _ResourceField(
         value: _ValueSchema(
@@ -2986,6 +2988,8 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
           enumValues: ProductionSettings.resolutions,
         ),
         read: _FieldRead(path: true),
+        write: _FieldInputUse(field: true),
+        edit: _FieldEdit(),
       ),
       'width': _ResourceField(
         value: _ValueSchema(_ValueType.integer),

@@ -168,7 +168,7 @@ class ProductionCanvasService {
     action,
   );
 
-  /// 打开制作画布时补齐本集场景的主体；软删除片段也算已添加，尊重手动删除。
+  /// 打开制作画布时补齐本集场景的主体与空节点的首图；保留已有选图和手动删除。
   Future<CanvasEntry> ensureCanvas(String episodeId) => shots.write(
     'ENSURE canvases,canvas_nodes,production_clips',
     episodeId,
@@ -218,6 +218,30 @@ class ProductionCanvasService {
         final id = scene.locationId;
         if (id != null && locations.add(id)) {
           await addSubject(canvas.id, locationId: id);
+        }
+      }
+      // 主体可能在节点创建后才添加图片；只为本集场景中仍未选图的节点补选。
+      final emptySubjects =
+          await (db.select(clips)..where(
+                (t) =>
+                    t.episodeId.equals(episodeId) &
+                    t.kind.equals('image') &
+                    t.deletedAt.equals(notDeletedSentinel) &
+                    t.adoptedAssetId.isNull() &
+                    (t.characterId.isIn(
+                          castRows.map((row) => row.read(cast.characterId)!),
+                        ) |
+                        t.locationId.isIn(
+                          scenes.map((scene) => scene.locationId).nonNulls,
+                        )),
+              ))
+              .get();
+      for (final clip in emptySubjects) {
+        final first = (await subjectPhotos(clip)).firstOrNull;
+        if (first != null) {
+          await (db.update(clips)..where((t) => t.id.equals(clip.id))).write(
+            ProductionClipsCompanion(adoptedAssetId: Value(first.assetId)),
+          );
         }
       }
       return canvas;

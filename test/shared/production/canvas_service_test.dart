@@ -641,6 +641,85 @@ void main() {
   );
 
   test(
+    'reopening production adopts later subject photos only for empty live nodes',
+    () async {
+      final content = NovelContentService(db);
+      final screenplay = ScreenplayService(db);
+      final character = await content.createCharacterProfile(name: 'Cast');
+      final removed = await content.createCharacterProfile(name: 'Removed');
+      final location = await content.locationsService.createLocation(
+        name: 'Set',
+      );
+      await screenplay.replaceCast(
+        sceneId: scene,
+        characterIds: [character, removed],
+      );
+      await screenplay.updateScene(sceneId: scene, locationId: Value(location));
+      final canvas = await service.ensureCanvas(episode);
+      final before = await service.shots.episodeClips(episode);
+      final person = before.singleWhere(
+        (clip) => clip.characterId == character,
+      );
+      final place = before.singleWhere((clip) => clip.locationId == location);
+      final removedClip = before.singleWhere(
+        (clip) => clip.characterId == removed,
+      );
+      final nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+      final personNode = nodes.singleWhere((node) => node.clipId == person.id);
+      await service.move(personNode.id, -400, -200);
+      await service.shots.apply(person.id, {
+        ...service.shots.snapshot(person),
+        'prompt': 'Keep prompt',
+      });
+      await service.removeNode(
+        nodes.singleWhere((node) => node.clipId == removedClip.id).id,
+      );
+      expect(person.adoptedAssetId, isNull);
+      expect(place.adoptedAssetId, isNull);
+      for (final id in ['first', 'second', 'set']) {
+        await asset(id);
+      }
+      for (final id in [character, removed]) {
+        await (db.update(
+          db.characterProfiles,
+        )..where((t) => t.id.equals(id))).write(
+          CharacterProfilesCompanion(
+            photos: Value([
+              SubjectPhoto(assetId: 'first'),
+              SubjectPhoto(assetId: 'second'),
+            ]),
+          ),
+        );
+      }
+      await content.locationsService.updateLocation(
+        id: location,
+        photos: [SubjectPhoto(assetId: 'set')],
+      );
+      await service.ensureCanvas(episode);
+      expect((await service.shots.getShot(person.id))!.adoptedAssetId, 'first');
+      expect((await service.shots.getShot(place.id))!.adoptedAssetId, 'set');
+      expect((await service.shots.getShot(person.id))!.prompt, 'Keep prompt');
+      expect((await service.requireNode(personNode.id)).x, -400);
+      final deleted = await (db.select(
+        db.productionClips,
+      )..where((t) => t.id.equals(removedClip.id))).getSingle();
+      expect(deleted.adoptedAssetId, isNull);
+      expect(deleted.deletedAt, isNot(notDeletedSentinel));
+      await service.adopt(personNode.id, 'second');
+      await service.ensureCanvas(episode);
+      await service.ensureCanvas(episode);
+      expect(
+        (await service.shots.getShot(person.id))!.adoptedAssetId,
+        'second',
+      );
+      expect(
+        await db.canvasDao.getNodesByCanvas(canvas.id),
+        hasLength(nodes.length - 1),
+      );
+    },
+  );
+
+  test(
     'new production canvas includes only live scenes in its episode',
     () async {
       final screenplay = ScreenplayService(db);
