@@ -291,6 +291,11 @@ macro(fvp_setup_deps)
     else()
       set(FVP_DEPS_SHA256 "c3fe4c8f5b2ac6622040678a9d5665bfa54f6434a0bb2ac29c27295eeb9c9a96")
     endif()
+  elseif(LINUX OR CMAKE_SYSTEM_NAME MATCHES "Linux")
+    set(FVP_DEPS_URL "https://github.com/wang-bin/mdk-sdk/releases/download/v0.39.0")
+    if(MDK_SDK_PKG STREQUAL "mdk-sdk-linux-x64.tar.xz")
+      set(FVP_DEPS_SHA256 "0394c7443060f29bb420aa0ec8b278ec5ef61d3e84d1d3877c41c967c614980a")
+    endif()
   endif()
   _fvp_resolve_deps_options(
     "https://github.com/wang-bin/mdk-sdk/releases/download/v0.39.0"

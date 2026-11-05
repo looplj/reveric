@@ -3,3 +3,7 @@ macos/Frameworks/
 windows/mdk-sdk/
 windows/*.7z
 macos/fvp/Binaries/
+linux/mdk-sdk/
+linux/*.tar.xz
+linux/*.tar.xz.md5
+linux/fvp-deps.lock

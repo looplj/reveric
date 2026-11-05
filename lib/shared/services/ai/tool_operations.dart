@@ -545,6 +545,8 @@ class ToolOperationManager {
                   MediaFailure.cancelled => 'Media processing was cancelled.',
                   MediaFailure.busy => 'The media processor is busy.',
                   MediaFailure.timeout => 'Media processing timed out.',
+                  MediaFailure.tool_unavailable =>
+                    'The media tools are unavailable on this platform.',
                   MediaFailure.no_audio => 'The media has no audio track.',
                 },
             if (error.nativeSessionId != null)
