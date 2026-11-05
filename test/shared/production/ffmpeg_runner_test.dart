@@ -1,4 +1,4 @@
-// 职责: 验证原生会话与 Linux 系统进程的退出码、输出通道、取消和错误脱敏。
+// 职责: 验证原生会话与 Linux 打包 CLI 的退出码、输出通道、取消和错误脱敏。
 // 关联文件:
 //   lib/shared/services/production/ffmpeg_runner.dart
 import 'dart:convert';
@@ -155,7 +155,18 @@ void main() {
     expect(detail.length, lessThan(4200));
   });
 
-  group('Linux system binaries', skip: !Platform.isLinux, () {
+  test('linux bundle executable sits beside the application', () {
+    expect(
+      linuxBundledMediaExecutable('bundle', probe: false),
+      p.join('bundle', 'ffmpeg', 'bin', 'ffmpeg'),
+    );
+    expect(
+      linuxBundledMediaExecutable('bundle', probe: true),
+      p.join('bundle', 'ffmpeg', 'bin', 'ffprobe'),
+    );
+  });
+
+  group('Linux bundled CLI', skip: !Platform.isLinux, () {
     late Directory root;
 
     setUp(() async {

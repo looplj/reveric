@@ -24,6 +24,7 @@ on:
           - macos
           - windows
           - android
+          - linux
 
 permissions:
   contents: write
@@ -304,10 +305,112 @@ jobs:
           files: |
             dist/**/*.apk
 
-  # 三个平台都打包成功后，用本次 tag 的版本构建官网并部署到 Cloudflare Pages。
+  package-linux:
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'linux'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libayatana-appindicator3-dev \
+            xz-utils
+      - run: dart pub global activate fastforge ${{ env.FASTFORGE_VERSION }}
+      - name: Update pubspec version from tag
+        id: version
+        shell: bash
+        env:
+          BUILD_NUM: ${{ github.run_number }}
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          python3 << 'EOF'
+          import os, re
+          tag = os.environ['TAG_NAME'].strip()
+          if not tag.startswith('v'):
+              raise SystemExit(f"Release tag must start with 'v': {tag}")
+          ver = tag.lstrip('v')
+          build = os.environ['BUILD_NUM']
+          with open('pubspec.yaml', 'r', encoding='utf-8') as f:
+              content = f.read()
+          content = re.sub(r'^version:.*', f'version: {ver}+{build}', content, flags=re.MULTILINE)
+          with open('pubspec.yaml', 'w', encoding='utf-8') as f:
+              f.write(content)
+          github_output = os.environ.get('GITHUB_OUTPUT')
+          if github_output:
+              with open(github_output, 'a', encoding='utf-8') as f:
+                  f.write(f'tag={tag}\n')
+          print(f"Version set to {ver}+{build} (from tag {tag})")
+          EOF
+      - name: Disable sqlite3 system source for packaging
+        shell: bash
+        run: |
+          python3 << 'EOF'
+          with open('pubspec.yaml', 'r', encoding='utf-8') as f:
+              lines = f.readlines()
+          in_hooks = False
+          with open('pubspec.yaml', 'w', encoding='utf-8') as f:
+              for line in lines:
+                  if line.startswith('hooks:'):
+                      in_hooks = True
+                      f.write('# ' + line)
+                  elif in_hooks and (line.startswith('  ') or line.startswith('    ') or line.startswith('      ')):
+                      f.write('# ' + line)
+                  else:
+                      in_hooks = False
+                      f.write(line)
+          EOF
+      - name: Clear sqlite3 hook cache
+        shell: bash
+        run: rm -rf .dart_tool/hooks_runner/sqlite3
+      - name: Restore bundled FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: |
+            linux/ffmpeg/.cache
+            linux/ffmpeg/bundle
+          key: linux-ffmpeg-${{ hashFiles('linux/ffmpeg/prepare.sh') }}
+      - name: Restore MDK Linux SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            third/fvp/linux/mdk-sdk
+            third/fvp/linux/mdk-sdk-linux-x64.tar.xz
+          key: mdk-linux-${{ hashFiles('third/fvp/cmake/deps.cmake') }}
+      - name: Prepare bundled FFmpeg
+        shell: bash
+        run: bash linux/ffmpeg/prepare.sh
+      - run: flutter pub get
+      - name: Build archive
+        run: fastforge release --name release --jobs linux-zip --skip-clean
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: |
+            dist/**/*-linux.zip
+
+  # 四个平台都打包成功后，用本次 tag 的版本构建官网并部署到 Cloudflare Pages。
   # 手动只打单个平台时，其余打包 job 被跳过，这里也随之跳过；需要时手动运行 Website workflow。
   deploy-website:
-    needs: [package-macos, package-windows, package-android]
+    needs: [package-macos, package-windows, package-android, package-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

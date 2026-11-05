@@ -13,6 +13,7 @@ import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new/level.dart';
 import 'package:ffmpeg_kit_flutter_new/log.dart';
+import 'package:path/path.dart' as p;
 import '../../logger/app_logger.dart';
 import '../../models/production/media.dart';
 import 'runtime.dart';
@@ -174,19 +175,43 @@ class FfmpegExecutionResult {
   final String? errorCode, error;
 }
 
+/// Linux ships ffmpeg and ffprobe under `<bundle>/ffmpeg/bin`. Their RPATH
+/// loads `<bundle>/ffmpeg/lib` and does not use the host PATH.
+String linuxBundledMediaExecutable(
+  String executableDirectory, {
+  required bool probe,
+}) {
+  return p.join(
+    executableDirectory,
+    'ffmpeg',
+    'bin',
+    probe ? 'ffprobe' : 'ffmpeg',
+  );
+}
+
 class FfmpegRunner {
   FfmpegRunner({String? ffmpegExecutable, String? ffprobeExecutable})
-    : _ffmpegExecutable = ffmpegExecutable ?? 'ffmpeg',
-      _ffprobeExecutable = ffprobeExecutable ?? 'ffprobe';
+    : _ffmpegExecutable = ffmpegExecutable ?? _defaultExecutable(probe: false),
+      _ffprobeExecutable = ffprobeExecutable ?? _defaultExecutable(probe: true);
+
+  static String _defaultExecutable({required bool probe}) {
+    if (!Platform.isLinux) {
+      return probe ? 'ffprobe' : 'ffmpeg';
+    }
+    return linuxBundledMediaExecutable(
+      p.dirname(Platform.resolvedExecutable),
+      probe: probe,
+    );
+  }
 
   static Future<void> _encodingTail = Future.value();
 
   final String _ffmpegExecutable;
   final String _ffprobeExecutable;
 
-  /// Linux has no bundled FFmpegKit/fvp runtime, so media work uses the
-  /// system binaries. Windows and macOS keep the native sessions.
-  bool get _usesSystemTools => Platform.isLinux;
+  /// Linux has no FFmpegKit. Probe and encode run the bundled CLI.
+  /// Windows and macOS keep the native sessions.
+  bool get _usesBundledCli => Platform.isLinux;
 
   Future<FfmpegExecutionResult> executeCommand(
     List<String> arguments, {
@@ -200,7 +225,7 @@ class FfmpegRunner {
     if (cancellation.cancelled) {
       return const FfmpegExecutionResult(exitCode: null, cancelled: true);
     }
-    if (_usesSystemTools) {
+    if (_usesBundledCli) {
       return _executeSystemCommand(arguments, cancellation);
     }
     var started = false;
@@ -290,7 +315,7 @@ class FfmpegRunner {
     if (cancellation.cancelled) {
       throw const MediaException(MediaFailure.cancelled);
     }
-    if (_usesSystemTools) {
+    if (_usesBundledCli) {
       return _executeSystem(
         arguments,
         probe: probe,
@@ -356,13 +381,13 @@ class FfmpegRunner {
       );
       if (outcome.exitCode != 0) {
         _log.error(
-          'system command failed code=${outcome.exitCode} '
+          'bundled command failed code=${outcome.exitCode} '
           'detail=${ffmpegFailureDetail(result.stderr, arguments)}',
         );
       }
       return outcome;
     } on ProcessException catch (error) {
-      _log.error('system command could not start: $error');
+      _log.error('bundled command could not start: $error');
       return FfmpegExecutionResult(
         exitCode: null,
         cancelled: cancellation.cancelled,
@@ -370,7 +395,7 @@ class FfmpegRunner {
         error: error.toString(),
       );
     } catch (error, stack) {
-      _log.error('system command failed', error: error, stackTrace: stack);
+      _log.error('bundled command failed', error: error, stackTrace: stack);
       return FfmpegExecutionResult(
         exitCode: null,
         cancelled: cancellation.cancelled,
@@ -396,7 +421,7 @@ class FfmpegRunner {
       final executable = probe ? _ffprobeExecutable : _ffmpegExecutable;
       final message = '$executable is not available: ${error.message}';
       _log.error(
-        'system ${probe ? 'probe' : 'encode'} could not start executable=$executable',
+        'bundled ${probe ? 'probe' : 'encode'} could not start executable=$executable',
         error: error,
         stackTrace: stack,
       );
@@ -409,7 +434,7 @@ class FfmpegRunner {
       final detail = ffmpegFailureDetail(result.log, arguments, limit: 65536);
       final message = ffmpegFailureDetail(result.stderr, arguments);
       _log.error(
-        'system ${probe ? 'probe' : 'encode'} failed '
+        'bundled ${probe ? 'probe' : 'encode'} failed '
         'code=${result.exitCode} detail=$message',
       );
       throw MediaException(

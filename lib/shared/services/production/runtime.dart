@@ -85,7 +85,7 @@ Future<void> _initialize() async {
 }
 
 /// Linux 由 FVP 插件自带 MDK 运行库与 FFmpeg 共享库，直接使用，不经过 FFmpegKit。
-/// FFmpegKit 没有 Linux 实现，编码/探测已改走系统 ffmpeg。
+/// 编码和探测使用应用包内的 ffmpeg / ffprobe，不依赖系统安装。
 Future<void> _initializeLinux() async {
   final directory = p.dirname(Platform.resolvedExecutable);
   final runtime = <String>['libmdk.so.0', 'libffmpeg.so.9', 'libc++.so.1'];

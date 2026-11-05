@@ -16,6 +16,15 @@ cmake_policy(SET CMP0063 NEW)
 # Load bundled libraries from the lib/ directory relative to the binary.
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 
+# Encoding and probing use the pinned FFmpeg CLI. Playback uses MDK's libraries.
+execute_process(
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/prepare.sh"
+  RESULT_VARIABLE FFMPEG_PREPARE_RESULT
+)
+if(NOT FFMPEG_PREPARE_RESULT EQUAL 0)
+  message(FATAL_ERROR "linux/ffmpeg/prepare.sh failed (${FFMPEG_PREPARE_RESULT})")
+endif()
+
 # Root filesystem for cross-building.
 if(FLUTTER_TARGET_PLATFORM_SYSROOT)
   set(CMAKE_SYSROOT ${FLUTTER_TARGET_PLATFORM_SYSROOT})
@@ -105,6 +114,12 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endforeach(bundled_library)
+
+# ffmpeg/bin finds ffmpeg/lib through its own RPATH and must stay out of lib/.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/bundle/"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/ffmpeg"
+  USE_SOURCE_PERMISSIONS
+  COMPONENT Runtime)
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
