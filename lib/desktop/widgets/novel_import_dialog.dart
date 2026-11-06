@@ -1,4 +1,4 @@
-// 职责: 桌面端 TXT 作品导入表单 — 填写作品信息、选择类型并确认拆章导入，可选导入后直接改编。
+// 职责: 桌面端 TXT 作品导入表单 — 填写作品信息、选择类型并确认拆章导入。
 // 关联文件:
 //   lib/desktop/pages/home.dart
 //   lib/shared/services/novel_import.dart
@@ -25,7 +25,6 @@ import '../../shared/providers/dictionary_providers.dart';
 import '../../shared/services/novel_import.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/novel/category_field.dart';
-import '../../shared/widgets/novel/import_adapt_option.dart';
 
 final _log = AppLogger.forModule('NovelImport');
 
@@ -36,13 +35,10 @@ typedef NovelImportSubmitter =
       required String category,
       required String type,
       required List<String> tags,
-      required String? adaptationTitle,
-      required int? plannedEpisodeCount,
     });
 
 enum NovelImportFormField<T> implements FieldSchema {
   title<String>(validators: [RequiredValidator<String>()]),
-  plannedEpisodeCount<String>(),
   description<String>(),
   category<String>(),
   type<String>(),
@@ -74,7 +70,6 @@ class NovelImportDialog extends HookConsumerWidget {
       initialValues: {
         NovelImportFormField.title: parsed.suggestedTitle,
         NovelImportFormField.description: '',
-        NovelImportFormField.plannedEpisodeCount: '',
         NovelImportFormField.category: '',
         NovelImportFormField.type: novelTypeOriginal,
         NovelImportFormField.tags: <String>[],
@@ -82,7 +77,6 @@ class NovelImportDialog extends HookConsumerWidget {
       keys: [filePath],
     );
     final isBusy = useState(false);
-    final adaptAfterImport = useState(false);
     // 标签建议：loading 中传 null（纯自由文本），加载完成后自动补全。
     final tagSuggestions = ref.watch(novelTagsProvider).value;
 
@@ -106,11 +100,6 @@ class NovelImportDialog extends HookConsumerWidget {
       final tags =
           form.getValue<List<String>>(NovelImportFormField.tags) ?? const [];
 
-      final episodeText =
-          (form.getValue<String>(NovelImportFormField.plannedEpisodeCount) ??
-                  '')
-              .trim();
-      final episodeCount = int.tryParse(episodeText);
       isBusy.value = true;
       try {
         final result = await onSubmit(
@@ -119,13 +108,6 @@ class NovelImportDialog extends HookConsumerWidget {
           category: category,
           type: novelTypes.contains(type) ? type : novelTypeOriginal,
           tags: tags,
-          adaptationTitle: adaptAfterImport.value
-              ? context.t(
-                  LocaleKeys.libraryAdaptationTitle,
-                  namedArgs: {'title': title},
-                )
-              : null,
-          plannedEpisodeCount: adaptAfterImport.value ? episodeCount : null,
         );
         if (context.mounted) {
           Navigator.of(context).pop<NovelImportResult>(result);
@@ -197,57 +179,6 @@ class NovelImportDialog extends HookConsumerWidget {
                               value == null || value.trim().isEmpty
                               ? context.t(LocaleKeys.formRequired)
                               : null,
-                        ),
-                        const SizedBox(height: RevericSpacing.sm),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            minHeight: RevericSizes.touchTargetSize,
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: NovelImportAdaptOption(
-                                  value: adaptAfterImport.value,
-                                  onChanged: isBusy.value
-                                      ? null
-                                      : (value) =>
-                                            adaptAfterImport.value = value,
-                                ),
-                              ),
-                              if (adaptAfterImport.value) ...[
-                                const SizedBox(width: RevericSpacing.lg),
-                                SizedBox(
-                                  width: 144,
-                                  child: HookedTextFormField<NovelImportFormField>(
-                                    key: const ValueKey(
-                                      'import-planned-episodes',
-                                    ),
-                                    enabled: !isBusy.value,
-                                    autovalidateMode:
-                                        AutovalidateMode.onUserInteraction,
-                                    validator: (value) {
-                                      final text = value?.trim() ?? '';
-                                      final count = int.tryParse(text);
-                                      return text.isNotEmpty &&
-                                              (count == null || count < 1)
-                                          ? context.t(
-                                              LocaleKeys
-                                                  .libraryPlannedEpisodeCountInvalid,
-                                            )
-                                          : null;
-                                    },
-                                    fieldHook: NovelImportFormField
-                                        .plannedEpisodeCount,
-                                    hintText: context.t(
-                                      LocaleKeys.libraryPlannedEpisodeCount,
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    textInputAction: TextInputAction.next,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
                         ),
                         const SizedBox(height: RevericSpacing.lg),
                         _ImportInputField(

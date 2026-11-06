@@ -42,7 +42,6 @@
   "library.import_txt_empty": "这个 TXT 文件未识别到章节，无法导入。章节标题需单独成行，例如「第1章 标题」「第一回」「序章」「楔子」「番外」「Chapter 1」；分卷标题可写成「第一卷」。",
   "library.importing_txt": "正在导入…",
   "library.start_import": "开始导入",
-  "library.adapt_after_import": "导入后改编为剧本",
   "library.import_tags_hint": "用空格或逗号分隔标签",
   "library.custom_rules": "智能体规则",
   "library.select_cover": "选择封面",

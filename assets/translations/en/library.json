@@ -42,7 +42,6 @@
   "library.import_txt_empty": "No chapter headings were detected in this TXT file. Put each chapter heading on its own line, such as \"第1章 Title\", \"第一回\", \"序章\", or \"Chapter 1\"; volume headings can be written as \"第一卷\".",
   "library.importing_txt": "Importing...",
   "library.start_import": "Start Import",
-  "library.adapt_after_import": "Adapt into a screenplay after import",
   "library.import_tags_hint": "Separate tags with spaces or commas",
   "library.custom_rules": "Rules",
   "library.select_cover": "Select Cover",

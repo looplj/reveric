@@ -608,8 +608,6 @@ class NovelHomePage extends HookConsumerWidget {
                 required category,
                 required type,
                 required tags,
-                required adaptationTitle,
-                required plannedEpisodeCount,
               }) {
                 return importService.importTxt(
                   filePath: filePath,
@@ -618,8 +616,6 @@ class NovelHomePage extends HookConsumerWidget {
                   category: category,
                   type: type,
                   tags: tags,
-                  adaptationTitle: adaptationTitle,
-                  plannedEpisodeCount: plannedEpisodeCount,
                 );
               },
         ),
@@ -644,7 +640,7 @@ class NovelHomePage extends HookConsumerWidget {
       navigator.push(
         MaterialPageRoute(
           builder: (_) => WorkspaceEditorPage(
-            novelId: importResult.screenplayId ?? importResult.novelId,
+            novelId: importResult.novelId,
             openChatOnEntry: true,
           ),
         ),

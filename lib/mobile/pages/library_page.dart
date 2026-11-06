@@ -237,8 +237,6 @@ class MobileLibraryPage extends HookConsumerWidget {
                   required category,
                   required type,
                   required tags,
-                  required adaptationTitle,
-                  required plannedEpisodeCount,
                 }) {
                   return importService.importTxt(
                     filePath: filePath,
@@ -247,8 +245,6 @@ class MobileLibraryPage extends HookConsumerWidget {
                     category: category,
                     type: type,
                     tags: tags,
-                    adaptationTitle: adaptationTitle,
-                    plannedEpisodeCount: plannedEpisodeCount,
                   );
                 },
           ),
@@ -271,9 +267,7 @@ class MobileLibraryPage extends HookConsumerWidget {
         ),
       );
 
-      final novel = await actions.getNovel(
-        importResult.screenplayId ?? importResult.novelId,
-      );
+      final novel = await actions.getNovel(importResult.novelId);
       if (!context.mounted || novel == null) {
         return;
       }
