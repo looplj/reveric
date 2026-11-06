@@ -33,6 +33,8 @@
 
 M2 交付。插件在清单 `settings.fields` 中声明配置字段，Host 负责表单、校验、持久化和运行时读取。
 
+T-31a 的供应商实例配置另见 [Provider 扩展](providers.md#身份配置与注册)：`provider.settings.fields` 复用字段模型，值写入 `plugin_storage`、凭据写入 `plugin_secrets`，key 均为 `provider.<providerId>.<字段名>`，与顶层插件配置隔离。`__` 开头的字段名保留给 Host，实例字段不得使用；Host 在 `provider.<providerId>.__models` 保存实例的完整模型声明，该记录不对插件 settings、secrets 或 storage API 开放，与模型 ID 列原子更新并纳入备份，见[模型发现与校验](providers.md#模型发现与校验)。该能力尚未实现；下面的 M2 存储合同仍描述插件级配置。
+
 | `type` | 控件 | 其他属性 |
 | --- | --- | --- |
 | `string` | 单行输入 | `default`、`required`、`maxLength` |
@@ -130,7 +132,7 @@ M3 的 Host 调度状态另见[调度持久化](prompts-and-tasks.md#调度持�
 
 - `source`：`bundled` 随应用打包，`local` 用户安装。只用于找到插件包和决定能否卸载；加载、注册、启停、权限和配置的流程不按来源分支。
 - `package_path`：内置插件为资源路径（如 `assets/plugins/reveric.web`），本地插件为相对应用数据目录的路径（如 `plugins/example.search/1.2.0`），备份恢复到其他设备后仍然有效。
-- `plugin_storage` 中，配置字段的 key 为 `settings.<字段名>`，`storage` API 的 key 为 `data.<key>`，两者互不可见。
+- `plugin_storage` 中，配置字段的 key 为 `settings.<字段名>`，`storage` API 的 key 为 `data.<key>`，两者互不可见。T-31a 起供应商实例配置使用 `provider.<providerId>.<字段名>`（待实施），`plugin_secrets` 同用该前缀；Provider 方法的 `storage` 与其他阶段共用 `data.*`；Provider 任务的 `state` 存在 `generation_tasks.provider_state`，不进入 `plugin_storage`；视频下载 headers 存 `generation_tasks.output_headers`，图片下载 headers 存 imageOutputs 各 URL 项，随任务及 app 库备份保存，日志和普通任务展示不包含其值，见[提交、查询与任务状态](providers.md#提交查询与任务状态)。
 - 单条 `plugin_storage.value` 不超过 256 KB，单个插件的 `data.*` 合计不超过 16 MB，超出时 `storage.set` 抛 `too_large`。
 - 表结构只用列和主键声明，不使用外键、CHECK 等约束；`source` 等取值范围在 Dart 侧校验。时间戳使用 `dateTime()`。
 - 所有 DAO 方法都带 `pluginId` 参数，查询都按 `plugin_id` 过滤。
@@ -157,7 +159,7 @@ from version 1 to 2:
 - **启停**：用户开关只改 `enabled`。登记记录一经写入，后续启动和应用升级不再按 `defaultEnabled` 覆盖用户选择。
 - **版本更新**：随应用升级的内置插件与用户更新的第三方插件同样处理：比较清单版本，更新 `version` 和 `package_path`，保留启停选择、配置和授权；新增权限需要用户确认后才激活。
 - **授权**：用户确认后写入 `plugin_permissions`；撤销时设置 `deleted_at`，重新授权时清空该字段。
-- **卸载**：只允许卸载 `source = local` 的插件，在 `plugin_registry` 上设置 `deleted_at`，保留配置、凭据和授权记录，重新安装同一 ID 时恢复。
+- **卸载**：只允许卸载 `source = local` 的插件，在 `plugin_registry` 上设置 `deleted_at`，删除凭据、授权、供应商实例和插件包；插件数据（普通配置、`storage` 数据和私有库）由用户选择是否删除，见[卸载](#卸载)。
 
 ## 安装、更新与卸载
 
@@ -199,7 +201,19 @@ example-search-1.2.0.zip
 
 ### 卸载
 
-M3 卸载前先确认未保存页面，取消则中止卸载；确认后关闭页面及其运行时。卸载只设置 `plugin_registry.deleted_at` 并移除注册项，不删除插件目录、配置、凭据和授权记录。重新安装同一 ID 时清空 `deleted_at`，恢复原有设置。
+M3 卸载前先确认未保存页面，取消则中止卸载；确认后关闭页面及其运行时。
+
+卸载时总是执行以下清理，不询问用户：
+
+- 物理删除该插件在 `plugin_secrets`、`plugin_permissions` 中的全部记录。
+- 软删除 `type = plugin:<id>` 的 `ai_providers` 记录，并按实例删除规则物理删除 `plugin_storage` 中 `provider.<providerId>.*` 的记录。
+- 删除 `plugins/<id>/` 插件包目录。
+
+卸载确认对话框只提供一个选项“同时删除插件数据”，默认不勾选。勾选时物理删除 `plugin_storage` 中该插件的 `settings.*`、`data.*` 记录，并删除 `plugin_data` 下该插件的私有库文件（含 `-wal`、`-shm`、`-journal`）；不勾选时两者保留，重新安装同一 ID 后复用。Provider 任务的 state 属于任务记录，不在此删除范围内。
+
+确认后在主库同一事务内设置 `plugin_registry.deleted_at`、移除注册项并完成上述记录删除；事务提交后关闭私有库连接，再删除插件包目录和勾选的私有库文件。文件删除失败只记录日志并提示用户，不回滚登记。重新安装同一 ID 时清空 `deleted_at`，凭据、授权和供应商实例从空开始。
+
+上述硬删除范围已由用户确认（2026-11-06），只限该插件 ID 的这些记录和文件，不扩展到业务数据、聊天记录或其他插件；实施时登记到 `.agents/rules/data-deletion.md`。
 
 ## 备份
 
@@ -297,7 +311,7 @@ Host 在插件运行前执行迁移；首次创建库执行全部版本，已有
 
 ### 备份、停用与卸载
 
-应用备份同时包含插件包、主库登记和 `plugin_data` 中各插件库的一致性快照；不能只复制正在写入的主文件而遗漏 WAL。恢复先恢复包和数据的对应版本，再按迁移契约打开，验证计数与内容。停用拒绝新调用、取消调度并释放空闲连接，数据保留；卸载也保留私有库，重新安装同一插件 ID 后复用。用户明确清除某插件数据时才删除该库，不能复用旧包目录清理逻辑。
+应用备份同时包含插件包、主库登记和 `plugin_data` 中各插件库的一致性快照；不能只复制正在写入的主文件而遗漏 WAL。恢复先恢复包和数据的对应版本，再按迁移契约打开，验证计数与内容。停用拒绝新调用、取消调度并释放空闲连接，数据保留。卸载时私有库默认保留，重新安装同一插件 ID 后复用；用户勾选“同时删除插件数据”时才删除，先关闭连接再删库文件，不能复用旧包目录清理逻辑。
 
 ### Dart 实施规格
 

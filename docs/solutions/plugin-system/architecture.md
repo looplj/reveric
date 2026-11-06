@@ -2,6 +2,8 @@
 
 > 本篇定义插件包、清单、运行时模型和插件可调用的 Host API。工具相关规则见[工具扩展点](tools.md)，存储与设置见[设置与存储](settings-and-storage.md)。任务进度只在[实施任务](README.md#实施任务)维护。
 
+Provider 的新增清单 `provider`、`setup.provider.register` 和阶段上下文见 [Provider 扩展](providers.md)。公共注册、图片与视频接口已进入 SDK，聊天仍暂缓；Provider 的运行时与并发规则以该篇为准。
+
 ## 插件由什么组成
 
 | 内容 | 职责 |
@@ -131,29 +133,29 @@
 ```text
 Host 激活插件
   → 读取并校验清单中的配置、页面和任务声明
-  → 新建运行时，执行插件代码
+  → 在业务运行时加载该插件 realm，执行插件代码
   → 调用 apply(setup)，注册项先在 JS 内登记
   → apply 结束后一次性把全部注册项上报 Host
   → Host 核对声明与 handler，校验注册项并保存激活快照
   → 从清单发布页面并登记任务调度
-  → 关闭运行时
+  → 保留 realm 与处理函数，供后续调用复用
 
 用户或 Agent 发起工具调用
   → Host 在注册表中找到注册项
   → 检查插件状态及调用权限
-  → 新建运行时，重新执行 apply 取得处理函数
+  → 复用已加载的处理函数；代码或清单变化时重新加载
   → 上报完整注册项，Host 核对清单及激活快照；不一致则拒绝执行
   → 以该阶段的上下文调用处理函数，插件按需调用 Host API
-  → 返回结果，关闭运行时
+  → 返回结果，释放本次调用上下文
 
 用户打开插件页面
   → 读取清单 pages，检查插件可用性与页面协议，创建页面会话
   → TSX 直接加载页面 JS 并调用 mount，不调用 apply
-  → A2UI 加载消息；onMount 或事件执行时新建运行时，调用 apply 绑定 action
+  → A2UI 加载消息；onMount 或事件复用业务运行时中已绑定的 action
   → 页面关闭后清理资源，关闭运行时
 ```
 
-`apply(setup)` 只负责注册当前插件的能力：`setup` 只有 `tools`、`prompts`、`tasks`、`pages.registerAction`、`settings.registerAction` 和 `log`，没有网络、存储、数据库或业务数据 API，因此 `apply` 中不能发起搜索、生成内容或读写数据。各处理函数收到自己阶段的上下文，Host API 只从该上下文取得，见[插件上下文 API](#插件上下文-api)。业务 Event / Hook 留待后续扩展。
+`apply(setup)` 只负责注册当前插件的能力：`setup` 提供 `tools`、`prompts`、`tasks`、`pages.registerAction`、`settings.registerAction`、`provider.register` 和 `log`，没有网络、存储、数据库或业务数据 API，因此 `apply` 中不能发起搜索、生成内容或读写数据。各处理函数收到自己阶段的上下文，Host API 只从该上下文取得，见[插件上下文 API](#插件上下文-api)。业务 Event / Hook 留待后续扩展。
 注册只能在 `apply` 执行期间完成；`apply` 结束后再调用注册接口直接报错。插件能力变化通过停用、重新启用或更新版本生效，不支持运行中动态增删注册。
 
 插件通过桥接调用业务 Host API，输入输出都是 JSON；SQLite 的 bigint/BLOB 由 SDK 编为带类型标签的 JSON，不改变其他 API 的 JSON 契约。TSX 的响应式图与节点操作在原生侧执行，以类型化批次交给 Dart，见[渲染器](views.md#渲染器与组件目录)。Host 从运行时绑定的插件身份判断归属和权限，不信任插件在参数里自行声明的身份或权限。插件不持有 Drift、Riverpod、BuildContext 等宿主内部对象。
@@ -170,7 +172,7 @@ Host 激活插件
 | Task | 清单 `tasks` 声明标题与周期；`setup.tasks.register(id, handler)` 绑定函数 | Host 到期或用户立即运行 | M3，见[Host 定时任务](prompts-and-tasks.md#host-定时任务) |
 | 设置页操作 | 清单 `settings.actions` 中声明的操作的处理函数 | 用户在设置页执行操作时 | 见[设置页操作](settings-and-storage.md#设置页操作) |
 | Command | 命令 ID 与处理函数 | 用户动作或插件界面触发时 | 后续迭代 |
-| Provider | 模型、认证及请求处理能力 | 获取模型、登录、发起 AI 请求等节点 | 后续迭代 |
+| Provider | 每个插件至多一个供应商定义，含实例配置、模型发现及 image/video 能力（chat 设计保留，首版不实施） | 检查连接、参考素材上传、提交及查询 | T-31a、T-31b、T-34 已实现，三平台验收待完成；T-32、T-33 暂缓，见 [Provider 扩展](providers.md) |
 | 菜单入口 | 显示位置、标题和目标命令 | 用户打开菜单及点击入口时 | 后续迭代 |
 | Event、Hook | 指定业务节点的处理函数 | 业务操作前后 | 后续迭代，见[Event 与 Hook](prompts-and-tasks.md#event-与-hook) |
 
@@ -180,39 +182,39 @@ Host 激活插件
 
 每项注册归属一个插件。Host 校验重复 ID、名称格式、工具名冲突和挂载位置，校验失败时整个 `apply` 视为失败，本次注册全部不生效，其他插件继续运行。工具名冲突规则见[工具名与覆盖](tools.md#工具名与覆盖)。
 
-停用前先按[页面生命周期](views.md#生命周期与资源限制)确认未保存编辑；用户取消则不改变启用状态。确认后 Host 拒绝新调用，移除注册项并关闭页面及其请求。已开始的独立工具调用允许完成，结果照常返回，其运行时在调用结束时关闭；停止新任务派发，取消正在运行的定时任务与未完成的 Prompt 提供方。数据库连接在全部已接手操作结束后释放，不删除数据。
+停用前先按[页面生命周期](views.md#生命周期与资源限制)确认未保存编辑；用户取消则不改变启用状态。确认后 Host 拒绝新调用，移除注册项并关闭页面及其请求。已开始的独立工具调用允许完成，结果照常返回，其调用上下文在结束时释放；停止新任务派发，取消正在运行的定时任务与未完成的 Prompt 提供方。数据库连接在全部已接手操作结束后释放，不删除数据。
 
-短生命周期工具调用不提供跨调用清理回调。TSX 页面有独立 owner 与 `cleanup`，A2UI 页面由 Host 管理 DataModel 与 action 队列，关闭时释放绑定、定时器、订阅和请求；超时或异常时 Host 可强制关闭，不依赖 cleanup 成功。插件停用后不能继续注册能力，旧页面消息按会话代次丢弃。
+工具调用不提供跨调用清理回调。TSX 页面有独立 owner 与 `cleanup`，A2UI 页面由 Host 管理 DataModel 与 action 队列，关闭时释放绑定、定时器、订阅和请求；超时或异常时 Host 可强制关闭，不依赖 cleanup 成功。插件停用后不能继续注册能力，旧页面消息按会话代次丢弃。
 
 ## 运行时模型
 
-### 工具按次执行，页面按实例存活
+### 业务运行时复用，页面按实例存活
 
-本节描述当前实现。业务插件共用常驻 fjs 引擎属于 T-30，尚未实施，见[后续迭代](README.md#后续迭代)。
+普通业务调用共用 Host 的常驻 `PluginBusinessRuntime`；Provider 查询另用专用常驻运行时，Provider 提交与上传每次隔离。TSX 页面保持独立运行时。
 
-插件代码运行在 fjs（QuickJS）中。激活和工具调用按次创建运行时，TSX 页面按打开的实例创建运行时，A2UI 按 action 创建运行时；两者不共享 JS 内存或执行队列：
+插件代码运行在 fjs（QuickJS）中。普通业务运行时按插件隔离 realm，加载代码并缓存处理函数；每次调用独立绑定身份、上下文和桥接。TSX 页面不共享业务运行时：
 
 | 执行 | 时机 | 内容 |
 | --- | --- | --- |
 | 激活 | 插件启用、应用启动、插件更新后 | 执行入口文件，调用 `apply` 收集注册项 |
-| 工具调用 | Agent 每次调用插件工具 | 执行入口文件，调用 `apply` 取得处理函数，再调用对应处理函数 |
-| 设置页操作 | 用户执行清单声明的操作 | 新建运行时，执行 apply 后调用 `registerAction` 注册的处理函数，执行结束关闭 |
-| Prompt 提供方 | 每次模型请求准备 | 新建运行时，执行 apply 后调用只读 handler，完成或超时关闭 |
-| 定时任务 | 到期或手动触发 | 新建运行时，执行 apply 后调用任务 handler，完成、超时或取消时关闭 |
-| A2UI action | 挂载或用户交互 | 按次执行并关闭，数据和组件状态由 Host 页面会话保存 |
+| 工具调用 | Agent 每次调用插件工具 | 加载时执行 `apply`，后续复用处理函数，以本次上下文调用 |
+| 设置页操作 | 用户执行清单声明的操作 | 复用已加载的 `registerAction` 处理函数，调用结束释放本次上下文 |
+| Prompt 提供方 | 每次模型请求准备 | 复用只读 handler，完成或超时释放本次上下文 |
+| 定时任务 | 到期或手动触发 | 复用任务 handler，完成、超时或取消时释放本次上下文 |
+| A2UI action | 挂载或用户交互 | 复用业务运行时中的 action，数据和组件状态由 Host 页面会话保存 |
 | TSX 页面 | M3 中用户打开页面 | 执行页面模块并挂载，保留至页面关闭；交互与异步任务复用该实例 |
 
-工具处理函数不能跨运行时保存，每次工具调用重新执行 `apply`；TSX 页面模块独立挂载，不重新执行工具入口；A2UI action 按次重新 apply 取得处理函数。由此要求：
+业务处理函数在已加载的 realm 中复用，代码或清单改变时卸载旧 realm 后重新加载；TSX 页面模块独立挂载。由此要求：
 
 - `apply` 必须是确定的：同一版本插件每次注册的名称和定义相同。每次 `apply` 后都把完整注册项交给 Host；Host 核对清单声明和激活快照，不一致时拒绝执行，快照不一致返回 `plugin_registration_mismatch`。
-- 工具不能依赖调用之间的内存状态；少量持久化数据写入上下文的 `storage`，结构化数据使用 `sqlite`。TSX 页面局部状态由组件 signal 持有，A2UI 使用 Host DataModel；Host 管理节点树与输入状态；TSX 更新不传整页快照，A2UI action 接收数据快照，见[页面状态](views.md#页面状态)。
+- 业务调用可共享模块内存，但不能依赖它完成重启或引擎重置后的恢复；少量持久化数据写入上下文的 `storage`，结构化数据使用 `sqlite`。TSX 页面局部状态由组件 signal 持有，A2UI 使用 Host DataModel；Host 管理节点树与输入状态；TSX 更新不传整页快照，A2UI action 接收数据快照，见[页面状态](views.md#页面状态)。
 - 一次调用内可以并发发起多个 Host API 请求，例如同时抓取多个网页。
 
 运行时沿用 codemode 的接入方式（见 [codemode/runtime.dart](../../../lib/shared/services/ai/codemode/runtime.dart)）：
 
 - `JsBuiltinOptions.none()`，不开放 fjs 的文件、网络、进程等内置模块或任意外部模块；工具和页面入口各自打包为单文件。页面只额外开放宿主实现的 UI 原生 SDK。
 - 业务 Host API 通过一个桥接函数传递 JSON 字符串；Host 校验请求类型、字段和大小。页面 UI 使用独立的类型化批量通道，不能在 JS signal 读写时往返 Dart。
-- 短生命周期执行先加载前置脚本与插件入口，再调用 `apply`；TSX 页面执行先安装 UI 原生 SDK 和页面上下文（`PageContext`），再调用独立页面模块的 `mount`；A2UI action 复用按次执行入口。
+- 业务 realm 首次加载时执行前置脚本、插件入口与 `apply`；TSX 页面执行先安装 UI 原生 SDK 和页面上下文（`PageContext`），再调用独立页面模块的 `mount`；A2UI action 复用已加载的处理函数。
 
 短生命周期执行的业务桥接消息为带 `kind` 的 JSON 对象，Host 只接受下表中的类型。TSX 页面只开放业务 `call`，UI 更新与事件走[页面协议](views.md#渲染器与组件目录)，不使用 `result` 结束每次点击：
 
@@ -243,17 +245,23 @@ Host 激活插件
 | 单个工具输入 | 256 KB | `invalid_argument` |
 | 单个工具结果 | 256 KB | `plugin_invalid_result` |
 | 单次执行中同时进行的网络请求 | 4 个，多余的排队 | 不报错 |
-| 同一插件同时进行的执行 | 4 个，多余的排队 | 不报错 |
+| 同一插件普通业务调用 | 4 个，多余的排队 | 不报错 |
+| 同一插件 Provider 查询 | 8 个，多余的排队；使用专用常驻运行时 | 不报错 |
+| 同一插件 Provider 提交与上传 | 4 个，多余的排队；每次调用独立运行时 | 不报错 |
 
-短运行时的执行数限制用于控制 Android 上的内存峰值：每个短运行时最多 128 MB，四个并发即 512 MB；常驻 TSX 页面仍使用独立的 64 MB 堆预算。M1 的 T-01 会实测运行时创建耗时和内存，数据不达标时调整取值并更新本表。
+每个业务引擎堆上限为 128 MB。普通业务与 Provider 查询分别共享引擎，提交与上传各有独立引擎，不能再以四个调用估算整个 Host 的内存上限；常驻 TSX 页面仍使用独立的 64 MB 堆预算。M1 的 T-01 会实测运行时创建耗时和内存，数据不达标时调整取值并更新本表。
+
+Provider 查询与提交使用独立队列，不与普通业务调用争抢名额。查询共享引擎重置可能中断其他查询，后续调用会重建；提交和上传保持独立，避免连带丢失远端回执。上述限制按插件计数，不按供应商实例扩容；当前取值尚未完成三平台性能验证。详情见 [ProviderContext](providers.md#providercontext)。
 
 ### 取消
 
-取消和超时都直接关闭运行时：未完成的 Host 调用不再返回，插件代码不再继续执行，处理函数不需要也无法轮询取消状态。Agent 取消工具调用时，Host 中止该次执行发起的网络请求，并按现有约定返回取消结果；已经发出的请求不保证对方未收到。相关写入应放在同一个 `sqlite.transaction` 中，中断后数据仍保持一致。
+Provider 用户取消先按[任务阶段](providers.md#错误与取消)判断：视频 submitting、音频首次回执前及已有输出的保存阶段拒绝取消，超时和应用关闭仍可中断执行。共享查询运行时优先终止本次调用，无法收尾时重置引擎，可能影响其他查询。
+
+隔离运行时的取消和超时直接关闭运行时：未完成的 Host 调用不再返回，插件代码不再继续执行，处理函数不需要也无法轮询取消状态。Agent 取消工具调用时，Host 中止该次执行发起的网络请求，并按现有约定返回取消结果；已经发出的请求不保证对方未收到。相关写入应放在同一个 `sqlite.transaction` 中，中断后数据仍保持一致。
 
 ## 插件上下文 API
 
-插件可见的 TypeScript 类型随 `plugins/sdk` 提供。[`plugins/sdk/index.d.ts`](../../../plugins/sdk/index.d.ts) 的声明与注释是插件与 Host 之间唯一的接口合同，字段、取值范围、时间限制和错误码以它为准，本文不重复字段列表；`plugins/sdk/index.js` 提供运行时的 `PluginError`，`plugins/sdk/ui.d.ts` 提供 TSX 页面的 `PageContext`（`ViewContext` 加 `root`、`environment`）。
+插件可见的 TypeScript 类型随 `plugins/sdk` 提供。[`plugins/sdk/index.d.ts`](../../../plugins/sdk/index.d.ts) 的声明与注释是已交付接口的唯一合同，字段、取值范围、时间限制和错误码以它为准，本文不重复字段列表；`plugins/sdk/index.js` 提供运行时的 `PluginError`，`plugins/sdk/ui.d.ts` 提供 TSX 页面的 `PageContext`（`ViewContext` 加 `root`、`environment`）。[Provider 扩展](providers.md) 同步已实现合同，聊天与 OAuth 保留为后续设计。
 
 上下文按阶段划分，每个处理函数只拿到本阶段可用的能力：
 
@@ -288,7 +296,7 @@ Host 激活插件
 - 非 2xx 状态码正常返回，由插件判断；只有请求本身失败才抛错。
 - `text` 响应的解码沿用现有 Web 工具的规则：响应头声明了 charset 时按声明解码，否则优先按 UTF-8 解码，失败时按 Latin-1。
 - 响应体超过 `maxBytes` 时中止读取并抛错，不返回截断内容。
-- 与现有 Web 工具一致，直接连接，不使用 AI 供应商上的代理配置。
+- 当前普通插件 HTTP 与现有 Web 工具一致，直接连接，不使用 AI 供应商上的代理配置。Provider 扩展的 ProviderContext 按供应商实例使用代理，文件传输也使用同一配置，详见 [Provider 上下文](providers.md#providercontext)。
 - 未设置 `User-Agent` 时，Host 使用现有 Web 工具的桌面浏览器 UA。
 - `timeoutMs` 默认 20000、最大 60000；`maxBytes` 默认且最大 5 MB；`responseType` 默认 `text`；响应头名称统一为小写。
 - `http.fetch(url, init)` 以 `{...init, url}` 发给 Host，`init` 中的字段不能覆盖 `url`。
