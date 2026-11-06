@@ -16,9 +16,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:tray_manager/tray_manager.dart';
+import 'package:tray_manager/tray_manager.dart' as tray;
 
 import '../components/dialog_feedback.dart';
 import '../database/app_database.dart';
@@ -38,7 +37,7 @@ import '../components/reveric_button.dart';
 
 final _log = AppLogger.forModule('SystemTray');
 
-class SystemTrayService with TrayListener {
+class SystemTrayService {
   final List<Future<bool> Function()> _exitGuards = [];
   VoidCallback registerExitGuard(Future<bool> Function() guard) {
     _exitGuards.add(guard);
@@ -54,56 +53,116 @@ class SystemTrayService with TrayListener {
 
   static final SystemTrayService _instance = SystemTrayService._internal();
   factory SystemTrayService() => _instance;
-  SystemTrayService._internal() {
-    trayManager.addListener(this);
-  }
+  SystemTrayService._internal();
+
+  @visibleForTesting
+  SystemTrayService.forTesting(this._trayIcon);
+
+  tray.TrayIcon? _trayIcon;
+  tray.Image? _icon;
+  tray.Menu? _menu;
+  tray.ListenerId? _trayListener;
+  final _menuItems = <(tray.MenuItem, tray.ListenerId)>[];
 
   GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   bool _initialized = false;
 
   Future<void> init() async {
-    if (_initialized) return;
+    if (_initialized) {
+      return;
+    }
 
     try {
-      await trayManager.setIcon(_iconPath, isTemplate: true);
-      await _setToolTip('Reveric');
-      await _updateMenu();
+      final icon = tray.ImageAsset.fromAsset(_iconPath);
+      if (icon == null) {
+        throw StateError('Unable to load tray icon: $_iconPath');
+      }
+      _icon = icon;
+      final trayIcon = tray.TrayIcon.create();
+      if (trayIcon == null) {
+        throw StateError('Unable to create tray icon');
+      }
+      _trayIcon = trayIcon;
+      trayIcon
+        ..isIconTemplate = true
+        ..icon = icon
+        ..setTooltip('Reveric');
+      _trayListener = trayIcon.addListener((event) async {
+        if (event is tray.TrayIconClickedEvent) {
+          await showMainWindow();
+        }
+      });
+      _updateMenu(trayIcon);
+      if (!trayIcon.setVisible(true)) {
+        throw StateError('Unable to show tray icon');
+      }
 
       await windowManager.setPreventClose(true);
       windowManager.addListener(_WindowCloseListener());
 
       _initialized = true;
       _log.info('System tray initialized');
-    } catch (e) {
-      _log.warning('Failed to initialize system tray: $e');
+    } catch (error, stackTrace) {
+      _disposeTray();
+      _log.warning('Failed to initialize system tray: $error\n$stackTrace');
     }
   }
 
-  /// Linux 端的 tray_manager 没有实现 setToolTip：原生方法返回
-  /// not_implemented，Dart 侧抛 MissingPluginException。托盘悬停提示不是必需
-  /// 能力，但异常不能继续冒泡 —— 它会把后面的关闭到托盘注册一起吞掉。
-  Future<void> _setToolTip(String tooltip) async {
-    try {
-      await trayManager.setToolTip(tooltip);
-    } on MissingPluginException catch (error) {
-      _log.warning('tray setToolTip unsupported: $error');
+  void _updateMenu(tray.TrayIcon trayIcon) {
+    final menu = tray.Menu.create();
+    if (menu == null) {
+      throw StateError('Unable to create tray menu');
     }
+    _menu = menu;
+
+    void addItem(String label, Future<void> Function() action) {
+      final item = tray.MenuItem.createWithLabelAndType(
+        label,
+        tray.MenuItemType.normal,
+      );
+      if (item == null) {
+        throw StateError('Unable to create tray menu item: $label');
+      }
+      final listener = item.addListener((event) async {
+        if (event is tray.MenuItemClickedEvent) {
+          await action();
+        }
+      });
+      _menuItems.add((item, listener));
+      menu.addItem(item);
+    }
+
+    addItem('新建小说', _newNovel);
+    addItem('关于 Reveric', _about);
+    menu.addSeparator();
+    addItem('隐藏', _hideWindow);
+    addItem('显示', showMainWindow);
+    menu.addSeparator();
+    addItem('退出', _quit);
+    trayIcon
+      ..setContextMenu(menu)
+      ..setContextMenuTrigger(tray.ContextMenuTrigger.rightClicked);
   }
 
-  Future<void> _updateMenu() async {
-    final menu = Menu(
-      items: [
-        MenuItem(key: 'newNovel', label: '新建小说'),
-        MenuItem(key: 'about', label: '关于 Reveric'),
-        MenuItem.separator(),
-        MenuItem(key: 'hide', label: '隐藏'),
-        MenuItem(key: 'show', label: '显示'),
-        MenuItem.separator(),
-        MenuItem(key: 'quit', label: '退出'),
-      ],
-    );
-    await trayManager.setContextMenu(menu);
+  void _disposeTray() {
+    final trayIcon = _trayIcon;
+    final listener = _trayListener;
+    if (trayIcon != null && listener != null) {
+      trayIcon.removeListener(listener);
+    }
+    _trayListener = null;
+    for (final (item, listener) in _menuItems) {
+      item.removeListener(listener);
+      item.dispose();
+    }
+    _menuItems.clear();
+    trayIcon?.dispose();
+    _trayIcon = null;
+    _menu?.dispose();
+    _menu = null;
+    _icon?.dispose();
+    _icon = null;
   }
 
   /// 唤起主窗口：托盘点击、托盘菜单与第二实例激活请求共用。
@@ -111,13 +170,18 @@ class SystemTrayService with TrayListener {
     _log.checkpoint('showing main window (native)');
     await windowManager.show();
     await windowManager.focus();
-    if (!await windowManager.isVisible() || await windowManager.isMinimized()) {
+    final visible = await windowManager.isVisible();
+    final minimized = await windowManager.isMinimized();
+    _log.checkpoint(
+      'main window activation result visible=$visible minimized=$minimized',
+    );
+    if (!visible || minimized) {
       throw StateError('Window did not become visible after activation');
     }
     _log.checkpoint('main window activation verified (native)');
   }
 
-  void _hideWindow() async {
+  Future<void> _hideWindow() async {
     _log.checkpoint('hiding main window (native)');
     await windowManager.hide();
   }
@@ -207,25 +271,42 @@ class SystemTrayService with TrayListener {
   }
 
   Future<void> _quit() async {
-    await showMainWindow();
+    var phase = 'activate_window';
+    _log.checkpoint('tray quit selected');
+    try {
+      await showMainWindow();
 
-    final ctx = navigatorKey.currentState?.context;
-    if (ctx == null || !ctx.mounted) {
-      await _exitApplication();
-      return;
-    }
+      final ctx = navigatorKey.currentState?.context;
+      if (ctx == null || !ctx.mounted) {
+        phase = 'exit_without_navigator';
+        _log.checkpoint('tray quit without mounted navigator');
+        await _exitApplication();
+        return;
+      }
 
-    final confirmed = await showConfirmDialog(
-      ctx,
-      title: '确认退出',
-      message: '确定要退出吗？',
-      confirmLabel: '退出',
-      cancelLabel: '取消',
-      variant: ConfirmDialogVariant.warning,
-    );
+      phase = 'confirm_exit';
+      _log.checkpoint('tray quit opening confirmation');
+      final confirmed = await showConfirmDialog(
+        ctx,
+        title: '确认退出',
+        message: '确定要退出吗？',
+        confirmLabel: '退出',
+        cancelLabel: '取消',
+        variant: ConfirmDialogVariant.warning,
+      );
+      _log.checkpoint('tray quit confirmation result=$confirmed');
 
-    if (confirmed == true) {
-      await _exitApplication();
+      if (confirmed == true) {
+        phase = 'exit_application';
+        await _exitApplication();
+      }
+    } catch (error, stackTrace) {
+      _log.error(
+        'Tray quit failed phase=$phase',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
     }
   }
 
@@ -235,10 +316,16 @@ class SystemTrayService with TrayListener {
     Future<void> Function()? cleanExit,
     StartupFailureReporter? failureReporter,
   }) async {
-    for (final guard in List<Future<bool> Function()>.of(
-      _exitGuards.reversed,
-    )) {
-      if (!await guard()) {
+    final guards = List<Future<bool> Function()>.of(_exitGuards.reversed);
+    for (var index = 0; index < guards.length; index++) {
+      _log.checkpoint(
+        'tray exit guard started index=$index count=${guards.length}',
+      );
+      final allowed = await guards[index]();
+      _log.checkpoint(
+        'tray exit guard completed index=$index allowed=$allowed',
+      );
+      if (!allowed) {
         return;
       }
     }
@@ -324,14 +411,13 @@ class SystemTrayService with TrayListener {
       }
     }
 
-    // The tray plugin is native cleanup only; do not let its MethodChannel
-    // reply prevent the process termination path on Windows.
+    // The native API releases its handles synchronously; no channel reply is needed.
     _log.info('[EXIT] destroying tray');
-    unawaited(
-      trayManager.destroy().catchError((error, stackTrace) {
-        _log.warning('tray destroy failed error=$error\n$stackTrace');
-      }),
-    );
+    try {
+      _disposeTray();
+    } catch (error, stackTrace) {
+      _log.warning('tray dispose failed error=$error\n$stackTrace');
+    }
     // close() only posts the native close request. Awaiting its MethodChannel
     // reply can strand exit if native window teardown stops the host loop.
     unawaited(
@@ -356,32 +442,6 @@ class SystemTrayService with TrayListener {
       cleanExit: cleanExit,
       failureReporter: failureReporter,
     );
-  }
-
-  @override
-  void onTrayIconMouseDown() {
-    showMainWindow();
-  }
-
-  @override
-  void onTrayIconRightMouseDown() {
-    trayManager.popUpContextMenu();
-  }
-
-  @override
-  void onTrayMenuItemClick(MenuItem menuItem) {
-    switch (menuItem.key) {
-      case 'newNovel':
-        _newNovel();
-      case 'about':
-        _about();
-      case 'hide':
-        _hideWindow();
-      case 'show':
-        showMainWindow();
-      case 'quit':
-        _quit();
-    }
   }
 }
 

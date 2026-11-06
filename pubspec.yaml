@@ -63,7 +63,7 @@ dependencies:
   collection: ^1.19.0
   easy_localization: ^3.0.8
   window_manager: ^0.5.1
-  tray_manager: ^0.5.3
+  tray_manager: ^0.8.3
   flutter_local_notifications: ^22.3.0
   shared_preferences: ^2.5.3
   sqlite3: ^3.7.0
@@ -145,6 +145,18 @@ dev_dependencies:
   native_toolchain_rust: ^1.0.7
 
 dependency_overrides:
+  # Separate the standalone runner's experimental isolate API from Flutter imports.
+  # https://github.com/libnativeapi/nativeapi/issues/22
+  nativeapi:
+    git:
+      url: https://github.com/libnativeapi/nativeapi.git
+      ref: 1c56c2b691e7535ccc959230a81cf4026b59a0c7
+      path: bindings/dart/nativeapi
+  nativeapi_flutter:
+    git:
+      url: https://github.com/libnativeapi/nativeapi.git
+      ref: 1c56c2b691e7535ccc959230a81cf4026b59a0c7
+      path: bindings/dart/nativeapi_flutter
   mcp_dart:
     path: third/mcp_dart
   irondash_engine_context:

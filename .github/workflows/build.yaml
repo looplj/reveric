@@ -332,7 +332,7 @@ jobs:
           sudo apt-get install -y \
             clang cmake ninja-build pkg-config \
             libgtk-3-dev liblzma-dev libstdc++-12-dev \
-            libayatana-appindicator3-dev \
+            libx11-dev libxi-dev \
             xz-utils
       - run: dart pub global activate fastforge ${{ env.FASTFORGE_VERSION }}
       - name: Update pubspec version from tag
@@ -401,6 +401,30 @@ jobs:
       - run: flutter pub get
       - name: Build archive
         run: fastforge release --name release --jobs linux-zip --skip-clean
+      - name: Report native hook inputs modified during build
+        if: always()
+        shell: bash
+        run: |
+          python3 << 'EOF'
+          import json
+          from pathlib import Path
+
+          # hooks_runner records hash=1 for inputs modified after the hook started.
+          cache = Path('.dart_tool/hooks_runner')
+          manifests = sorted(cache.glob('*/*/*dependencies_hash_file.json'))
+          changed = 0
+          for manifest in manifests:
+              data = json.loads(manifest.read_text(encoding='utf-8'))
+              for entry in data.get('file_system', []):
+                  if entry.get('hash') == 1:
+                      changed += 1
+                      print(
+                          f"hook={manifest.parent.parent.name} "
+                          f"phase={manifest.name} input={entry['path']}"
+                      )
+          print(f"Inspected {len(manifests)} hook hash manifests; "
+                f"{changed} inputs modified during build.")
+          EOF
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}

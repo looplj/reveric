@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:reveric/shared/services/system_tray_service.dart';
 import 'package:reveric/shared/logger/startup_failure_reporter.dart';
 
@@ -13,16 +14,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const windowManagerChannel = MethodChannel('window_manager');
-  const trayManagerChannel = MethodChannel('tray_manager');
   final calls = <String>[];
   Completer<Object?>? pendingWindowClose;
-  Completer<Object?>? pendingTrayDestroy;
   var windowVisible = true;
 
   setUp(() {
     calls.clear();
     pendingWindowClose = null;
-    pendingTrayDestroy = null;
     windowVisible = true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(windowManagerChannel, (call) async {
@@ -38,21 +36,11 @@ void main() {
           }
           return true;
         });
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(trayManagerChannel, (call) async {
-          calls.add('tray.${call.method}');
-          if (call.method == 'destroy' && pendingTrayDestroy != null) {
-            return pendingTrayDestroy!.future;
-          }
-          return true;
-        });
   });
 
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(windowManagerChannel, null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(trayManagerChannel, null);
   });
 
   test('exit guard cancels shutdown until its owner unregisters', () async {
@@ -73,13 +61,29 @@ void main() {
       (code) => calls.add('exit.$code'),
     );
 
-    expect(calls, <String>[
+    expect(calls, <String>['window.setPreventClose', 'window.close', 'exit.0']);
+    expect(calls, isNot(contains('window.destroy')));
+  });
+
+  test('exit disposes the native tray before closing the window', () async {
+    final service = SystemTrayService.forTesting(
+      _TrayIcon(() => calls.add('tray.dispose')),
+    );
+    await service.exitApplicationForTesting((code) => calls.add('exit.$code'));
+    expect(calls, [
       'window.setPreventClose',
-      'tray.destroy',
+      'tray.dispose',
       'window.close',
       'exit.0',
     ]);
-    expect(calls, isNot(contains('window.destroy')));
+  });
+
+  test('native tray disposal failure does not prevent termination', () async {
+    final service = SystemTrayService.forTesting(
+      _TrayIcon(() => throw StateError('native disposal failed')),
+    );
+    await service.exitApplicationForTesting((code) => calls.add('exit.$code'));
+    expect(calls, containsAllInOrder(['window.close', 'exit.0']));
   });
 
   test('window activation must verify the native visibility result', () async {
@@ -116,48 +120,7 @@ void main() {
         .exitApplicationForTesting((code) => calls.add('exit.$code'))
         .timeout(const Duration(milliseconds: 100));
 
-    expect(calls, <String>[
-      'window.setPreventClose',
-      'tray.destroy',
-      'window.close',
-      'exit.0',
-    ]);
-  });
-
-  test('tray exit does not wait for the native destroy reply', () async {
-    pendingTrayDestroy = Completer<Object?>();
-
-    await SystemTrayService()
-        .exitApplicationForTesting((code) => calls.add('exit.$code'))
-        .timeout(const Duration(milliseconds: 100));
-
-    expect(calls, <String>[
-      'window.setPreventClose',
-      'tray.destroy',
-      'window.close',
-      'exit.0',
-    ]);
-  });
-
-  test('init keeps close-to-tray when the platform lacks setToolTip', () async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(trayManagerChannel, (call) async {
-          calls.add('tray.${call.method}');
-          if (call.method == 'setToolTip') {
-            throw MissingPluginException(
-              'No implementation found for method setToolTip',
-            );
-          }
-          return true;
-        });
-
-    await SystemTrayService().init();
-
-    expect(calls, contains('tray.setToolTip'));
-    expect(
-      calls,
-      containsAllInOrder(['tray.setIcon', 'window.setPreventClose']),
-    );
+    expect(calls, <String>['window.setPreventClose', 'window.close', 'exit.0']);
   });
 
   test(
@@ -190,4 +153,16 @@ class _Reporter extends StartupFailureReporter {
   }) async {
     calls.add('report:$phase:$reason');
   }
+}
+
+class _TrayIcon implements tray.TrayIcon {
+  _TrayIcon(this.onDispose);
+
+  final void Function() onDispose;
+
+  @override
+  void dispose() => onDispose();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -272,6 +272,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.1.3"
+  cnativeapi:
+    dependency: transitive
+    description:
+      name: cnativeapi
+      sha256: c43703998995e132b0656d2b8a95ed2bedc6b22ccee2c827bcdc075e0330e319
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.5.10"
   code_assets:
     dependency: transitive
     description:
@@ -1162,14 +1170,6 @@ packages:
       relative: true
     source: path
     version: "2.4.3"
-  menu_base:
-    dependency: transitive
-    description:
-      name: menu_base
-      sha256: "820368014a171bd1241030278e6c2617354f492f5c703d7b7d4570a6b8b84405"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.1.1"
   meta:
     dependency: "direct main"
     description:
@@ -1226,6 +1226,24 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.0.7"
+  nativeapi:
+    dependency: "direct overridden"
+    description:
+      path: "bindings/dart/nativeapi"
+      ref: "1c56c2b691e7535ccc959230a81cf4026b59a0c7"
+      resolved-ref: "1c56c2b691e7535ccc959230a81cf4026b59a0c7"
+      url: "https://github.com/libnativeapi/nativeapi.git"
+    source: git
+    version: "0.5.10"
+  nativeapi_flutter:
+    dependency: "direct overridden"
+    description:
+      path: "bindings/dart/nativeapi_flutter"
+      ref: "1c56c2b691e7535ccc959230a81cf4026b59a0c7"
+      resolved-ref: "1c56c2b691e7535ccc959230a81cf4026b59a0c7"
+      url: "https://github.com/libnativeapi/nativeapi.git"
+    source: git
+    version: "0.5.10"
   nested:
     dependency: transitive
     description:
@@ -1730,14 +1748,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "3.0.0"
-  shortid:
-    dependency: transitive
-    description:
-      name: shortid
-      sha256: d0b40e3dbb50497dad107e19c54ca7de0d1a274eb9b4404991e443dadb9ebedb
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.1.2"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -1963,10 +1973,10 @@ packages:
     dependency: "direct main"
     description:
       name: tray_manager
-      sha256: "1a659b08baa6e9b91ef8ce16eda37740de398be1c4cf322b8a1ddfef25c68c5a"
+      sha256: "30c67f4f27a9b2ad56606b369b75256fd9ef25851b66788597d4df3fbbfa536a"
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "0.5.3"
+    version: "0.8.3"
   tuple:
     dependency: transitive
     description:
@@ -2230,5 +2240,5 @@ packages:
     source: hosted
     version: "2.2.4"
 sdks:
-  dart: ">=3.13.0-0 <4.0.0"
+  dart: ">=3.13.0 <4.0.0"
   flutter: ">=3.47.0"
