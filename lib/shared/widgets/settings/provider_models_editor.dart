@@ -7,8 +7,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/hooks.md
@@ -96,7 +96,7 @@ class ProviderModelsEditor extends HookWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: RevericSpacing.sm),
                   child: Text(
-                    context.t(LocaleKeys.settingsProviderNoModelsYet),
+                    context.t(LocaleKeys.providerNoModelsYet),
                     style: typo.uiSmall.copyWith(color: colors.textMuted),
                   ),
                 ),

@@ -6,7 +6,9 @@
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -51,13 +53,11 @@ class SpawnAgentToolCardBody extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (task.isNotEmpty)
-          AiToolKeyValueList(
-            entries: [(context.t(LocaleKeys.aiToolTask), task)],
-          ),
+          AiToolKeyValueList(entries: [(context.t(LocaleKeys.toolTask), task)]),
         if (output.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolExecutionResult),
+            label: context.t(LocaleKeys.toolExecutionResult),
             text: output,
             maxLines: 6,
           ),
@@ -180,7 +180,7 @@ class SpawnAgentDetailButton extends ConsumerWidget {
   String _agentName(BuildContext context) {
     final identity = spawnAgentIdentity(block);
     final name = identity.penName ?? identity.typeName;
-    return name.isEmpty ? context.t(LocaleKeys.aiToolNameSpawnAgent) : name;
+    return name.isEmpty ? context.t(LocaleKeys.toolNameSpawnAgent) : name;
   }
 
   AgentRunState _toRunState({

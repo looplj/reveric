@@ -21,7 +21,9 @@
 //   lib/shared/providers/ai_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 //   assets/translations/en/mobile.json
 //   assets/translations/zh-CN/mobile.json
 // 遵循的 Rules:
@@ -138,7 +140,7 @@ class SettingsPage extends HookConsumerWidget {
   );
   static const _providersItem = _SettingsNavItem(
     id: 'providers',
-    labelKey: LocaleKeys.settingsProviders,
+    labelKey: LocaleKeys.providerTitle,
     icon: RevericIcons.hub_outlined,
   );
   static const _aiAgentsItem = _SettingsNavItem(
@@ -262,7 +264,7 @@ class SettingsPage extends HookConsumerWidget {
         ? null
         : '${settings.readingFontFamily} · ${settings.readingFontSize}px';
     final providersValue = context.t(
-      LocaleKeys.settingsProvidersSummary,
+      LocaleKeys.providerSummary,
       namedArgs: {
         'total': '${aiSettings.providers.length}',
         'connected': '${aiSettings.enabledConfigs.length}',

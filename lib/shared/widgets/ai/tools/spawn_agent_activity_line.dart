@@ -7,7 +7,9 @@
 //   lib/shared/services/ai/tool_result_payloads.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/i18n.md
@@ -68,7 +70,7 @@ class SpawnAgentActivityLine extends ConsumerWidget {
         ? context.t(LocaleKeys.aiBackgroundNotRunning)
         : isActive
         ? (_liveText(context, ref, liveRun) ??
-              context.t(LocaleKeys.aiToolRunning))
+              context.t(LocaleKeys.toolRunning))
         : _settledText(context);
     if (text.isEmpty) {
       return const SizedBox.shrink();
@@ -151,7 +153,7 @@ class SpawnAgentActivityLine extends ConsumerWidget {
   String _settledText(BuildContext context) {
     if (block.status == AiToolCallStatus.cancelled ||
         block.result?['cancelled'] == true) {
-      return context.t(LocaleKeys.aiToolCancelled);
+      return context.t(LocaleKeys.toolCancelled);
     }
     final error =
         block.errorMessage?.trim() ??

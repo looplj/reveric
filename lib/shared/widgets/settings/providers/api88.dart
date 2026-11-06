@@ -4,8 +4,8 @@
 //   lib/shared/widgets/settings/provider_overview.dart
 //   lib/shared/models/provider_brand.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/i18n.md
@@ -36,7 +36,7 @@ const api88Showcase = ProviderShowcase(
 Widget _buildCard(BuildContext context) => const _Api88Card();
 
 String _listTagline(BuildContext context) =>
-    context.t(LocaleKeys.settingsProviderApi88ListTagline);
+    context.t(LocaleKeys.providerApi88ListTagline);
 
 class _Api88Card extends StatelessWidget {
   const _Api88Card();
@@ -65,70 +65,62 @@ class _Api88Card extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      context.t(LocaleKeys.settingsProviderApi88Category),
+                      context.t(LocaleKeys.providerApi88Category),
                       style: typo.uiTiny.copyWith(color: colors.textMuted),
                     ),
                   ),
                   RevericBadge(
-                    label: context.t(LocaleKeys.settingsProviderSponsoredBadge),
+                    label: context.t(LocaleKeys.providerSponsoredBadge),
                     color: colors.textMuted,
                   ),
                 ],
               ),
               const SizedBox(height: RevericSpacing.lg),
               Text(
-                context.t(LocaleKeys.settingsProviderApi88Title),
+                context.t(LocaleKeys.providerApi88Title),
                 style: typo.heading2.copyWith(color: colors.textPrimary),
               ),
               const SizedBox(height: RevericSpacing.sm),
               Text(
-                context.t(LocaleKeys.settingsProviderApi88Summary),
+                context.t(LocaleKeys.providerApi88Summary),
                 style: typo.uiSmall.copyWith(color: colors.textSecondary),
               ),
               divider,
               _ModelPrice(
                 wide: wide,
                 name: 'Nano Banana 2',
-                description: context.t(
-                  LocaleKeys.settingsProviderApi88ImageDetail,
-                ),
+                description: context.t(LocaleKeys.providerApi88ImageDetail),
                 price: _imagePrice,
-                unit: context.t(LocaleKeys.settingsProviderApi88ImageUnit),
+                unit: context.t(LocaleKeys.providerApi88ImageUnit),
               ),
               const SizedBox(height: RevericSpacing.x3l),
               _ModelPrice(
                 wide: wide,
                 name: 'Seedance 2.0 Fast',
-                description: context.t(
-                  LocaleKeys.settingsProviderApi88VideoDetail,
-                ),
+                description: context.t(LocaleKeys.providerApi88VideoDetail),
                 price: _videoPrice,
-                unit: context.t(LocaleKeys.settingsProviderApi88VideoUnit),
+                unit: context.t(LocaleKeys.providerApi88VideoUnit),
               ),
               const SizedBox(height: RevericSpacing.x3l),
               _ModelPrice(
                 wide: wide,
                 name: 'DeepSeek V4.1 Flash',
-                badge: context.t(
-                  LocaleKeys.settingsProviderApi88DeepseekDiscount,
-                ),
-                description: context.t(
-                  LocaleKeys.settingsProviderApi88DeepseekDetail,
-                ),
+                badge: context.t(LocaleKeys.providerApi88DeepseekDiscount),
+                description: context.t(LocaleKeys.providerApi88DeepseekDetail),
                 price: _deepseekPrice,
-                unit: context.t(LocaleKeys.settingsProviderApi88TokensUnit),
+                unit: context.t(LocaleKeys.providerApi88TokensUnit),
               ),
               divider,
               _pair(
                 wide: wide,
                 first: _Capability(
                   icon: RevericIcons.pencil_simple,
-                  title: context.t(LocaleKeys.settingsProviderApi88ChatModels),
+                  title: context.t(LocaleKeys.providerApi88ChatModels),
                   models: 'GPT · Claude · Gemini · DeepSeek',
                 ),
                 second: _Capability(
                   icon: RevericIcons.microphone,
-                  title: context.t(LocaleKeys.settingsProviderApi88VoiceModels),
+                  title: context.t(LocaleKeys.providerApi88VoiceModels),
                   models: 'Gemini TTS · Grok TTS',
                 ),
               ),
@@ -139,7 +131,7 @@ class _Api88Card extends StatelessWidget {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   RevericButton.primary(
-                    label: context.t(LocaleKeys.settingsProviderApi88Link),
+                    label: context.t(LocaleKeys.providerApi88Link),
                     icon: RevericIcons.arrow_square_out,
                     onPressed: () => openProviderChannelUrl(
                       context,
@@ -147,9 +139,7 @@ class _Api88Card extends StatelessWidget {
                     ),
                   ),
                   RevericButton.text(
-                    label: context.t(
-                      LocaleKeys.settingsProviderApi88PricingLink,
-                    ),
+                    label: context.t(LocaleKeys.providerApi88PricingLink),
                     onPressed: () =>
                         openProviderChannelUrl(context, _pricingUrl),
                   ),
@@ -157,7 +147,7 @@ class _Api88Card extends StatelessWidget {
               ),
               const SizedBox(height: RevericSpacing.lg),
               Text(
-                context.t(LocaleKeys.settingsProviderApi88PricingNote),
+                context.t(LocaleKeys.providerApi88PricingNote),
                 style: typo.uiTiny.copyWith(color: colors.textMuted),
               ),
             ],

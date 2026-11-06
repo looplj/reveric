@@ -5,8 +5,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../models/ai_message_block.dart';
@@ -49,7 +49,7 @@ class McpToolCardBody extends StatelessWidget {
           Text(context.t(LocaleKeys.settingsMcpError), style: typo.ui),
         if (result?['ok'] != false && (texts.isNotEmpty || structured != null))
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: texts.isNotEmpty ? texts : jsonEncode(structured),
             maxLines: 8,
             monospace: texts.isEmpty,
@@ -59,7 +59,7 @@ class McpToolCardBody extends StatelessWidget {
             !result.containsKey('mcp_progress') &&
             result['ok'] != false)
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: jsonEncode(result),
             maxLines: 8,
             monospace: true,

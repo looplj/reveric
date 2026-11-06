@@ -387,7 +387,7 @@
   "workspace.compendium_select_to_edit": "Select an entry from the compendium on the left to start editing.",
   "workspace.compendium_create_first": "Create the first compendium entry.",
   "workspace.new_compendium_entry": "New Compendium Entry",
-  "workspace.sidebar_entity_graph": "Relationship Graph",
+  "workspace.sidebar_entity_graph": "Graph",
   "workspace.story_progress": "Story Progress",
   "workspace.story_progress_empty": "No story state snapshot yet",
   "workspace.story_progress_empty_hint": "Once you publish a chapter and let the chronicler process it, this panel summarizes character states, information boundaries, active foreshadowing, and the tension arc.",
@@ -402,5 +402,10 @@
   "workspace.sidebar_outline": "Outline",
   "workspace.sidebar_foreshadowing": "Foreshadowing",
   "workspace.sidebar_map": "Map",
-  "workspace.sidebar_assets": "Assets"
+  "workspace.sidebar_assets": "Assets",
+  "workspace.sidebar_story_progress": "Progress",
+  "workspace.sidebar_agent_rules": "Rules",
+  "workspace.sidebar_council": "Round Table",
+  "workspace.sidebar_theater": "Theater",
+  "workspace.sidebar_roleplay": "Roleplay"
 }

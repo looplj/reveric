@@ -6,7 +6,9 @@
 //   lib/shared/widgets/ai/tools/spawn_agent_tool_card_body.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -592,7 +594,7 @@ class _ReceiptRow extends StatelessWidget {
     final typo = RevericTheme.typographyOf(context);
     final (label, color) = switch (receipt) {
       _BackgroundReceipt(cancelled: true) => (
-        context.t(LocaleKeys.aiToolCancelled),
+        context.t(LocaleKeys.toolCancelled),
         colors.textMuted,
       ),
       _BackgroundReceipt(failed: true) => (

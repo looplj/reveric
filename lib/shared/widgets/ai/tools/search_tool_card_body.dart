@@ -26,7 +26,7 @@ class SearchToolCardBody extends StatelessWidget {
       if (query.isNotEmpty) query,
       if (matches.isNotEmpty)
         context.t(
-          LocaleKeys.aiToolMatchesCountFmt,
+          LocaleKeys.toolMatchesCountFmt,
           namedArgs: {'count': '${matches.length}'},
         ),
     ];
@@ -49,7 +49,7 @@ class SearchToolCardBody extends StatelessWidget {
         if (preview.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 8,
           ),

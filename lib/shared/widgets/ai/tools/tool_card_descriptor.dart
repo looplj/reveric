@@ -11,9 +11,13 @@
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/history.json
 //   assets/translations/zh-CN/history.json
 //   assets/translations/en/common.json
@@ -43,15 +47,15 @@ String toolActionVerb(BuildContext context, AiToolCallBlock block) {
   }
   final toolName = block.toolName;
   if (isRelationCreateBlock(block)) {
-    return context.t(LocaleKeys.aiToolActionCreatingRelation);
+    return context.t(LocaleKeys.toolActionCreatingRelation);
   }
   final key = switch (toolName) {
-    'Read' => LocaleKeys.aiToolActionReading,
-    'Write' => LocaleKeys.aiToolActionWriting,
-    'Remove' => LocaleKeys.aiToolActionRemoving,
-    'Edit' || 'EditOutline' || 'EditBeat' => LocaleKeys.aiToolActionEditing,
-    'Replace' => LocaleKeys.aiToolActionReplacing,
-    'Search' => LocaleKeys.aiToolActionSearching,
+    'Read' => LocaleKeys.toolActionReading,
+    'Write' => LocaleKeys.toolActionWriting,
+    'Remove' => LocaleKeys.toolActionRemoving,
+    'Edit' || 'EditOutline' || 'EditBeat' => LocaleKeys.toolActionEditing,
+    'Replace' => LocaleKeys.toolActionReplacing,
+    'Search' => LocaleKeys.toolActionSearching,
     'Create' ||
     'CreateChapter' ||
     'CreateCharacter' ||
@@ -59,19 +63,19 @@ String toolActionVerb(BuildContext context, AiToolCallBlock block) {
     'CreateLocation' ||
     'CreateBeat' ||
     'CreateOutline' ||
-    'CreateVolume' => LocaleKeys.aiToolActionCreating,
-    'WebSearch' => LocaleKeys.aiToolActionWebSearching,
-    'WebFetch' => LocaleKeys.aiToolActionWebFetching,
-    'GraphSearch' => LocaleKeys.aiToolActionSearching,
-    'Glob' => LocaleKeys.aiToolActionGlobbing,
-    'Grep' => LocaleKeys.aiToolActionGrepping,
-    'AskUser' => LocaleKeys.aiToolActionAsking,
-    'SpawnAgent' => LocaleKeys.aiToolActionSpawningAgent,
-    'GenerateAvatar' => LocaleKeys.aiToolActionGeneratingAvatar,
-    'GeneratePhoto' => LocaleKeys.aiToolActionGeneratingPhoto,
-    'TodoWrite' => LocaleKeys.aiToolActionUpdatingTasks,
-    'AgentSkill' => LocaleKeys.aiToolActionLoadingSkill,
-    'ForkAgent' => LocaleKeys.aiToolActionForkingAgent,
+    'CreateVolume' => LocaleKeys.toolActionCreating,
+    'WebSearch' => LocaleKeys.toolActionWebSearching,
+    'WebFetch' => LocaleKeys.toolActionWebFetching,
+    'GraphSearch' => LocaleKeys.toolActionSearching,
+    'Glob' => LocaleKeys.toolActionGlobbing,
+    'Grep' => LocaleKeys.toolActionGrepping,
+    'AskUser' => LocaleKeys.toolActionAsking,
+    'SpawnAgent' => LocaleKeys.toolActionSpawningAgent,
+    'GenerateAvatar' => LocaleKeys.toolActionGeneratingAvatar,
+    'GeneratePhoto' => LocaleKeys.toolActionGeneratingPhoto,
+    'TodoWrite' => LocaleKeys.toolActionUpdatingTasks,
+    'AgentSkill' => LocaleKeys.toolActionLoadingSkill,
+    'ForkAgent' => LocaleKeys.toolActionForkingAgent,
     'Run' => _runActionVerbKey(ParsedRunCommand.fromBlock(block)),
     _ => null,
   };
@@ -98,20 +102,20 @@ String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
   }
   return switch (parsed?.topLevel) {
     'settings' => context.t(LocaleKeys.settingsTitle),
-    'assets' => context.t(LocaleKeys.aiToolRunAssets),
-    'mcp' => context.t(LocaleKeys.aiToolRunMcp),
-    'providers' => context.t(LocaleKeys.aiToolRunProviders),
-    'stagings' => context.t(LocaleKeys.aiToolRunDirector),
-    'agent-skills' => context.t(LocaleKeys.aiToolRunAgentSkills),
-    'themes' => context.t(LocaleKeys.aiToolRunThemes),
-    'agent-rules' => context.t(LocaleKeys.aiToolRunAgentRules),
-    'subagents' => context.t(LocaleKeys.aiToolRunSubagents),
-    'sessions' => context.t(LocaleKeys.aiToolRunSessions),
-    'novel' => context.t(LocaleKeys.aiToolRunNovel),
-    'help' => context.t(LocaleKeys.aiToolRunHelp),
-    'map' => context.t(LocaleKeys.aiToolRunMap),
-    'character' || 'item' => context.t(LocaleKeys.aiToolRunImage),
-    'notify' => context.t(LocaleKeys.aiToolRunNotify),
+    'assets' => context.t(LocaleKeys.toolRunAssets),
+    'mcp' => context.t(LocaleKeys.toolRunMcp),
+    'providers' => context.t(LocaleKeys.toolRunProviders),
+    'stagings' => context.t(LocaleKeys.toolRunDirector),
+    'agent-skills' => context.t(LocaleKeys.toolRunAgentSkills),
+    'themes' => context.t(LocaleKeys.toolRunThemes),
+    'agent-rules' => context.t(LocaleKeys.toolRunAgentRules),
+    'subagents' => context.t(LocaleKeys.toolRunSubagents),
+    'sessions' => context.t(LocaleKeys.toolRunSessions),
+    'novel' => context.t(LocaleKeys.toolRunNovel),
+    'help' => context.t(LocaleKeys.toolRunHelp),
+    'map' => context.t(LocaleKeys.toolRunMap),
+    'character' || 'item' => context.t(LocaleKeys.toolRunImage),
+    'notify' => context.t(LocaleKeys.toolRunNotify),
     _ => localizedToolName(context, 'Run'),
   };
 }
@@ -119,108 +123,107 @@ String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
 const _runActionKeys = <(String, String), String>{
   ('settings', 'open'): LocaleKeys.commonOpen,
   ('production', 'capture-panorama'):
-      LocaleKeys.aiToolRunProductionCapturePanorama,
-  ('production', 'derive-view'): LocaleKeys.aiToolRunProductionDeriveView,
-  ('production', 'image-preset'): LocaleKeys.aiToolRunProductionImagePreset,
+      LocaleKeys.toolRunProductionCapturePanorama,
+  ('production', 'derive-view'): LocaleKeys.toolRunProductionDeriveView,
+  ('production', 'image-preset'): LocaleKeys.toolRunProductionImagePreset,
   ('production', 'split-grid'): LocaleKeys.productionGridSplit,
   ('production', 'capture-frame'): LocaleKeys.productionCaptureFrame,
   ('production', 'separate-audio'): LocaleKeys.productionSeparateAudio,
   ('production', 'mute-video'): LocaleKeys.productionMute,
   ('production', 'trim-video'): LocaleKeys.productionTrim,
-  ('files', 'list'): LocaleKeys.aiToolRunFilesList,
-  ('files', 'read-text'): LocaleKeys.aiToolRunFilesReadText,
-  ('files', 'view-image'): LocaleKeys.aiToolRunViewImage,
-  ('files', 'read-video-metadata'): LocaleKeys.aiToolRunFilesReadVideoMetadata,
-  ('files', 'read-audio-metadata'): LocaleKeys.aiToolRunFilesReadAudioMetadata,
+  ('files', 'list'): LocaleKeys.toolRunFilesList,
+  ('files', 'read-text'): LocaleKeys.toolRunFilesReadText,
+  ('files', 'view-image'): LocaleKeys.toolRunViewImage,
+  ('files', 'read-video-metadata'): LocaleKeys.toolRunFilesReadVideoMetadata,
+  ('files', 'read-audio-metadata'): LocaleKeys.toolRunFilesReadAudioMetadata,
   ('files', 'remove'): LocaleKeys.commonDelete,
-  ('editing', 'list'): LocaleKeys.aiToolRunEditingList,
+  ('editing', 'list'): LocaleKeys.toolRunEditingList,
   ('editing', 'create'): LocaleKeys.commonCreate,
-  ('editing', 'read'): LocaleKeys.aiToolRunEditingRead,
-  ('editing', 'apply'): LocaleKeys.aiToolRunEditingApply,
+  ('editing', 'read'): LocaleKeys.toolRunEditingRead,
+  ('editing', 'apply'): LocaleKeys.toolRunEditingApply,
   ('editing', 'undo'): LocaleKeys.commonUndo,
   ('editing', 'redo'): LocaleKeys.commonRedo,
-  ('editing', 'preview'): LocaleKeys.aiToolRunEditingPreview,
+  ('editing', 'preview'): LocaleKeys.toolRunEditingPreview,
   ('editing', 'cleanup'): LocaleKeys.commonDelete,
-  ('editing', 'export'): LocaleKeys.aiToolRunEditingExport,
-  ('operations', 'list'): LocaleKeys.aiToolRunOperationsList,
-  ('operations', 'read'): LocaleKeys.aiToolRunOperationsRead,
-  ('operations', 'wait'): LocaleKeys.aiToolRunOperationsWait,
+  ('editing', 'export'): LocaleKeys.toolRunEditingExport,
+  ('operations', 'list'): LocaleKeys.toolRunOperationsList,
+  ('operations', 'read'): LocaleKeys.toolRunOperationsRead,
+  ('operations', 'wait'): LocaleKeys.toolRunOperationsWait,
   ('operations', 'cancel'): LocaleKeys.commonCancel,
-  ('ffmpeg', 'capabilities'): LocaleKeys.aiToolRunFfmpegCapabilities,
-  ('ffmpeg', 'probe'): LocaleKeys.aiToolRunFfmpegProbe,
-  ('ffmpeg', 'frames'): LocaleKeys.aiToolRunFfmpegFrames,
-  ('ffmpeg', 'execute'): LocaleKeys.aiToolRunFfmpegExecute,
-  ('assets', 'list'): LocaleKeys.aiToolRunAssetsList,
-  ('assets', 'read'): LocaleKeys.aiToolRunAssetsRead,
-  ('assets', 'view-image'): LocaleKeys.aiToolRunViewImage,
-  ('mcp', 'list'): LocaleKeys.aiToolRunMcpList,
-  ('mcp', 'search'): LocaleKeys.aiToolRunMcpSearch,
-  ('mcp', 'describe'): LocaleKeys.aiToolRunMcpDescribe,
-  ('mcp', 'call'): LocaleKeys.aiToolRunMcpCall,
-  ('providers', 'list'): LocaleKeys.aiToolRunProvidersList,
-  ('providers', 'read'): LocaleKeys.aiToolRunProvidersRead,
-  ('providers', 'models'): LocaleKeys.aiToolRunProvidersModels,
-  ('stagings', 'schema'): LocaleKeys.aiToolRunDirectorSchema,
-  ('stagings', 'presets'): LocaleKeys.aiToolRunDirectorPresets,
-  ('stagings', 'sample'): LocaleKeys.aiToolRunDirectorSample,
-  ('stagings', 'list'): LocaleKeys.aiToolRunDirectorList,
-  ('stagings', 'read'): LocaleKeys.aiToolRunDirectorRead,
-  ('stagings', 'create'): LocaleKeys.aiToolRunDirectorCreate,
-  ('stagings', 'apply'): LocaleKeys.aiToolRunDirectorApply,
-  ('stagings', 'write'): LocaleKeys.aiToolRunDirectorApply,
-  ('stagings', 'restore'): LocaleKeys.aiToolRunDirectorRestore,
-  ('stagings', 'remove'): LocaleKeys.aiToolRunDirectorRemove,
-  ('stagings', 'preview'): LocaleKeys.aiToolRunDirectorPreview,
-  ('stagings', 'output'): LocaleKeys.aiToolRunDirectorOutput,
-  ('stagings', 'frames'): LocaleKeys.aiToolRunDirectorFrames,
+  ('ffmpeg', 'capabilities'): LocaleKeys.toolRunFfmpegCapabilities,
+  ('ffmpeg', 'probe'): LocaleKeys.toolRunFfmpegProbe,
+  ('ffmpeg', 'frames'): LocaleKeys.toolRunFfmpegFrames,
+  ('ffmpeg', 'execute'): LocaleKeys.toolRunFfmpegExecute,
+  ('assets', 'list'): LocaleKeys.toolRunAssetsList,
+  ('assets', 'read'): LocaleKeys.toolRunAssetsRead,
+  ('assets', 'view-image'): LocaleKeys.toolRunViewImage,
+  ('mcp', 'list'): LocaleKeys.toolRunMcpList,
+  ('mcp', 'search'): LocaleKeys.toolRunMcpSearch,
+  ('mcp', 'describe'): LocaleKeys.toolRunMcpDescribe,
+  ('mcp', 'call'): LocaleKeys.toolRunMcpCall,
+  ('providers', 'list'): LocaleKeys.toolRunProvidersList,
+  ('providers', 'read'): LocaleKeys.toolRunProvidersRead,
+  ('providers', 'models'): LocaleKeys.toolRunProvidersModels,
+  ('stagings', 'schema'): LocaleKeys.toolRunDirectorSchema,
+  ('stagings', 'presets'): LocaleKeys.toolRunDirectorPresets,
+  ('stagings', 'sample'): LocaleKeys.toolRunDirectorSample,
+  ('stagings', 'list'): LocaleKeys.toolRunDirectorList,
+  ('stagings', 'read'): LocaleKeys.toolRunDirectorRead,
+  ('stagings', 'create'): LocaleKeys.toolRunDirectorCreate,
+  ('stagings', 'apply'): LocaleKeys.toolRunDirectorApply,
+  ('stagings', 'write'): LocaleKeys.toolRunDirectorApply,
+  ('stagings', 'restore'): LocaleKeys.toolRunDirectorRestore,
+  ('stagings', 'remove'): LocaleKeys.toolRunDirectorRemove,
+  ('stagings', 'preview'): LocaleKeys.toolRunDirectorPreview,
+  ('stagings', 'output'): LocaleKeys.toolRunDirectorOutput,
+  ('stagings', 'frames'): LocaleKeys.toolRunDirectorFrames,
 
-  ('themes', 'list'): LocaleKeys.aiToolRunThemesList,
-  ('themes', 'read'): LocaleKeys.aiToolRunThemesRead,
-  ('themes', 'create'): LocaleKeys.aiToolRunThemesCreate,
-  ('themes', 'update'): LocaleKeys.aiToolRunThemesUpdate,
-  ('themes', 'apply'): LocaleKeys.aiToolRunThemesApply,
-  ('themes', 'delete'): LocaleKeys.aiToolRunThemesDelete,
-  ('agent-skills', 'list'): LocaleKeys.aiToolRunAgentSkillsList,
-  ('agent-skills', 'create'): LocaleKeys.aiToolRunAgentSkillsCreate,
-  ('agent-skills', 'update'): LocaleKeys.aiToolRunAgentSkillsUpdate,
-  ('agent-skills', 'delete'): LocaleKeys.aiToolRunAgentSkillsDelete,
-  ('agent-skills', 'search'): LocaleKeys.aiToolRunAgentSkillsSearch,
-  ('agent-skills', 'get'): LocaleKeys.aiToolRunAgentSkillsGet,
-  ('agent-skills', 'install'): LocaleKeys.aiToolRunAgentSkillsInstall,
+  ('themes', 'list'): LocaleKeys.toolRunThemesList,
+  ('themes', 'read'): LocaleKeys.toolRunThemesRead,
+  ('themes', 'create'): LocaleKeys.toolRunThemesCreate,
+  ('themes', 'update'): LocaleKeys.toolRunThemesUpdate,
+  ('themes', 'apply'): LocaleKeys.toolRunThemesApply,
+  ('themes', 'delete'): LocaleKeys.toolRunThemesDelete,
+  ('agent-skills', 'list'): LocaleKeys.toolRunAgentSkillsList,
+  ('agent-skills', 'create'): LocaleKeys.toolRunAgentSkillsCreate,
+  ('agent-skills', 'update'): LocaleKeys.toolRunAgentSkillsUpdate,
+  ('agent-skills', 'delete'): LocaleKeys.toolRunAgentSkillsDelete,
+  ('agent-skills', 'search'): LocaleKeys.toolRunAgentSkillsSearch,
+  ('agent-skills', 'get'): LocaleKeys.toolRunAgentSkillsGet,
+  ('agent-skills', 'install'): LocaleKeys.toolRunAgentSkillsInstall,
   ('agent-skills', 'reference-list'):
-      LocaleKeys.aiToolRunAgentSkillsReferenceList,
-  ('agent-skills', 'reference-get'):
-      LocaleKeys.aiToolRunAgentSkillsReferenceGet,
+      LocaleKeys.toolRunAgentSkillsReferenceList,
+  ('agent-skills', 'reference-get'): LocaleKeys.toolRunAgentSkillsReferenceGet,
   ('agent-skills', 'reference-create'):
-      LocaleKeys.aiToolRunAgentSkillsReferenceCreate,
+      LocaleKeys.toolRunAgentSkillsReferenceCreate,
   ('agent-skills', 'reference-update'):
-      LocaleKeys.aiToolRunAgentSkillsReferenceUpdate,
+      LocaleKeys.toolRunAgentSkillsReferenceUpdate,
   ('agent-skills', 'reference-move'):
-      LocaleKeys.aiToolRunAgentSkillsReferenceMove,
+      LocaleKeys.toolRunAgentSkillsReferenceMove,
   ('agent-skills', 'reference-delete'):
-      LocaleKeys.aiToolRunAgentSkillsReferenceDelete,
-  ('agent-rules', 'list'): LocaleKeys.aiToolRunAgentRulesList,
-  ('agent-rules', 'read'): LocaleKeys.aiToolRunAgentRulesRead,
-  ('agent-rules', 'create'): LocaleKeys.aiToolRunAgentRulesCreate,
-  ('agent-rules', 'update'): LocaleKeys.aiToolRunAgentRulesUpdate,
-  ('agent-rules', 'delete'): LocaleKeys.aiToolRunAgentRulesDelete,
-  ('subagents', 'list'): LocaleKeys.aiToolRunSubagentsList,
-  ('subagents', 'create'): LocaleKeys.aiToolRunSubagentsCreate,
-  ('subagents', 'update'): LocaleKeys.aiToolRunSubagentsUpdate,
-  ('subagents', 'delete'): LocaleKeys.aiToolRunSubagentsDelete,
-  ('sessions', 'search'): LocaleKeys.aiToolRunSessionsSearch,
-  ('sessions', 'list'): LocaleKeys.aiToolRunSessionsList,
-  ('sessions', 'read'): LocaleKeys.aiToolRunSessionsRead,
-  ('sessions', 'get'): LocaleKeys.aiToolRunSessionsGet,
-  ('novel', 'add-to-library'): LocaleKeys.aiToolRunNovelAddToLibrary,
-  ('map', 'draft'): LocaleKeys.aiToolRunMapDraft,
-  ('notify', 'progress'): LocaleKeys.aiToolRunNotifyProgress,
-  ('notify', 'question'): LocaleKeys.aiToolRunNotifyQuestion,
-  ('notify', 'complete'): LocaleKeys.aiToolRunNotifyComplete,
-  ('notify', 'error'): LocaleKeys.aiToolRunNotifyError,
-  ('character', 'generate-avatar'): LocaleKeys.aiToolRunImageCharacterAvatar,
-  ('character', 'generate-photo'): LocaleKeys.aiToolRunImageCharacterPhoto,
-  ('item', 'generate-photo'): LocaleKeys.aiToolRunImageItemPhoto,
+      LocaleKeys.toolRunAgentSkillsReferenceDelete,
+  ('agent-rules', 'list'): LocaleKeys.toolRunAgentRulesList,
+  ('agent-rules', 'read'): LocaleKeys.toolRunAgentRulesRead,
+  ('agent-rules', 'create'): LocaleKeys.toolRunAgentRulesCreate,
+  ('agent-rules', 'update'): LocaleKeys.toolRunAgentRulesUpdate,
+  ('agent-rules', 'delete'): LocaleKeys.toolRunAgentRulesDelete,
+  ('subagents', 'list'): LocaleKeys.toolRunSubagentsList,
+  ('subagents', 'create'): LocaleKeys.toolRunSubagentsCreate,
+  ('subagents', 'update'): LocaleKeys.toolRunSubagentsUpdate,
+  ('subagents', 'delete'): LocaleKeys.toolRunSubagentsDelete,
+  ('sessions', 'search'): LocaleKeys.toolRunSessionsSearch,
+  ('sessions', 'list'): LocaleKeys.toolRunSessionsList,
+  ('sessions', 'read'): LocaleKeys.toolRunSessionsRead,
+  ('sessions', 'get'): LocaleKeys.toolRunSessionsGet,
+  ('novel', 'add-to-library'): LocaleKeys.toolRunNovelAddToLibrary,
+  ('map', 'draft'): LocaleKeys.toolRunMapDraft,
+  ('notify', 'progress'): LocaleKeys.toolRunNotifyProgress,
+  ('notify', 'question'): LocaleKeys.toolRunNotifyQuestion,
+  ('notify', 'complete'): LocaleKeys.toolRunNotifyComplete,
+  ('notify', 'error'): LocaleKeys.toolRunNotifyError,
+  ('character', 'generate-avatar'): LocaleKeys.toolRunImageCharacterAvatar,
+  ('character', 'generate-photo'): LocaleKeys.toolRunImageCharacterPhoto,
+  ('item', 'generate-photo'): LocaleKeys.toolRunImageItemPhoto,
 };
 
 String? localizedRunCommandAction(
@@ -239,47 +242,47 @@ String? _runActionVerbKey(ParsedRunCommand? parsed) {
   if (parsed.topLevel == 'help' ||
       parsed.topLevel == '--help' ||
       parsed.subcommand == '--help') {
-    return LocaleKeys.aiToolRunViewHelp;
+    return LocaleKeys.toolRunViewHelp;
   }
   return _runActionKeys[(parsed.topLevel, parsed.subcommand)];
 }
 
 String localizedToolName(BuildContext context, String toolName) {
   final key = switch (toolName) {
-    'Codemode' => LocaleKeys.aiCodemodeName,
-    'Read' => LocaleKeys.aiToolNameRead,
-    'Write' => LocaleKeys.aiToolNameWrite,
-    'Remove' => LocaleKeys.aiToolNameRemove,
-    'Edit' => LocaleKeys.aiToolNameEdit,
-    'Replace' => LocaleKeys.aiToolNameReplace,
-    'EditOutline' => LocaleKeys.aiToolNameEditOutline,
-    'Search' => LocaleKeys.aiToolNameSearch,
-    'Glob' => LocaleKeys.aiToolNameGlob,
-    'Grep' => LocaleKeys.aiToolNameGrep,
-    'GraphSearch' => LocaleKeys.aiToolNameGraphSearch,
-    'Create' => LocaleKeys.aiToolNameCreate,
-    'CreateChapter' => LocaleKeys.aiToolNameCreateChapter,
-    'CreateOutline' => LocaleKeys.aiToolNameCreateOutline,
-    'CreateBeat' => LocaleKeys.aiToolNameCreateBeat,
-    'EditBeat' => LocaleKeys.aiToolNameEditBeat,
-    'CreateVolume' => LocaleKeys.aiToolNameCreateVolume,
-    'CreateCharacter' => LocaleKeys.aiToolNameCreateCharacter,
-    'CreateForeshadowing' => LocaleKeys.aiToolNameCreateForeshadowing,
-    'CreateLocation' => LocaleKeys.aiToolNameCreateLocation,
-    'GenerateAvatar' => LocaleKeys.aiToolNameGenerateAvatar,
-    'GeneratePhoto' => LocaleKeys.aiToolNameGeneratePhoto,
-    'Run' => LocaleKeys.aiToolNameRun,
-    'WebSearch' => LocaleKeys.aiToolNameWebSearch,
-    'WebFetch' => LocaleKeys.aiToolNameWebFetch,
-    'AskUser' => LocaleKeys.aiToolNameAskUser,
-    'TodoWrite' => LocaleKeys.aiToolNameTodoWrite,
-    'AgentSkill' => LocaleKeys.aiToolNameSkill,
-    'SpawnAgent' => LocaleKeys.aiToolNameSpawnAgent,
-    'SendAgentMessage' => LocaleKeys.aiToolNameSendAgentMessage,
-    'StopAgent' => LocaleKeys.aiToolNameStopAgent,
-    'ForkAgent' => LocaleKeys.aiToolNameForkAgent,
-    'CreateTask' => LocaleKeys.aiToolNameCreateTask,
-    'ListTasks' => LocaleKeys.aiToolNameListTasks,
+    'Codemode' => LocaleKeys.toolNameCodemode,
+    'Read' => LocaleKeys.toolNameRead,
+    'Write' => LocaleKeys.toolNameWrite,
+    'Remove' => LocaleKeys.toolNameRemove,
+    'Edit' => LocaleKeys.toolNameEdit,
+    'Replace' => LocaleKeys.toolNameReplace,
+    'EditOutline' => LocaleKeys.toolNameEditOutline,
+    'Search' => LocaleKeys.toolNameSearch,
+    'Glob' => LocaleKeys.toolNameGlob,
+    'Grep' => LocaleKeys.toolNameGrep,
+    'GraphSearch' => LocaleKeys.toolNameGraphSearch,
+    'Create' => LocaleKeys.toolNameCreate,
+    'CreateChapter' => LocaleKeys.toolNameCreateChapter,
+    'CreateOutline' => LocaleKeys.toolNameCreateOutline,
+    'CreateBeat' => LocaleKeys.toolNameCreateBeat,
+    'EditBeat' => LocaleKeys.toolNameEditBeat,
+    'CreateVolume' => LocaleKeys.toolNameCreateVolume,
+    'CreateCharacter' => LocaleKeys.toolNameCreateCharacter,
+    'CreateForeshadowing' => LocaleKeys.toolNameCreateForeshadowing,
+    'CreateLocation' => LocaleKeys.toolNameCreateLocation,
+    'GenerateAvatar' => LocaleKeys.toolNameGenerateAvatar,
+    'GeneratePhoto' => LocaleKeys.toolNameGeneratePhoto,
+    'Run' => LocaleKeys.toolNameRun,
+    'WebSearch' => LocaleKeys.toolNameWebSearch,
+    'WebFetch' => LocaleKeys.toolNameWebFetch,
+    'AskUser' => LocaleKeys.toolNameAskUser,
+    'TodoWrite' => LocaleKeys.toolNameTodoWrite,
+    'AgentSkill' => LocaleKeys.toolNameSkill,
+    'SpawnAgent' => LocaleKeys.toolNameSpawnAgent,
+    'SendAgentMessage' => LocaleKeys.toolNameSendAgentMessage,
+    'StopAgent' => LocaleKeys.toolNameStopAgent,
+    'ForkAgent' => LocaleKeys.toolNameForkAgent,
+    'CreateTask' => LocaleKeys.toolNameCreateTask,
+    'ListTasks' => LocaleKeys.toolNameListTasks,
     _ => null,
   };
   return key != null ? context.t(key) : toolName;
@@ -557,7 +560,7 @@ String? toolHeaderSubtitle(
       final beatIndex = block.arguments['beat_index'];
       if (outlineTitle.isNotEmpty && beatIndex != null) {
         final beatLabel = context.t(
-          LocaleKeys.aiToolBeatIndexFmt,
+          LocaleKeys.toolBeatIndexFmt,
           namedArgs: {'index': '$beatIndex'},
         );
         return '$verb $beatLabel @ $outlineTitle';
@@ -737,7 +740,7 @@ String? toolRowTarget(
       final beatIndex = block.arguments['beat_index'];
       if (outlineTitle.isNotEmpty && beatIndex != null) {
         final beatLabel = context.t(
-          LocaleKeys.aiToolBeatIndexFmt,
+          LocaleKeys.toolBeatIndexFmt,
           namedArgs: {'index': '$beatIndex'},
         );
         return '$beatLabel @ $outlineTitle';
@@ -831,7 +834,7 @@ String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
       'editor' => LocaleKeys.settingsFonts,
       'reading' => LocaleKeys.settingsReading,
       'ai_agents' => LocaleKeys.settingsAiAgents,
-      'providers' => LocaleKeys.settingsProviders,
+      'providers' => LocaleKeys.providerTitle,
       'usage' => LocaleKeys.settingsUsage,
       'mcp' => LocaleKeys.settingsMcp,
       'plugins' => LocaleKeys.settingsPlugins,
@@ -859,7 +862,7 @@ String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
     final entries = block.result?['entries'];
     if (entries is List) {
       return context.t(
-        LocaleKeys.aiToolResultCountFmt,
+        LocaleKeys.toolResultCountFmt,
         namedArgs: {'count': '${entries.length}'},
       );
     }
@@ -880,7 +883,7 @@ String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
     final entries = block.result?['entries'];
     if (parsed?.subcommand == 'list' && entries is List) {
       return context.t(
-        LocaleKeys.aiToolResultCountFmt,
+        LocaleKeys.toolResultCountFmt,
         namedArgs: {'count': '${entries.length}'},
       );
     }
@@ -915,7 +918,7 @@ String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
       final entries = block.result?['entries'];
       if (entries is List && entries.isNotEmpty) {
         return context.t(
-          LocaleKeys.aiToolRunSkillsCountFmt,
+          LocaleKeys.toolRunSkillsCountFmt,
           namedArgs: {'count': '${entries.length}'},
         );
       }
@@ -965,7 +968,7 @@ String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
       final entries = block.result?['entries'];
       if (entries is List && entries.isNotEmpty) {
         return context.t(
-          LocaleKeys.aiToolRunSubagentsCountFmt,
+          LocaleKeys.toolRunSubagentsCountFmt,
           namedArgs: {'count': '${entries.length}'},
         );
       }
@@ -998,7 +1001,7 @@ String? _runRowTarget(BuildContext context, AiToolCallBlock block) {
           : 0;
       if (resolvedCount > 0) {
         return context.t(
-          LocaleKeys.aiToolRunRulesCountFmt,
+          LocaleKeys.toolRunRulesCountFmt,
           namedArgs: {'count': '$resolvedCount'},
         );
       }
@@ -1052,7 +1055,7 @@ String? _runHeaderSubtitle(
       final entries = block.result?['entries'];
       if (entries is List && entries.isNotEmpty) {
         return context.t(
-          LocaleKeys.aiToolRunSkillsCountFmt,
+          LocaleKeys.toolRunSkillsCountFmt,
           namedArgs: {'count': '${entries.length}'},
         );
       }
@@ -1091,7 +1094,7 @@ String? _runHeaderSubtitle(
       final entries = block.result?['entries'];
       if (entries is List && entries.isNotEmpty) {
         return context.t(
-          LocaleKeys.aiToolRunSubagentsCountFmt,
+          LocaleKeys.toolRunSubagentsCountFmt,
           namedArgs: {'count': '${entries.length}'},
         );
       }
@@ -1127,7 +1130,7 @@ String? _runHeaderSubtitle(
           : 0;
       if (resolvedCount > 0) {
         return context.t(
-          LocaleKeys.aiToolRunRulesCountFmt,
+          LocaleKeys.toolRunRulesCountFmt,
           namedArgs: {'count': '$resolvedCount'},
         );
       }
@@ -1143,7 +1146,7 @@ String? _runHeaderSubtitle(
     final data = block.result?['data'];
     final items = data is Map ? data['items'] : null;
     if (items is List) {
-      return '$verb · ${context.t(LocaleKeys.aiToolResultCountFmt, namedArgs: {'count': '${items.length}'})}';
+      return '$verb · ${context.t(LocaleKeys.toolResultCountFmt, namedArgs: {'count': '${items.length}'})}';
     }
     final target =
         parsed?.option('query') ??
@@ -1180,19 +1183,19 @@ String? localizedRunHelpTopic(BuildContext context, String? topic) {
   }
   return switch (value) {
     'settings' => context.t(LocaleKeys.settingsTitle),
-    'mcp' => context.t(LocaleKeys.aiToolRunMcp),
-    'providers' => context.t(LocaleKeys.aiToolRunProviders),
-    'agent-skills' => context.t(LocaleKeys.aiToolRunAgentSkills),
-    'themes' => context.t(LocaleKeys.aiToolRunThemes),
-    'agent-rules' => context.t(LocaleKeys.aiToolRunAgentRules),
-    'subagents' => context.t(LocaleKeys.aiToolRunSubagents),
-    'sessions' => context.t(LocaleKeys.aiToolRunSessions),
-    'novel' => context.t(LocaleKeys.aiToolRunNovel),
-    'map' => context.t(LocaleKeys.aiToolRunMap),
-    'character' => context.t(LocaleKeys.aiToolRunHelpCharacterImage),
-    'item' => context.t(LocaleKeys.aiToolRunHelpItemImage),
-    'notify' => context.t(LocaleKeys.aiToolRunNotify),
-    'help' => context.t(LocaleKeys.aiToolRunHelp),
+    'mcp' => context.t(LocaleKeys.toolRunMcp),
+    'providers' => context.t(LocaleKeys.toolRunProviders),
+    'agent-skills' => context.t(LocaleKeys.toolRunAgentSkills),
+    'themes' => context.t(LocaleKeys.toolRunThemes),
+    'agent-rules' => context.t(LocaleKeys.toolRunAgentRules),
+    'subagents' => context.t(LocaleKeys.toolRunSubagents),
+    'sessions' => context.t(LocaleKeys.toolRunSessions),
+    'novel' => context.t(LocaleKeys.toolRunNovel),
+    'map' => context.t(LocaleKeys.toolRunMap),
+    'character' => context.t(LocaleKeys.toolRunHelpCharacterImage),
+    'item' => context.t(LocaleKeys.toolRunHelpItemImage),
+    'notify' => context.t(LocaleKeys.toolRunNotify),
+    'help' => context.t(LocaleKeys.toolRunHelp),
     _ => value,
   };
 }
@@ -1214,7 +1217,7 @@ String graphSearchEntityLabel(
     return target;
   }
   final depthLabel = context.t(
-    LocaleKeys.aiToolDepthFmt,
+    LocaleKeys.toolDepthFmt,
     namedArgs: {'depth': '$depth'},
   );
   return '$target $depthLabel';

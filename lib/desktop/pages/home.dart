@@ -28,7 +28,9 @@
 //   assets/translations/en/editor.json
 //   assets/translations/zh-CN/editor.json
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 //   lib/shared/widgets/unsaved_changes_dialog.dart
 //   lib/shared/widgets/settings/leave_guard.dart
 // 遵循的 Rules:
@@ -1180,7 +1182,7 @@ class NovelHomePage extends HookConsumerWidget {
                 _buildLeafNavItem(
                   context,
                   icon: RevericIcons.hub_outlined,
-                  title: context.t(LocaleKeys.settingsProviders),
+                  title: context.t(LocaleKeys.providerTitle),
                   isSelected: selection is _HomeAiProvidersSelection,
                   onTap: () {
                     onContentSelected(const _HomeAiProvidersSelection());

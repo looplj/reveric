@@ -25,7 +25,7 @@ class SkillToolCardBody extends StatelessWidget {
       children: [
         AiToolInfoChips(
           items: [
-            context.t(LocaleKeys.aiToolUsingSkill),
+            context.t(LocaleKeys.toolUsingSkill),
             if (skillName.isNotEmpty) skillName,
           ],
         ),

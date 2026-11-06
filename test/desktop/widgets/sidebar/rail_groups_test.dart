@@ -33,6 +33,21 @@ void main() {
     ]);
   });
 
+  test('screenplay splits production into storyboard and canvas entries', () {
+    final groups = railGroupLabelKeysFor(contentKindScreenplay);
+
+    expect(groups[writingGroupIndex], <String>[
+      LocaleKeys.screenplayScript,
+      LocaleKeys.screenplayOutline,
+      LocaleKeys.workspaceCharacters,
+      LocaleKeys.workspaceSidebarForeshadowing,
+      LocaleKeys.screenplayScenes,
+      LocaleKeys.storyboardBoard,
+      LocaleKeys.productionCanvas,
+      LocaleKeys.workspaceSidebarAssets,
+    ]);
+  });
+
   test('every other group is identical across content kinds', () {
     final novel = railGroupLabelKeysFor(contentKindNovel);
     final screenplay = railGroupLabelKeysFor(contentKindScreenplay);

@@ -32,10 +32,10 @@ class EditToolCardBody extends StatelessWidget {
         context.t(LocaleKeys.chapterStatPublished),
       if (matchCount != null)
         context.t(
-          LocaleKeys.aiToolMatchesCountFmt,
+          LocaleKeys.toolMatchesCountFmt,
           namedArgs: {'count': '$matchCount'},
         ),
-      if (replaceAll) context.t(LocaleKeys.aiToolReplaceAll),
+      if (replaceAll) context.t(LocaleKeys.toolReplaceAll),
     ];
 
     return Column(
@@ -45,7 +45,7 @@ class EditToolCardBody extends StatelessWidget {
         if (oldText.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolOldText),
+            label: context.t(LocaleKeys.toolOldText),
             text: oldText,
             maxLines: 4,
           ),
@@ -53,7 +53,7 @@ class EditToolCardBody extends StatelessWidget {
         if (newText.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolNewText),
+            label: context.t(LocaleKeys.toolNewText),
             text: newText,
             maxLines: 4,
           ),

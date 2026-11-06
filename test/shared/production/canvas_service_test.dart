@@ -2,7 +2,6 @@
 // 关联文件:
 //   lib/shared/services/production/canvas_service.dart
 //   lib/shared/services/production/result_service.dart
-//   lib/shared/services/production/export_orchestrator.dart
 import 'package:reveric/shared/models/generation/task.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'package:reveric/shared/models/production/asset_content.dart';
@@ -45,11 +44,9 @@ import 'package:reveric/shared/services/working_overlay.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/storyboard/edit_orchestrator.dart';
-import 'package:reveric/shared/services/storyboard/export.dart';
 import 'package:reveric/shared/services/subjects.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/result_service.dart';
-import 'package:reveric/shared/services/production/export_orchestrator.dart';
 import 'package:reveric/shared/services/production/generate_orchestrator.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
@@ -2905,143 +2902,6 @@ void main() {
         'file_workspaces/work/asset.mp4',
         'clip',
       ]);
-    },
-  );
-
-  test(
-    'batch export refuses missing shots, exports duplicate assets per shot and never overwrites',
-    () async {
-      final destination = await root.createTemp('export-');
-      List<StoryboardExportRow> rows(ProductionClipRow row) => [
-        StoryboardExportRow(scene: '雨夜', number: '1.1', shot: row),
-      ];
-      Future<ProductionExportReport> export(List<StoryboardExportRow> items) =>
-          ProductionExportOrchestrator().run(
-            service: service,
-            rows: items,
-            destination: destination,
-            headings: [
-              'scene',
-              'number',
-              'title',
-              'prompt',
-              'status',
-              'spec',
-              'assets',
-              'file',
-            ],
-            statusLabel: (s) => s,
-            cancellation: MediaCancellation(),
-          );
-      final failure = await export(rows(shot));
-      expect(failure.complete, isFalse);
-      expect(failure.remaining, ['1.1']);
-      expect(await destination.list().toList(), isEmpty);
-      await asset('video', type: 'video');
-      final node = await service.ensureShotNode(shot.id);
-      await service.adopt(node.id, 'video');
-      final current = (await service.shots.getShot(shot.id))!;
-      final first = await export(rows(current));
-      final second = await export(rows(current));
-      expect(first.complete, isTrue);
-      expect(first.directory, isNot(second.directory));
-      final csv = await File('${first.directory}/prompts.csv').readAsString();
-      expect(csv, contains('0001_雨夜 _ 镜头.mp4'));
-      expect(await File('${first.directory}/0001_雨夜 _ 镜头.mp4').readAsBytes(), [
-        1,
-        2,
-        3,
-      ]);
-    },
-  );
-  test(
-    'canvas recreation preserves segment and video rows and adopted assets',
-    () async {
-      await asset('kept', type: 'video');
-      final node = await service.ensureShotNode(shot.id);
-      final video = await service.addFree(node.canvasId, overlay: overlay);
-      await service.adopt(node.id, 'kept');
-      await service.removeCanvas(node.canvasId);
-      final canvas = await service.ensureCanvas(episode);
-      expect(canvas.id, isNot(node.canvasId));
-      final rebuilt = await db.canvasDao.getNodesByCanvas(canvas.id);
-      expect(rebuilt.map((n) => n.clipId).toSet(), {shot.id, video.clipId});
-      expect((await service.shots.getShot(shot.id))!.adoptedAssetId, 'kept');
-      expect(await db.canvasDao.getEdgesByCanvas(canvas.id), isEmpty);
-      expect(await service.requireAsset('kept'), isNotNull);
-    },
-  );
-
-  test(
-    'video export follows content order, ignores node positions, and excludes video experiments',
-    () async {
-      await asset('shared', type: 'video');
-      final next = await service.shots.create(scene, values: {'title': 'Next'});
-      final firstNode = await service.ensureShotNode(shot.id);
-      final secondNode = await service.ensureShotNode(next.id);
-      await service.move(firstNode.id, 4000, 4000);
-      await service.move(secondNode.id, -4000, -4000);
-      await service.adopt(firstNode.id, 'shared');
-      await service.adopt(secondNode.id, 'shared');
-      final one = (await service.shots.getShot(shot.id))!;
-      final two = (await service.shots.getShot(next.id))!;
-      final destination = await root.createTemp('ordered-');
-      final report = await ProductionExportOrchestrator().run(
-        service: service,
-        rows: [
-          StoryboardExportRow(scene: 'Scene', number: '1.2', shot: two),
-          StoryboardExportRow(scene: 'Scene', number: '1.1', shot: one),
-        ],
-        destination: destination,
-        headings: [
-          'scene',
-          'number',
-          'title',
-          'prompt',
-          'status',
-          'settings',
-          'refs',
-          'file',
-        ],
-        statusLabel: (s) => s,
-        cancellation: MediaCancellation(),
-      );
-      expect(report.complete, isTrue);
-      expect(report.completed, ['1.1', '1.2']);
-      final csv = await File('${report.directory}/prompts.csv').readAsString();
-      expect(csv.indexOf('1.1'), lessThan(csv.indexOf('1.2')));
-      expect(csv, contains('0002_Next.mp4'));
-      final video = await service.addFree(firstNode.canvasId, overlay: overlay);
-      final excluded = await ProductionExportOrchestrator().run(
-        service: service,
-        rows: [
-          StoryboardExportRow(
-            scene: '',
-            number: '',
-            shot: (await service.shots.getShot(video.clipId!))!,
-          ),
-        ],
-        destination: destination,
-        headings: [],
-        statusLabel: (s) => s,
-        cancellation: MediaCancellation(),
-      );
-      expect(excluded.complete, isFalse);
-      expect(excluded.directory, isNull);
-      final image = await service.shots.create(
-        scene,
-        values: {'kind': 'image', 'title': 'Storyboard image'},
-      );
-      final imageReport = await ProductionExportOrchestrator().run(
-        service: service,
-        rows: [StoryboardExportRow(scene: 'Scene', number: '1.3', shot: image)],
-        destination: destination,
-        headings: [],
-        statusLabel: (s) => s,
-        cancellation: MediaCancellation(),
-      );
-      expect(imageReport.complete, isFalse);
-      expect(imageReport.directory, isNull);
     },
   );
 

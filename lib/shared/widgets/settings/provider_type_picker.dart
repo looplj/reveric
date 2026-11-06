@@ -6,8 +6,8 @@
 //   lib/shared/components/reveric_filter_chip.dart
 //   lib/mobile/widgets/sheet.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -60,10 +60,10 @@ List<AiProviderType> providerTypePickerTypes() {
 
 String providerKindLabel(BuildContext context, AiModelKind kind) =>
     context.t(switch (kind) {
-      AiModelKind.chat => LocaleKeys.settingsProviderKindChat,
-      AiModelKind.image => LocaleKeys.settingsProviderKindImage,
-      AiModelKind.video => LocaleKeys.settingsProviderKindVideo,
-      AiModelKind.audio => LocaleKeys.settingsProviderKindAudio,
+      AiModelKind.chat => LocaleKeys.providerKindChat,
+      AiModelKind.image => LocaleKeys.providerKindImage,
+      AiModelKind.video => LocaleKeys.providerKindVideo,
+      AiModelKind.audio => LocaleKeys.providerKindAudio,
     });
 
 /// 类型的可选能力。
@@ -123,7 +123,7 @@ Future<AiProviderType?> showProviderTypeSheet(
     builder: (sheetContext) => MobileSheetScaffold(
       expand: true,
       header: MobileSheetHeader.closable(
-        title: sheetContext.t(LocaleKeys.settingsProviderTypePickerTitle),
+        title: sheetContext.t(LocaleKeys.providerTypePickerTitle),
         onClose: () => Navigator.of(sheetContext).pop(),
       ),
       child: ProviderTypePicker(
@@ -173,7 +173,7 @@ class ProviderTypePicker extends HookWidget {
               RevericSpacing.xxs,
             ),
             child: Text(
-              context.t(LocaleKeys.settingsProviderTypePickerTitle),
+              context.t(LocaleKeys.providerTypePickerTitle),
               style: typo.uiSmallSemibold.copyWith(color: colors.textPrimary),
             ),
           ),
@@ -242,9 +242,9 @@ class _TypeRow extends StatelessWidget {
     final fixed = aiProviderTypeConfigs[type]?.fixedBaseUrl ?? false;
     final noteKey = switch (type) {
       AiProviderType.openai_compatible =>
-        LocaleKeys.settingsProviderTypeNoteOpenaiCompatible,
-      AiProviderType.minimax => LocaleKeys.settingsProviderTypeNoteMinimax,
-      AiProviderType.doubao => LocaleKeys.settingsProviderTypeNoteDoubao,
+        LocaleKeys.providerTypeNoteOpenaiCompatible,
+      AiProviderType.minimax => LocaleKeys.providerTypeNoteMinimax,
+      AiProviderType.doubao => LocaleKeys.providerTypeNoteDoubao,
       _ => null,
     };
 
@@ -285,7 +285,7 @@ class _TypeRow extends StatelessWidget {
                         ),
                         const SizedBox(width: RevericSpacing.xxs),
                         Text(
-                          context.t(LocaleKeys.settingsProviderTypeFixedUrl),
+                          context.t(LocaleKeys.providerTypeFixedUrl),
                           style: typo.uiTiny.copyWith(color: colors.textSubtle),
                         ),
                       ],

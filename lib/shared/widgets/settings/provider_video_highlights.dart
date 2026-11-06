@@ -4,8 +4,8 @@
 //   lib/shared/widgets/settings/provider_video_models.dart
 //   lib/desktop/features/production/composer.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
@@ -48,7 +48,7 @@ Widget? providerVideoHighlights(
           VideoModelHighlight.max_duration => _HighlightChip(
             icon: RevericIcons.schedule_outlined,
             label: context.t(
-              LocaleKeys.settingsProviderVideoHighlightMaxDuration,
+              LocaleKeys.providerVideoHighlightMaxDuration,
               namedArgs: {'seconds': '${channel.maxDurationSeconds}'},
             ),
             tooltip: tooltipFor(highlight),
@@ -57,7 +57,7 @@ Widget? providerVideoHighlights(
           ),
           VideoModelHighlight.priority => _HighlightChip(
             icon: RevericIcons.crown,
-            label: context.t(LocaleKeys.settingsProviderVideoHighlightPriority),
+            label: context.t(LocaleKeys.providerVideoHighlightPriority),
             tooltip: tooltipFor(highlight),
             dense: dense,
             gradient: [
@@ -96,7 +96,7 @@ Widget? providerVideoNotice(
 String _noticeText(BuildContext context, VideoModelNotice notice) =>
     switch (notice) {
       VideoModelNotice.priority_billing => context.t(
-        LocaleKeys.settingsProviderVideoNoticePriorityBilling,
+        LocaleKeys.providerVideoNoticePriorityBilling,
       ),
     };
 

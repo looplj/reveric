@@ -4,8 +4,8 @@
 //   lib/shared/widgets/settings/provider_models_editor.dart
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/i18n.md
@@ -35,8 +35,8 @@ class ProviderAudioModels extends StatelessWidget {
     }
     return ProviderModelsEditor(
       key: ValueKey(config.id),
-      label: context.t(LocaleKeys.settingsProviderAudioModelsLabel),
-      hint: context.t(LocaleKeys.settingsProviderModelIdHint),
+      label: context.t(LocaleKeys.providerAudioModelsLabel),
+      hint: context.t(LocaleKeys.providerModelIdHint),
       models: config.availableAudioModels,
       onChanged: onChanged,
       fetchButton: fetchButton,

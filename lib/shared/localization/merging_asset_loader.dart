@@ -52,6 +52,7 @@ class MergingAssetLoader extends AssetLoader {
     'name_assistant',
     'onboarding',
     'plugin',
+    'provider',
     'relation',
     'relation_dialog',
     'reading',
@@ -64,6 +65,7 @@ class MergingAssetLoader extends AssetLoader {
     'subagent',
     'theater',
     'todo',
+    'tool',
     'workspace',
   ];
 
@@ -74,7 +76,9 @@ class MergingAssetLoader extends AssetLoader {
 
     for (final ns in _namespaces) {
       try {
-        final jsonStr = await rootBundle.loadString('$localeDir/$ns.json');
+        final jsonStr = utf8.decode(
+          (await rootBundle.load('$localeDir/$ns.json')).buffer.asUint8List(),
+        );
         final map = jsonDecode(jsonStr) as Map<String, dynamic>;
         merged.addAll(map);
       } catch (_) {

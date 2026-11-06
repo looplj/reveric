@@ -12,7 +12,9 @@
 //   lib/shared/localization/locale_keys.dart
 //   lib/shared/theme/theme.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 //   assets/translations/en/account.json
@@ -350,7 +352,7 @@ class ProviderConfigForm extends HookWidget {
             child: !config.isTypeSupported
                 ? Text(
                     context.t(
-                      LocaleKeys.settingsProviderTypeUnsupported,
+                      LocaleKeys.providerTypeUnsupported,
                       namedArgs: {'type': config.type},
                     ),
                     style: typo.ui.copyWith(color: colors.warningText),
@@ -412,8 +414,8 @@ class ProviderConfigForm extends HookWidget {
         if (!config.isBuiltin) ...[
           _buildTextField(
             context: context,
-            label: context.t(LocaleKeys.settingsProviderNameLabel),
-            hint: context.t(LocaleKeys.settingsProviderNameHint),
+            label: context.t(LocaleKeys.providerNameLabel),
+            hint: context.t(LocaleKeys.providerNameHint),
             controller: nameController,
             onChanged: () => saveConfig(name: nameController.text),
           ),
@@ -426,7 +428,7 @@ class ProviderConfigForm extends HookWidget {
           else
             _buildReadOnlyField(
               context: context,
-              label: context.t(LocaleKeys.settingsProviderTypeLabel),
+              label: context.t(LocaleKeys.providerTypeLabel),
               value: localizedProviderTypeName(context, config.typeEnum),
             ),
           SizedBox(
@@ -465,7 +467,7 @@ class ProviderConfigForm extends HookWidget {
                 errorText: suggested == value.text.trim()
                     ? null
                     : context.t(
-                        LocaleKeys.settingsProviderBaseUrlEndpointHint,
+                        LocaleKeys.providerBaseUrlEndpointHint,
                         namedArgs: {'url': suggested},
                       ),
                 errorMaxLines: 4,
@@ -476,7 +478,7 @@ class ProviderConfigForm extends HookWidget {
         if (!config.hasBaseUrl) ...[
           const SizedBox(height: RevericSpacing.xs),
           Text(
-            context.t(LocaleKeys.settingsProviderConfigNeedBaseUrl),
+            context.t(LocaleKeys.providerConfigNeedBaseUrl),
             style: typo.uiSmall.copyWith(color: colors.textMuted),
           ),
         ],
@@ -502,15 +504,15 @@ class ProviderConfigForm extends HookWidget {
         if (!config.isCodex && !config.hasApiKey) ...[
           const SizedBox(height: RevericSpacing.xs),
           Text(
-            context.t(LocaleKeys.settingsProviderConfigNeedApiKey),
+            context.t(LocaleKeys.providerConfigNeedApiKey),
             style: typo.uiSmall.copyWith(color: colors.textMuted),
           ),
         ],
         const SizedBox(height: RevericSpacing.lg),
         if (config.supportsModelKind(AiModelKind.chat))
           ProviderModelsEditor(
-            label: context.t(LocaleKeys.settingsProviderChatModelsLabel),
-            hint: context.t(LocaleKeys.settingsProviderChatModelsHint),
+            label: context.t(LocaleKeys.providerChatModelsLabel),
+            hint: context.t(LocaleKeys.providerChatModelsHint),
             models: config.availableModels,
             onChanged: (models) => saveConfig(models: models),
             fetchButton: _buildFetchButton(
@@ -523,7 +525,7 @@ class ProviderConfigForm extends HookWidget {
         if (!config.hasModels) ...[
           const SizedBox(height: RevericSpacing.xs),
           Text(
-            context.t(LocaleKeys.settingsProviderConfigNeedModels),
+            context.t(LocaleKeys.providerConfigNeedModels),
             style: typo.uiSmall.copyWith(color: colors.textMuted),
           ),
         ],
@@ -558,8 +560,8 @@ class ProviderConfigForm extends HookWidget {
         if (config.supportsModelKind(AiModelKind.image)) ...[
           const SizedBox(height: RevericSpacing.lg),
           ProviderModelsEditor(
-            label: context.t(LocaleKeys.settingsProviderImageModelsLabel),
-            hint: context.t(LocaleKeys.settingsProviderImageModelsHint),
+            label: context.t(LocaleKeys.providerImageModelsLabel),
+            hint: context.t(LocaleKeys.providerImageModelsHint),
             models: config.availableImageModels,
             onChanged: (models) => saveConfig(imageModels: models),
             fetchButton: _buildFetchButton(
@@ -658,7 +660,7 @@ class ProviderConfigForm extends HookWidget {
     final ready = provider.hasCredentialConfiguration;
     return TextButton.icon(
       icon: RevericIcon(RevericIcons.download, size: 14),
-      label: Text(context.t(LocaleKeys.settingsProviderFetchModels)),
+      label: Text(context.t(LocaleKeys.providerFetchModels)),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: RevericSpacing.sm),
         minimumSize: Size.zero,
@@ -792,11 +794,11 @@ String _baseUrlWithoutEndpoint(String value) {
 
 @visibleForTesting
 String modelsFetchErrorKey(int? statusCode) => switch (statusCode) {
-  400 => LocaleKeys.settingsProviderFetchModelsBadRequest,
-  401 || 403 => LocaleKeys.settingsProviderFetchModelsAuthFailed,
-  404 => LocaleKeys.settingsProviderFetchModelsNotFound,
-  429 => LocaleKeys.settingsProviderFetchModelsRateLimited,
-  _ => LocaleKeys.settingsProviderFetchModelsServerError,
+  400 => LocaleKeys.providerFetchModelsBadRequest,
+  401 || 403 => LocaleKeys.providerFetchModelsAuthFailed,
+  404 => LocaleKeys.providerFetchModelsNotFound,
+  429 => LocaleKeys.providerFetchModelsRateLimited,
+  _ => LocaleKeys.providerFetchModelsServerError,
 };
 
 class _ModelsFetchHttpException implements Exception {
@@ -1034,7 +1036,7 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
     final typo = RevericTheme.typographyOf(context);
 
     return RevericDialog.panel(
-      title: Text(context.t(LocaleKeys.settingsProviderFetchModels)),
+      title: Text(context.t(LocaleKeys.providerFetchModels)),
       content: SizedBox(
         width: _fetchModelsDialogWidth,
         height: _fetchModelsDialogContentHeight,
@@ -1100,7 +1102,7 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         RevericDebouncedSearchField(
-          hint: context.t(LocaleKeys.settingsProviderFetchModelsSearchHint),
+          hint: context.t(LocaleKeys.providerFetchModelsSearchHint),
           onDebouncedChanged: (query) {
             setState(() {
               _filterQuery = query;
@@ -1136,7 +1138,7 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
           Expanded(
             child: Center(
               child: Text(
-                context.t(LocaleKeys.settingsProviderFetchModelsNoMatches),
+                context.t(LocaleKeys.providerFetchModelsNoMatches),
                 style: typo.ui.copyWith(color: colors.textMuted),
               ),
             ),
@@ -1234,7 +1236,7 @@ class _AssetCredentialsSection extends HookWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  context.t(LocaleKeys.settingsProviderAssetSection),
+                  context.t(LocaleKeys.providerAssetSection),
                   style: typo.uiSemibold.copyWith(color: colors.textPrimary),
                 ),
                 const SizedBox(width: RevericSpacing.xxs),
@@ -1252,21 +1254,21 @@ class _AssetCredentialsSection extends HookWidget {
         if (expanded.value) ...[
           const SizedBox(height: RevericSpacing.xs),
           RevericTextField(
-            label: context.t(LocaleKeys.settingsProviderAssetAccessKeyLabel),
+            label: context.t(LocaleKeys.providerAssetAccessKeyLabel),
             controller: accessKey,
             onChanged: (_) => save(),
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
-            label: context.t(LocaleKeys.settingsProviderAssetSecretKeyLabel),
+            label: context.t(LocaleKeys.providerAssetSecretKeyLabel),
             controller: secretKey,
             obscureText: true,
             onChanged: (_) => save(),
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
-            label: context.t(LocaleKeys.settingsProviderAssetProjectLabel),
-            hintText: context.t(LocaleKeys.settingsProviderAssetProjectHint),
+            label: context.t(LocaleKeys.providerAssetProjectLabel),
+            hintText: context.t(LocaleKeys.providerAssetProjectHint),
             controller: project,
             onChanged: (_) => save(),
           ),
@@ -1350,7 +1352,7 @@ class _ProxySection extends HookWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  context.t(LocaleKeys.settingsProviderProxySection),
+                  context.t(LocaleKeys.providerProxySection),
                   style: typo.uiSemibold.copyWith(color: colors.textPrimary),
                 ),
                 const SizedBox(width: RevericSpacing.xxs),
@@ -1368,8 +1370,8 @@ class _ProxySection extends HookWidget {
         if (expanded.value) ...[
           const SizedBox(height: RevericSpacing.xs),
           RevericTextField(
-            label: context.t(LocaleKeys.settingsProviderProxyUrlLabel),
-            hintText: context.t(LocaleKeys.settingsProviderProxyUrlHint),
+            label: context.t(LocaleKeys.providerProxyUrlLabel),
+            hintText: context.t(LocaleKeys.providerProxyUrlHint),
             controller: urlController,
             errorText: errors.url,
             keyboardType: TextInputType.url,
@@ -1377,16 +1379,16 @@ class _ProxySection extends HookWidget {
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
-            label: context.t(LocaleKeys.settingsProviderProxyUsernameLabel),
-            hintText: context.t(LocaleKeys.settingsProviderProxyUsernameHint),
+            label: context.t(LocaleKeys.providerProxyUsernameLabel),
+            hintText: context.t(LocaleKeys.providerProxyUsernameHint),
             controller: usernameController,
             errorText: errors.username,
             onChanged: (_) => save(),
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
-            label: context.t(LocaleKeys.settingsProviderProxyPasswordLabel),
-            hintText: context.t(LocaleKeys.settingsProviderProxyPasswordHint),
+            label: context.t(LocaleKeys.providerProxyPasswordLabel),
+            hintText: context.t(LocaleKeys.providerProxyPasswordHint),
             controller: passwordController,
             obscureText: true,
             errorText: errors.password,

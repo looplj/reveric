@@ -4,8 +4,8 @@
 //   lib/shared/widgets/ai/tools/tool_resource_resolver.dart
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 import 'package:flutter/material.dart';
 
 import 'package:reveric/shared/localization/app_localization.dart';
@@ -36,7 +36,7 @@ class CreateToolCardBody extends StatelessWidget {
         if (preview != null) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 6,
           ),
@@ -55,7 +55,7 @@ class CreateToolCardBody extends StatelessWidget {
           return [
             if (chapterCount != null)
               context.t(
-                LocaleKeys.aiToolChaptersCountFmt,
+                LocaleKeys.toolChaptersCountFmt,
                 namedArgs: {'count': '$chapterCount'},
               ),
           ];
@@ -67,7 +67,7 @@ class CreateToolCardBody extends StatelessWidget {
             if (status.isNotEmpty) status,
             if (beatsCount != null)
               context.t(
-                LocaleKeys.aiToolBeatsCountFmt,
+                LocaleKeys.toolBeatsCountFmt,
                 namedArgs: {'count': '$beatsCount'},
               ),
           ];
@@ -104,7 +104,7 @@ class CreateToolCardBody extends StatelessWidget {
           if (status.isNotEmpty) status,
           if (beatsCount != null)
             context.t(
-              LocaleKeys.aiToolBeatsCountFmt,
+              LocaleKeys.toolBeatsCountFmt,
               namedArgs: {'count': '$beatsCount'},
             ),
         ];
@@ -116,7 +116,7 @@ class CreateToolCardBody extends StatelessWidget {
           if (outlineTitle.isNotEmpty) outlineTitle,
           if (chapterCount != null)
             context.t(
-              LocaleKeys.aiToolChaptersCountFmt,
+              LocaleKeys.toolChaptersCountFmt,
               namedArgs: {'count': '$chapterCount'},
             ),
         ];

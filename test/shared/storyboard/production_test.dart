@@ -2,7 +2,6 @@
 // 关联文件:
 //   lib/shared/services/storyboard/edit_orchestrator.dart
 //   lib/shared/services/ai/tools.dart
-//   lib/shared/services/storyboard/export.dart
 import 'package:drift/native.dart';
 import 'package:reveric/shared/models/novel.dart';
 import 'package:reveric/shared/models/screenplay_element.dart';
@@ -18,7 +17,6 @@ import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/storyboard/edit_orchestrator.dart';
-import 'package:reveric/shared/services/storyboard/export.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
 void main() {
@@ -1132,36 +1130,4 @@ void main() {
       expect(grep.toString(), contains(shot.id));
     },
   );
-
-  test('text export retains readable labels and resource identities', () async {
-    final shot = await edits.create(
-      service: service,
-      overlay: overlay,
-      sceneId: sceneId,
-      values: {
-        'title': '镜头,"A"',
-        'prompt': '看 <ref input_id="image_1" label="角色" />\n转身',
-      },
-    );
-    final rows = [StoryboardExportRow(scene: '夜雨', number: '1.1', shot: shot)];
-    final headings = ['场', '镜', '标题', '提示词', '状态', '规格', '资源'];
-    final csv = exportStoryboard(
-      rows,
-      csv: true,
-      headings: headings,
-      statusLabel: (s) => s,
-    );
-    expect(csv, contains('"镜头,""A"""'));
-    expect(csv, contains('角色 [image_1]'));
-    expect(csv, isNot(contains('<ref')));
-    expect(
-      exportStoryboard(
-        rows,
-        csv: false,
-        headings: headings,
-        statusLabel: (s) => s,
-      ),
-      contains('角色<br>转身'),
-    );
-  });
 }

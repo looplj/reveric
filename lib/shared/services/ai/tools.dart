@@ -4642,7 +4642,7 @@ class AiToolManager extends _AiToolManagerBase
     return <String, dynamic>{
       'ok': false,
       'error': tr(
-        LocaleKeys.aiToolNotAllowedFmt,
+        LocaleKeys.toolNotAllowedFmt,
         namedArgs: {'mode': mode.value, 'tool_name': toolName},
       ),
       'error_code': ToolErrorCode.permission_denied.name,

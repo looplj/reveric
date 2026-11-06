@@ -25,6 +25,7 @@ import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/screenplay.dart';
 import '../../../shared/models/novel_workspace.dart';
+import '../../../shared/providers/production_view.dart';
 import '../../../shared/providers/screenplay_workspace_state_provider.dart';
 import '../../../shared/providers/workspace_navigation_provider.dart';
 import '../../../shared/providers/maps_providers.dart';
@@ -265,6 +266,13 @@ class _ScreenplaySceneListRowState extends State<ScreenplaySceneListRow> {
                                     .read(provider)
                                     .copyWith(sceneId: widget.entry.scene.id),
                               );
+                          ref
+                              .read(
+                                productionViewProvider(
+                                  widget.novel.id,
+                                ).notifier,
+                              )
+                              .set(ProductionViewMode.segments);
                           ref
                               .read(workspaceNavigationProvider.notifier)
                               .request(

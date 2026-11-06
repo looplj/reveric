@@ -5,8 +5,8 @@
 //   lib/shared/widgets/ai/tools/tool_card_descriptor.dart
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/agent_skill.json
 //   assets/translations/zh-CN/agent_skill.json
 import 'package:flutter/material.dart';
@@ -41,7 +41,7 @@ class RunCommandLoadingBody extends StatelessWidget {
           ),
           const SizedBox(width: RevericSpacing.sm),
           Text(
-            context.t(LocaleKeys.aiToolRunning),
+            context.t(LocaleKeys.toolRunning),
             style: typo.uiSmall.copyWith(color: colors.textMuted),
           ),
         ],
@@ -101,7 +101,7 @@ class _MapRunCardBody extends StatelessWidget {
         if (prompt != null) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolRunMapPrompt),
+            label: context.t(LocaleKeys.toolRunMapPrompt),
             text: prompt,
             maxLines: 6,
           ),
@@ -109,7 +109,7 @@ class _MapRunCardBody extends StatelessWidget {
         if (succeeded) ...[
           const SizedBox(height: RevericSpacing.sm),
           Text(
-            context.t(LocaleKeys.aiToolRunMapReady),
+            context.t(LocaleKeys.toolRunMapReady),
             style: RevericTheme.typographyOf(
               context,
             ).uiSmall.copyWith(color: RevericTheme.colorsOf(context).success),
@@ -122,13 +122,13 @@ class _MapRunCardBody extends StatelessWidget {
 
 String _localizedMapStyle(BuildContext context, String value) {
   final key = switch (value) {
-    'parchment' => LocaleKeys.aiToolRunMapStyleParchment,
-    'inkmap' => LocaleKeys.aiToolRunMapStyleInkmap,
-    'engraving' => LocaleKeys.aiToolRunMapStyleEngraving,
-    'realistic' => LocaleKeys.aiToolRunMapStyleRealistic,
-    'woodcut' => LocaleKeys.aiToolRunMapStyleWoodcut,
-    'watercolor' => LocaleKeys.aiToolRunMapStyleWatercolor,
-    'atlas' => LocaleKeys.aiToolRunMapStyleAtlas,
+    'parchment' => LocaleKeys.toolRunMapStyleParchment,
+    'inkmap' => LocaleKeys.toolRunMapStyleInkmap,
+    'engraving' => LocaleKeys.toolRunMapStyleEngraving,
+    'realistic' => LocaleKeys.toolRunMapStyleRealistic,
+    'woodcut' => LocaleKeys.toolRunMapStyleWoodcut,
+    'watercolor' => LocaleKeys.toolRunMapStyleWatercolor,
+    'atlas' => LocaleKeys.toolRunMapStyleAtlas,
     _ => null,
   };
   return key == null ? value : context.t(key);
@@ -136,9 +136,9 @@ String _localizedMapStyle(BuildContext context, String value) {
 
 String _localizedMapQuality(BuildContext context, String value) {
   final key = switch (value) {
-    'low' => LocaleKeys.aiToolRunMapQualityLow,
-    'medium' => LocaleKeys.aiToolRunMapQualityMedium,
-    'high' => LocaleKeys.aiToolRunMapQualityHigh,
+    'low' => LocaleKeys.toolRunMapQualityLow,
+    'medium' => LocaleKeys.toolRunMapQualityMedium,
+    'high' => LocaleKeys.toolRunMapQualityHigh,
     _ => null,
   };
   return key == null ? value : context.t(key);
@@ -189,12 +189,12 @@ class _AgentSkillsRunCardBody extends StatelessWidget {
     final chips = <String>[
       if (scope != null && scope.isNotEmpty)
         context.t(
-          LocaleKeys.aiToolRunScopeFmt,
+          LocaleKeys.toolRunScopeFmt,
           namedArgs: {'scope': _localizedSkillScope(context, scope)},
         ),
       if (skillNames.isNotEmpty)
         context.t(
-          LocaleKeys.aiToolRunSkillsCountFmt,
+          LocaleKeys.toolRunSkillsCountFmt,
           namedArgs: {'count': '${skillNames.length}'},
         ),
     ];
@@ -218,8 +218,7 @@ class _AgentSkillsRunCardBody extends StatelessWidget {
         '';
     return AiToolKeyValueList(
       entries: [
-        if (deletedId.isNotEmpty)
-          (context.t(LocaleKeys.aiToolTarget), deletedId),
+        if (deletedId.isNotEmpty) (context.t(LocaleKeys.toolTarget), deletedId),
       ],
     );
   }
@@ -246,7 +245,7 @@ class _AgentSkillsRunCardBody extends StatelessWidget {
         _localizedSkillSource(context, source),
       if (count != null && count > 0)
         context.t(
-          LocaleKeys.aiToolResultCountFmt,
+          LocaleKeys.toolResultCountFmt,
           namedArgs: {'count': '$count'},
         ),
     ];
@@ -281,7 +280,7 @@ class _AgentSkillsRunCardBody extends StatelessWidget {
         if (preview != null && preview.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 6,
           ),
@@ -302,7 +301,7 @@ class _AgentSkillsRunCardBody extends StatelessWidget {
       if (name != null && name.isNotEmpty) name,
       if (scopeText != null && scopeText.isNotEmpty)
         context.t(
-          LocaleKeys.aiToolRunScopeFmt,
+          LocaleKeys.toolRunScopeFmt,
           namedArgs: {'scope': _localizedSkillScope(context, scopeText)},
         ),
     ];
@@ -320,7 +319,7 @@ class _AgentSkillsRunCardBody extends StatelessWidget {
         if (preview != null && preview.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 6,
           ),
@@ -378,7 +377,7 @@ class _SubagentsRunCardBody extends StatelessWidget {
     final chips = <String>[
       if (names.isNotEmpty)
         context.t(
-          LocaleKeys.aiToolRunSubagentsCountFmt,
+          LocaleKeys.toolRunSubagentsCountFmt,
           namedArgs: {'count': '${names.length}'},
         ),
     ];
@@ -402,8 +401,7 @@ class _SubagentsRunCardBody extends StatelessWidget {
         '';
     return AiToolKeyValueList(
       entries: [
-        if (deletedId.isNotEmpty)
-          (context.t(LocaleKeys.aiToolTarget), deletedId),
+        if (deletedId.isNotEmpty) (context.t(LocaleKeys.toolTarget), deletedId),
       ],
     );
   }
@@ -425,7 +423,7 @@ class _SubagentsRunCardBody extends StatelessWidget {
         if (preview != null && preview.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 6,
           ),
@@ -488,11 +486,11 @@ class _AgentRulesRunCardBody extends StatelessWidget {
     final chips = <String>[
       if (resolvedCount > 0)
         context.t(
-          LocaleKeys.aiToolRunRulesAvailableFmt,
+          LocaleKeys.toolRunRulesAvailableFmt,
           namedArgs: {'count': '$resolvedCount'},
         )
       else
-        context.t(LocaleKeys.aiToolRunRulesEmpty),
+        context.t(LocaleKeys.toolRunRulesEmpty),
     ];
 
     return Column(
@@ -512,7 +510,7 @@ class _AgentRulesRunCardBody extends StatelessWidget {
     return AiToolKeyValueList(
       entries: [
         if (deletedName.isNotEmpty)
-          (context.t(LocaleKeys.aiToolRunDeletedRule), deletedName),
+          (context.t(LocaleKeys.toolRunDeletedRule), deletedName),
       ],
     );
   }
@@ -528,15 +526,15 @@ class _AgentRulesRunCardBody extends StatelessWidget {
         AiToolKeyValueList(
           entries: [
             if (name != null && name.isNotEmpty)
-              (context.t(LocaleKeys.aiToolRunRuleName), name),
+              (context.t(LocaleKeys.toolRunRuleName), name),
             if (newName != null && newName.isNotEmpty)
-              (context.t(LocaleKeys.aiToolRunRuleNewName), newName),
+              (context.t(LocaleKeys.toolRunRuleNewName), newName),
           ],
         ),
         if (preview != null && preview.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolRunRuleContent),
+            label: context.t(LocaleKeys.toolRunRuleContent),
             text: preview,
             maxLines: 6,
           ),
@@ -565,7 +563,7 @@ class _GenericRunCardBody extends StatelessWidget {
         if (output != null && output.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolExecutionResult),
+            label: context.t(LocaleKeys.toolExecutionResult),
             text: output,
             monospace: true,
             maxLines: 8,

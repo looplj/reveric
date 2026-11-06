@@ -3,8 +3,8 @@
 //   lib/shared/widgets/settings/provider_config_panel.dart
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 
 import 'dart:convert';
 import 'dart:io';
@@ -315,11 +315,11 @@ void main() {
     'HTTP failures have actionable translations and a server-error default',
     () {
       final expected = {
-        400: LocaleKeys.settingsProviderFetchModelsBadRequest,
-        401: LocaleKeys.settingsProviderFetchModelsAuthFailed,
-        403: LocaleKeys.settingsProviderFetchModelsAuthFailed,
-        404: LocaleKeys.settingsProviderFetchModelsNotFound,
-        429: LocaleKeys.settingsProviderFetchModelsRateLimited,
+        400: LocaleKeys.providerFetchModelsBadRequest,
+        401: LocaleKeys.providerFetchModelsAuthFailed,
+        403: LocaleKeys.providerFetchModelsAuthFailed,
+        404: LocaleKeys.providerFetchModelsNotFound,
+        429: LocaleKeys.providerFetchModelsRateLimited,
       };
       for (final entry in expected.entries) {
         expect(modelsFetchErrorKey(entry.key), entry.value);
@@ -327,21 +327,21 @@ void main() {
       for (final status in [null, 402, 408, 500, 502, 503]) {
         expect(
           modelsFetchErrorKey(status),
-          LocaleKeys.settingsProviderFetchModelsServerError,
+          LocaleKeys.providerFetchModelsServerError,
         );
       }
       for (final locale in ['en', 'zh-CN']) {
         final translations =
             jsonDecode(
                   File(
-                    'assets/translations/$locale/settings.json',
+                    'assets/translations/$locale/provider.json',
                   ).readAsStringSync(),
                 )
                 as Map<String, dynamic>;
         for (final key in [
           ...expected.values,
-          LocaleKeys.settingsProviderFetchModelsServerError,
-          LocaleKeys.settingsProviderBaseUrlEndpointHint,
+          LocaleKeys.providerFetchModelsServerError,
+          LocaleKeys.providerBaseUrlEndpointHint,
         ]) {
           expect(
             translations[key],
@@ -353,7 +353,7 @@ void main() {
         }
         if (locale == 'zh-CN') {
           expect(
-            translations[LocaleKeys.settingsProviderFetchModelsServerError],
+            translations[LocaleKeys.providerFetchModelsServerError],
             '服务端内部错误，请稍后重试',
           );
         }

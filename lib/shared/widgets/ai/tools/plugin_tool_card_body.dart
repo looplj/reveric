@@ -4,8 +4,8 @@
 //   lib/shared/widgets/ai/tools/tool_card_common.dart
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../localization/app_localization.dart';
@@ -35,7 +35,7 @@ class PluginToolCardBody extends StatelessWidget {
         if (preview != null && preview.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 8,
           ),

@@ -6,7 +6,9 @@
 //   lib/shared/widgets/settings/provider_config_panel.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../components/dialog_feedback.dart';
@@ -27,10 +29,10 @@ String providerCapabilitySummary(BuildContext context, AiProvider config) =>
     config.supportedModelKinds
         .map(
           (kind) => context.t(switch (kind) {
-            AiModelKind.chat => LocaleKeys.settingsProviderChatModelsLabel,
-            AiModelKind.image => LocaleKeys.settingsProviderImageModelsLabel,
-            AiModelKind.video => LocaleKeys.settingsProviderVideoModelsLabel,
-            AiModelKind.audio => LocaleKeys.settingsProviderAudioModelsLabel,
+            AiModelKind.chat => LocaleKeys.providerChatModelsLabel,
+            AiModelKind.image => LocaleKeys.providerImageModelsLabel,
+            AiModelKind.video => LocaleKeys.providerVideoModelsLabel,
+            AiModelKind.audio => LocaleKeys.providerAudioModelsLabel,
           }),
         )
         .join(' · ');

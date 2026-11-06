@@ -181,7 +181,7 @@ class AiToolPathList extends StatelessWidget {
               padding: const EdgeInsets.only(top: RevericSpacing.xxs),
               child: Text(
                 context.t(
-                  LocaleKeys.aiToolMoreResultsFmt,
+                  LocaleKeys.toolMoreResultsFmt,
                   namedArgs: {'count': '$hiddenCount'},
                 ),
                 style: typo.uiSmall.copyWith(
@@ -328,27 +328,27 @@ Widget _statusBadge(
 ) {
   final (label, color) = switch (status) {
     AiToolCallStatus.pending => (
-      context.t(LocaleKeys.aiToolPending),
+      context.t(LocaleKeys.toolPending),
       colors.accent,
     ),
     AiToolCallStatus.running => (
-      context.t(LocaleKeys.aiToolRunning),
+      context.t(LocaleKeys.toolRunning),
       colors.accent,
     ),
     AiToolCallStatus.success => (
-      context.t(LocaleKeys.aiToolSuccess),
+      context.t(LocaleKeys.toolSuccess),
       colors.additionBorder,
     ),
     AiToolCallStatus.error => (
-      context.t(LocaleKeys.aiToolError),
+      context.t(LocaleKeys.toolError),
       colors.deletionBorder,
     ),
     AiToolCallStatus.rejected => (
-      context.t(LocaleKeys.aiToolRejected),
+      context.t(LocaleKeys.toolRejected),
       colors.textMuted,
     ),
     AiToolCallStatus.cancelled => (
-      context.t(LocaleKeys.aiToolCancelled),
+      context.t(LocaleKeys.toolCancelled),
       colors.textMuted,
     ),
   };

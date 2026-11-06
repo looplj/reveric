@@ -6,7 +6,9 @@
 //   lib/shared/utils/storage_paths.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/workspace.json
 //   assets/translations/zh-CN/workspace.json
 import 'dart:convert';
@@ -96,9 +98,9 @@ class _AiCharacterImageToolCardState extends State<AiCharacterImageToolCard> {
 
   String get _toolTitle {
     if (_isAvatarTool) {
-      return context.t(LocaleKeys.aiToolNameGenerateAvatar);
+      return context.t(LocaleKeys.toolNameGenerateAvatar);
     }
-    return context.t(LocaleKeys.aiToolNameGeneratePhoto);
+    return context.t(LocaleKeys.toolNameGeneratePhoto);
   }
 
   String get _applyLabel {
@@ -227,10 +229,7 @@ class _AiCharacterImageToolCardState extends State<AiCharacterImageToolCard> {
             const SizedBox(height: RevericSpacing.sm),
             OutlinedButton.icon(
               onPressed: widget.onConfigureImageModel,
-              icon: const RevericIcon(
-                RevericIcons.settings_outlined,
-                size: 14,
-              ),
+              icon: const RevericIcon(RevericIcons.settings_outlined, size: 14),
               label: Text(context.t(LocaleKeys.aiConfigureImageModel)),
               style: OutlinedButton.styleFrom(
                 foregroundColor: colors.accent,
@@ -276,15 +275,15 @@ class _AiCharacterImageToolCardState extends State<AiCharacterImageToolCard> {
   ) {
     final (label, color) = switch (status) {
       AiImageStatus.generating => (
-        context.t(LocaleKeys.aiToolRunning),
+        context.t(LocaleKeys.toolRunning),
         colors.accent,
       ),
       AiImageStatus.success => (
-        context.t(LocaleKeys.aiToolSuccess),
+        context.t(LocaleKeys.toolSuccess),
         colors.additionBorder,
       ),
       AiImageStatus.error => (
-        context.t(LocaleKeys.aiToolError),
+        context.t(LocaleKeys.toolError),
         colors.deletionBorder,
       ),
     };

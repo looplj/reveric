@@ -6,8 +6,8 @@
 //   lib/shared/providers/settings_providers.dart
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/state-management.md
@@ -109,7 +109,7 @@ class ProviderDraftBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => RevericBadge(
-    label: context.t(LocaleKeys.settingsProviderDraftBadge),
+    label: context.t(LocaleKeys.providerDraftBadge),
     color: RevericTheme.colorsOf(context).warningText,
   );
 }
@@ -176,7 +176,7 @@ class ProviderDraftTypeField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          context.t(LocaleKeys.settingsProviderTypeLabel),
+          context.t(LocaleKeys.providerTypeLabel),
           style: typo.uiSemibold.copyWith(color: colors.textPrimary),
         ),
         const SizedBox(height: RevericSpacing.xs),
@@ -202,7 +202,7 @@ class ProviderDraftTypeField extends StatelessWidget {
           ),
         const SizedBox(height: RevericSpacing.xs),
         Text(
-          context.t(LocaleKeys.settingsProviderDraftTypeHint),
+          context.t(LocaleKeys.providerDraftTypeHint),
           style: typo.uiSmall.copyWith(color: colors.textMuted),
         ),
       ],

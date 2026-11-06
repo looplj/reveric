@@ -387,7 +387,7 @@
   "workspace.compendium_select_to_edit": "从左侧图鉴中选择一个条目开始编辑。",
   "workspace.compendium_create_first": "先在图鉴中新建第一个条目。",
   "workspace.new_compendium_entry": "新建图鉴条目",
-  "workspace.sidebar_entity_graph": "关系图谱",
+  "workspace.sidebar_entity_graph": "图谱",
   "workspace.story_progress": "当前进度",
   "workspace.story_progress_empty": "还没有故事状态快照",
   "workspace.story_progress_empty_hint": "发布章节并让编年史者处理后，这里会汇总全书的角色状态、信息边界、活跃伏笔和张力轨迹。",
@@ -402,5 +402,10 @@
   "workspace.sidebar_outline": "大纲",
   "workspace.sidebar_foreshadowing": "伏笔",
   "workspace.sidebar_map": "地图",
-  "workspace.sidebar_assets": "素材"
+  "workspace.sidebar_assets": "素材",
+  "workspace.sidebar_story_progress": "进度",
+  "workspace.sidebar_agent_rules": "规则",
+  "workspace.sidebar_council": "圆桌",
+  "workspace.sidebar_theater": "剧场",
+  "workspace.sidebar_roleplay": "扮演"
 }

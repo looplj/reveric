@@ -9,8 +9,6 @@
 //   .agents/rules/hooks.md
 import '../../../shared/app_config.dart';
 
-import '../../../shared/widgets/plugin_view/navigation.dart';
-import '../../../shared/widgets/plugin_view/page.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -38,6 +36,7 @@ import '../../../shared/models/outline.dart';
 import '../../../shared/models/subagent.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/providers/novel_workspace_state_provider.dart';
+import '../../../shared/providers/production_view.dart';
 import '../../../shared/providers/screenplay_providers.dart';
 import '../../../shared/providers/settings_providers.dart';
 import '../../../shared/providers/subagent_providers.dart';
@@ -313,6 +312,8 @@ const String _iconImageSquare = 'assets/icons/phosphor/image-square.svg';
 const String _iconUsersFour = 'assets/icons/phosphor/users-four.svg';
 const String _iconArticle = 'assets/icons/phosphor/article.svg';
 const String _iconSquaresFour = 'assets/icons/phosphor/squares-four.svg';
+const String _iconFilmSlate = 'assets/icons/phosphor/film-slate.svg';
+const String _iconFlowArrow = 'assets/icons/phosphor/flow-arrow.svg';
 
 void _noopVoidCallback() {}
 

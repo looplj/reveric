@@ -6,7 +6,9 @@
 //   lib/shared/localization/ai_provider_localization.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 
 import 'dart:io';
 
@@ -717,10 +719,7 @@ extension AiProviderX on AiProvider {
 
   String? get enableValidationMessage {
     if (!isTypeSupported) {
-      return tr(
-        LocaleKeys.settingsProviderTypeUnsupported,
-        namedArgs: {'type': type},
-      );
+      return tr(LocaleKeys.providerTypeUnsupported, namedArgs: {'type': type});
     }
     if (!isPlatformSupported) {
       return tr(LocaleKeys.settingsCodexDesktopOnly);

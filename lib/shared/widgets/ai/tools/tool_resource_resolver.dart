@@ -16,8 +16,8 @@
 //   assets/translations/zh-CN/common.json
 //   assets/translations/en/history.json
 //   assets/translations/zh-CN/history.json
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/workspace.json
 //   assets/translations/zh-CN/workspace.json
 //   assets/translations/en/relation.json
@@ -101,7 +101,7 @@ class AiToolResolvedResource {
 
   String displayLabel(BuildContext context) {
     final parts = <String>[
-      if (isUnavailableWork) context.t(LocaleKeys.aiToolWorkUnavailable),
+      if (isUnavailableWork) context.t(LocaleKeys.toolWorkUnavailable),
       if (workTitle != null && workTitle!.trim().isNotEmpty) workTitle!.trim(),
       if (showCollection && (ordinals.isEmpty || isListing))
         _localizedCollection(context, collection, asList: isListing),
@@ -543,7 +543,7 @@ String localizedChapterTypeLabel(BuildContext context, String type) {
     case '正文':
     case 'main':
     case 'main_chapter':
-      return context.t(LocaleKeys.aiToolChapterTypeChapter);
+      return context.t(LocaleKeys.toolChapterTypeChapter);
     case 'extra':
     case '番外':
     case 'side':
@@ -649,9 +649,9 @@ String localizedToolPathLabel(
         ? parsed.field
         : parsed.resourceSegment;
     final sublabel = switch (subcollection) {
-      'nodes' => context.t(LocaleKeys.aiToolPathCanvasNodes),
-      'edges' => context.t(LocaleKeys.aiToolPathCanvasEdges),
-      'layout' => context.t(LocaleKeys.aiToolPathCanvasLayout),
+      'nodes' => context.t(LocaleKeys.toolPathCanvasNodes),
+      'edges' => context.t(LocaleKeys.toolPathCanvasEdges),
+      'layout' => context.t(LocaleKeys.toolPathCanvasLayout),
       null => null,
       _ => aiToolFieldLabel(context, subcollection),
     };
@@ -663,8 +663,8 @@ String localizedToolPathLabel(
   if (segments.first == '_schema') {
     final target = segments.length > 2 && segments[1] == 'groups'
         ? switch (segments[2]) {
-            'shared' => context.t(LocaleKeys.aiToolSchemaShared),
-            'novel' => context.t(LocaleKeys.aiToolSchemaNovel),
+            'shared' => context.t(LocaleKeys.toolSchemaShared),
+            'novel' => context.t(LocaleKeys.toolSchemaNovel),
             'screenplay' => context.t(LocaleKeys.screenplayScript),
             _ => segments[2],
           }
@@ -798,7 +798,7 @@ String _localizedSubResourceTitle(BuildContext context, String title) {
   final match = RegExp(r'^#(\d+)$').firstMatch(title.trim());
   if (match != null) {
     return context.t(
-      LocaleKeys.aiToolBeatIndexFmt,
+      LocaleKeys.toolBeatIndexFmt,
       namedArgs: {'index': match.group(1)!},
     );
   }
@@ -811,9 +811,9 @@ String _localizedCollection(
   bool asList = false,
 }) {
   final key = switch (collection) {
-    'works' => LocaleKeys.aiToolRunNovel,
-    'story_state' => LocaleKeys.aiToolStoryState,
-    '_schema' => LocaleKeys.aiToolSchema,
+    'works' => LocaleKeys.toolRunNovel,
+    'story_state' => LocaleKeys.toolStoryState,
+    '_schema' => LocaleKeys.toolSchema,
     'screenplay' => LocaleKeys.screenplayScript,
     'seasons' => LocaleKeys.screenplaySeasons,
     'episodes' => LocaleKeys.screenplayEpisodes,
@@ -834,7 +834,7 @@ String _localizedCollection(
     'creatures' => LocaleKeys.workspaceCreatures,
     'foreshadowing' => LocaleKeys.workspaceForeshadowings,
     'relations' => LocaleKeys.workspaceRelations,
-    'locations' => LocaleKeys.aiToolCollectionLocations,
+    'locations' => LocaleKeys.toolCollectionLocations,
     '.agents/rules' => LocaleKeys.agentRuleTitle,
     _ => null,
   };
@@ -847,7 +847,7 @@ String _localizedCollection(
     return label;
   }
   return context.t(
-    LocaleKeys.aiToolCollectionListFmt,
+    LocaleKeys.toolCollectionListFmt,
     namedArgs: {'collection': label},
   );
 }
@@ -893,9 +893,9 @@ String _localizedSubCollection(BuildContext context, String collection) {
   final key = switch (collection) {
     'change_logs' => LocaleKeys.historyTitle,
     'production' => LocaleKeys.storyboardSettings,
-    'beats' => LocaleKeys.aiToolOutlineBeats,
-    'nodes' => LocaleKeys.aiToolPathCanvasNodes,
-    'edges' => LocaleKeys.aiToolPathCanvasEdges,
+    'beats' => LocaleKeys.toolOutlineBeats,
+    'nodes' => LocaleKeys.toolPathCanvasNodes,
+    'edges' => LocaleKeys.toolPathCanvasEdges,
     _ => null,
   };
   return key == null ? collection : context.t(key);
@@ -971,14 +971,14 @@ String aiToolFieldLabel(BuildContext context, String field) {
     'parent_id' => 'history.field_parent',
     'volume_id' => LocaleKeys.workspaceVolume,
     'start_chapter_num' => LocaleKeys.workspaceOutlineStartChapter,
-    'source_type' => LocaleKeys.aiToolQuerySourceType,
-    'target_type' => LocaleKeys.aiToolQueryTargetType,
-    'relation_type' => LocaleKeys.aiToolQueryRelationType,
+    'source_type' => LocaleKeys.toolQuerySourceType,
+    'target_type' => LocaleKeys.toolQueryTargetType,
+    'relation_type' => LocaleKeys.toolQueryRelationType,
     'proof' => LocaleKeys.relationProof,
     'reason' => LocaleKeys.relationReason,
     'source_id' => 'history.field_resource',
     'target_id' => 'history.field_resource',
-    'chapter_id' => LocaleKeys.aiToolQueryChapterId,
+    'chapter_id' => LocaleKeys.toolQueryChapterId,
     _ => '',
   };
   if (key.isEmpty) {
@@ -1040,7 +1040,7 @@ String? _localizedQueryChip(BuildContext context, String key, String value) {
         return localizedValue;
       }
       return context.t(
-        LocaleKeys.aiToolQueryFilterFmt,
+        LocaleKeys.toolQueryFilterFmt,
         namedArgs: {'label': label, 'value': localizedValue},
       );
   }

@@ -7,7 +7,9 @@
 //   lib/shared/providers/settings_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
@@ -127,7 +129,7 @@ class _AiToolActivityGroupState extends ConsumerState<AiToolActivityGroup> {
                   const SizedBox(width: RevericSpacing.sm),
                   Expanded(
                     child: Text(
-                      context.t(LocaleKeys.aiToolProcessTitle),
+                      context.t(LocaleKeys.toolProcessTitle),
                       style: typo.uiMedium.copyWith(
                         color: colors.textSecondary,
                       ),
@@ -215,9 +217,9 @@ class _CountPill extends StatelessWidget {
       ),
       child: Text(
         running
-            ? context.t(LocaleKeys.aiToolRunning)
+            ? context.t(LocaleKeys.toolRunning)
             : context.t(
-                LocaleKeys.aiToolProcessCountFmt,
+                LocaleKeys.toolProcessCountFmt,
                 namedArgs: {'count': '$count'},
               ),
         style: typo.uiTinySemibold.copyWith(color: color, height: 1),
@@ -574,7 +576,7 @@ class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
               children: [
                 if (isSpawnAgent)
                   Tooltip(
-                    message: context.t(LocaleKeys.aiToolNameSpawnAgent),
+                    message: context.t(LocaleKeys.toolNameSpawnAgent),
                     child: SpawnAgentAvatar(
                       block: block,
                       status: displayStatus,
@@ -644,7 +646,7 @@ class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
           Padding(
             padding: const EdgeInsets.only(left: 26, bottom: RevericSpacing.sm),
             child: Text(
-              context.t(LocaleKeys.aiToolCallIncomplete),
+              context.t(LocaleKeys.toolCallIncomplete),
               style: typo.uiSmall.copyWith(color: colors.deletionBorder),
             ),
           ),

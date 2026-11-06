@@ -4,8 +4,8 @@
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 import 'package:flutter/material.dart';
 
 import 'package:reveric/shared/localization/app_localization.dart';
@@ -46,11 +46,11 @@ class GraphSearchToolCardBody extends StatelessWidget {
         '$entityTypeLabel($entityId)'
       else if (entityId.isNotEmpty && entityType.isNotEmpty)
         '$entityType($entityId)',
-      context.t(LocaleKeys.aiToolDepthFmt, namedArgs: {'depth': '$depth'}),
+      context.t(LocaleKeys.toolDepthFmt, namedArgs: {'depth': '$depth'}),
       if (relationTypeLabel.isNotEmpty) relationTypeLabel,
       if (totalRelations > 0)
         context.t(
-          LocaleKeys.aiToolResultCountFmt,
+          LocaleKeys.toolResultCountFmt,
           namedArgs: {'count': '$totalRelations'},
         ),
     ];
@@ -89,7 +89,7 @@ class GraphSearchToolCardBody extends StatelessWidget {
               '';
           if (relations.isEmpty) return '';
           final layerLabel = context.t(
-            LocaleKeys.aiToolLayerDepthFmt,
+            LocaleKeys.toolLayerDepthFmt,
             namedArgs: {'depth': '$layerDepth'},
           );
           return '$layerLabel:\n$relations';
@@ -104,7 +104,7 @@ class GraphSearchToolCardBody extends StatelessWidget {
         if (preview.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 12,
           ),

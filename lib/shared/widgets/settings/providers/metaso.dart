@@ -4,8 +4,8 @@
 //   lib/shared/widgets/settings/provider_overview.dart
 //   lib/shared/models/provider_brand.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/i18n.md
@@ -34,7 +34,7 @@ const metasoShowcase = ProviderShowcase(
 Widget _buildCard(BuildContext context) => const _MetasoCard();
 
 String _listTagline(BuildContext context) => context.t(
-  LocaleKeys.settingsProviderMetasoListTagline,
+  LocaleKeys.providerMetasoListTagline,
   namedArgs: {'price': _hdPrice},
 );
 
@@ -67,12 +67,12 @@ class _MetasoCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      context.t(LocaleKeys.settingsProviderMetasoCategory),
+                      context.t(LocaleKeys.providerMetasoCategory),
                       style: typo.uiTiny.copyWith(color: colors.textMuted),
                     ),
                   ),
                   RevericBadge(
-                    label: context.t(LocaleKeys.settingsProviderSponsoredBadge),
+                    label: context.t(LocaleKeys.providerSponsoredBadge),
                     color: colors.textMuted,
                   ),
                 ],
@@ -85,7 +85,7 @@ class _MetasoCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      context.t(LocaleKeys.settingsProviderMetasoTagline),
+                      context.t(LocaleKeys.providerMetasoTagline),
                       style: typo.uiSmall.copyWith(color: colors.textSecondary),
                     ),
                     const SizedBox(height: RevericSpacing.xs),
@@ -105,7 +105,7 @@ class _MetasoCard extends StatelessWidget {
                     ),
                     const SizedBox(height: RevericSpacing.sm),
                     Text(
-                      context.t(LocaleKeys.settingsProviderMetasoSummary),
+                      context.t(LocaleKeys.providerMetasoSummary),
                       style: typo.uiSmall.copyWith(color: colors.textSecondary),
                     ),
                   ],
@@ -117,13 +117,13 @@ class _MetasoCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      context.t(LocaleKeys.settingsProviderMetasoMaxDuration),
+                      context.t(LocaleKeys.providerMetasoMaxDuration),
                       style: typo.uiTiny.copyWith(color: colors.textMuted),
                     ),
                     const SizedBox(height: RevericSpacing.xxs),
                     _Figure(
                       value: '30',
-                      unit: context.t(LocaleKeys.settingsProviderMetasoSeconds),
+                      unit: context.t(LocaleKeys.providerMetasoSeconds),
                     ),
                     const SizedBox(height: RevericSpacing.xxs),
                     Text(
@@ -138,12 +138,12 @@ class _MetasoCard extends StatelessWidget {
                 wide: wide,
                 first: _Price(
                   resolution: '768P',
-                  label: context.t(LocaleKeys.settingsProviderMetasoHd),
+                  label: context.t(LocaleKeys.providerMetasoHd),
                   price: _hdPrice,
                 ),
                 second: _Price(
                   resolution: '2K',
-                  label: context.t(LocaleKeys.settingsProviderMetasoNative2k),
+                  label: context.t(LocaleKeys.providerMetasoNative2k),
                   price: _twoKPrice,
                 ),
               ),
@@ -153,18 +153,16 @@ class _MetasoCard extends StatelessWidget {
                 divided: false,
                 first: _Feature(
                   icon: RevericIcons.film_slate,
-                  title: context.t(
-                    LocaleKeys.settingsProviderMetasoResolutionTitle,
-                  ),
+                  title: context.t(LocaleKeys.providerMetasoResolutionTitle),
                   description: context.t(
-                    LocaleKeys.settingsProviderMetasoResolutionDescription,
+                    LocaleKeys.providerMetasoResolutionDescription,
                   ),
                 ),
                 second: _Feature(
                   icon: RevericIcons.waveform,
-                  title: context.t(LocaleKeys.settingsProviderMetasoAudioTitle),
+                  title: context.t(LocaleKeys.providerMetasoAudioTitle),
                   description: context.t(
-                    LocaleKeys.settingsProviderMetasoAudioDescription,
+                    LocaleKeys.providerMetasoAudioDescription,
                   ),
                 ),
               ),
@@ -186,13 +184,10 @@ class _MetasoCard extends StatelessWidget {
                           children: [
                             for (final label in [
                               context.t(
-                                LocaleKeys
-                                    .settingsProviderMetasoOpenaiCompatible,
+                                LocaleKeys.providerMetasoOpenaiCompatible,
                               ),
                               'ComfyUI',
-                              context.t(
-                                LocaleKeys.settingsProviderMetasoCanvas,
-                              ),
+                              context.t(LocaleKeys.providerMetasoCanvas),
                             ])
                               Text(
                                 label,
@@ -204,7 +199,7 @@ class _MetasoCard extends StatelessWidget {
                         ),
                         const SizedBox(height: RevericSpacing.xxs),
                         Text(
-                          context.t(LocaleKeys.settingsProviderMetasoNoGpu),
+                          context.t(LocaleKeys.providerMetasoNoGpu),
                           style: typo.uiTiny.copyWith(
                             color: colors.textSecondary,
                           ),
@@ -217,7 +212,7 @@ class _MetasoCard extends StatelessWidget {
                     height: RevericSpacing.lg,
                   ),
                   RevericButton.primary(
-                    label: context.t(LocaleKeys.settingsProviderMetasoLink),
+                    label: context.t(LocaleKeys.providerMetasoLink),
                     icon: RevericIcons.arrow_square_out,
                     onPressed: () => openProviderChannelUrl(
                       context,
@@ -228,7 +223,7 @@ class _MetasoCard extends StatelessWidget {
               ),
               const SizedBox(height: RevericSpacing.x3l),
               Text(
-                context.t(LocaleKeys.settingsProviderMetasoPricingNote),
+                context.t(LocaleKeys.providerMetasoPricingNote),
                 style: typo.uiTiny.copyWith(color: colors.textMuted),
               ),
             ],
@@ -345,7 +340,7 @@ class _Price extends StatelessWidget {
         const SizedBox(height: RevericSpacing.sm),
         _Figure(
           value: price,
-          unit: context.t(LocaleKeys.settingsProviderMetasoPriceUnit),
+          unit: context.t(LocaleKeys.providerMetasoPriceUnit),
         ),
       ],
     );

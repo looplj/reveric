@@ -4,7 +4,9 @@
 //   lib/shared/widgets/ai/tools/tool_resource_resolver.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/i18n.md
@@ -245,7 +247,7 @@ class AiToolDetailBody extends ConsumerWidget {
               borderRadius: BorderRadius.circular(RevericRadius.medium),
             ),
             child: Text(
-              context.t(LocaleKeys.aiToolCancelled),
+              context.t(LocaleKeys.toolCancelled),
               style: typo.uiSmall.copyWith(color: colors.textMuted),
             ),
           ),

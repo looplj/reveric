@@ -3,7 +3,9 @@
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/i18n.md
 
@@ -58,35 +60,31 @@ String localizedProviderTypeDescription(
   AiProviderType type,
 ) {
   final key = switch (type) {
-    AiProviderType.openai => LocaleKeys.settingsProviderDescriptionOpenai,
-    AiProviderType.codex => LocaleKeys.settingsProviderDescriptionCodex,
+    AiProviderType.openai => LocaleKeys.providerDescriptionOpenai,
+    AiProviderType.codex => LocaleKeys.providerDescriptionCodex,
     AiProviderType.openai_compatible =>
-      LocaleKeys.settingsProviderDescriptionOpenaiCompatible,
-    AiProviderType.api88 => LocaleKeys.settingsProviderDescriptionApi88,
-    AiProviderType.ooki => LocaleKeys.settingsProviderDescriptionOoki,
-    AiProviderType.openrouter =>
-      LocaleKeys.settingsProviderDescriptionOpenrouter,
-    AiProviderType.xai => LocaleKeys.settingsProviderDescriptionXai,
-    AiProviderType.anthropic => LocaleKeys.settingsProviderDescriptionAnthropic,
-    AiProviderType.qwen => LocaleKeys.settingsProviderDescriptionQwen,
+      LocaleKeys.providerDescriptionOpenaiCompatible,
+    AiProviderType.api88 => LocaleKeys.providerDescriptionApi88,
+    AiProviderType.ooki => LocaleKeys.providerDescriptionOoki,
+    AiProviderType.openrouter => LocaleKeys.providerDescriptionOpenrouter,
+    AiProviderType.xai => LocaleKeys.providerDescriptionXai,
+    AiProviderType.anthropic => LocaleKeys.providerDescriptionAnthropic,
+    AiProviderType.qwen => LocaleKeys.providerDescriptionQwen,
     AiProviderType.qwen_token_plan =>
-      LocaleKeys.settingsProviderDescriptionQwenTokenPlan,
-    AiProviderType.gemini => LocaleKeys.settingsProviderDescriptionGemini,
-    AiProviderType.deepseek => LocaleKeys.settingsProviderDescriptionDeepseek,
-    AiProviderType.moonshot => LocaleKeys.settingsProviderDescriptionMoonshot,
-    AiProviderType.zhipu => LocaleKeys.settingsProviderDescriptionZhipu,
-    AiProviderType.doubao => LocaleKeys.settingsProviderDescriptionDoubao,
-    AiProviderType.volcengine =>
-      LocaleKeys.settingsProviderDescriptionVolcengine,
-    AiProviderType.metaso => LocaleKeys.settingsProviderDescriptionMetaso,
-    AiProviderType.minimax => LocaleKeys.settingsProviderDescriptionMinimax,
-    AiProviderType.moss => LocaleKeys.settingsProviderDescriptionMoss,
-    AiProviderType.agnes => LocaleKeys.settingsProviderDescriptionAgnes,
-    AiProviderType.atlascloud =>
-      LocaleKeys.settingsProviderDescriptionAtlascloud,
-    AiProviderType.purefox => LocaleKeys.settingsProviderDescriptionPurefox,
-    AiProviderType.purefox_media =>
-      LocaleKeys.settingsProviderDescriptionPurefoxMedia,
+      LocaleKeys.providerDescriptionQwenTokenPlan,
+    AiProviderType.gemini => LocaleKeys.providerDescriptionGemini,
+    AiProviderType.deepseek => LocaleKeys.providerDescriptionDeepseek,
+    AiProviderType.moonshot => LocaleKeys.providerDescriptionMoonshot,
+    AiProviderType.zhipu => LocaleKeys.providerDescriptionZhipu,
+    AiProviderType.doubao => LocaleKeys.providerDescriptionDoubao,
+    AiProviderType.volcengine => LocaleKeys.providerDescriptionVolcengine,
+    AiProviderType.metaso => LocaleKeys.providerDescriptionMetaso,
+    AiProviderType.minimax => LocaleKeys.providerDescriptionMinimax,
+    AiProviderType.moss => LocaleKeys.providerDescriptionMoss,
+    AiProviderType.agnes => LocaleKeys.providerDescriptionAgnes,
+    AiProviderType.atlascloud => LocaleKeys.providerDescriptionAtlascloud,
+    AiProviderType.purefox => LocaleKeys.providerDescriptionPurefox,
+    AiProviderType.purefox_media => LocaleKeys.providerDescriptionPurefoxMedia,
   };
   return context.t(key);
 }

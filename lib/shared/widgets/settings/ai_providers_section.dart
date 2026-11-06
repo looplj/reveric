@@ -7,7 +7,9 @@
 //   lib/shared/providers/settings_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -228,7 +230,7 @@ class _DesktopProviders extends HookConsumerWidget {
                 )
               : Center(
                   child: Text(
-                    context.t(LocaleKeys.settingsProviderSelectPlaceholder),
+                    context.t(LocaleKeys.providerSelectPlaceholder),
                     style: RevericTheme.typographyOf(
                       context,
                     ).ui.copyWith(color: colors.textMuted),
@@ -383,7 +385,7 @@ class _ProviderDraftRoute extends HookConsumerWidget {
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           title: Text(
-            context.t(LocaleKeys.settingsProviderNewTitle),
+            context.t(LocaleKeys.providerNewTitle),
             style: typo.heading2.copyWith(color: colors.textPrimary),
           ),
           actions: [
@@ -454,7 +456,7 @@ class ProviderList extends HookWidget {
                 Expanded(
                   child: RevericSearchField(
                     controller: search.controller,
-                    hint: context.t(LocaleKeys.settingsProviderSearchHint),
+                    hint: context.t(LocaleKeys.providerSearchHint),
                   ),
                 ),
                 const SizedBox(width: RevericSpacing.xxs),
@@ -610,7 +612,7 @@ class ProviderListItem extends StatelessWidget {
                         label: context.t(
                           config.isTypeSupported
                               ? LocaleKeys.settingsCustomBadge
-                              : LocaleKeys.settingsProviderUnsupportedBadge,
+                              : LocaleKeys.providerUnsupportedBadge,
                         ),
                         color: config.isTypeSupported
                             ? colors.accentWarm
@@ -694,10 +696,10 @@ String localizedProviderTypeName(BuildContext context, AiProviderType type) {
     return context.t(LocaleKeys.settingsBuiltinProviderMetaso);
   }
   if (type == AiProviderType.volcengine) {
-    return context.t(LocaleKeys.settingsProviderTypeVolcengine);
+    return context.t(LocaleKeys.providerTypeVolcengine);
   }
   if (type == AiProviderType.openai_compatible) {
-    return context.t(LocaleKeys.settingsProviderTypeOpenaiCompatible);
+    return context.t(LocaleKeys.providerTypeOpenaiCompatible);
   }
   return aiProviderTypeDisplayNames[type] ?? type.name;
 }

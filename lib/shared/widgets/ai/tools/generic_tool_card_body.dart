@@ -4,8 +4,8 @@
 //   lib/shared/widgets/ai/tools/tool_resource_resolver.dart
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -32,10 +32,10 @@ class GenericToolCardBody extends StatelessWidget {
     final preview = agentMessage.isNotEmpty ? agentMessage : _previewText();
     final infoEntries = <(String, String)>[
       if (resource != null)
-        (context.t(LocaleKeys.aiToolTarget), resource!.displayLabel(context)),
+        (context.t(LocaleKeys.toolTarget), resource!.displayLabel(context)),
       if ((block.arguments['question'] as String? ?? '').trim().isNotEmpty)
         (
-          context.t(LocaleKeys.aiToolQuestion),
+          context.t(LocaleKeys.toolQuestion),
           (block.arguments['question'] as String).trim(),
         ),
     ];
@@ -49,8 +49,8 @@ class GenericToolCardBody extends StatelessWidget {
           AiToolPreviewBlock(
             label: context.t(
               agentMessage.isNotEmpty
-                  ? LocaleKeys.aiToolAgentMessage
-                  : LocaleKeys.aiToolPreview,
+                  ? LocaleKeys.toolAgentMessage
+                  : LocaleKeys.toolPreview,
             ),
             text: preview,
             monospace: preview.startsWith('{') || preview.startsWith('['),

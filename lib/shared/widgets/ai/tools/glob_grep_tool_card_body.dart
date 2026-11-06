@@ -4,8 +4,8 @@
 //   lib/shared/widgets/ai/tools/tool_card_descriptor.dart
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 import 'package:flutter/material.dart';
 
 import 'package:reveric/shared/localization/app_localization.dart';
@@ -36,15 +36,15 @@ class GlobToolCardBody extends StatelessWidget {
       if (pattern.isNotEmpty) pattern,
       if (total > 0)
         context.t(
-          LocaleKeys.aiToolResultCountFmt,
+          LocaleKeys.toolResultCountFmt,
           namedArgs: {'count': '$total'},
         ),
-      if (truncated) context.t(LocaleKeys.aiToolResultsTruncated),
+      if (truncated) context.t(LocaleKeys.toolResultsTruncated),
     ];
 
     final infoEntries = <(String, String)>[
       if (scopePath.isNotEmpty && scopePath != '/')
-        (context.t(LocaleKeys.aiToolScope), _scopeLabel(context, scopePath)),
+        (context.t(LocaleKeys.toolScope), _scopeLabel(context, scopePath)),
     ];
 
     return Column(
@@ -58,7 +58,7 @@ class GlobToolCardBody extends StatelessWidget {
         if (matches.isNotEmpty) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPathList(
-            label: context.t(LocaleKeys.aiToolPaths),
+            label: context.t(LocaleKeys.toolPaths),
             paths: matches,
             totalCount: total,
             truncated: truncated,
@@ -67,10 +67,10 @@ class GlobToolCardBody extends StatelessWidget {
         ] else if (block.status == AiToolCallStatus.success) ...[
           const SizedBox(height: RevericSpacing.sm),
           Text(
-            context.t(LocaleKeys.aiToolNoResults),
-            style: RevericTheme.typographyOf(context).uiSmall.copyWith(
-              color: RevericTheme.colorsOf(context).textMuted,
-            ),
+            context.t(LocaleKeys.toolNoResults),
+            style: RevericTheme.typographyOf(
+              context,
+            ).uiSmall.copyWith(color: RevericTheme.colorsOf(context).textMuted),
           ),
         ],
       ],
@@ -103,16 +103,16 @@ class GrepToolCardBody extends StatelessWidget {
         _outputModeLabel(context, outputMode),
       if (!isEmpty)
         context.t(
-          LocaleKeys.aiToolResultCountFmt,
+          LocaleKeys.toolResultCountFmt,
           namedArgs: {'count': '${lines.length}'},
         ),
-      if (truncated) context.t(LocaleKeys.aiToolResultsTruncated),
+      if (truncated) context.t(LocaleKeys.toolResultsTruncated),
     ];
 
     final infoEntries = <(String, String)>[
       if (scopePath.isNotEmpty && scopePath != '/')
-        (context.t(LocaleKeys.aiToolScope), _scopeLabel(context, scopePath)),
-      if (glob.isNotEmpty) (context.t(LocaleKeys.aiToolPattern), glob),
+        (context.t(LocaleKeys.toolScope), _scopeLabel(context, scopePath)),
+      if (glob.isNotEmpty) (context.t(LocaleKeys.toolPattern), glob),
     ];
 
     return Column(
@@ -127,14 +127,14 @@ class GrepToolCardBody extends StatelessWidget {
           const SizedBox(height: RevericSpacing.sm),
           if (outputMode == 'files_with_matches')
             AiToolPathList(
-              label: context.t(LocaleKeys.aiToolPaths),
+              label: context.t(LocaleKeys.toolPaths),
               paths: lines,
               truncated: truncated,
               formatPath: localizedToolPathLabel,
             )
           else
             AiToolPreviewBlock(
-              label: context.t(LocaleKeys.aiToolMatches),
+              label: context.t(LocaleKeys.toolMatches),
               text: lines.join('\n'),
               monospace: true,
               maxLines: 12,
@@ -142,10 +142,10 @@ class GrepToolCardBody extends StatelessWidget {
         ] else if (block.status == AiToolCallStatus.success) ...[
           const SizedBox(height: RevericSpacing.sm),
           Text(
-            context.t(LocaleKeys.aiToolNoResults),
-            style: RevericTheme.typographyOf(context).uiSmall.copyWith(
-              color: RevericTheme.colorsOf(context).textMuted,
-            ),
+            context.t(LocaleKeys.toolNoResults),
+            style: RevericTheme.typographyOf(
+              context,
+            ).uiSmall.copyWith(color: RevericTheme.colorsOf(context).textMuted),
           ),
         ],
       ],
@@ -154,8 +154,8 @@ class GrepToolCardBody extends StatelessWidget {
 
   String _outputModeLabel(BuildContext context, String mode) {
     return switch (mode) {
-      'files_with_matches' => context.t(LocaleKeys.aiToolGrepModeFiles),
-      'count' => context.t(LocaleKeys.aiToolGrepModeCount),
+      'files_with_matches' => context.t(LocaleKeys.toolGrepModeFiles),
+      'count' => context.t(LocaleKeys.toolGrepModeCount),
       _ => mode,
     };
   }
@@ -181,7 +181,7 @@ bool _isNoResultsText(String rawText) {
 String _scopeLabel(BuildContext context, String path) {
   final trimmed = path.trim();
   if (trimmed.isEmpty || trimmed == '/') {
-    return context.t(LocaleKeys.aiToolScopeRoot);
+    return context.t(LocaleKeys.toolScopeRoot);
   }
   final segments = trimmed
       .split('/')

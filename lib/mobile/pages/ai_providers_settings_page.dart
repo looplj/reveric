@@ -4,8 +4,8 @@
 //   lib/mobile/widgets/model_effort_sheet.dart
 //   lib/shared/localization/locale_keys.dart
 //   lib/shared/theme/theme.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
@@ -38,15 +38,12 @@ class MobileAiProvidersSettingsPage extends StatelessWidget {
         elevation: 0,
         foregroundColor: colors.textPrimary,
         title: Text(
-          context.t(LocaleKeys.settingsProviders),
+          context.t(LocaleKeys.providerTitle),
           style: typo.heading2.copyWith(color: colors.textPrimary),
         ),
         leading: IconButton(
           tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-          icon: RevericIcon(
-            RevericIcons.arrow_back,
-            color: colors.textPrimary,
-          ),
+          icon: RevericIcon(RevericIcons.arrow_back, color: colors.textPrimary),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
       ),

@@ -7,7 +7,9 @@
 //   lib/shared/components/reveric_slidable_delete.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
+//   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
+//   assets/translations/zh-CN/provider.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -82,7 +84,7 @@ class MobileProviderList extends HookConsumerWidget {
             Expanded(
               child: RevericSearchField(
                 controller: search.controller,
-                hint: context.t(LocaleKeys.settingsProviderSearchHint),
+                hint: context.t(LocaleKeys.providerSearchHint),
               ),
             ),
             const SizedBox(width: RevericSpacing.sm),
@@ -208,9 +210,7 @@ class _MobileProviderRow extends StatelessWidget {
                         Flexible(
                           child: RevericBadge(
                             label: !config.isTypeSupported
-                                ? context.t(
-                                    LocaleKeys.settingsProviderUnsupportedBadge,
-                                  )
+                                ? context.t(LocaleKeys.providerUnsupportedBadge)
                                 : context.t(LocaleKeys.settingsCustomBadge),
                             color: !config.isTypeSupported
                                 ? colors.warningText

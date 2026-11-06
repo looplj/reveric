@@ -4,8 +4,8 @@
 //   lib/shared/widgets/ai/tools/tool_resource_resolver.dart
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 import 'package:flutter/material.dart';
@@ -34,13 +34,13 @@ class ReadToolCardBody extends StatelessWidget {
         context.t(LocaleKeys.chapterStatPublished),
       if (result['status'] == 'draft') context.t(LocaleKeys.chapterStatDraft),
       if (total != null && total != '0')
-        context.t(LocaleKeys.aiToolResultCountFmt, namedArgs: {'count': total}),
+        context.t(LocaleKeys.toolResultCountFmt, namedArgs: {'count': total}),
       if (result['total_lines'] is int &&
           (result['total_lines'] as int) > 0 &&
           startLine != null &&
           endLine != null)
         context.t(
-          LocaleKeys.aiToolLineRangeFmt,
+          LocaleKeys.toolLineRangeFmt,
           namedArgs: {'start': startLine, 'end': endLine},
         ),
     ];

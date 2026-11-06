@@ -8,8 +8,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/workspace.json
 //   assets/translations/zh-CN/workspace.json
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -66,8 +66,8 @@ class MobileCharacterImageActions extends HookConsumerWidget {
         }
         final label = context.t(
           avatar
-              ? LocaleKeys.aiToolNameGenerateAvatar
-              : LocaleKeys.aiToolNameGeneratePhoto,
+              ? LocaleKeys.toolNameGenerateAvatar
+              : LocaleKeys.toolNameGeneratePhoto,
         );
         final style = await showMobileSheet<String>(
           context: context,

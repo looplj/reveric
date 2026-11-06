@@ -8,58 +8,60 @@ part of 'production_view.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// 制片页当前停在分镜视图（默认视图）；画布和列表视图不显示底栏。
+/// 制片页当前视图，由左栏入口和制片页共同驱动。
 ///
-/// 工作区外壳在制片分区时 watch 保活；制片页只在切视图和卸载时写入。
+/// 左栏写入目标视图，制片页监听后带着焦点切换；切换被拒（编辑未保存等）时
+/// 制片页把状态写回实际视图。保活以便离开制片分区后再回来仍停在上次的视图。
 
-@ProviderFor(ProductionSegmentsView)
-final productionSegmentsViewProvider = ProductionSegmentsViewFamily._();
+@ProviderFor(ProductionView)
+final productionViewProvider = ProductionViewFamily._();
 
-/// 制片页当前停在分镜视图（默认视图）；画布和列表视图不显示底栏。
+/// 制片页当前视图，由左栏入口和制片页共同驱动。
 ///
-/// 工作区外壳在制片分区时 watch 保活；制片页只在切视图和卸载时写入。
-final class ProductionSegmentsViewProvider
-    extends $NotifierProvider<ProductionSegmentsView, bool> {
-  /// 制片页当前停在分镜视图（默认视图）；画布和列表视图不显示底栏。
+/// 左栏写入目标视图，制片页监听后带着焦点切换；切换被拒（编辑未保存等）时
+/// 制片页把状态写回实际视图。保活以便离开制片分区后再回来仍停在上次的视图。
+final class ProductionViewProvider
+    extends $NotifierProvider<ProductionView, ProductionViewMode> {
+  /// 制片页当前视图，由左栏入口和制片页共同驱动。
   ///
-  /// 工作区外壳在制片分区时 watch 保活；制片页只在切视图和卸载时写入。
-  ProductionSegmentsViewProvider._({
-    required ProductionSegmentsViewFamily super.from,
+  /// 左栏写入目标视图，制片页监听后带着焦点切换；切换被拒（编辑未保存等）时
+  /// 制片页把状态写回实际视图。保活以便离开制片分区后再回来仍停在上次的视图。
+  ProductionViewProvider._({
+    required ProductionViewFamily super.from,
     required String super.argument,
   }) : super(
          retry: null,
-         name: r'productionSegmentsViewProvider',
-         isAutoDispose: true,
+         name: r'productionViewProvider',
+         isAutoDispose: false,
          dependencies: null,
          $allTransitiveDependencies: null,
        );
 
   @override
-  String debugGetCreateSourceHash() => _$productionSegmentsViewHash();
+  String debugGetCreateSourceHash() => _$productionViewHash();
 
   @override
   String toString() {
-    return r'productionSegmentsViewProvider'
+    return r'productionViewProvider'
         ''
         '($argument)';
   }
 
   @$internal
   @override
-  ProductionSegmentsView create() => ProductionSegmentsView();
+  ProductionView create() => ProductionView();
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(bool value) {
+  Override overrideWithValue(ProductionViewMode value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<bool>(value),
+      providerOverride: $SyncValueProvider<ProductionViewMode>(value),
     );
   }
 
   @override
   bool operator ==(Object other) {
-    return other is ProductionSegmentsViewProvider &&
-        other.argument == argument;
+    return other is ProductionViewProvider && other.argument == argument;
   }
 
   @override
@@ -68,54 +70,62 @@ final class ProductionSegmentsViewProvider
   }
 }
 
-String _$productionSegmentsViewHash() =>
-    r'1859fadbb3a9a93a8d4742e7e1a273f12de159fa';
+String _$productionViewHash() => r'5a3f86e6db77430798d6cc9db684b4153c7e149e';
 
-/// 制片页当前停在分镜视图（默认视图）；画布和列表视图不显示底栏。
+/// 制片页当前视图，由左栏入口和制片页共同驱动。
 ///
-/// 工作区外壳在制片分区时 watch 保活；制片页只在切视图和卸载时写入。
+/// 左栏写入目标视图，制片页监听后带着焦点切换；切换被拒（编辑未保存等）时
+/// 制片页把状态写回实际视图。保活以便离开制片分区后再回来仍停在上次的视图。
 
-final class ProductionSegmentsViewFamily extends $Family
+final class ProductionViewFamily extends $Family
     with
-        $ClassFamilyOverride<ProductionSegmentsView, bool, bool, bool, String> {
-  ProductionSegmentsViewFamily._()
+        $ClassFamilyOverride<
+          ProductionView,
+          ProductionViewMode,
+          ProductionViewMode,
+          ProductionViewMode,
+          String
+        > {
+  ProductionViewFamily._()
     : super(
         retry: null,
-        name: r'productionSegmentsViewProvider',
+        name: r'productionViewProvider',
         dependencies: null,
         $allTransitiveDependencies: null,
-        isAutoDispose: true,
+        isAutoDispose: false,
       );
 
-  /// 制片页当前停在分镜视图（默认视图）；画布和列表视图不显示底栏。
+  /// 制片页当前视图，由左栏入口和制片页共同驱动。
   ///
-  /// 工作区外壳在制片分区时 watch 保活；制片页只在切视图和卸载时写入。
+  /// 左栏写入目标视图，制片页监听后带着焦点切换；切换被拒（编辑未保存等）时
+  /// 制片页把状态写回实际视图。保活以便离开制片分区后再回来仍停在上次的视图。
 
-  ProductionSegmentsViewProvider call(String novelId) =>
-      ProductionSegmentsViewProvider._(argument: novelId, from: this);
+  ProductionViewProvider call(String novelId) =>
+      ProductionViewProvider._(argument: novelId, from: this);
 
   @override
-  String toString() => r'productionSegmentsViewProvider';
+  String toString() => r'productionViewProvider';
 }
 
-/// 制片页当前停在分镜视图（默认视图）；画布和列表视图不显示底栏。
+/// 制片页当前视图，由左栏入口和制片页共同驱动。
 ///
-/// 工作区外壳在制片分区时 watch 保活；制片页只在切视图和卸载时写入。
+/// 左栏写入目标视图，制片页监听后带着焦点切换；切换被拒（编辑未保存等）时
+/// 制片页把状态写回实际视图。保活以便离开制片分区后再回来仍停在上次的视图。
 
-abstract class _$ProductionSegmentsView extends $Notifier<bool> {
+abstract class _$ProductionView extends $Notifier<ProductionViewMode> {
   late final _$args = ref.$arg as String;
   String get novelId => _$args;
 
-  bool build(String novelId);
+  ProductionViewMode build(String novelId);
   @$mustCallSuper
   @override
   WhenComplete runBuild() {
-    final ref = this.ref as $Ref<bool, bool>;
+    final ref = this.ref as $Ref<ProductionViewMode, ProductionViewMode>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<bool, bool>,
-              bool,
+              AnyNotifier<ProductionViewMode, ProductionViewMode>,
+              ProductionViewMode,
               Object?,
               Object?
             >;

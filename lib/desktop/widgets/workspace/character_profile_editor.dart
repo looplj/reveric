@@ -698,7 +698,7 @@ class CharacterProfileEditor extends HookConsumerWidget {
     _showCharacterImageStyleDialog(
       context: context,
       title: context.t(LocaleKeys.workspaceCharacterGenerateAvatar),
-      confirmLabel: context.t(LocaleKeys.aiToolNameGenerateAvatar),
+      confirmLabel: context.t(LocaleKeys.toolNameGenerateAvatar),
     ).then((stylePrompt) {
       if (stylePrompt == null ||
           stylePrompt.isEmpty ||
@@ -721,7 +721,7 @@ class CharacterProfileEditor extends HookConsumerWidget {
     _showCharacterImageStyleDialog(
       context: context,
       title: context.t(LocaleKeys.workspaceCharacterGeneratePhoto),
-      confirmLabel: context.t(LocaleKeys.aiToolNameGeneratePhoto),
+      confirmLabel: context.t(LocaleKeys.toolNameGeneratePhoto),
     ).then((stylePrompt) {
       if (stylePrompt == null ||
           stylePrompt.isEmpty ||

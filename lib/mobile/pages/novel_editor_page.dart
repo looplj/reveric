@@ -48,7 +48,6 @@
 //   .agents/rules/icons.md
 //   .agents/rules/i18n.md
 //   .agents/rules/file-access.md
-import '../widgets/plugin_pages.dart';
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -1127,7 +1126,6 @@ class _EditorHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              MobilePluginPageButton(workId: novel.id),
               // 新建入口统一放在标题栏右上角（概览无新建入口）。
               if (createLabel != null && onCreate != null)
                 _HeaderCreateButton(onTap: onCreate!),

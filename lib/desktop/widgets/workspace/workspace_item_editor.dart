@@ -498,7 +498,7 @@ class WorkspaceEntryEditor extends HookWidget {
     _showItemImageStyleDialog(
       context: context,
       title: context.t(LocaleKeys.workspaceItemGeneratePhoto),
-      confirmLabel: context.t(LocaleKeys.aiToolNameGeneratePhoto),
+      confirmLabel: context.t(LocaleKeys.toolNameGeneratePhoto),
     ).then((stylePrompt) {
       if (stylePrompt == null ||
           stylePrompt.isEmpty ||

@@ -18,7 +18,9 @@
 //   lib/shared/providers/ai_shortcut_action_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 //   assets/translations/en/library.json
@@ -2817,9 +2819,9 @@ class NovelEditorPage extends HookConsumerWidget {
       aiPanelCollapsed.value = false;
       pendingHandoffDraft.value = AiChatHandoffDraft(
         id: 'item_photo_${DateTime.now().microsecondsSinceEpoch}',
-        label: context.t(LocaleKeys.aiToolNameGeneratePhoto),
+        label: context.t(LocaleKeys.toolNameGeneratePhoto),
         content: text,
-        title: context.t(LocaleKeys.aiToolNameGeneratePhoto),
+        title: context.t(LocaleKeys.toolNameGeneratePhoto),
         autoSend: true,
         references: [
           AiContextReference(
@@ -2983,9 +2985,9 @@ class NovelEditorPage extends HookConsumerWidget {
       aiPanelCollapsed.value = false;
       pendingHandoffDraft.value = AiChatHandoffDraft(
         id: 'char_avatar_${DateTime.now().microsecondsSinceEpoch}',
-        label: context.t(LocaleKeys.aiToolNameGenerateAvatar),
+        label: context.t(LocaleKeys.toolNameGenerateAvatar),
         content: prompt,
-        title: context.t(LocaleKeys.aiToolNameGenerateAvatar),
+        title: context.t(LocaleKeys.toolNameGenerateAvatar),
         autoSend: true,
         references: [
           AiContextReference(
@@ -3005,9 +3007,9 @@ class NovelEditorPage extends HookConsumerWidget {
       aiPanelCollapsed.value = false;
       pendingHandoffDraft.value = AiChatHandoffDraft(
         id: 'char_photo_${DateTime.now().microsecondsSinceEpoch}',
-        label: context.t(LocaleKeys.aiToolNameGeneratePhoto),
+        label: context.t(LocaleKeys.toolNameGeneratePhoto),
         content: prompt,
-        title: context.t(LocaleKeys.aiToolNameGeneratePhoto),
+        title: context.t(LocaleKeys.toolNameGeneratePhoto),
         autoSend: true,
         references: [
           AiContextReference(

@@ -126,7 +126,7 @@ void main() {
             final block = _run(entry.key, subcommand);
             final title = localizedToolCallTitle(context, block);
             expect(title, isNotEmpty);
-            expect(title, isNot(contains('ai.tool_')));
+            expect(title, isNot(contains('tool.')));
             expect(
               title,
               isNot(namespaceTitle),

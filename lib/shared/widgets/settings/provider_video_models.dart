@@ -5,8 +5,8 @@
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/widgets/settings/provider_video_highlights.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/i18n.md
@@ -37,8 +37,8 @@ class ProviderVideoModels extends StatelessWidget {
     }
     return ProviderModelsEditor(
       key: ValueKey(config.id),
-      label: context.t(LocaleKeys.settingsProviderVideoModelsLabel),
-      hint: context.t(LocaleKeys.settingsProviderModelIdHint),
+      label: context.t(LocaleKeys.providerVideoModelsLabel),
+      hint: context.t(LocaleKeys.providerModelIdHint),
       models: config.availableVideoModels,
       onChanged: onChanged,
       fetchButton: fetchButton,

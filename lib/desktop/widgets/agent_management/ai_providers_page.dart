@@ -5,8 +5,8 @@
 //   lib/desktop/widgets/agent_management/page_dialog.dart
 //   lib/shared/widgets/settings/ai_providers_section.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/settings.json
-//   assets/translations/zh-CN/settings.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 import 'package:flutter/widgets.dart';
 
 import '../../../shared/localization/locale_keys.dart';
@@ -45,7 +45,7 @@ class AiProvidersPage extends StatelessWidget {
       headerTrailingInset: headerTrailingInset,
       secondaryAction: headerAction,
       icon: RevericIcons.hub_outlined,
-      titleKey: LocaleKeys.settingsProviders,
+      titleKey: LocaleKeys.providerTitle,
       child: const AiProvidersSection(),
     );
   }

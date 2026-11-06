@@ -41,7 +41,6 @@ import '../../../shared/providers/storyboard.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/models/video/request.dart';
 import '../../../shared/models/video/channels.dart';
-import '../../../shared/services/ai/video/draft.dart';
 import '../../../shared/models/production/image_request.dart';
 import '../../../shared/models/audio/channels.dart';
 import '../../../shared/services/production/audio_generate_orchestrator.dart';
@@ -53,9 +52,7 @@ import '../../../shared/providers/screenplay_workspace_state_provider.dart';
 import '../../../shared/services/ai/chat_attachments.dart' show NamedChatFile;
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/services/production/staging_export_orchestrator.dart';
-import '../../../shared/services/production/export_orchestrator.dart';
 import '../../../shared/services/production/ffmpeg_runner.dart';
-import '../../../shared/services/storyboard/export.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
 import '../../../shared/widgets/screenplay/labels.dart';
@@ -63,8 +60,6 @@ import '../../../shared/widgets/screenplay/loading.dart';
 import '../canvas/widgets/floating_cluster.dart';
 import '../screenplay/chrome.dart';
 import '../storyboard/region.dart';
-import '../storyboard/support.dart';
-import 'draft_completion.dart';
 import 'board.dart';
 import '../editing/shell.dart';
 import 'canvas_controls.dart';
@@ -74,7 +69,6 @@ import 'depth_dialog.dart';
 import 'node_card.dart' show productionAspect, productionNodeSize;
 import 'composer.dart';
 import 'edit_session.dart';
-import 'export_progress.dart';
 import 'support.dart';
 import 'spec_panel.dart';
 import 'task_status.dart';
@@ -249,31 +243,34 @@ class _EpisodeRegion extends HookConsumerWidget {
     final canvas = useFuture(
       useMemoized(() => service.ensureCanvas(episodeId), [service, episodeId]),
     );
-    final view = useState(_View.segments);
+    final viewProvider = productionViewProvider(novel.id);
+    final viewState = ref.read(viewProvider.notifier);
+    // 进入时停在左栏选的视图；之后左栏再切换由下方的 listen 带着焦点处理。
+    final view = useState(ref.read(viewProvider));
     final chatProvider = productionChatProvider(novel.id);
     final chatState = ref.read(chatProvider.notifier);
     final chatOpen = ref.watch(chatProvider.select((s) => s.open));
-    // watch notifier 只为保活（外壳不在时也不丢状态），状态变化不会让这里重建。
-    final segmentsView = ref.watch(
-      productionSegmentsViewProvider(novel.id).notifier,
-    );
     // 视图和聊天外壳在同一次事件里一起切：编辑页同帧把面板从右栏挪进画布浮窗，
     // 面板实例（草稿、滚动位置）得以保留。
-    void setView(_View next) {
+    void setView(ProductionViewMode next) {
       view.value = next;
-      chatState.setCanvas(next == _View.canvas);
-      segmentsView.set(next == _View.segments);
+      // 画布和列表都用浮窗聊天，只有分镜把聊天放回右栏。
+      chatState.setCanvas(next != ProductionViewMode.segments);
+      viewState.set(next);
     }
 
-    useEffect(
-      () => () {
+    useEffect(() {
+      // 从左栏「画布」进入时聊天外壳也要跟着进浮窗。
+      final initial = view.value;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        chatState.setCanvas(initial != ProductionViewMode.segments);
+      });
+      return () {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           chatState.setCanvas(false);
-          segmentsView.set(true);
         });
-      },
-      [chatState, segmentsView],
-    );
+      };
+    }, [chatState]);
     final workspace = ref.watch(
       screenplayWorkspaceStateControllerProvider(novel.id, path),
     );
@@ -347,7 +344,7 @@ class _EpisodeRegion extends HookConsumerWidget {
         selected.value = node;
         revealed.value = null;
         focusedClip.value = node.clipId;
-        setView(_View.canvas);
+        setView(ProductionViewMode.canvas);
       }
     }
 
@@ -408,7 +405,7 @@ class _EpisodeRegion extends HookConsumerWidget {
             return;
           }
           focusedClip.value = clip.id;
-          if (view.value == _View.canvas || clip.sceneId == null) {
+          if (view.value == ProductionViewMode.canvas || clip.sceneId == null) {
             await select(await service.ensureShotNode(clip.id));
           }
         });
@@ -425,7 +422,7 @@ class _EpisodeRegion extends HookConsumerWidget {
       }
       lastScene.value = sceneId;
       final first = clips.where((c) => c.sceneId == sceneId).firstOrNull;
-      if (view.value != _View.canvas || first == null) {
+      if (view.value != ProductionViewMode.canvas || first == null) {
         return null;
       }
       productionRun(context, () async {
@@ -443,7 +440,7 @@ class _EpisodeRegion extends HookConsumerWidget {
 
     // 第二栏高亮跟着焦点走：片段视图跟定位的片段，画布视图跟选中节点。
     // 先记下 lastScene，免得上面的「点场次就平移」把选中节点挤掉。
-    final focusClipId = view.value == _View.canvas
+    final focusClipId = view.value == ProductionViewMode.canvas
         ? selected.value?.clipId
         : focusedClip.value;
     final focusScene = clips
@@ -470,11 +467,11 @@ class _EpisodeRegion extends HookConsumerWidget {
     }, [focusScene]);
 
     // 两个视图之间带着焦点切换：列表里定位的片段到画布上选中它的节点，反之亦然。
-    Future<void> switchView(_View next) async {
+    Future<void> switchView(ProductionViewMode next) async {
       if (view.value == next || !await session.close()) {
         return;
       }
-      if (next == _View.canvas && focusedClip.value != null) {
+      if (next == ProductionViewMode.canvas && focusedClip.value != null) {
         final clip = await shots.getShot(focusedClip.value!);
         if (clip != null && context.mounted) {
           await select(await service.ensureShotNode(clip.id));
@@ -484,7 +481,7 @@ class _EpisodeRegion extends HookConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      if (next == _View.segments) {
+      if (next == ProductionViewMode.segments) {
         final clip = selected.value?.clipId == null
             ? null
             : await shots.getShot(selected.value!.clipId!);
@@ -498,149 +495,16 @@ class _EpisodeRegion extends HookConsumerWidget {
       setView(next);
     }
 
-    Future<List<StoryboardExportRow>> exportRows() async {
-      final items = await shots.episodeShots(episodeId);
-      final scenes = await ref.read(
-        screenplayScenesProvider(path, episodeId).future,
-      );
-      final byId = {for (final s in scenes) s.id: s};
-      final counts = <String, int>{};
-      return [
-        for (final shot in items)
-          StoryboardExportRow(
-            scene: byId[shot.sceneId]?.title ?? '?',
-            number:
-                '${byId[shot.sceneId]?.sceneNumber ?? '?'}.${counts.update(shot.sceneId!, (n) => n + 1, ifAbsent: () => 1)}',
-            shot: shot,
-          ),
-      ];
-    }
-
-    Future<void> exportClips(List<StoryboardExportRow> selectedRows) async {
-      final headings = [
-        LocaleKeys.storyboardScene,
-        LocaleKeys.storyboardNumber,
-        LocaleKeys.storyboardTitle,
-        LocaleKeys.storyboardPrompt,
-        LocaleKeys.storyboardStatus,
-        LocaleKeys.storyboardSpec,
-        LocaleKeys.storyboardAssets,
-        LocaleKeys.productionVideoFile,
-      ].map(context.t).toList();
-      final statuses = {
-        for (final s in ['unselected', 'selected'])
-          s: shotStatusLabel(context, s),
-      };
-      final directory = await getDirectoryPath();
-      if (directory == null) {
+    // 左栏切「分镜」/「画布」：走同一条带焦点的切换；被拒时把左栏高亮拉回实际视图。
+    ref.listen(viewProvider, (_, next) async {
+      if (next == view.value) {
         return;
       }
-      final token = MediaCancellation();
-      final operation = ProductionExportOrchestrator().run(
-        service: service,
-        rows: selectedRows,
-        destination: Directory(directory),
-        headings: headings,
-        statusLabel: (s) => statuses[s]!,
-        cancellation: token,
-      );
-      if (!context.mounted) {
-        await token.cancel();
-        await operation;
-        return;
+      await run(() => switchView(next));
+      if (context.mounted && view.value != next) {
+        viewState.set(view.value);
       }
-      final report = await showDialog<ProductionExportReport>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) =>
-            ProductionExportProgress(operation: operation, cancellation: token),
-      );
-      if (report == null) {
-        return;
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t(
-                report.unreadable.isNotEmpty
-                    ? LocaleKeys.productionExportMissing
-                    : report.complete
-                    ? LocaleKeys.productionExportResult
-                    : LocaleKeys.productionExportIncomplete,
-                namedArgs: {
-                  'shots': report.unreadable.join(', '),
-                  'done': '${report.completed.length}',
-                  'remaining': report.remaining.join(', '),
-                },
-              ),
-            ),
-          ),
-        );
-      }
-    }
-
-    // 分镜导出：采用的视频按成片顺序各存一个文件，附提示词表；成片从剪辑导出。
-    Future<void> exportSegments() async {
-      if (!await session.close()) {
-        return;
-      }
-      final videos = (await exportRows())
-          .where((r) => r.shot.kind == 'video')
-          .toList();
-      final adopted = videos
-          .where((r) => r.shot.adoptedAssetId != null)
-          .toList();
-      if (!context.mounted) {
-        return;
-      }
-      if (adopted.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t(
-                LocaleKeys.productionExportClipsMeta,
-                namedArgs: {'files': '0', 'missing': '${videos.length}'},
-              ),
-            ),
-          ),
-        );
-        return;
-      }
-      // 还在用 480P 样片的分镜先提醒一次，可逐条转成片或照样导出。
-      final drafts = <({ProductionClipRow clip, String label})>[];
-      for (final row in adopted) {
-        final tasks = await service.library.database.generationTaskDao
-            .watchSource(
-              novelId: service.novelId,
-              sourceType: 'production_clip',
-              sourceId: row.shot.id,
-            )
-            .first;
-        if (adoptedVideoDraft(tasks, row.shot.adoptedAssetId) != null &&
-            context.mounted) {
-          drafts.add((
-            clip: row.shot,
-            label: context.t(
-              LocaleKeys.productionExportSegment,
-              namedArgs: {'number': row.number.replaceAll('.', '-')},
-            ),
-          ));
-        }
-      }
-      if (!context.mounted) {
-        return;
-      }
-      if (drafts.isNotEmpty &&
-          !await confirmProductionDraftExport(
-            context,
-            service: service,
-            clips: drafts,
-          )) {
-        return;
-      }
-      await exportClips(adopted);
-    }
+    });
 
     // 画布色带写场次，片段节点写「段 场号-序号」，序号按成片顺序。
     final scenes =
@@ -1022,26 +886,21 @@ class _EpisodeRegion extends HookConsumerWidget {
       }
     }
 
-    final onCanvas = view.value == _View.canvas;
     final toolbar = ScreenplayRegionToolbar(
-      // 统计在底栏；剧集名在第二栏，顶栏左侧放视图切换。
-      // 三个视图共用画布的胶囊顶栏，切视图时顶栏外观不跳。
+      // 统计在底栏；剧集名在第二栏。分镜和画布是左栏的两个入口，
+      // 分镜视图不挂顶栏，顶栏左侧只切画布 / 列表两种排布。
+      // 两种排布共用画布的胶囊顶栏，切换时顶栏外观不跳。
       floating: true,
       leading: _ViewSwitch(
         selected: view.value,
         segments: [
           RevericSegment(
-            value: _View.segments,
-            label: context.t(LocaleKeys.storyboardBoard),
-            icon: RevericIcons.format_list_numbered,
-          ),
-          RevericSegment(
-            value: _View.canvas,
+            value: ProductionViewMode.canvas,
             label: context.t(LocaleKeys.productionCanvas),
             icon: RevericIcons.flow_arrow,
           ),
           RevericSegment(
-            value: _View.grid,
+            value: ProductionViewMode.grid,
             label: context.t(LocaleKeys.productionList),
             icon: RevericIcons.category_outlined,
           ),
@@ -1055,12 +914,6 @@ class _EpisodeRegion extends HookConsumerWidget {
         const _TopSeparator(),
         ProductionSpecChip(path: path, episodeId: episodeId),
         const _TopSeparator(),
-        if (view.value == _View.segments)
-          RevericIconButton(
-            icon: RevericIcons.download,
-            tooltip: context.t(LocaleKeys.commonExport),
-            onPressed: busy.value ? null : () => run(exportSegments),
-          ),
         RevericIconButton(
           icon: RevericIcons.scissors_outlined,
           tooltip: context.t(LocaleKeys.editingTitle),
@@ -1075,16 +928,18 @@ class _EpisodeRegion extends HookConsumerWidget {
       ],
     );
 
-    // 工具条始终挂在同一个槽位（切视图不重建）；画布视图里它浮在满铺的画布上，
-    // 分镜和列表是滚动列表，内容从工具条下方开始，免得首行被胶囊盖住。
+    // 工具条只在画布和列表里挂出；画布视图里它浮在满铺的画布上，
+    // 列表是滚动列表，内容从工具条下方开始，免得首行被胶囊盖住。
     return Stack(
       children: [
         Positioned.fill(
-          top: onCanvas ? 0 : ScreenplayRegionToolbar.floatingExtent,
+          top: view.value == ProductionViewMode.grid
+              ? ScreenplayRegionToolbar.floatingExtent
+              : 0,
           child: Stack(
             children: [
               Positioned.fill(
-                child: view.value == _View.segments
+                child: view.value == ProductionViewMode.segments
                     ? StoryboardRegion(
                         novel: novel,
                         editSession: session,
@@ -1103,7 +958,7 @@ class _EpisodeRegion extends HookConsumerWidget {
                       )
                     : !canvas.hasData
                     ? const Center(child: CircularProgressIndicator())
-                    : view.value == _View.grid
+                    : view.value == ProductionViewMode.grid
                     ? ProductionNodeGrid(
                         service: service,
                         canvasId: canvas.data!.id,
@@ -1238,7 +1093,7 @@ class _EpisodeRegion extends HookConsumerWidget {
                                         if (context.mounted) {
                                           focusedClip.value = selectedClip!.id;
                                           selected.value = null;
-                                          setView(_View.segments);
+                                          setView(ProductionViewMode.segments);
                                         }
                                       }),
                                 onCopy:
@@ -1394,13 +1249,12 @@ class _EpisodeRegion extends HookConsumerWidget {
             ],
           ),
         ),
-        Positioned(top: 0, left: 0, right: 0, child: toolbar),
+        if (view.value != ProductionViewMode.segments)
+          Positioned(top: 0, left: 0, right: 0, child: toolbar),
       ],
     );
   }
 }
-
-enum _View { segments, canvas, grid }
 
 /// 顶栏的视图切换。工具条的毛玻璃胶囊已经是轨道，这里用画布浮动按钮，
 /// 和右侧的风格、规格同高同形，不再叠一层分段控件的轨道和滑块。
@@ -1411,15 +1265,15 @@ class _ViewSwitch extends StatelessWidget {
     required this.onChanged,
   });
 
-  final List<RevericSegment<_View>> segments;
-  final _View selected;
-  final ValueChanged<_View> onChanged;
+  final List<RevericSegment<ProductionViewMode>> segments;
+  final ProductionViewMode selected;
+  final ValueChanged<ProductionViewMode> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    Widget item(RevericSegment<_View> segment) {
+    Widget item(RevericSegment<ProductionViewMode> segment) {
       final active = segment.value == selected;
       final color = active ? colors.textPrimary : colors.textSecondary;
       return Semantics(

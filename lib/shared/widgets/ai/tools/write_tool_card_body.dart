@@ -4,8 +4,8 @@
 //   lib/shared/widgets/ai/tools/tool_card_descriptor.dart
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/localization/locale_keys.dart
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 //   assets/translations/en/chapter.json
 //   assets/translations/zh-CN/chapter.json
 import 'package:flutter/material.dart';
@@ -44,7 +44,7 @@ class WriteToolCardBody extends StatelessWidget {
         if (preview != null) ...[
           const SizedBox(height: RevericSpacing.sm),
           AiToolPreviewBlock(
-            label: context.t(LocaleKeys.aiToolPreview),
+            label: context.t(LocaleKeys.toolPreview),
             text: preview,
             maxLines: 8,
           ),

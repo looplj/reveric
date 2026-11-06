@@ -7,7 +7,9 @@
 //   lib/shared/providers/ai_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
+//   assets/translations/en/tool.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/zh-CN/tool.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/hooks.md
@@ -336,7 +338,7 @@ class _BusyPill extends ConsumerWidget {
                   ),
                   const SizedBox(width: RevericSpacing.xs),
                   Text(
-                    context.t(LocaleKeys.aiToolRunning),
+                    context.t(LocaleKeys.toolRunning),
                     style: typo.uiSmallSemibold.copyWith(
                       color: colors.textSecondary,
                     ),

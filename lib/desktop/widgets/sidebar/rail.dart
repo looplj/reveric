@@ -41,6 +41,14 @@ final class _RailSystemTarget extends _RailTarget {
   final NovelWorkspaceSection section;
 }
 
+/// 制片：分镜与画布共用 storyboard section，按 [mode] 切制片页视图。
+/// 「画布」入口同时覆盖画布和列表两种排布。
+final class _RailProductionTarget extends _RailTarget {
+  const _RailProductionTarget(this.mode);
+
+  final ProductionViewMode mode;
+}
+
 /// 封面工作台：Main 独占，中栏改挂生成记录。
 final class _RailCoverStudioTarget extends _RailTarget {
   const _RailCoverStudioTarget();
@@ -106,7 +114,7 @@ const _RailGroup _systemGroup = _RailGroup(
     ),
     _RailEntry(
       icon: _iconTrendUp,
-      labelKey: LocaleKeys.workspaceStoryProgress,
+      labelKey: LocaleKeys.workspaceSidebarStoryProgress,
       target: _RailSystemTarget(NovelWorkspaceSection.story_progress),
     ),
     if (ideationCanvasEnabled)
@@ -184,9 +192,14 @@ const _RailGroup _writingGroupScreenplay = _RailGroup(
       target: _RailContentTarget(NovelWorkspaceSection.screenplay_scenes),
     ),
     _RailEntry(
-      icon: _iconSquaresFour,
-      labelKey: LocaleKeys.productionTitle,
-      target: _RailContentTarget(NovelWorkspaceSection.storyboard),
+      icon: _iconFilmSlate,
+      labelKey: LocaleKeys.storyboardBoard,
+      target: _RailProductionTarget(ProductionViewMode.segments),
+    ),
+    _RailEntry(
+      icon: _iconFlowArrow,
+      labelKey: LocaleKeys.productionCanvas,
+      target: _RailProductionTarget(ProductionViewMode.canvas),
     ),
     _RailEntry(
       icon: _iconFolderSimpleStar,
@@ -227,7 +240,7 @@ const _RailGroup _aiGroup = _RailGroup(
     ),
     _RailEntry(
       icon: _iconShield,
-      labelKey: LocaleKeys.agentRuleTitle,
+      labelKey: LocaleKeys.workspaceSidebarAgentRules,
       target: _RailAgentTarget(_AgentItem.agentRules),
     ),
   ],
@@ -238,7 +251,7 @@ const _RailGroup _inspirationGroup = _RailGroup(
   entries: <_RailEntry>[
     _RailEntry(
       icon: _iconUsersFour,
-      labelKey: LocaleKeys.aiSessionModeCouncil,
+      labelKey: LocaleKeys.workspaceSidebarCouncil,
       target: _RailAgentTarget(_AgentItem.council),
     ),
     _RailEntry(
@@ -248,12 +261,12 @@ const _RailGroup _inspirationGroup = _RailGroup(
     ),
     _RailEntry(
       icon: _iconFilmStrip,
-      labelKey: LocaleKeys.aiSessionModeTheater,
+      labelKey: LocaleKeys.workspaceSidebarTheater,
       target: _RailAgentTarget(_AgentItem.theater),
     ),
     _RailEntry(
       icon: _iconChatCentered,
-      labelKey: LocaleKeys.aiSessionModeRoleplay,
+      labelKey: LocaleKeys.workspaceSidebarRoleplay,
       target: _RailAgentTarget(_AgentItem.roleplay),
     ),
   ],
@@ -308,6 +321,14 @@ extension _LeftSidebarRail on _LeftSidebarState {
         !hasExclusiveMain &&
             _panelMode == _PanelMode.content &&
             isCompendiumSection(selectionSection),
+      _RailProductionTarget(:final mode) =>
+        !hasExclusiveMain &&
+            _panelMode == _PanelMode.content &&
+            selectionSection == NovelWorkspaceSection.storyboard &&
+            _isProductionSegments(mode) ==
+                _isProductionSegments(
+                  ref.watch(productionViewProvider(widget.currentNovelId)),
+                ),
       _RailCoverStudioTarget() => widget.isCoverStudioActive,
       _RailAiChatsTarget() =>
         widget.isAiChatExpandedActive ||
@@ -324,6 +345,14 @@ extension _LeftSidebarRail on _LeftSidebarState {
         _activateSystemSection(section);
       case _RailCompendiumTarget():
         _activateContentSection(_lastCompendiumSection);
+      case _RailProductionTarget(:final mode):
+        final view = productionViewProvider(widget.currentNovelId);
+        // 已在列表排布时点「画布」保持列表，不退回画布。
+        if (_isProductionSegments(mode) !=
+            _isProductionSegments(ref.read(view))) {
+          ref.read(view.notifier).set(mode);
+        }
+        _activateContentSection(NovelWorkspaceSection.storyboard);
       case _RailCoverStudioTarget():
         widget.onOpenCoverStudio();
       case _RailAiChatsTarget():
@@ -332,6 +361,9 @@ extension _LeftSidebarRail on _LeftSidebarState {
         _activateAgentItem(item);
     }
   }
+
+  bool _isProductionSegments(ProductionViewMode mode) =>
+      mode == ProductionViewMode.segments;
 
   Widget _buildRail(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
@@ -375,36 +407,6 @@ extension _LeftSidebarRail on _LeftSidebarState {
       }
     }
 
-    navChildren.add(
-      PluginPageNavigation(
-        builder: (context, views) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (groups.isNotEmpty) _buildRailDivider(context),
-            if (showLabels)
-              _buildRailGroupHeader(
-                context,
-                context.t(LocaleKeys.settingsPlugins),
-              ),
-            for (final view in views)
-              _buildRailIcon(
-                context,
-                iconAsset: pluginPageIcon,
-                tooltip: view.title.resolve(Localizations.localeOf(context)),
-                label: showLabels
-                    ? view.title.resolve(Localizations.localeOf(context))
-                    : null,
-                selected: false,
-                onTap: () => openPluginPage(
-                  context,
-                  view,
-                  workId: widget.currentNovelId,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
     return SizedBox(
       width: railWidth,
       child: Column(
