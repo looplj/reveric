@@ -102,7 +102,7 @@ final audioTaskServiceProvider = Provider<AudioTaskService>((ref) {
     library: ref.watch(mediaLibraryServiceProvider),
     invoke: ref.watch(productionAudioInvokeProvider),
     query: ref.watch(productionAudioQueryProvider),
-    download: downloadAudioOutput,
+    download: (provider, url) => downloadAudioOutput(url, provider: provider),
     beforeCreate: results.beforeCreate,
     beforeSubmit: results.beforeSubmit,
     recoverSources: results.recover,

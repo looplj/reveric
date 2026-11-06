@@ -201,6 +201,73 @@ void main() {
     });
   }
 
+  for (final type in ['openai_compatible', 'agnes']) {
+    test('$type requests and image downloads use the provider proxy', () async {
+      final proxy = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => proxy.close(force: true));
+      final calls = <(String, String, String?, String?)>[];
+      proxy.listen((request) async {
+        calls.add((
+          request.method,
+          request.uri.path,
+          request.headers.value(HttpHeaders.authorizationHeader),
+          request.headers.value(HttpHeaders.proxyAuthorizationHeader),
+        ));
+        await request.drain<void>();
+        if (request.method == 'POST') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({
+              'data': [
+                {'url': 'http://results.invalid/generated.png'},
+              ],
+            }),
+          );
+        } else {
+          request.response.headers.contentType = ContentType('image', 'png');
+          request.response.add(_pngBytes);
+        }
+        await request.response.close();
+      });
+      final service = AiImageGenerationService(
+        _openAiCompatibleProvider(baseUrl).copyWith(
+          type: type,
+          proxyUrl: 'http://127.0.0.1:${proxy.port}',
+          proxyUsername: 'user',
+          proxyPassword: 'secret',
+        ),
+        model: type == 'agnes' ? 'agnes-image-2.0-flash' : 'image-advance',
+      );
+      final generated = await service.generateImage('cover');
+      expect(File(generated.localFilePath!).readAsBytesSync(), _pngBytes);
+      expect(calls.map((c) => (c.$1, c.$2)), [
+        ('POST', '/v1/images/generations'),
+        ('GET', '/generated.png'),
+      ]);
+      final edited = await service.editImages(
+        'edit',
+        imageData: ['http://127.0.0.1:${server.port}/reference.png'],
+      );
+      expect(File(edited.localFilePath!).readAsBytesSync(), _pngBytes);
+      expect(
+        calls.skip(2).map((c) => (c.$1, c.$2)),
+        type == 'agnes'
+            ? [('POST', '/v1/images/generations'), ('GET', '/generated.png')]
+            : [
+                ('GET', '/reference.png'),
+                ('POST', '/v1/images/edits'),
+                ('GET', '/generated.png'),
+              ],
+      );
+      for (final call in calls) {
+        expect(call.$3, call.$1 == 'POST' ? 'Bearer test-api-key' : null);
+        expect(call.$4, 'Basic ${base64Encode(utf8.encode('user:secret'))}');
+      }
+      await generated.disposeTemporary();
+      await edited.disposeTemporary();
+    });
+  }
+
   test('saves COS url bytes to disk without keeping b64', () async {
     final service = AiImageGenerationService(
       _openAiCompatibleProvider(baseUrl),

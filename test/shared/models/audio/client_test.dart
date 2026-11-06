@@ -14,10 +14,58 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reveric/shared/models/audio/catalog.dart';
 import 'package:reveric/shared/models/audio/request.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/services/ai/audio/client.dart';
 import 'package:reveric/shared/services/ai/audio/seed.dart';
 
 void main() {
+  test(
+    'audio output uses provider proxy for HTTPS and honors refusal',
+    () async {
+      final proxy = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => proxy.close(force: true));
+      final requests = <(String, String?, String?)>[];
+      proxy.listen((r) async {
+        requests.add((
+          r.method,
+          r.headers.value(HttpHeaders.proxyAuthorizationHeader),
+          r.headers.value(HttpHeaders.authorizationHeader),
+        ));
+        r.response.statusCode = 403;
+        await r.response.close();
+      });
+      final provider = aiProviderBuiltinById('openai')!.copyWith(
+        apiKey: 'provider-secret',
+        proxyUrl: 'http://127.0.0.1:${proxy.port}',
+        proxyUsername: 'user',
+        proxyPassword: 'secret',
+      );
+      var bypasses = 0;
+      await expectLater(
+        http.runWithClient(
+          () => downloadAudioOutput(
+            Uri.https('output.invalid', '/audio.wav'),
+            provider: provider,
+            retryDelay: Duration.zero,
+          ),
+          () => MockClient((_) async {
+            bypasses++;
+            return http.Response.bytes([1, 2, 3], 200);
+          }),
+        ),
+        throwsA(isA<AudioException>()),
+      );
+      expect(bypasses, 0);
+      expect(requests, isNotEmpty);
+      for (final request in requests) {
+        expect(request, (
+          'CONNECT',
+          'Basic ${base64Encode(utf8.encode('user:secret'))}',
+          null,
+        ));
+      }
+    },
+  );
   AudioRequest request({String text = 'Hello'}) => AudioRequest(
     providerId: 'audio',
     modelId: 'seed-audio-1.0',
@@ -141,7 +189,7 @@ void main() {
     }
   }
   test(
-    'provider diagnostics are redacted and errors carry only safe messages',
+    'provider diagnostics redact credentials, retain URLs and localize known errors',
     () async {
       final lines = <String>[];
       final originalDebugPrint = debugPrint;
@@ -178,12 +226,12 @@ void main() {
       expect(log, contains('status=503'));
       expect(log, contains('provider=volcengine'));
       expect(log, contains('No available channel'));
+      expect(log, contains('https://signed.example/?token=private-token'));
+      expect(log, contains('[redacted]'));
       for (final sensitive in [
         'secret',
         'upstream-token',
         'sk-private-key',
-        'signed.example',
-        'private-token',
         '\nnext line',
       ]) {
         expect(log, isNot(contains(sensitive)));
@@ -501,7 +549,10 @@ void main() {
       expect(log, contains('attempt=3/3'));
       expect(log, contains('HandshakeException'));
       expect(log, contains('bytes=44'));
-      expect(log, isNot(contains('private-signature')));
+      expect(
+        log,
+        contains('https://outputs.example/audio.wav?token=private-signature'),
+      );
     },
   );
 

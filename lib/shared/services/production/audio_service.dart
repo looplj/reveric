@@ -53,7 +53,7 @@ class AudioTaskService {
   final ProductionAudioInvoke invoke;
   final ProductionAudioQuery? query;
   final Duration pollInterval;
-  final Future<Uint8List> Function(Uri url) download;
+  final Future<Uint8List> Function(AiProvider provider, Uri url) download;
   final _outputs = <String, AudioGenerationResult>{};
   final Future<void> Function(String novelId, String type, String id)
   beforeCreate;
@@ -398,6 +398,14 @@ class AudioTaskService {
     });
   }
 
+  Future<Uint8List> _downloadOutput(GenerationTask task) async {
+    final provider = await database.aiProviderDao.getById(task.providerId);
+    if (provider == null || provider.type != task.providerType) {
+      throw const AudioException('invalid_config');
+    }
+    return download(provider, Uri.parse(task.outputUrl!));
+  }
+
   Future<void> _saveOutput(String id) async {
     final task = await requireRun(id);
     if (!{
@@ -436,7 +444,7 @@ class AudioTaskService {
           _outputs[id]?.bytes ??
           (task.outputUrl == null
               ? throw const AudioException('audio_output_unavailable')
-              : await download(Uri.parse(task.outputUrl!)));
+              : await _downloadOutput(task));
       if (_disposed ||
           (await requireRun(id)).status == GenerationTaskStatus.cancelled) {
         return;

@@ -98,7 +98,7 @@ final class UpdateServiceProvider
   }
 }
 
-String _$updateServiceHash() => r'fa2c72e10373e9bf6c127c0768d1b9bb667f78ea';
+String _$updateServiceHash() => r'd8041abd3328efd5f88d8843728787d0ba5389f7';
 
 /// 初始化 UpdateService（注入版本号）
 

@@ -184,7 +184,7 @@ void main() {
           200,
         );
       }),
-      downloadTransport: () =>
+      downloadTransport: (_) =>
           MockClient((_) async => http.Response.bytes([1, 2, 3], 200)),
     );
     final host = ProductionToolHost(

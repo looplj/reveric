@@ -10,6 +10,7 @@
 //   assets/translations/zh-CN/settings.json
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -33,9 +34,9 @@ const _updateChannel = MethodChannel('reveric/update');
 /// 自动升级核心服务
 class UpdateService {
   final UpdateSource source;
-  final Dio _dio;
+  final FutureOr<Dio> Function() createClient;
 
-  UpdateService({required this.source}) : _dio = Dio();
+  UpdateService({required this.source, this.createClient = Dio.new});
 
   String? _currentVersion;
   UpdateInfo? _pendingUpdate;
@@ -97,9 +98,11 @@ class UpdateService {
 
   /// 下载更新 (ZIP)
   Future<bool> downloadUpdate(UpdateInfo info) async {
+    Dio? client;
     try {
       _cancelToken?.cancel();
-      _cancelToken = CancelToken();
+      final cancelToken = CancelToken();
+      _cancelToken = cancelToken;
 
       _setProgress(const UpdateProgress.downloading(0));
       _pendingUpdate = info;
@@ -118,7 +121,9 @@ class UpdateService {
         'downloadUpdate start url=${info.downloadUrl} destPath=$destPath version=${info.version}',
       );
 
-      await _dio.download(
+      // 每次下载独占客户端，读取最新代理配置并在结束时释放连接。
+      client = await createClient();
+      await client.download(
         info.downloadUrl,
         destPath,
         options: Options(
@@ -130,7 +135,7 @@ class UpdateService {
             _setProgress(UpdateProgress.downloading(received / total));
           }
         },
-        cancelToken: _cancelToken,
+        cancelToken: cancelToken,
       );
 
       _log.info(
@@ -166,6 +171,8 @@ class UpdateService {
         ),
       );
       return false;
+    } finally {
+      client?.close(force: true);
     }
   }
 

@@ -1,15 +1,20 @@
-// 职责: 验证更新检查去重、前台刷新节流、失败保旧与提醒历史持久化。
+// 职责: 验证更新检查、提醒历史及下载对当前代理设置的使用。
 // 关联文件:
 //   lib/shared/providers/update_providers.dart
 //   lib/shared/services/update.dart
+//   lib/shared/providers/settings_providers.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/network_proxy.dart';
+import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/providers/update_providers.dart';
 import 'package:reveric/shared/services/update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,12 +36,103 @@ class _Source implements UpdateSource {
   }
 }
 
+class _Settings extends AppSettingsNotifier {
+  @override
+  Future<AppSettings> build() async => AppSettings(
+    theme: AppTheme.reveric,
+    themeMode: AppThemeMode.light,
+    language: 'en',
+    aiSettings: AiSettings.defaults(),
+  );
+
+  void changeProxy(NetworkProxy proxy) {
+    state = AsyncData(state.requireValue.copyWith(networkProxy: proxy));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   ProviderContainer create(_Source source) => ProviderContainer.test(
     overrides: [updateSourceProvider.overrideWithValue(source)],
+  );
+
+  test(
+    'downloads read changed proxy settings and can return to direct',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final directory = await Directory.systemTemp.createTemp('update_proxy_');
+      addTearDown(() => directory.delete(recursive: true));
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (_) async => directory.path);
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final requests = <(int, String?)>[];
+      final servers = <HttpServer>[];
+      for (var index = 0; index < 3; index++) {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        servers.add(server);
+        addTearDown(() => server.close(force: true));
+        server.listen((request) async {
+          requests.add((
+            index,
+            request.headers.value(HttpHeaders.proxyAuthorizationHeader),
+          ));
+          final bytes = utf8.encode('package $index');
+          request.response.contentLength = bytes.length;
+          request.response.add(bytes);
+          await request.response.close();
+        });
+      }
+      final container = ProviderContainer.test(
+        overrides: [
+          appSettingsProvider.overrideWith(_Settings.new),
+          updateSourceProvider.overrideWithValue(_Source()),
+        ],
+      );
+      await container.read(appSettingsProvider.future);
+      final settings =
+          container.read(appSettingsProvider.notifier) as _Settings;
+      final service = container.read(updateServiceProvider);
+      for (var index = 0; index < 3; index++) {
+        settings.changeProxy(
+          index < 2
+              ? NetworkProxy(
+                  mode: NetworkProxyMode.custom,
+                  url: 'http://127.0.0.1:${servers[index].port}',
+                  username: 'test',
+                  password: 'pass$index',
+                )
+              : const NetworkProxy(mode: NetworkProxyMode.direct),
+        );
+        expect(
+          await service.downloadUpdate(
+            UpdateInfo(
+              version: '9.0.$index',
+              downloadUrl: 'http://127.0.0.1:${servers[2].port}/update.zip',
+            ),
+          ),
+          isTrue,
+        );
+        final extension = Platform.isAndroid ? 'apk' : 'zip';
+        expect(
+          await File(
+            '${directory.path}/reveric_update_9.0.$index.$extension',
+          ).readAsString(),
+          'package $index',
+        );
+        expect(service.progress.state, UpdateDownloadState.downloaded);
+      }
+      expect(requests, [
+        (0, 'Basic ${base64Encode(utf8.encode('test:pass0'))}'),
+        (1, 'Basic ${base64Encode(utf8.encode('test:pass1'))}'),
+        (2, null),
+      ]);
+    },
   );
 
   test('default update source targets Reveric GitHub release assets', () async {

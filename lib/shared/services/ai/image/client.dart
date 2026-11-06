@@ -27,6 +27,8 @@ import '../../../models/ai_run_failure.dart';
 import '../../../utils/ai_error.dart';
 import '../../../logger/app_logger.dart';
 import '../../../models/ai_provider.dart';
+import '../../../models/network_proxy.dart';
+import '../../proxy_client.dart';
 import '../../../models/image/channels.dart';
 import '../image.dart';
 import '../image_reference_compression.dart';
@@ -116,8 +118,16 @@ abstract class ImageClient {
   }
 
   @protected
-  Dio newImageDio() => Dio(
-    BaseOptions(
+  Dio newImageDio() => createProxyDioClient(
+    NetworkProxy(
+      mode: config.hasProxy
+          ? NetworkProxyMode.custom
+          : NetworkProxyMode.environment,
+      url: config.proxyUrl.trim(),
+      username: config.proxyUsername.trim(),
+      password: config.proxyPassword.trim(),
+    ),
+    options: BaseOptions(
       connectTimeout: imageHttpConnectTimeout,
       sendTimeout: imageHttpDataTimeout,
       receiveTimeout: imageHttpDataTimeout,
@@ -309,44 +319,49 @@ abstract class ImageClient {
       'timeout_s=${imageHttpDataTimeout.inSeconds}',
     );
     final dio = newImageDio();
-    // 下载是幂等 GET，握手中断、连接重置这类瞬时网络错误就地重试。
-    Response<List<int>>? response;
-    for (var attempt = 1; response == null; attempt++) {
-      try {
-        response = await dio.get<List<int>>(
-          url,
-          options: Options(
-            responseType: ResponseType.bytes,
-            validateStatus: (_) => true,
-          ),
-          onReceiveProgress: receiveProgressLogger(uri, 'image_download'),
-        );
-      } on DioException catch (error) {
-        if (attempt >= _imageDownloadAttempts || !_isTransientDioError(error)) {
-          rethrow;
+    try {
+      // 下载是幂等 GET，握手中断、连接重置这类瞬时网络错误就地重试。
+      Response<List<int>>? response;
+      for (var attempt = 1; response == null; attempt++) {
+        try {
+          response = await dio.get<List<int>>(
+            url,
+            options: Options(
+              responseType: ResponseType.bytes,
+              validateStatus: (_) => true,
+            ),
+            onReceiveProgress: receiveProgressLogger(uri, 'image_download'),
+          );
+        } on DioException catch (error) {
+          if (attempt >= _imageDownloadAttempts ||
+              !_isTransientDioError(error)) {
+            rethrow;
+          }
+          writeImageLog(
+            '[IMGDBG] image_download_retry attempt=$attempt '
+            'uri=${safeImageUriForLog(uri)} error=${error.error ?? error.type}',
+          );
+          await Future<void>.delayed(Duration(seconds: attempt));
         }
-        writeImageLog(
-          '[IMGDBG] image_download_retry attempt=$attempt '
-          'uri=${safeImageUriForLog(uri)} error=${error.error ?? error.type}',
-        );
-        await Future<void>.delayed(Duration(seconds: attempt));
       }
-    }
-    final code = response.statusCode ?? -1;
-    final data = response.data;
-    writeImageLog(
-      '[IMGDBG] image_download_response status=$code '
-      'headers=${_responseHeadersSummary(response.headers)} '
-      'bytes=${data?.length ?? -1}',
-    );
-    if (code < 200 || code >= 300 || data == null || data.isEmpty) {
-      throw AiImageGenerationException(
-        '图片下载失败，请稍后重试。',
-        debugMessage: 'HTTP $code for ${safeImageUriForLog(uri)}',
+      final code = response.statusCode ?? -1;
+      final data = response.data;
+      writeImageLog(
+        '[IMGDBG] image_download_response status=$code '
+        'headers=${_responseHeadersSummary(response.headers)} '
+        'bytes=${data?.length ?? -1}',
       );
+      if (code < 200 || code >= 300 || data == null || data.isEmpty) {
+        throw AiImageGenerationException(
+          '图片下载失败，请稍后重试。',
+          debugMessage: 'HTTP $code for ${safeImageUriForLog(uri)}',
+        );
+      }
+      writeImageLog('[IMGDBG] image_download_done bytes=${data.length}');
+      return data;
+    } finally {
+      dio.close(force: true);
     }
-    writeImageLog('[IMGDBG] image_download_done bytes=${data.length}');
-    return data;
   }
 
   /// 归一化为 data URI：接受 data URI、URL、本地文件路径或裸 base64。

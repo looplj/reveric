@@ -15,6 +15,7 @@ import '../../../utils/ai_error.dart';
 import '../../../localization/ai_run_failure_localization.dart';
 import '../../../logger/app_logger.dart';
 import '../../../models/ai_run_failure.dart';
+import '../../../models/ai_provider.dart';
 import '../../../models/audio/exception.dart';
 import '../../../models/audio/request.dart';
 import '../../../models/audio/channels.dart';
@@ -297,6 +298,7 @@ abstract class AudioClient {
 /// Temporary outputs are fetched without provider credentials; only GETs retry.
 Future<Uint8List> downloadAudioOutput(
   Uri url, {
+  AiProvider? provider,
   http.Client? httpClient,
   Future<void>? abortTrigger,
   Duration timeout = const Duration(seconds: 60),
@@ -308,7 +310,7 @@ Future<Uint8List> downloadAudioOutput(
       url.hasFragment) {
     throw const AudioException('audio_output_unavailable');
   }
-  final client = httpClient ?? http.Client();
+  final client = httpClient ?? provider?.createProxyClient() ?? http.Client();
   try {
     return await retryAudioRead(
       (attempt) async {

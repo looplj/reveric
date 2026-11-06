@@ -44,7 +44,16 @@ UpdateSource updateSource(Ref ref) {
 @Riverpod(keepAlive: true)
 UpdateService updateService(Ref ref) {
   final source = ref.read(updateSourceProvider);
-  final service = UpdateService(source: source);
+  final service = UpdateService(
+    source: source,
+    createClient: () async {
+      final settings = await ref.read(appSettingsProvider.future);
+      if (!ref.mounted) {
+        throw StateError('Update service provider disposed');
+      }
+      return createProxyDioClient(settings.networkProxy);
+    },
+  );
   return service;
 }
 

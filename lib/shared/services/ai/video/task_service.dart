@@ -78,13 +78,15 @@ class VideoTaskService {
     this.recoverSources,
     this.sourceName,
     http.Client Function(AiProvider)? providerTransport,
-    http.Client Function()? downloadTransport,
+    http.Client Function(AiProvider)? downloadTransport,
     DateTime Function()? now,
     Random? random,
   }) : providerTransport =
            providerTransport ??
            ((provider) => provider.createProxyClient() ?? http.Client()),
-       downloadTransport = downloadTransport ?? http.Client.new,
+       downloadTransport =
+           downloadTransport ??
+           ((provider) => provider.createProxyClient() ?? http.Client()),
        now = now ?? DateTime.now,
        random = random ?? Random();
 
@@ -100,7 +102,7 @@ class VideoTaskService {
   final Directory rootDirectory;
   final ReferenceStorageService references;
   final http.Client Function(AiProvider) providerTransport;
-  final http.Client Function() downloadTransport;
+  final http.Client Function(AiProvider) downloadTransport;
   final DateTime Function() now;
   final Random random;
   final _busy = <String>{};
@@ -782,7 +784,7 @@ class VideoTaskService {
             return;
           }
           task = await _task(id);
-          await _save(task, result.videoUrl!, client, submission);
+          await _save(task, result.videoUrl!, client, submission, provider);
         case VideoRemoteStatus.failed:
           await _status(
             task,
@@ -831,6 +833,7 @@ class VideoTaskService {
     Uri url,
     VideoClient api,
     VideoSubmission submission,
+    AiProvider provider,
   ) async {
     final relative = RevericPaths.mediaPath(
       task.novelId,
@@ -841,7 +844,7 @@ class VideoTaskService {
     await target.parent.create(recursive: true);
     final partial = File('${target.path}.part');
 
-    final client = downloadTransport();
+    final client = downloadTransport(provider);
     _clients.add(client);
     final sink = partial.openWrite();
     try {
