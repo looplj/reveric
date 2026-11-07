@@ -53,6 +53,7 @@ enum AiProviderType {
   agnes,
   atlascloud,
   purefox,
+  llmbuzz,
   purefox_media,
   moss,
 }
