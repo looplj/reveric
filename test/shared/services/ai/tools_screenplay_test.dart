@@ -6,6 +6,8 @@
 //   lib/shared/services/screenplay_service.dart
 //   lib/shared/database/novel_content_daos/screenplay_dao.dart
 
+import 'dart:convert';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -60,6 +62,50 @@ void main() {
       crossWorkAccess: crossWorkAccess,
     )..registerAllTools();
   }
+
+  test('cast removal blocked by dialogue returns JSON-safe details', () async {
+    final service = ScreenplayService(database);
+    final initial = await service.createInitialStructure();
+    final root = (await database.screenplayDao.getRoot())!;
+    final characterId = await contentService.createCharacterProfile(
+      defaultName: '林岚',
+    );
+    final sceneId = await service.createScene(
+      screenplayId: root.id,
+      episodeId: initial.episodeId,
+    );
+    await service.writeElements(
+      sceneId: sceneId,
+      elements: [
+        ScreenplayElement(
+          type: ScreenplayElementType.character,
+          characterId: characterId,
+        ),
+        const ScreenplayElement(
+          type: ScreenplayElementType.dialogue,
+          text: '我还在这里。',
+        ),
+      ],
+    );
+    final tools = manager();
+    addTearDown(tools.dispose);
+    final result = await tools.executeTool(
+      name: 'Write',
+      input: {
+        'path': 'scenes/$sceneId',
+        'fields': {'cast': <String>[]},
+      },
+    );
+    expect(result['ok'], isFalse);
+    expect(result['error_code'], 'failed_precondition');
+    final decoded = jsonDecode(jsonEncode(result)) as Map<String, dynamic>;
+    expect(decoded['details'], [characterId]);
+    expect(
+      (await database.screenplayDao.getSceneCharacters(sceneId))
+          .map((row) => row.characterId),
+      [characterId],
+    );
+  });
 
   test(
     'retired beats are inaccessible while scene writes preserve legacy associations',

@@ -1509,7 +1509,7 @@ class ScreenplayService {
             throw ScreenplayServiceException(
               'dependent_elements_exist',
               'Cast members referenced by dialogue cannot be removed.',
-              details: missing,
+              details: missing.toList(),
             );
           }
           final existing = await _database.screenplayDao.getSceneCharacters(
