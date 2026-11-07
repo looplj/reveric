@@ -1,6 +1,10 @@
 # Form Rules
 
-表单滚动容器与字段生命周期遵循 `AGENTS.md`「表单禁止惰性回收字段」；此约束同样适用于外部 controller 和未使用 `lib/third/form` 的编辑表单。
+## 表单禁止惰性回收字段
+
+- **表单禁止惰性回收字段**：桌面与移动端的编辑表单不得使用 `ListView`（含 builder/separated）或 `SliverList` 承载字段、编辑卡片；即使有外部 controller，也不能依赖离屏字段继续参与 `Form.validate()`。固定字段表单统一使用 `SingleChildScrollView + Column`，让编辑态和校验随整个表单存活。与大量只读条目混排时，使用 `CustomScrollView`，将完整编辑区放在不惰性回收的 `SliverToBoxAdapter` 中，只读条目可用 `SliverList`。候选项、搜索结果、历史记录等展示／选择列表不受此限制；富文本编辑器内部的专用虚拟化不按普通表单处理，但必须由编辑器统一持有文档状态。不得用扩大 `cacheExtent` 代替生命周期修复。
+
+此约束同样适用于未使用 `lib/third/form` 的编辑表单。
 
 ## `lib/third/form` 使用规则
 

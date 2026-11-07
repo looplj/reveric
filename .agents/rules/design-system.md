@@ -130,7 +130,7 @@ Container(color: Color(0xFFF5F0E8));
    - **禁止**在「上半表单 + 下半 `RevericMarkdownEditor`」详情页使用 `Column(Flexible + Expanded)` 平分高度；键盘弹出时会把 `expands: true` 的编辑器压扁。
    - **必须**使用整页 `CustomScrollView` + `SliverLayoutBuilder` 计算编辑区高度（`max(360, 剩余视口 − 分区标题)`），让上半表单可滚出视口；编辑区用固定 `SizedBox(height: editorHeight)` 包裹。
    - Markdown 编辑区获得焦点时，对编辑区 `GlobalKey` 调用 `Scrollable.ensureVisible(alignment: 0)`，把编辑卡片顶到 AppBar 下方。
-   - 短表单 / 单字段页：使用 `SingleChildScrollView + Column`，在 `Column` 外壳下由 `Expanded` 提供有界视口；不得用 `ListView` / `SliverList` 回收字段，完整边界见 `AGENTS.md`「表单禁止惰性回收字段」。bottom sheet 用 `MediaQuery.viewInsets.bottom` 顶起内容。
+   - 短表单 / 单字段页：使用 `SingleChildScrollView + Column`，在 `Column` 外壳下由 `Expanded` 提供有界视口；不得用 `ListView` / `SliverList` 回收字段，完整边界见 `.agents/rules/form.md`「表单禁止惰性回收字段」。bottom sheet 用 `MediaQuery.viewInsets.bottom` 顶起内容。
 8. **触控目标**：列表项用整行 `InkWell` + `RevericSpacing.lg` padding，命中区 ≥44pt。
 9. **背景**：移动端无全局背景，直接用 `colors.canvas`；**不要**套用桌面的 chrome / elevated 透明判断（与下节「Global App Background」§10 一致）。
 10. **左滑删除**：可删列表项用 `MobileSectionCard`（或同款 `Slidable` / `RevericSlidableDelete`）；点删除后仍走确认 dialog（`confirmAgentDelete` / `showConfirmDialog`）；**详情编辑页不要再放红色删除主按钮**（避免与列表左滑重复）。新建态无删除。

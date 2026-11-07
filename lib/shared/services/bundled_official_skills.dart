@@ -61,8 +61,8 @@ class BundledOfficialSkillSpec {
 ///
 /// `listingId` 等于 `name`。version / updatedAt 在规格表中维护。
 ///
-/// 版本维护遵循 AGENTS.md「打包官方技能按发布状态维护版本」：先核对实际发布
-/// 记录与标签代码；当前版本已发布才递增 version，未发布则合并修改并保留版本号。
+/// 版本维护遵循 `.agents/rules/agent-skills.md`「打包官方技能按发布状态维护版本」：
+/// 先核对实际发布记录与标签代码；当前版本已发布才递增 version，未发布则合并修改并保留版本号。
 /// 修改主文件或附件时都更新 contentHash 和 updatedAt。
 /// 自动升级依赖 version 递增；保留版本号时须用 SQLite skill 同步 Debug 数据库
 /// 中已有的官方安装快照与附件，并查询验证，不覆盖本地自定义内容。

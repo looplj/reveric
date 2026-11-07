@@ -32,3 +32,31 @@ if (_log.isTraceEnabled) {
   _log.trace('stack=${StackTrace.current}');
 }
 ```
+
+## Dart 文件头
+
+- 每个新增 Dart 源文件顶部必须包含：
+  - `// 职责:`：用一句话描述文件唯一职责，说明“做什么”而非“是什么”。
+  - `// 关联文件:`：列出 1–5 个直接依赖或协同的业务文件，每行一个。
+  - `// 遵循的 Rules:`：可选但鼓励填写；使用 flutter_hooks 的文件必须列出 `.agents/rules/hooks.md`。
+- 修改已有 Dart 文件时，仅当职责偏离原注释或规则依赖变化时更新文件头；不要为无关修改重写文件头。
+- 包含用户可见文案的文件还必须在 `// 关联文件:` 中列出 `lib/shared/localization/locale_keys.dart`，以及实际使用 namespace 对应的 en / zh-CN 翻译文件。这些强制 i18n 引用不计入 1–5 个业务关联文件上限。
+- 格式示例：
+
+  ```dart
+  // 职责: AI 聊天面板 — 展示消息并编排发送、取消和 stream 渲染
+  // 关联文件:
+  //   lib/shared/services/ai/chat.dart
+  //   lib/shared/providers/ai_providers.dart
+  //   lib/shared/localization/locale_keys.dart
+  //   assets/translations/en/ai.json
+  //   assets/translations/zh-CN/ai.json
+  // 遵循的 Rules:
+  //   .agents/rules/state-management.md
+  //   .agents/rules/hooks.md
+  ```
+- `.md` 文件（包括 `assets/prompts/` 中的 prompt 模板）不适用 Dart 文件头规则。
+
+## 代码注释
+
+- **代码注释不记录临时发布状态**：禁止在源码注释中写“某版本尚未发布”“当前还没上线”等会随发布过程失效的状态判断。注释只说明稳定的技术行为、约束和兼容原因，迁移版本号及其对应改动可以保留。判断版本是否发布，必须核对本地最新正式发布 tag 及其对应代码；不得仅凭源码注释、当前分支或 `pubspec.yaml` 的版本号决定 migration 策略。

@@ -51,3 +51,10 @@ lib/
 - `docs/` 是方案与历史决策的归档目录，不属于项目运行时依赖或默认开发上下文。
 - 除非用户明确要求查看、修改或同步其中的具体文档，否则不要读取、搜索或修改 `docs/`。
 - 常规代码任务的引用扫描、残留检查和文档清理默认排除 `docs/`。
+
+## 文件命名 — 目录即命名空间
+
+- 放入命名目录（如 `assistant/`、`pricing/`、`prompts/`）的 Dart 文件**不要**再在文件名前加目录名前缀。
+- 由目录路径承担命名空间职责，文件名保持简洁。
+- 正确：`lib/shared/services/ai/assistant/tool_dispatcher.dart`
+- 错误：`lib/shared/services/ai/assistant/assistant_tool_dispatcher.dart`
