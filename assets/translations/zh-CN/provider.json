@@ -13,7 +13,6 @@
   "provider.api88_chat_models": "文字创作",
   "provider.api88_voice_models": "角色配音",
   "provider.api88_link": "前往 88API · 获取密钥",
-  "provider.api88_pricing_link": "查看完整价格",
   "provider.api88_pricing_note": "价格仅供参考，以 88API 官网为准。",
   "provider.sponsored_badge": "推广",
   "provider.metaso_link": "前往秘塔 · 获取密钥",

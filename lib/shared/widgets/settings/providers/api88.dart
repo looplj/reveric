@@ -26,7 +26,6 @@ import 'registry.dart';
 const _imagePrice = '¥0.15';
 const _videoPrice = '¥0.27';
 const _deepseekPrice = '¥0.50 / ¥2';
-const _pricingUrl = 'https://88api.ai/pricing';
 
 const api88Showcase = ProviderShowcase(
   card: _buildCard,
@@ -137,11 +136,6 @@ class _Api88Card extends StatelessWidget {
                       context,
                       providerChannelUrls['api88']!,
                     ),
-                  ),
-                  RevericButton.text(
-                    label: context.t(LocaleKeys.providerApi88PricingLink),
-                    onPressed: () =>
-                        openProviderChannelUrl(context, _pricingUrl),
                   ),
                 ],
               ),

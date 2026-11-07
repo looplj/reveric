@@ -3545,7 +3545,6 @@ abstract final class LocaleKeys {
   static const providerApi88ChatModels = 'provider.api88_chat_models';
   static const providerApi88VoiceModels = 'provider.api88_voice_models';
   static const providerApi88Link = 'provider.api88_link';
-  static const providerApi88PricingLink = 'provider.api88_pricing_link';
   static const providerApi88PricingNote = 'provider.api88_pricing_note';
   static const providerSponsoredBadge = 'provider.sponsored_badge';
   static const providerMetasoLink = 'provider.metaso_link';
