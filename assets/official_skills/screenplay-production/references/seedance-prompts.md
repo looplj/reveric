@@ -1,6 +1,6 @@
 # Seedance 提示词
 
-适用于 Seedance 2.0 系列（`doubao-seedance-2-0-*`、`seedance-2.0-fast`、mini）和 Seedance 2.5（`doubao-seedance-2-5-*`）。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 Seedance 的结构与标记，取代通用 Shot 格式。两条模型线的时间写法不同，先确认实际型号。
+适用于 Seedance 2.0 与 2.5 两条模型线，具体型号按 `catalog_model_id` 查 [视频提示词](video-prompts.md) 的模型对照。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 Seedance 的结构与标记，取代通用 Shot 格式。两条模型线的时间写法不同，先确认实际型号。
 
 ## 共同结构
 

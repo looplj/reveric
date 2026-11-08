@@ -1,6 +1,6 @@
 # Veo 提示词
 
-适用于 `veo-3.1`、`veo-3.1-fast`、`veo-3.1-lite`。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 Veo 的结构与标记，取代通用 Shot 格式。
+适用于 Veo 3.1 系列，具体型号按 `catalog_model_id` 查 [视频提示词](video-prompts.md) 的模型对照。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 Veo 的结构与标记，取代通用 Shot 格式。
 
 ## 语言与公式
 

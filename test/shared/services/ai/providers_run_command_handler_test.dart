@@ -542,6 +542,27 @@ void main() {
     },
   );
 
+  test('video models expose the catalog ID behind channel model IDs', () {
+    final configured = provider('openrouter').copyWith(
+      videoModels: ['bytedance/seedance-2.0', 'vendor/unregistered-video'],
+    );
+    expect(
+      providerModelResource(
+        configured,
+        'video',
+        'bytedance/seedance-2.0',
+      )['catalog_model_id'],
+      'doubao-seedance-2-0-260128',
+    );
+    final unknown = providerModelResource(
+      configured,
+      'video',
+      'vendor/unregistered-video',
+    );
+    expect(unknown.containsKey('catalog_model_id'), true);
+    expect(unknown['catalog_model_id'], isNull);
+  });
+
   test('video and audio expose adapter limits and consumed defaults', () async {
     final detail = (await run('models', {
       'provider_id': 'openrouter',

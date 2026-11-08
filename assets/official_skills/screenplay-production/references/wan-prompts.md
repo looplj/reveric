@@ -1,6 +1,6 @@
 # 通义万相提示词
 
-适用于 `wan3.0-video`、`wan3.0-video-prime`、`wan-2.7`、`wan-2.6`。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定万相的结构与标记，取代通用 Shot 格式。
+适用于通义万相 3.0、2.7 与 2.6，具体型号按 `catalog_model_id` 查 [视频提示词](video-prompts.md) 的模型对照。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定万相的结构与标记，取代通用 Shot 格式。
 
 ## 公式
 

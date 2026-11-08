@@ -1,6 +1,6 @@
 # MiniMax H3 提示词
 
-适用于 `MiniMax-H3`。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 H3 的结构与标记，取代通用 Shot 格式。正文、字段名和镜头标记全部写英文；台词、歌词和画面中可见的文字保留原语言。
+适用于 MiniMax H3 系列，具体型号按 `catalog_model_id` 查 [视频提示词](video-prompts.md) 的模型对照。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 H3 的结构与标记，取代通用 Shot 格式。正文、字段名和镜头标记全部写英文；台词、歌词和画面中可见的文字保留原语言。
 
 ## 先判断输入模式
 

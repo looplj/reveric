@@ -71,6 +71,12 @@ Map<String, dynamic> providerModelResource(
     'kind': kind,
     'available': reason == null,
     'capabilities_known': capabilities != null,
+    // 渠道型号 ID 各异，目录 ID 让 Agent 按统一型号选择提示词格式。
+    if (kind == 'video')
+      'catalog_model_id': lookupVideoChannelModel(
+        provider.type,
+        model,
+      )?.catalogId,
     'unavailable_reason': reason,
     if (capabilities == null)
       'capabilities_reason':

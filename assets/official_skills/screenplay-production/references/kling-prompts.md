@@ -1,6 +1,6 @@
 # Kling 提示词
 
-适用于 `kling-v3.0-pro`、`kling-v3.0-std`、`kling-video-o1`。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 Kling 的结构与标记，取代通用 Shot 格式。
+适用于 Kling 3.0 与 O1，具体型号按 `catalog_model_id` 查 [视频提示词](video-prompts.md) 的模型对照。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 Kling 的结构与标记，取代通用 Shot 格式。
 
 ## 公式
 
@@ -10,7 +10,7 @@
 
 ## 多镜头
 
-Kling 3.0 一次生成可含多个镜头，总时长 3–15 秒。逐镜写出镜号和该镜秒数：
+Kling 3.0 一次生成可含多个镜头，可用总时长以运行时查询为准。逐镜写出镜号和该镜秒数：
 
 ```text
 Shot 1 (4s): Medium shot, warm lamp light from the left. <ref …/> slides a brass key across the table toward <ref …/> and stops at the edge, fingertip still on it. The man looks at the key, then up at her.

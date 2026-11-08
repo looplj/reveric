@@ -18,6 +18,8 @@
 
 能力未知就保留未知，不用相似型号的参数补齐。聊天模型也会列出，但没有已验证的能力信息时，`capabilities_known=false`，能力和默认值为 null；这不等于模型不可用，应另看 `available`。可用性只反映本地配置，不证明远程权限、额度或网络可用。返回不包含凭据，不要求用户在对话中粘贴密钥。
 
+视频模型另返回 `catalog_model_id`：同一型号在不同渠道的 `id` 写法不同，该字段给出应用识别出的统一型号，未识别时为 null。片段配置仍写入渠道 `id`。
+
 视频草稿能力看 `capabilities.supports_draft`。为 true 时，`capabilities.draft` 返回 `resolution`、`completion_resolution`、`validity_days` 和 `output_formats`；为 false 或能力未知时，不请求草稿。草稿生成与转高清的调用方式见「剧本工具使用规范」的分镜与媒体节点附件。
 
 查询完成后回到原业务：制作片段的配置与生成使用「剧本工具使用规范」，角色／物品出图按 `Run help character` / `Run help item` 的说明调用。模型参数以此次查询与提交校验为准，不在其他技能中另维护一张固定型号限制表。
