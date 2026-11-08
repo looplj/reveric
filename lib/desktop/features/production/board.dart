@@ -277,6 +277,7 @@ class ProductionBoard extends HookConsumerWidget {
                     aspect: productionAspect(r.ratio),
                     modelId: r.modelId,
                     providerId: r.providerId,
+                    adoptedAssetId: r.adoptedAssetId,
                   ),
               },
             ),
@@ -407,6 +408,7 @@ class ProductionBoard extends HookConsumerWidget {
     final latestAudioProviderTypes = useRef(audioProviderTypes)
       ..value = audioProviderTypes;
     final latestAssetTypes = useRef(assetTypes)..value = assetTypes;
+    final previewing = useRef(false);
     // 点节点选中时不移动镜头；只有从外部（列表、第二栏）选中才定位。
     final tapped = useRef<String?>(null);
     final fitted = useRef(false);
@@ -671,6 +673,32 @@ class ProductionBoard extends HookConsumerWidget {
       () => flow.NodeFlowEvents<String, String>(
         onSelectionChange: (_) => interaction.selectionChanged(),
         node: flow.NodeEvents<String>(
+          onDoubleTap: (node) {
+            final row = latest.value[node.id];
+            if (row == null) {
+              return;
+            }
+            final clip = latestModes.value?[row.clipId];
+            final assetId = row.isGenerationNode
+                ? clip?.adoptedAssetId
+                : row.mediaAssetId;
+            final type = row.isGenerationNode
+                ? row.type
+                : latestAssetTypes.value[assetId];
+            if (assetId == null ||
+                (type != 'image' && type != 'video') ||
+                previewing.value) {
+              return;
+            }
+            previewing.value = true;
+            productionRun(context, () async {
+              try {
+                await previewProductionAsset(context, service, assetId);
+              } finally {
+                previewing.value = false;
+              }
+            });
+          },
           onTap: (node) {
             final row = latest.value[node.id];
             if (row != null &&

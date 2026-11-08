@@ -193,6 +193,7 @@ Future<void> previewProductionAsset(
         path: file.path,
         type: file.type,
         name: file.name,
+        autoplay: file.type == 'video',
       ),
     );
   }

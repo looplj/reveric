@@ -513,11 +513,17 @@ class ProductionNodeBar extends HookConsumerWidget {
                                 onAdopted: close,
                               ),
                       ),
-                      // 视频、音频的采用结果在卡片里就地播放，只有图片需要弹窗看大图。
-                      if (image)
+                      // 图片查看大图，视频在弹窗播放；音频保留卡片内播放。
+                      if (image || node.type == canvasNodeTypeVideo)
                         _BarButton(
-                          icon: RevericIcons.visibility_outlined,
-                          label: context.t(LocaleKeys.commonView),
+                          icon: image
+                              ? RevericIcons.visibility_outlined
+                              : RevericIcons.play_arrow,
+                          label: context.t(
+                            image
+                                ? LocaleKeys.commonView
+                                : LocaleKeys.commonPlay,
+                          ),
                           onTap: onPreview,
                         ),
                       if (clip?.characterId != null)
@@ -552,16 +558,15 @@ class ProductionNodeBar extends HookConsumerWidget {
                         context.t(LocaleKeys.productionOpenDirector),
                         () => onOpenDirector(node),
                       )
-                    else if (!video &&
-                        sourceAsset?.type != 'video' &&
-                        sourceAsset?.type != 'audio')
-                      // 视频、音频素材在卡片里就地播放，不再弹窗打开。
+                    else if (!video && sourceAsset?.type != 'audio')
                       button(
                         RevericIcons.play_arrow,
                         context.t(
                           node.mediaAssetId == null
                               ? LocaleKeys.productionPreviewAdopted
-                              : LocaleKeys.commonOpen,
+                              : sourceAsset?.type == 'video'
+                              ? LocaleKeys.commonPlay
+                              : LocaleKeys.commonView,
                         ),
                         onPreview,
                       ),

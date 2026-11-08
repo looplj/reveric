@@ -36,16 +36,19 @@ class MediaPreviewDialog extends HookConsumerWidget {
   MediaPreviewDialog({super.key, required AssetRow asset})
     : path = asset.path!,
       type = asset.type,
-      name = asset.name;
+      name = asset.name,
+      autoplay = false;
   const MediaPreviewDialog.file({
     super.key,
     required this.path,
     required this.type,
     required this.name,
+    this.autoplay = false,
   });
   final String path;
   final String type;
   final String name;
+  final bool autoplay;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(mediaLibraryServiceProvider);
@@ -63,7 +66,11 @@ class MediaPreviewDialog extends HookConsumerWidget {
             return;
           }
           try {
-            await playback.open(owner: owner, path: library.resolvePath(path));
+            await playback.open(
+              owner: owner,
+              path: library.resolvePath(path),
+              play: autoplay,
+            );
             if (active) {
               ready.value = true;
             }
@@ -83,7 +90,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
         active = false;
         unawaited(playback.release(owner));
       };
-    }, [path, playback, library, owner]);
+    }, [path, playback, library, owner, autoplay]);
     useOnAppLifecycleStateChange((previous, current) {
       if (current != AppLifecycleState.resumed) {
         if (ready.value) {
