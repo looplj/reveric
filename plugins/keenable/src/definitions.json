@@ -1,0 +1,49 @@
+{
+  "KeenableSearch": {
+    "name": "KeenableSearch",
+    "description": "使用 Keenable 搜索公共网络，返回按相关性排序的网页结果（title、url、snippet，以及可能有的 published_at）；需要全文时调用 KeenableFetch。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "description": "自然语言搜索查询，不能全为空白。"
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 10,
+          "description": "返回结果数量。"
+        },
+        "site": {
+          "type": "string",
+          "description": "只返回该域名下的结果，例如 \"zh.wikipedia.org\"。"
+        },
+        "published_after": {
+          "type": "string",
+          "description": "只返回此时间之后发布的页面：相对时间如 \"7d\"、\"24h\"，或日期如 \"2026-01-01\"。"
+        }
+      },
+      "required": ["query"],
+      "additionalProperties": false
+    }
+  },
+  "KeenableFetch": {
+    "name": "KeenableFetch",
+    "description": "使用 Keenable 获取公开网页，返回标题和 Markdown 正文。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192,
+          "description": "要获取的完整 HTTP 或 HTTPS 网页 URL，必须包含主机名，不能包含用户名或密码。"
+        }
+      },
+      "required": ["url"],
+      "additionalProperties": false
+    }
+  }
+}

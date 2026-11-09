@@ -1,0 +1,38 @@
+{
+  "id": "reveric.keenable",
+  "name": {
+    "en": "Keenable Search / Fetch",
+    "zh-CN": "Keenable 搜索 / 读取"
+  },
+  "description": {
+    "en": "Keenable web search and page retrieval. Works without an API Key; a key only raises rate limits.",
+    "zh-CN": "Keenable 网页搜索与页面读取。无需 API Key 即可使用；填写 Key 仅用于提高频率限制。"
+  },
+  "version": "1.0.0",
+  "author": "Reveric",
+  "pluginApiVersion": "^1",
+  "main": "dist/index.js",
+  "settings": {
+    "fields": {
+      "apiKey": {
+        "type": "secret",
+        "title": "API Key",
+        "description": {
+          "en": "Optional. Leave empty to use the free public endpoint (rate limited).",
+          "zh-CN": "可选。留空时使用免费的公共接口（有频率限制）。"
+        }
+      }
+    },
+    "actions": {
+      "verifyApiKey": {
+        "title": {
+          "en": "Verify API Key",
+          "zh-CN": "验证 API Key"
+        },
+        "requires": [
+          "apiKey"
+        ]
+      }
+    }
+  }
+}
