@@ -13,6 +13,7 @@ import 'package:googleai_dart/googleai_dart.dart' as gai;
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 
+import '../../logger/app_logger.dart';
 import '../client.dart';
 import '../message.dart'
     show
@@ -32,6 +33,38 @@ import 'provider_history_preflight.dart'
     show ProviderHistoryPolicy, preflightProviderHistory;
 import 'trace_headers_http_client.dart'
     show TraceHeadersHttpClient, TraceHeadersProvider;
+
+final _log = AppLogger.forModule('GeminiClient');
+
+class _DiagnosticHttpClient extends http.BaseClient {
+  _DiagnosticHttpClient(this.inner);
+
+  final http.Client inner;
+  static int _nextId = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final id = ++_nextId;
+    final url = request.url;
+    final target = '${url.scheme}://${url.host}:${url.port}${url.path}';
+    _log.info('http send id=$id method=${request.method} target=$target');
+    try {
+      final response = await inner.send(request);
+      _log.info('http response id=$id status=${response.statusCode}');
+      return response;
+    } catch (error, stackTrace) {
+      _log.error(
+        'http transport failed id=$id exceptionType=${error.runtimeType}',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  @override
+  void close() => inner.close();
+}
 
 /// Gemini 原生接口根地址。SDK 与直连请求都会自行拼接 /v1beta，
 /// 这里去掉用户填写的版本后缀，保留中转服务的路径前缀和查询参数。
@@ -76,22 +109,26 @@ class GeminiClient implements ProviderClient {
            baseUrl: geminiApiRoot(baseUrl).toString(),
            defaultHeaders: defaultHeaders ?? const {},
          ),
-         httpClient: traceHeadersProvider != null
-             ? TraceHeadersHttpClient(
-                 inner: httpClient ?? http.Client(),
-                 headersProvider: traceHeadersProvider,
-               )
-             : httpClient,
+         httpClient: _DiagnosticHttpClient(
+           traceHeadersProvider != null
+               ? TraceHeadersHttpClient(
+                   inner: httpClient ?? http.Client(),
+                   headersProvider: traceHeadersProvider,
+                 )
+               : httpClient ?? http.Client(),
+         ),
          streamClientFactory: streamHttpClientFactory == null
              ? null
              : () {
                  final base = streamHttpClientFactory();
-                 return traceHeadersProvider != null
-                     ? TraceHeadersHttpClient(
-                         inner: base,
-                         headersProvider: traceHeadersProvider,
-                       )
-                     : base;
+                 return _DiagnosticHttpClient(
+                   traceHeadersProvider != null
+                       ? TraceHeadersHttpClient(
+                           inner: base,
+                           headersProvider: traceHeadersProvider,
+                         )
+                       : base,
+                 );
                },
        );
 
@@ -265,7 +302,7 @@ class GeminiClient implements ProviderClient {
     return gai.FunctionDeclaration(
       name: tool.name,
       description: tool.description,
-      parameters: gai.Schema.fromJson(toolDefToJsonSchema(tool)),
+      parametersJsonSchema: toolDefToJsonSchema(tool),
     );
   }
 

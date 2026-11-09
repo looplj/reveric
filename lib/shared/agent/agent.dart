@@ -975,7 +975,9 @@ class Agent {
                 _log.error(
                   'round error round=${_contextManager.roundIndex} '
                   'attempt=$attempt assembledEvent=$streamReceivedFirstEvent '
-                  'error=$e',
+                  'exceptionType=${e.runtimeType}',
+                  error: e,
+                  stackTrace: st,
                 );
                 await _runOnError(e, st);
                 inbox?.close();

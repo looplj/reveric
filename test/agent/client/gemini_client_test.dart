@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -12,6 +13,7 @@ import 'package:http/testing.dart';
 import 'package:reveric/shared/agent/client.dart';
 import 'package:reveric/shared/agent/client/gemini_client.dart';
 import 'package:reveric/shared/agent/message.dart';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 
 GeminiClient _make({http.Client? httpClient}) => GeminiClient(
   apiKey: 'k',
@@ -29,6 +31,114 @@ String _finishReasonStream(String finishReason) {
 }
 
 void main() {
+  group('GeminiClient failure diagnostics', () {
+    late DebugPrintCallback originalDebugPrint;
+    late List<String> logs;
+
+    setUp(() {
+      logs = [];
+      originalDebugPrint = debugPrint;
+      debugPrint = (message, {wrapWidth}) {
+        logs.add(message ?? '');
+      };
+    });
+
+    tearDown(() {
+      debugPrint = originalDebugPrint;
+    });
+
+    for (final streaming in [false, true]) {
+      test(
+        'preserves JSON Schema in ${streaming ? 'stream' : 'chat'} requests',
+        () async {
+          final schema =
+              jsonDecode(
+                    r'''{"type":"object","properties":{"ori_question":{"type":["string","null"]},"options":{"type":"array","items":{"anyOf":[{"type":"integer"},{"type":"string"}]}}},"required":["ori_question"],"additionalProperties":false,"$defs":{"label":{"type":"string"}}}''',
+                  )
+                  as Map<String, dynamic>;
+          final requests = <Map<String, dynamic>>[];
+          final client = _make(
+            httpClient: MockClient((request) async {
+              requests.add(jsonDecode(request.body) as Map<String, dynamic>);
+              return http.Response(
+                streaming
+                    ? _finishReasonStream('STOP')
+                    : '{"candidates":[{"finishReason":"STOP"}]}',
+                200,
+                headers: {
+                  'content-type': streaming
+                      ? 'text/event-stream'
+                      : 'application/json',
+                },
+              );
+            }),
+          );
+          final messages = [AgentMessage.user(id: 'u1', content: 'hi')];
+          final tools = [
+            ToolDef(
+              name: 'DeepSeekSearch',
+              description: 'probe',
+              inputSchema: schema,
+            ),
+          ];
+          if (streaming) {
+            await client.chatStream(messages: messages, tools: tools).toList();
+          } else {
+            await client.chat(messages: messages, tools: tools);
+          }
+          expect(requests, hasLength(1));
+          final declaration =
+              ((requests.single['tools'] as List).single['functionDeclarations']
+                          as List)
+                      .single
+                  as Map;
+          expect(declaration['parametersJsonSchema'], schema);
+          expect(declaration.containsKey('parameters'), isFalse);
+          expect(logs.join('\n'), contains('status=200'));
+        },
+      );
+    }
+
+    for (final status in [400, 200]) {
+      test('records HTTP $status before response failure', () async {
+        var requests = 0;
+        final client = GeminiClient(
+          apiKey: 'diagnostic-secret-key',
+          model: 'gemini-test',
+          httpClient: MockClient((request) async {
+            requests++;
+            return http.Response(
+              status == 400
+                  ? '{"error":{"code":400,"message":"invalid request",'
+                        '"status":"INVALID_ARGUMENT"}}'
+                  : 'data: {"candidates":"invalid-type"}\n\n',
+              status,
+              headers: {
+                'content-type': status == 400
+                    ? 'application/json'
+                    : 'text/event-stream',
+              },
+            );
+          }),
+        );
+        await expectLater(
+          client
+              .chatStream(
+                messages: [AgentMessage.user(id: 'u1', content: 'hi')],
+              )
+              .toList(),
+          throwsA(anything),
+        );
+        expect(requests, 1);
+        final output = logs.join('\n');
+        expect(output, contains('http send'));
+        expect(output, contains('status=$status'));
+        expect(output, isNot(contains('httpSent=false')));
+        expect(output, isNot(contains('diagnostic-secret-key')));
+      });
+    }
+  });
+
   group('GeminiClient.convertMessages', () {
     test('skips system messages', () {
       final out = _make().convertMessages([
