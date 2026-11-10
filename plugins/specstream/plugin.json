@@ -1,0 +1,35 @@
+{
+  "id": "reveric.specstream",
+  "name": {
+    "en": "SpecStream Search / Extract",
+    "zh-CN": "SpecStream 搜索 / 读取"
+  },
+  "description": {
+    "en": "SpecStream web search with a source URL and snippet on each result and the publish date when the page has one, and page reading through the Extract API.",
+    "zh-CN": "SpecStream 网页搜索，每条结果带来源 URL 和摘要，页面有发布日期时一并返回；通过 Extract API 读取页面。"
+  },
+  "version": "1.0.0",
+  "author": "Reveric",
+  "pluginApiVersion": "^1",
+  "main": "dist/index.js",
+  "settings": {
+    "fields": {
+      "apiKey": {
+        "type": "secret",
+        "title": "API Key",
+        "required": true
+      }
+    },
+    "actions": {
+      "verifyApiKey": {
+        "title": {
+          "en": "Verify API Key",
+          "zh-CN": "验证 API Key"
+        },
+        "requires": [
+          "apiKey"
+        ]
+      }
+    }
+  }
+}
