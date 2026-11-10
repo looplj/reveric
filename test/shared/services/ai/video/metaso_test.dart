@@ -215,7 +215,7 @@ void main() {
       );
       final frame = VideoReference(
         role: VideoInputRole.first_frame,
-        url: Uri.parse('https://cdn.example/frame.png'),
+        url: 'https://cdn.example/frame.png',
         mimeType: 'image/png',
         fileSize: 1000,
         mediaInfo: const VideoMediaInfo(width: 1280, height: 720),

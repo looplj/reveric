@@ -66,7 +66,7 @@ void main() {
 
 VideoReference reference(VideoInputRole role) => VideoReference(
   role: role,
-  url: Uri.parse('https://media.example/${role.name}'),
+  url: 'https://media.example/${role.name}',
   mimeType: switch (role.kind) {
     VideoMediaKind.image => 'image/png',
     VideoMediaKind.video => 'video/mp4',
@@ -206,7 +206,7 @@ void testWireConventions() {
       );
       VideoReference image(VideoInputRole role, String name) => VideoReference(
         role: role,
-        url: Uri.https('media.example', '/$name.png'),
+        url: Uri.https('media.example', '/$name.png').toString(),
         mimeType: 'image/png',
         fileSize: 100,
         mediaInfo: const VideoMediaInfo(width: 720, height: 720),

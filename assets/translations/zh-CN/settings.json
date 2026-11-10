@@ -1,4 +1,9 @@
 {
+  "settings.object_storage_clear_title": "清空对象存储配置？",
+  "settings.object_storage_clear_confirm": "将清空连接配置和凭据，不会删除任何文件。",
+  "settings.object_storage_cleared": "对象存储配置已清空。",
+  "settings.object_storage_clear_failed": "清空对象存储配置失败，请重试。",
+
   "settings.builtin_provider_metaso": "秘塔科技",
   "settings.codex_check_login": "检测登录态",
   "settings.codex_checking": "正在检测本机 Codex 登录态…",

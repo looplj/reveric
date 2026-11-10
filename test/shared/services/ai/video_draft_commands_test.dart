@@ -23,6 +23,7 @@ import 'package:reveric/shared/services/ai/tool_operations.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
 import 'package:reveric/shared/services/ai/video/task_service.dart';
 import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
+import 'package:reveric/shared/services/object_storage/service.dart';
 import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/production/audio_service.dart';
@@ -155,6 +156,8 @@ void main() {
         height: 1080,
       ),
       references: ReferenceStorageService(
+        database: appDb,
+        storage: ObjectStorageService(database: appDb),
         probe: (_) => throw StateError('No reference upload expected'),
       ),
       providerTransport: (_) => MockClient((request) async {

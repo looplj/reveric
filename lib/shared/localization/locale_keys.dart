@@ -357,6 +357,10 @@ abstract final class LocaleKeys {
   static const aiApprovalFactArgs = 'ai.approval_fact_args';
   static const aiApprovalItemCount = 'ai.approval_item_count';
   static const aiApprovalFactMode = 'ai.approval_fact_mode';
+  static const productionReferenceStorageInvalid =
+      'production.reference_storage_invalid';
+  static const productionReferenceUploadFailed =
+      'production.reference_upload_failed';
   static const productionReferenceStorageNotConnected =
       'production.reference_storage_not_connected';
   static const productionStorageRequiredTitle =
@@ -4568,6 +4572,13 @@ abstract final class LocaleKeys {
       'settings.file_workspace_use_default';
   static const settingsFileWorkspaceRecoveryHint =
       'settings.file_workspace_recovery_hint';
+  static const settingsObjectStorageClearTitle =
+      'settings.object_storage_clear_title';
+  static const settingsObjectStorageClearConfirm =
+      'settings.object_storage_clear_confirm';
+  static const settingsObjectStorageCleared = 'settings.object_storage_cleared';
+  static const settingsObjectStorageClearFailed =
+      'settings.object_storage_clear_failed';
   static const settingsObjectStorageTitle = 'settings.object_storage_title';
 
   static const settingsStorageDescription = 'settings.storage_description';

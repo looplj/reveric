@@ -55,7 +55,7 @@ class OpenRouterVideoClient extends VideoClient {
               r.role == VideoInputRole.last_frame)
             {
               'type': 'image_url',
-              'image_url': {'url': r.url.toString()},
+              'image_url': {'url': r.url},
               'frame_type': r.role.name,
             },
       ],
@@ -65,7 +65,7 @@ class OpenRouterVideoClient extends VideoClient {
           if (r.role == VideoInputRole.reference_image)
             {
               'type': 'image_url',
-              'image_url': {'url': r.url.toString()},
+              'image_url': {'url': r.url},
             },
       ],
   };

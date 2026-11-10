@@ -55,7 +55,7 @@ class AgnesVideoClient extends VideoClient {
       for (final ref in references)
         if (ref.role == VideoInputRole.first_frame ||
             ref.role == VideoInputRole.last_frame)
-          ref.role.name: ref.url.toString(),
+          ref.role.name: ref.url,
       for (final (role, key) in [
         (VideoInputRole.reference_image, 'images'),
         (VideoInputRole.reference_audio, 'audios'),
@@ -65,9 +65,9 @@ class AgnesVideoClient extends VideoClient {
           key: [
             for (final ref in references.where((r) => r.role == role))
               if (role == VideoInputRole.reference_video)
-                {'url': ref.url.toString()}
+                {'url': ref.url}
               else
-                ref.url.toString(),
+                ref.url,
           ],
     };
   }

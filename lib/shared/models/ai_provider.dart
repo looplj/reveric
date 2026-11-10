@@ -72,6 +72,13 @@ enum ModelIdSource {
   open,
 }
 
+enum UploadProtocol {
+  api88_media,
+  minimax_files,
+  purefox_uploads,
+  atlascloud_media,
+}
+
 class AiProviderTypeConfig {
   final String displayName;
   final bool fixedBaseUrl;
@@ -80,6 +87,7 @@ class AiProviderTypeConfig {
   final ImageProtocol? imageProtocol;
   final VideoProtocol? videoProtocol;
   final AudioProtocol? audioProtocol;
+  final UploadProtocol? uploadProtocol;
 
   /// 不经过媒体协议的能力（chat）。
   final Set<AiModelKind> _textModelKinds;
@@ -91,6 +99,7 @@ class AiProviderTypeConfig {
     this.imageProtocol,
     this.videoProtocol,
     this.audioProtocol,
+    this.uploadProtocol,
     this.fixedBaseUrl = false,
     this.usesNewApi = false,
   });
@@ -115,6 +124,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
   ),
   AiProviderType.atlascloud: AiProviderTypeConfig(
     displayName: 'AtlasCloud',
+    uploadProtocol: UploadProtocol.atlascloud_media,
     modelIdSource: ModelIdSource.registered,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.atlascloud_image,
@@ -143,6 +153,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
   ),
   AiProviderType.api88: AiProviderTypeConfig(
     displayName: '88API',
+    uploadProtocol: UploadProtocol.api88_media,
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.new_api_images,
@@ -237,6 +248,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
   ),
   AiProviderType.metaso: AiProviderTypeConfig(
     displayName: 'METASO',
+    uploadProtocol: UploadProtocol.minimax_files,
     modelIdSource: ModelIdSource.registered,
     videoProtocol: VideoProtocol.minimax_video_v2,
     fixedBaseUrl: true,
@@ -261,6 +273,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     fixedBaseUrl: true,
   ),
   AiProviderType.purefox_media: AiProviderTypeConfig(
+    uploadProtocol: UploadProtocol.purefox_uploads,
     displayName: 'PureFox Media',
     modelIdSource: ModelIdSource.registered,
     imageProtocol: ImageProtocol.purefox_media,

@@ -22,6 +22,7 @@ import '../../../shared/components/reveric_dialog.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/providers/object_storage.dart';
+import '../../../shared/models/video/request.dart';
 import '../../../shared/services/ai/video/reference_storage_service.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/settings/object_storage_form.dart';
@@ -29,15 +30,23 @@ import '../../../shared/widgets/settings/object_storage_form.dart';
 /// 存储已配置，或用户在弹窗里配置成功时返回 true；取消返回 false。
 Future<bool> ensureReferenceStorage(
   BuildContext context,
-  ReferenceStorageService storage,
-) async {
-  if (await storage.isConfigured()) {
+  ReferenceStorageService storage, {
+  String? providerId,
+  String? modelId,
+  List<VideoInput> inputs = const [],
+}) async {
+  Future<bool> ready() => storage.preflight(
+    providerId: providerId,
+    inputs: inputs,
+    modelId: modelId,
+  );
+  if (await ready()) {
     return true;
   }
   if (!context.mounted) {
     return false;
   }
-  return await showReferenceStorageDialog(context) == true;
+  return await showReferenceStorageDialog(context) == true && await ready();
 }
 
 Future<bool?> showReferenceStorageDialog(BuildContext context) =>

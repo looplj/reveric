@@ -10623,6 +10623,49 @@ class $ProviderAssetsTable extends ProviderAssets
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $ProviderAssetsTable(this.attachedDatabase, [this._alias]);
+  @override
+  late final GeneratedColumnWithTypeConverter<ProviderAssetKind, String> kind =
+      GeneratedColumn<String>(
+        'kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('certification'),
+      ).withConverter<ProviderAssetKind>($ProviderAssetsTable.$converterkind);
+  static const VerificationMeta _contextHashMeta = const VerificationMeta(
+    'contextHash',
+  );
+  @override
+  late final GeneratedColumn<String> contextHash = GeneratedColumn<String>(
+    'context_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remoteUrlMeta = const VerificationMeta(
+    'remoteUrl',
+  );
+  @override
+  late final GeneratedColumn<String> remoteUrl = GeneratedColumn<String>(
+    'remote_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _expiresAtMeta = const VerificationMeta(
+    'expiresAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiresAt = GeneratedColumn<DateTime>(
+    'expires_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
@@ -10757,6 +10800,10 @@ class $ProviderAssetsTable extends ProviderAssets
   );
   @override
   List<GeneratedColumn> get $columns => [
+    kind,
+    contextHash,
+    remoteUrl,
+    expiresAt,
     id,
     assetId,
     providerId,
@@ -10782,6 +10829,27 @@ class $ProviderAssetsTable extends ProviderAssets
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
+    if (data.containsKey('context_hash')) {
+      context.handle(
+        _contextHashMeta,
+        contextHash.isAcceptableOrUnknown(
+          data['context_hash']!,
+          _contextHashMeta,
+        ),
+      );
+    }
+    if (data.containsKey('remote_url')) {
+      context.handle(
+        _remoteUrlMeta,
+        remoteUrl.isAcceptableOrUnknown(data['remote_url']!, _remoteUrlMeta),
+      );
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(
+        _expiresAtMeta,
+        expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta),
+      );
+    }
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
@@ -10869,6 +10937,24 @@ class $ProviderAssetsTable extends ProviderAssets
   ProviderAsset map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return ProviderAsset(
+      kind: $ProviderAssetsTable.$converterkind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}kind'],
+        )!,
+      ),
+      contextHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}context_hash'],
+      ),
+      remoteUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_url'],
+      ),
+      expiresAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expires_at'],
+      ),
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
@@ -10927,6 +11013,8 @@ class $ProviderAssetsTable extends ProviderAssets
     return $ProviderAssetsTable(attachedDatabase, alias);
   }
 
+  static JsonTypeConverter2<ProviderAssetKind, String, String> $converterkind =
+      const EnumNameConverter<ProviderAssetKind>(ProviderAssetKind.values);
   static JsonTypeConverter2<ProviderAssetStatus, String, String>
   $converterstatus = const EnumNameConverter<ProviderAssetStatus>(
     ProviderAssetStatus.values,
@@ -10934,6 +11022,10 @@ class $ProviderAssetsTable extends ProviderAssets
 }
 
 class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
+  final ProviderAssetKind kind;
+  final String? contextHash;
+  final String? remoteUrl;
+  final DateTime? expiresAt;
   final String id;
   final String assetId;
   final String providerId;
@@ -10951,6 +11043,10 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   final DateTime updatedAt;
   final DateTime deletedAt;
   const ProviderAsset({
+    required this.kind,
+    this.contextHash,
+    this.remoteUrl,
+    this.expiresAt,
     required this.id,
     required this.assetId,
     required this.providerId,
@@ -10967,6 +11063,20 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    {
+      map['kind'] = Variable<String>(
+        $ProviderAssetsTable.$converterkind.toSql(kind),
+      );
+    }
+    if (!nullToAbsent || contextHash != null) {
+      map['context_hash'] = Variable<String>(contextHash);
+    }
+    if (!nullToAbsent || remoteUrl != null) {
+      map['remote_url'] = Variable<String>(remoteUrl);
+    }
+    if (!nullToAbsent || expiresAt != null) {
+      map['expires_at'] = Variable<DateTime>(expiresAt);
+    }
     map['id'] = Variable<String>(id);
     map['asset_id'] = Variable<String>(assetId);
     map['provider_id'] = Variable<String>(providerId);
@@ -10998,6 +11108,16 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
 
   ProviderAssetsCompanion toCompanion(bool nullToAbsent) {
     return ProviderAssetsCompanion(
+      kind: Value(kind),
+      contextHash: contextHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contextHash),
+      remoteUrl: remoteUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteUrl),
+      expiresAt: expiresAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiresAt),
       id: Value(id),
       assetId: Value(assetId),
       providerId: Value(providerId),
@@ -11029,6 +11149,12 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ProviderAsset(
+      kind: $ProviderAssetsTable.$converterkind.fromJson(
+        serializer.fromJson<String>(json['kind']),
+      ),
+      contextHash: serializer.fromJson<String?>(json['contextHash']),
+      remoteUrl: serializer.fromJson<String?>(json['remoteUrl']),
+      expiresAt: serializer.fromJson<DateTime?>(json['expiresAt']),
       id: serializer.fromJson<String>(json['id']),
       assetId: serializer.fromJson<String>(json['assetId']),
       providerId: serializer.fromJson<String>(json['providerId']),
@@ -11049,6 +11175,12 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'kind': serializer.toJson<String>(
+        $ProviderAssetsTable.$converterkind.toJson(kind),
+      ),
+      'contextHash': serializer.toJson<String?>(contextHash),
+      'remoteUrl': serializer.toJson<String?>(remoteUrl),
+      'expiresAt': serializer.toJson<DateTime?>(expiresAt),
       'id': serializer.toJson<String>(id),
       'assetId': serializer.toJson<String>(assetId),
       'providerId': serializer.toJson<String>(providerId),
@@ -11067,6 +11199,10 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   }
 
   ProviderAsset copyWith({
+    ProviderAssetKind? kind,
+    Value<String?> contextHash = const Value.absent(),
+    Value<String?> remoteUrl = const Value.absent(),
+    Value<DateTime?> expiresAt = const Value.absent(),
     String? id,
     String? assetId,
     String? providerId,
@@ -11080,6 +11216,10 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
     DateTime? updatedAt,
     DateTime? deletedAt,
   }) => ProviderAsset(
+    kind: kind ?? this.kind,
+    contextHash: contextHash.present ? contextHash.value : this.contextHash,
+    remoteUrl: remoteUrl.present ? remoteUrl.value : this.remoteUrl,
+    expiresAt: expiresAt.present ? expiresAt.value : this.expiresAt,
     id: id ?? this.id,
     assetId: assetId ?? this.assetId,
     providerId: providerId ?? this.providerId,
@@ -11097,6 +11237,12 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   );
   ProviderAsset copyWithCompanion(ProviderAssetsCompanion data) {
     return ProviderAsset(
+      kind: data.kind.present ? data.kind.value : this.kind,
+      contextHash: data.contextHash.present
+          ? data.contextHash.value
+          : this.contextHash,
+      remoteUrl: data.remoteUrl.present ? data.remoteUrl.value : this.remoteUrl,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
       id: data.id.present ? data.id.value : this.id,
       assetId: data.assetId.present ? data.assetId.value : this.assetId,
       providerId: data.providerId.present
@@ -11123,6 +11269,10 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   @override
   String toString() {
     return (StringBuffer('ProviderAsset(')
+          ..write('kind: $kind, ')
+          ..write('contextHash: $contextHash, ')
+          ..write('remoteUrl: $remoteUrl, ')
+          ..write('expiresAt: $expiresAt, ')
           ..write('id: $id, ')
           ..write('assetId: $assetId, ')
           ..write('providerId: $providerId, ')
@@ -11141,6 +11291,10 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
 
   @override
   int get hashCode => Object.hash(
+    kind,
+    contextHash,
+    remoteUrl,
+    expiresAt,
     id,
     assetId,
     providerId,
@@ -11158,6 +11312,10 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ProviderAsset &&
+          other.kind == this.kind &&
+          other.contextHash == this.contextHash &&
+          other.remoteUrl == this.remoteUrl &&
+          other.expiresAt == this.expiresAt &&
           other.id == this.id &&
           other.assetId == this.assetId &&
           other.providerId == this.providerId &&
@@ -11173,6 +11331,10 @@ class ProviderAsset extends DataClass implements Insertable<ProviderAsset> {
 }
 
 class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
+  final Value<ProviderAssetKind> kind;
+  final Value<String?> contextHash;
+  final Value<String?> remoteUrl;
+  final Value<DateTime?> expiresAt;
   final Value<String> id;
   final Value<String> assetId;
   final Value<String> providerId;
@@ -11187,6 +11349,10 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
   final Value<DateTime> deletedAt;
   final Value<int> rowid;
   const ProviderAssetsCompanion({
+    this.kind = const Value.absent(),
+    this.contextHash = const Value.absent(),
+    this.remoteUrl = const Value.absent(),
+    this.expiresAt = const Value.absent(),
     this.id = const Value.absent(),
     this.assetId = const Value.absent(),
     this.providerId = const Value.absent(),
@@ -11202,6 +11368,10 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
     this.rowid = const Value.absent(),
   });
   ProviderAssetsCompanion.insert({
+    this.kind = const Value.absent(),
+    this.contextHash = const Value.absent(),
+    this.remoteUrl = const Value.absent(),
+    this.expiresAt = const Value.absent(),
     required String id,
     required String assetId,
     required String providerId,
@@ -11220,6 +11390,10 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
        providerId = Value(providerId),
        status = Value(status);
   static Insertable<ProviderAsset> custom({
+    Expression<String>? kind,
+    Expression<String>? contextHash,
+    Expression<String>? remoteUrl,
+    Expression<DateTime>? expiresAt,
     Expression<String>? id,
     Expression<String>? assetId,
     Expression<String>? providerId,
@@ -11235,6 +11409,10 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (kind != null) 'kind': kind,
+      if (contextHash != null) 'context_hash': contextHash,
+      if (remoteUrl != null) 'remote_url': remoteUrl,
+      if (expiresAt != null) 'expires_at': expiresAt,
       if (id != null) 'id': id,
       if (assetId != null) 'asset_id': assetId,
       if (providerId != null) 'provider_id': providerId,
@@ -11252,6 +11430,10 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
   }
 
   ProviderAssetsCompanion copyWith({
+    Value<ProviderAssetKind>? kind,
+    Value<String?>? contextHash,
+    Value<String?>? remoteUrl,
+    Value<DateTime?>? expiresAt,
     Value<String>? id,
     Value<String>? assetId,
     Value<String>? providerId,
@@ -11267,6 +11449,10 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
     Value<int>? rowid,
   }) {
     return ProviderAssetsCompanion(
+      kind: kind ?? this.kind,
+      contextHash: contextHash ?? this.contextHash,
+      remoteUrl: remoteUrl ?? this.remoteUrl,
+      expiresAt: expiresAt ?? this.expiresAt,
       id: id ?? this.id,
       assetId: assetId ?? this.assetId,
       providerId: providerId ?? this.providerId,
@@ -11286,6 +11472,20 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (kind.present) {
+      map['kind'] = Variable<String>(
+        $ProviderAssetsTable.$converterkind.toSql(kind.value),
+      );
+    }
+    if (contextHash.present) {
+      map['context_hash'] = Variable<String>(contextHash.value);
+    }
+    if (remoteUrl.present) {
+      map['remote_url'] = Variable<String>(remoteUrl.value);
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<DateTime>(expiresAt.value);
+    }
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
@@ -11333,6 +11533,10 @@ class ProviderAssetsCompanion extends UpdateCompanion<ProviderAsset> {
   @override
   String toString() {
     return (StringBuffer('ProviderAssetsCompanion(')
+          ..write('kind: $kind, ')
+          ..write('contextHash: $contextHash, ')
+          ..write('remoteUrl: $remoteUrl, ')
+          ..write('expiresAt: $expiresAt, ')
           ..write('id: $id, ')
           ..write('assetId: $assetId, ')
           ..write('providerId: $providerId, ')
@@ -29914,6 +30118,10 @@ typedef $$GenerationTasksTableProcessedTableManager =
     >;
 typedef $$ProviderAssetsTableCreateCompanionBuilder =
     ProviderAssetsCompanion Function({
+      Value<ProviderAssetKind> kind,
+      Value<String?> contextHash,
+      Value<String?> remoteUrl,
+      Value<DateTime?> expiresAt,
       required String id,
       required String assetId,
       required String providerId,
@@ -29930,6 +30138,10 @@ typedef $$ProviderAssetsTableCreateCompanionBuilder =
     });
 typedef $$ProviderAssetsTableUpdateCompanionBuilder =
     ProviderAssetsCompanion Function({
+      Value<ProviderAssetKind> kind,
+      Value<String?> contextHash,
+      Value<String?> remoteUrl,
+      Value<DateTime?> expiresAt,
       Value<String> id,
       Value<String> assetId,
       Value<String> providerId,
@@ -29954,6 +30166,27 @@ class $$ProviderAssetsTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnWithTypeConverterFilters<ProviderAssetKind, ProviderAssetKind, String>
+  get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get contextHash => $composableBuilder(
+    column: $table.contextHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteUrl => $composableBuilder(
+    column: $table.remoteUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnFilters(column),
@@ -30029,6 +30262,26 @@ class $$ProviderAssetsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contextHash => $composableBuilder(
+    column: $table.contextHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteUrl => $composableBuilder(
+    column: $table.remoteUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnOrderings(column),
@@ -30099,6 +30352,20 @@ class $$ProviderAssetsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumnWithTypeConverter<ProviderAssetKind, String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get contextHash => $composableBuilder(
+    column: $table.contextHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get remoteUrl =>
+      $composableBuilder(column: $table.remoteUrl, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
@@ -30177,6 +30444,10 @@ class $$ProviderAssetsTableTableManager
               $$ProviderAssetsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
+                Value<ProviderAssetKind> kind = const Value.absent(),
+                Value<String?> contextHash = const Value.absent(),
+                Value<String?> remoteUrl = const Value.absent(),
+                Value<DateTime?> expiresAt = const Value.absent(),
                 Value<String> id = const Value.absent(),
                 Value<String> assetId = const Value.absent(),
                 Value<String> providerId = const Value.absent(),
@@ -30191,6 +30462,10 @@ class $$ProviderAssetsTableTableManager
                 Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProviderAssetsCompanion(
+                kind: kind,
+                contextHash: contextHash,
+                remoteUrl: remoteUrl,
+                expiresAt: expiresAt,
                 id: id,
                 assetId: assetId,
                 providerId: providerId,
@@ -30207,6 +30482,10 @@ class $$ProviderAssetsTableTableManager
               ),
           createCompanionCallback:
               ({
+                Value<ProviderAssetKind> kind = const Value.absent(),
+                Value<String?> contextHash = const Value.absent(),
+                Value<String?> remoteUrl = const Value.absent(),
+                Value<DateTime?> expiresAt = const Value.absent(),
                 required String id,
                 required String assetId,
                 required String providerId,
@@ -30221,6 +30500,10 @@ class $$ProviderAssetsTableTableManager
                 Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProviderAssetsCompanion.insert(
+                kind: kind,
+                contextHash: contextHash,
+                remoteUrl: remoteUrl,
+                expiresAt: expiresAt,
                 id: id,
                 assetId: assetId,
                 providerId: providerId,

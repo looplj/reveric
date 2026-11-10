@@ -18,6 +18,7 @@ import 'package:reveric/shared/providers/object_storage.dart';
 import 'package:reveric/shared/services/object_storage/service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/settings/object_storage_form.dart';
+import 'package:reveric/shared/widgets/confirm_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -57,6 +58,87 @@ void main() {
     await tester.ensureVisible(button);
     await tester.tap(button);
     await tester.pumpAndSettle();
+  }
+
+  for (final fails in [false, true]) {
+    testWidgets(
+      'clear confirms, refreshes only on success, failure=$fails',
+      (tester) async {
+        final service = _FakeService(database)..clearFails = fails;
+        var config = const ObjectStorageConfig(
+          endpoint: 'https://s3.example.com',
+          bucket: 'media',
+          accessKeyId: 'ak',
+          secretAccessKey: 'sk',
+        );
+        var savedCalls = 0;
+        await tester.pumpWidget(
+          _wrap(
+            service,
+            StatefulBuilder(
+              builder: (context, setState) {
+                service.onCleared = () =>
+                    setState(() => config = const ObjectStorageConfig());
+                return ObjectStorageForm(
+                  config: config,
+                  onSaved: () => savedCalls++,
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final clear = find.byKey(const ValueKey('object_storage_clear_button'));
+        await tester.ensureVisible(clear);
+        await tester.tap(clear);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ConfirmDialog),
+            matching: find.text('Cancel'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(service.clearCalls, 0);
+        await tester.tap(clear);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ConfirmDialog),
+            matching: find.text('Clear'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(service.clearCalls, 1);
+        expect(service.tested, isEmpty);
+        expect(service.saved, isEmpty);
+        expect(
+          savedCalls,
+          0,
+        ); // Clearing must not close the generation configuration dialog as ready.
+        final secret = tester.widget<EditableText>(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey('object_storage_secretAccessKey_field'),
+            ),
+            matching: find.byType(EditableText),
+          ),
+        );
+        expect(secret.controller.text, fails ? 'sk' : '');
+        expect(clear, fails ? findsOneWidget : findsNothing);
+        expect(
+          find.text(
+            fails
+                ? 'Could not clear object storage settings. Please try again.'
+                : 'Object storage settings cleared.',
+          ),
+          findsOneWidget,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    );
   }
 
   testWidgets('blocks incomplete config before testing the connection', (
@@ -251,6 +333,19 @@ class _FakeService extends ObjectStorageService {
   _FakeService(AppDatabase database) : super(database: database);
 
   ObjectStorageFailure? failure;
+  bool clearFails = false;
+  int clearCalls = 0;
+  VoidCallback? onCleared;
+
+  @override
+  Future<void> clear() async {
+    clearCalls++;
+    if (clearFails) {
+      throw StateError('write failed');
+    }
+    onCleared?.call();
+  }
+
   final tested = <ObjectStorageConfig>[];
   final saved = <ObjectStorageConfig>[];
 

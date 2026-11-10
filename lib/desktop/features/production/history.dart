@@ -92,6 +92,9 @@ class ProductionHistory extends HookConsumerWidget {
           await ensureReferenceStorage(
             context,
             ref.read(referenceStorageServiceProvider),
+            providerId: task.providerId,
+            modelId: task.modelId,
+            inputs: task.videoInputs,
           );
     }
 

@@ -161,31 +161,40 @@ class ObjectStorageConfig {
 
   bool get isConfigured => validate() == null;
 
+  bool get isEmpty =>
+      normalized().encode() == const ObjectStorageConfig().encode();
+
   factory ObjectStorageConfig.decode(String? raw) {
-    if (raw == null || raw.isEmpty) {
+    if (raw == null) {
       return const ObjectStorageConfig();
     }
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {
       throw FormatException('$appSettingsKey must be a JSON object');
     }
-    String string(String key, String fallback) {
+    if (decoded['provider'] != 's3' ||
+        decoded['version'] != currentVersion ||
+        decoded['pathStyle'] is! bool) {
+      throw const FormatException('Invalid object storage configuration');
+    }
+    String string(String key) {
       final value = decoded[key];
-      return value is String ? value : fallback;
+      if (value is! String) {
+        throw FormatException('Invalid object storage field: $key');
+      }
+      return value;
     }
 
     return ObjectStorageConfig(
-      provider:
-          ObjectStorageProvider.values.asNameMap()[decoded['provider']] ??
-          ObjectStorageProvider.s3,
-      endpoint: string('endpoint', ''),
-      region: string('region', defaultRegion),
-      bucket: string('bucket', ''),
-      accessKeyId: string('accessKeyId', ''),
-      secretAccessKey: string('secretAccessKey', ''),
-      keyPrefix: string('keyPrefix', defaultKeyPrefix),
-      pathStyle: decoded['pathStyle'] == true,
-      publicBaseUrl: string('publicBaseUrl', ''),
+      provider: ObjectStorageProvider.s3,
+      endpoint: string('endpoint'),
+      region: string('region'),
+      bucket: string('bucket'),
+      accessKeyId: string('accessKeyId'),
+      secretAccessKey: string('secretAccessKey'),
+      keyPrefix: string('keyPrefix'),
+      pathStyle: decoded['pathStyle'] as bool,
+      publicBaseUrl: string('publicBaseUrl'),
     );
   }
 

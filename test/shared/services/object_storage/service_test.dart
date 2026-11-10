@@ -67,6 +67,39 @@ void main() {
     expect(saved.secretAccessKey, 'sk');
   });
 
+  test(
+    'clearing removes credentials, not files or upload records, and emits empty config',
+    () async {
+      final storage = service(
+        (_) async => throw StateError('must not access network'),
+      );
+      await storage.save(config);
+      final certification = await database.providerAssetDao.start(
+        'asset',
+        'provider',
+      );
+      final change = storage.watch().firstWhere((value) => value.isEmpty);
+      await storage.clear();
+      expect((await change).isConfigured, isFalse);
+      expect(
+        (await storage.load()).encode(),
+        const ObjectStorageConfig().encode(),
+      );
+      expect(await file.readAsBytes(), [1, 2, 3]);
+      expect(
+        (await database.providerAssetDao.find('asset', 'provider'))!.id,
+        certification.id,
+      );
+      // Clear also repairs malformed saved settings without trying to decode them.
+      await database.appSettingsDao.set(
+        key: ObjectStorageConfig.appSettingsKey,
+        value: 'broken',
+      );
+      await storage.clear();
+      expect((await storage.load()).isEmpty, isTrue);
+    },
+  );
+
   test('skips PUT when the content-addressed object already exists', () async {
     final methods = <String>[];
     final storage = service((request) async {

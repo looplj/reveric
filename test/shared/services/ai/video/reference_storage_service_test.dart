@@ -3,32 +3,44 @@
 //   lib/shared/services/ai/video/reference_storage_service.dart
 //   lib/shared/models/video/request.dart
 //   lib/shared/models/video/task_result.dart
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/production/media.dart';
 import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/models/video/task_result.dart';
 import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
 
+import '../../../../helpers/fake_object_storage.dart';
+
 void main() {
+  late AppDatabase db;
   late Directory directory;
   late File file;
+  const media = VideoMediaInfo(width: 320, height: 240, durationMs: 0);
   final input = VideoInput(
     role: VideoInputRole.reference_image,
     assetId: 'input',
     mimeType: 'image/png',
   );
   setUp(() async {
+    db = AppDatabase.forTest(NativeDatabase.memory());
     directory = await Directory.systemTemp.createTemp('reference-storage-');
     file = await File('${directory.path}/input.png').writeAsBytes([1, 2, 3]);
   });
-  tearDown(() async => directory.delete(recursive: true));
+  tearDown(() async {
+    await db.close();
+    await directory.delete(recursive: true);
+  });
   ReferenceStorageService service(ReferenceUploader? upload) =>
       ReferenceStorageService(
-        resolveUpload: () async => upload,
+        database: db,
+        storage: FakeObjectStorage(db, upload),
         probe: (_) async => const MediaInfo(
           duration: Duration.zero,
           hasAudio: false,
@@ -41,6 +53,8 @@ void main() {
     'unconfigured storage fails before probing or sending local bytes',
     () async {
       final storage = ReferenceStorageService(
+        database: db,
+        storage: FakeObjectStorage(db, null),
         probe: (_) async => throw StateError('must not probe'),
       );
       await expectLater(
@@ -92,10 +106,7 @@ void main() {
           started.complete();
         }
         await gate.future;
-        return (
-          url: Uri.parse('https://storage.example/input'),
-          expiresAt: null,
-        );
+        return (url: 'https://storage.example/input', expiresAt: null);
       });
       final first = storage.ensure(input, file);
       await started.future;
@@ -130,7 +141,7 @@ void main() {
         }
         expect(sha256, crypto.sha256.convert([4, 5, 6]).toString());
         return (
-          url: Uri.parse('https://storage.example/input'),
+          url: 'https://storage.example/input',
           expiresAt: DateTime.now().add(const Duration(hours: 1)),
         );
       });
@@ -139,22 +150,19 @@ void main() {
         throwsA(isA<SocketException>()),
       );
       await file.writeAsBytes([4, 5, 6]);
-      expect((await storage.ensure(input, file)).url.host, 'storage.example');
+      expect(
+        (await storage.ensure(input, file)).url,
+        'https://storage.example/input',
+      );
     },
   );
   for (final result in <ReferenceUploadResult>[
-    (url: Uri.parse('file:///private/input'), expiresAt: null),
-    (
-      url: Uri.parse('https://user:secret@storage.example/input'),
-      expiresAt: null,
-    ),
-    (
-      url: Uri.parse('https://storage.example/input'),
-      expiresAt: DateTime.utc(2000),
-    ),
+    (url: 'file:///private/input', expiresAt: null),
+    (url: 'https://user:secret@storage.example/input', expiresAt: null),
+    (url: 'https://storage.example/input', expiresAt: DateTime.utc(2000)),
   ]) {
     test(
-      'rejects invalid or expired storage result ${result.url.scheme} ${result.expiresAt}',
+      'rejects invalid or expired storage result ${result.url} ${result.expiresAt}',
       () async {
         final storage = service(
           ({
@@ -177,4 +185,123 @@ void main() {
       },
     );
   }
+  final provider = aiProviderBuiltinById(
+    'openai',
+  )!.copyWith(type: 'volcengine', apiKey: 'key');
+  for (final (role, mime) in [
+    (VideoInputRole.reference_image, 'image/png'),
+    (VideoInputRole.reference_audio, 'audio/mpeg'),
+  ]) {
+    test('no OSS or channel upload sends $mime inline', () async {
+      await db.aiProviderDao.upsert(provider);
+      final storage = service(null);
+      final source = VideoInput(role: role, assetId: 'a', mimeType: mime);
+      expect(
+        await storage.preflight(providerId: provider.id, inputs: [source]),
+        isTrue,
+      );
+      final ref = await storage.ensure(source, file, provider: provider);
+      expect(ref.url, 'data:$mime;base64,AQID');
+      expect(isVideoInlineReference(ref), isTrue);
+      expect(Uri.parse(ref.url).data!.contentAsBytes(), [1, 2, 3]);
+      expect(ref.fileSize, 3);
+    });
+  }
+  test(
+    'mixed image and video fails before reading or sending any reference',
+    () async {
+      final storage = ReferenceStorageService(
+        database: db,
+        storage: FakeObjectStorage(db, null),
+        probe: (_) async => throw StateError('must not probe'),
+      );
+      const video = VideoInput(
+        role: VideoInputRole.reference_video,
+        assetId: 'v',
+        mimeType: 'video/mp4',
+      );
+      await db.aiProviderDao.upsert(provider);
+      expect(
+        await storage.preflight(
+          providerId: provider.id,
+          inputs: [input, video],
+        ),
+        isFalse,
+      );
+      await expectLater(
+        storage.prepare([
+          (input, file, media),
+          (video, file, media),
+        ], provider: provider),
+        throwsA(
+          isA<VideoException>().having(
+            (e) => e.code,
+            'code',
+            VideoErrorCode.configuration_required,
+          ),
+        ),
+      );
+    },
+  );
+  test('OSS failures never switch to inline media', () async {
+    final storage = service(({
+      required file,
+      required sha256,
+      required mimeType,
+      required fileSize,
+    }) async {
+      throw const SocketException('offline');
+    });
+    await expectLater(
+      storage.ensure(input, file, provider: provider),
+      throwsA(isA<SocketException>()),
+    );
+  });
+  test('batch uses a single OSS configuration snapshot', () async {
+    var uploads = 0;
+    final oss = FakeObjectStorage(db, ({
+      required file,
+      required sha256,
+      required mimeType,
+      required fileSize,
+    }) async {
+      uploads++;
+      return (url: 'https://storage.example/$uploads', expiresAt: null);
+    });
+    final storage = ReferenceStorageService(
+      database: db,
+      storage: oss,
+      probe: (_) async => const MediaInfo(
+        duration: Duration.zero,
+        hasAudio: false,
+        hasVideo: true,
+      ),
+    );
+    final refs = await storage.prepare([
+      (input, file, media),
+      (input, file, media),
+    ], provider: provider);
+    expect(oss.loads, 1);
+    expect(
+      refs.every((r) => r.url.startsWith('https://storage.example/')),
+      isTrue,
+    );
+  });
+  test(
+    'oversized inline batch is rejected before loading files into memory',
+    () async {
+      final handle = await file.open(mode: FileMode.write);
+      await handle.truncate(26 * 1024 * 1024);
+      await handle.close();
+      await expectLater(
+        service(null).prepare([
+          (input, file, media),
+          (input, file, media),
+        ], provider: provider),
+        throwsA(
+          isA<VideoException>().having((e) => e.field, 'field', 'file_size'),
+        ),
+      );
+    },
+  );
 }

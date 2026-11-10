@@ -176,7 +176,7 @@ class VideoMediaInfo {
   );
 }
 
-/// Temporary read URLs deliberately have no persistence serializer.
+/// Runtime reference addresses deliberately have no persistence serializer.
 class VideoReference {
   const VideoReference({
     required this.role,
@@ -186,7 +186,9 @@ class VideoReference {
     required this.mediaInfo,
   });
   final VideoInputRole role;
-  final Uri url;
+
+  /// HTTP URL、渠道引用或图片／音频 data URI；只在运行时使用。
+  final String url;
   final String mimeType;
   final int fileSize;
   final VideoMediaInfo mediaInfo;
@@ -221,3 +223,19 @@ class VideoReferenceSlot {
         inputId: json['input_id'] as String?,
       );
 }
+
+/// Purefox 的上传 key 是不含协议头的非空字符串，提交时保持原样。
+bool isPurefoxUploadKey(String value) =>
+    value.isNotEmpty &&
+    !value.contains(RegExp(r'[:\s]')) &&
+    !value.startsWith('/');
+
+/// 内联参考的应用级请求体预算，含 Base64 膨胀与 JSON 开销。
+const videoInlineRequestMaxBytes = 64 * 1024 * 1024;
+
+bool isVideoInlineReference(VideoReference ref) =>
+    ref.role.kind != VideoMediaKind.video &&
+    ref.mimeType.startsWith('${ref.role.kind.name}/') &&
+    ref.url.startsWith('data:${ref.mimeType};base64,') &&
+    ref.url.length ==
+        'data:${ref.mimeType};base64,'.length + ((ref.fileSize + 2) ~/ 3) * 4;

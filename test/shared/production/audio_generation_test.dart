@@ -1076,7 +1076,7 @@ void main() {
         for (final input in reordered.inputs)
           VideoReference(
             role: input.role,
-            url: Uri.https('media.example', '/${input.assetId}'),
+            url: Uri.https('media.example', '/${input.assetId}').toString(),
             mimeType: input.mimeType,
             fileSize: 64,
             mediaInfo: const VideoMediaInfo(durationMs: 3000),

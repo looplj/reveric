@@ -17,7 +17,7 @@ final objectStorageServiceProvider = Provider<ObjectStorageService>((ref) {
   return ObjectStorageService(database: ref.watch(appDatabaseProvider));
 });
 
-/// 配置只经 [ObjectStorageService.save] 写入，读取侧监听同一行 app_settings。
+/// 配置经 [ObjectStorageService.save] 或 [ObjectStorageService.clear] 写入，读取侧监听同一行 app_settings。
 final objectStorageConfigProvider = StreamProvider<ObjectStorageConfig>((ref) {
   return ref.watch(objectStorageServiceProvider).watch();
 });

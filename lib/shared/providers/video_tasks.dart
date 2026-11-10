@@ -34,27 +34,13 @@ final referenceStorageServiceProvider = Provider<ReferenceStorageService>((
   ref,
 ) {
   final storage = ref.watch(objectStorageServiceProvider);
-  return ReferenceStorageService(
+  final service = ReferenceStorageService(
     probe: ref.watch(mediaServiceProvider).probe,
-    resolveUpload: () async {
-      final config = await storage.load();
-      if (!config.isConfigured) {
-        return null;
-      }
-      return ({
-        required File file,
-        required String sha256,
-        required String mimeType,
-        required int fileSize,
-      }) => storage.upload(
-        config,
-        file: file,
-        sha256: sha256,
-        mimeType: mimeType,
-        fileSize: fileSize,
-      );
-    },
+    database: ref.watch(appDatabaseProvider),
+    storage: storage,
   );
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 /// 渠道私域素材认证；启动时接着轮询上次没出结果的记录。

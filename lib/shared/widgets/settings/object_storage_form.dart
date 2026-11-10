@@ -1,4 +1,4 @@
-// 职责: 对象存储连接表单 — 按服务商预设编辑 S3 兼容配置，测试连接通过后保存；桌面设置页与生成前的配置弹窗共用。
+// 职责: 对象存储连接表单 — 按服务商预设编辑 S3 兼容配置，测试连接通过后保存，支持清空连接配置；桌面设置页与生成前的配置弹窗共用。
 // 关联文件:
 //   lib/shared/models/object_storage_config.dart
 //   lib/shared/services/object_storage/service.dart
@@ -32,6 +32,7 @@ import '../../models/object_storage_config.dart';
 import '../../providers/object_storage.dart';
 import '../../services/object_storage/service.dart';
 import '../../theme/theme.dart';
+import '../confirm_dialog.dart';
 
 enum ObjectStorageField implements FieldSchema {
   vendor,
@@ -67,6 +68,8 @@ class ObjectStorageForm extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final saving = useState(false);
+    final clearing = useState(false);
+    final busy = saving.value || clearing.value;
     final feedback = useState<(String, bool)?>(null);
     final obscureSecret = useState(true);
     final (initialVendor, initialIdentifier) = ObjectStorageVendor.detect(
@@ -112,7 +115,7 @@ class ObjectStorageForm extends HookConsumerWidget {
         : ObjectStorageField.region;
 
     Future<void> save() async {
-      if (saving.value) {
+      if (saving.value || clearing.value) {
         return;
       }
       feedback.value = null;
@@ -224,6 +227,51 @@ class ObjectStorageForm extends HookConsumerWidget {
       }
     }
 
+    Future<void> clear() async {
+      if (saving.value || clearing.value) {
+        return;
+      }
+      clearing.value = true;
+      final service = ref.read(objectStorageServiceProvider);
+      try {
+        final confirmed = await showConfirmDialog(
+          context,
+          title: context.t(LocaleKeys.settingsObjectStorageClearTitle),
+          message: context.t(LocaleKeys.settingsObjectStorageClearConfirm),
+          confirmLabel: context.t(LocaleKeys.commonClear),
+          variant: ConfirmDialogVariant.warning,
+        );
+        if (!confirmed || !context.mounted) {
+          return;
+        }
+        await service.clear();
+        if (context.mounted) {
+          advancedOpen.value = false;
+          obscureSecret.value = true;
+          feedback.value = (
+            context.t(LocaleKeys.settingsObjectStorageCleared),
+            false,
+          );
+        }
+      } catch (error, stack) {
+        _log.error(
+          'Clear object storage configuration failed',
+          error: error,
+          stackTrace: stack,
+        );
+        if (context.mounted) {
+          feedback.value = (
+            context.t(LocaleKeys.settingsObjectStorageClearFailed),
+            true,
+          );
+        }
+      } finally {
+        if (context.mounted) {
+          clearing.value = false;
+        }
+      }
+    }
+
     Widget field(
       ObjectStorageField field,
       String labelKey, {
@@ -236,7 +284,7 @@ class ObjectStorageForm extends HookConsumerWidget {
       child: HookedTextFormField<ObjectStorageField>(
         key: ValueKey('object_storage_${field.name}_field'),
         fieldHook: field,
-        enabled: !saving.value,
+        enabled: !busy,
         keyboardType: url ? TextInputType.url : null,
         autocorrect: false,
         enableSuggestions: false,
@@ -300,7 +348,7 @@ class ObjectStorageForm extends HookConsumerWidget {
                               label: context.t(
                                 LocaleKeys.settingsObjectStorageProvider,
                               ),
-                              enabled: !saving.value,
+                              enabled: !busy,
                               items: [
                                 for (final item in ObjectStorageVendor.values)
                                   RevericSelectItem(
@@ -447,7 +495,7 @@ class ObjectStorageForm extends HookConsumerWidget {
                               const SizedBox(width: RevericSpacing.lg),
                               RevericSwitch(
                                 value: value ?? false,
-                                onChanged: saving.value
+                                onChanged: busy
                                     ? null
                                     : (v) => onChanged?.call(v),
                               ),
@@ -459,19 +507,28 @@ class ObjectStorageForm extends HookConsumerWidget {
                 ),
               ),
               const SizedBox(height: RevericSpacing.lg),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: RevericButton.primary(
-                  key: const ValueKey('object_storage_save_button'),
-                  label: context.t(
-                    saving.value
-                        ? LocaleKeys.settingsObjectStorageTesting
-                        : LocaleKeys.settingsObjectStorageSaveAndTest,
+              Wrap(
+                spacing: RevericSpacing.sm,
+                runSpacing: RevericSpacing.sm,
+                children: [
+                  RevericButton.primary(
+                    key: const ValueKey('object_storage_save_button'),
+                    label: context.t(
+                      saving.value
+                          ? LocaleKeys.settingsObjectStorageTesting
+                          : LocaleKeys.settingsObjectStorageSaveAndTest,
+                    ),
+                    icon: RevericIcons.cloud_upload,
+                    loading: saving.value,
+                    onPressed: busy ? null : save,
                   ),
-                  icon: RevericIcons.cloud_upload,
-                  loading: saving.value,
-                  onPressed: save,
-                ),
+                  if (!config.isEmpty)
+                    RevericButton.secondary(
+                      key: const ValueKey('object_storage_clear_button'),
+                      label: context.t(LocaleKeys.commonClear),
+                      onPressed: busy ? null : clear,
+                    ),
+                ],
               ),
               if (feedback.value case (final message, final isError)) ...[
                 const SizedBox(height: RevericSpacing.md),

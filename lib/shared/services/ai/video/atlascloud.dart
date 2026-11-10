@@ -101,9 +101,9 @@ class AtlasCloudVideoClient extends VideoClient {
       'generate_audio': request.audio,
       for (final ref in references)
         if (ref.role == VideoInputRole.first_frame)
-          'image': ref.url.toString()
+          'image': ref.url
         else if (ref.role == VideoInputRole.last_frame)
-          'last_image': ref.url.toString(),
+          'last_image': ref.url,
       for (final (role, key) in [
         (VideoInputRole.reference_image, 'reference_images'),
         (VideoInputRole.reference_video, 'reference_videos'),
@@ -112,7 +112,7 @@ class AtlasCloudVideoClient extends VideoClient {
         if (references.any((ref) => ref.role == role))
           key: [
             for (final ref in references.where((ref) => ref.role == role))
-              ref.url.toString(),
+              ref.url,
           ],
       if (request.mode == VideoMode.reference &&
           (channel?.protocolOptions.supportsOmniReferenceTaskType ?? false))
@@ -176,7 +176,7 @@ class AtlasCloudVideoClient extends VideoClient {
     if (route.mixedReferences) {
       body['refers'] = [
         for (final ref in references)
-          {'url': ref.url.toString(), 'type': ref.role.kind.name},
+          {'url': ref.url, 'type': ref.role.kind.name},
       ];
     } else {
       for (final ref in references) {
@@ -198,9 +198,9 @@ class AtlasCloudVideoClient extends VideoClient {
             for (final ref in refs)
               if (route.objectImages &&
                   entry.key == VideoInputRole.reference_image)
-                {'image': ref.url.toString()}
+                {'image': ref.url}
               else
-                ref.url.toString(),
+                ref.url,
           ];
         }
       }

@@ -83,7 +83,7 @@ VideoRequest request(
 VideoReference reference(VideoInputRole role, {int duration = 2000}) =>
     VideoReference(
       role: role,
-      url: Uri.parse('https://reference.example/${role.name}'),
+      url: 'https://reference.example/${role.name}',
       mimeType: switch (role.kind) {
         VideoMediaKind.image => 'image/png',
         VideoMediaKind.video => 'video/mp4',

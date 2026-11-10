@@ -74,7 +74,10 @@ INSERT INTO app_settings (key, value, updated_at) VALUES
       Future<int> scalar(String sql) async =>
           (await db.customSelect(sql).getSingle()).data.values.single as int;
 
-      expect(await scalar('PRAGMA user_version'), 4);
+      expect(
+        await scalar('PRAGMA user_version'),
+        AppDatabase.currentSchemaVersion,
+      );
       final column =
           (await db.customSelect('PRAGMA table_info(novel_collections)').get())
               .singleWhere((row) => row.read<String>('name') == 'content_kind');

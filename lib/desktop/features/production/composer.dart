@@ -484,6 +484,17 @@ class _ComposerForm extends HookConsumerWidget {
                 !await ensureReferenceStorage(
                   context,
                   ref.read(referenceStorageServiceProvider),
+                  providerId: preview.providerId,
+                  modelId: preview.request.modelId,
+                  inputs: preview.inputs
+                      .map(
+                        (input) => VideoInput(
+                          role: input.role,
+                          assetId: input.assetId,
+                          mimeType: input.mimeType,
+                        ),
+                      )
+                      .toList(),
                 ))) {
           return;
         }

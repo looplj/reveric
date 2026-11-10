@@ -44,6 +44,7 @@ import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/models/video/task_result.dart';
 import 'package:reveric/shared/services/ai/video/task_service.dart';
 import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
+import 'package:reveric/shared/services/object_storage/service.dart';
 
 const request = VideoRequest(
   modelId: 'doubao-seedance-2-5-260628',
@@ -61,6 +62,7 @@ void main() {
   final services = <VideoTaskService>[];
   var posts = 0;
   var queries = 0;
+  final uploads = <http.BaseRequest>[];
   var probeFails = false;
   setUp(() async {
     root = await Directory.systemTemp.createTemp('video-recovery-');
@@ -71,6 +73,7 @@ void main() {
     await db.aiProviderDao.upsert(provider);
     posts = 0;
     queries = 0;
+    uploads.clear();
     probeFails = false;
   });
   tearDown(() async {
@@ -111,7 +114,13 @@ void main() {
       database: db,
       rootDirectory: root,
       references: ReferenceStorageService(
+        database: db,
+        storage: ObjectStorageService(database: db),
         probe: (_) => throw StateError('no references expected'),
+        uploadClient: (_) => MockClient((r) async {
+          uploads.add(r);
+          return http.Response('', 401);
+        }),
       ),
       providerTransport: (_) => MockClient((r) async {
         if (r.method == 'POST') {
@@ -493,19 +502,16 @@ void main() {
           ),
         ],
       );
-      // 测试未配置云存储：走到上传即报配置错误，说明没有换成 asset://。
+      // 未配置云存储时走渠道上传，说明没有换成 asset://。
       await expectLater(
         tasks.submit(id, acknowledgeReferenceUpload: true),
         throwsA(
           isA<VideoException>()
-              .having(
-                (e) => e.code,
-                'code',
-                VideoErrorCode.configuration_required,
-              )
-              .having((e) => e.field, 'field', 'reference_storage'),
+              .having((e) => e.code, 'code', VideoErrorCode.authentication)
+              .having((e) => e.field, 'field', 'reference_upload'),
         ),
       );
+      expect(uploads.single.url.path, '/api/v1/model/uploadMedia');
       expect(posts, 0);
     },
   );

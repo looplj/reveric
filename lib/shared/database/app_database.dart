@@ -438,8 +438,14 @@ class ToolPermissionRules extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-/// 本地素材在某个渠道私域素材库里的认证记录；同一素材在不同渠道各有一条。
+/// 本地素材在渠道中的上传或认证记录；同一素材按渠道和用途分别保存。
 class ProviderAssets extends Table {
+  TextColumn get kind => textEnum<ProviderAssetKind>().withDefault(
+    const Constant('certification'),
+  )();
+  TextColumn get contextHash => text().nullable()();
+  TextColumn get remoteUrl => text().nullable()();
+  DateTimeColumn get expiresAt => dateTime().nullable()();
   TextColumn get id => text()();
   TextColumn get assetId => text()();
   TextColumn get providerId => text()();
@@ -1271,7 +1277,7 @@ class AppDatabase extends _$AppDatabase {
 
   static _CachedAppDatabase? _cachedDatabase;
 
-  static const currentSchemaVersion = 4;
+  static const currentSchemaVersion = 5;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1310,6 +1316,18 @@ class AppDatabase extends _$AppDatabase {
         } catch (error, stackTrace) {
           _log.error(
             '[DB] ALTER novel_collections ADD content_kind / split mixed collections schema=4',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 5) {
+        try {
+          await migrations.migrateToV5(migrator);
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER provider_assets schema=5',
             error: error,
             stackTrace: stackTrace,
           );

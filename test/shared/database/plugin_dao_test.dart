@@ -73,13 +73,20 @@ void main() {
                   )
                   .getSingle())
               .read<String>('sql'),
-          // v4 只给集合表追加了类型列，其余表结构原样保留。
-          entry.key == 'novel_collections'
-              ? entry.value.replaceFirst(
-                  ', PRIMARY KEY ("id"))',
-                  ', "content_kind" TEXT NULL, PRIMARY KEY ("id"))',
-                )
-              : entry.value,
+          // v4 给集合表追加类型列，v5 给渠道素材表追加上传列，其余表结构原样保留。
+          switch (entry.key) {
+            'novel_collections' => entry.value.replaceFirst(
+              ', PRIMARY KEY ("id"))',
+              ', "content_kind" TEXT NULL, PRIMARY KEY ("id"))',
+            ),
+            'provider_assets' => entry.value.replaceFirst(
+              ', PRIMARY KEY ("id"))',
+              ', "kind" TEXT NOT NULL DEFAULT \'certification\', '
+                  '"context_hash" TEXT NULL, "remote_url" TEXT NULL, '
+                  '"expires_at" INTEGER NULL, PRIMARY KEY ("id"))',
+            ),
+            _ => entry.value,
+          },
         );
         expect(
           (await db

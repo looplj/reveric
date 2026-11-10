@@ -345,7 +345,7 @@ class ProductionGenerateOrchestrator {
       references.add(
         VideoReference(
           role: role,
-          url: Uri.https('local.invalid', '/preview'),
+          url: 'https://local.invalid/preview',
           mimeType: media.mimeType,
           fileSize: await file.length(),
           mediaInfo: VideoMediaInfo(

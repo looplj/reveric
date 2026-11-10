@@ -48,8 +48,7 @@ class WanVideoClient extends VideoClient {
       'prompt': request.prompt,
       if (references.isNotEmpty)
         'media': [
-          for (final ref in references)
-            {'type': ref.role.name, 'url': ref.url.toString()},
+          for (final ref in references) {'type': ref.role.name, 'url': ref.url},
         ],
     },
     'parameters': {

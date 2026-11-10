@@ -64,10 +64,17 @@ class ObjectStorageService {
     if (issue != null) {
       throw ArgumentError.value(issue.name, 'config');
     }
+    await _write(normalized);
+  }
+
+  /// 移除连接信息与凭据；保留默认空配置，不访问或删除远端对象。
+  Future<void> clear() => _write(const ObjectStorageConfig());
+
+  Future<void> _write(ObjectStorageConfig config) async {
     try {
       await database.appSettingsDao.set(
         key: ObjectStorageConfig.appSettingsKey,
-        value: normalized.encode(),
+        value: config.encode(),
       );
     } catch (error, stackTrace) {
       _log.error(

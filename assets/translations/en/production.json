@@ -1,4 +1,6 @@
 {
+  "production.reference_upload_failed": "Reference upload failed. Check the channel credentials, file format and connection, then retry.",
+  "production.reference_storage_invalid": "Object storage settings are invalid. Repair them in Settings before uploading references.",
   "production.viewComposition": "View & composition",
   "production.camera": "Camera",
   "production.light": "Lighting",

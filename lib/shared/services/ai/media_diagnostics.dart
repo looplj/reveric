@@ -8,6 +8,10 @@ String safeMediaDiagnostic(Object error, String apiKey) {
   if (apiKey.isNotEmpty) {
     message = message.replaceAll(apiKey, '[redacted]');
   }
+  message = message.replaceAll(
+    RegExp(r'data:[^,\s]+;base64,[A-Za-z0-9+/=]+'),
+    '[inline media]',
+  );
   final safe = message
       .replaceAll(
         RegExp(r'Bearer\s+\S+|\bsk-[\w-]+', caseSensitive: false),

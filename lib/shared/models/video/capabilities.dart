@@ -137,6 +137,52 @@ class VideoCapabilities {
   }
 
   void validate(VideoRequest request, List<VideoReference> references) {
+    for (final ref in references) {
+      if (providerType == 'purefox_media' && isPurefoxUploadKey(ref.url)) {
+        continue;
+      }
+      if (ref.url.startsWith('data:')) {
+        _check(isVideoInlineReference(ref), 'reference_url');
+      } else if (ref.url.startsWith('mm_file://')) {
+        _check(
+          providerType == 'metaso' && ref.url.length > 'mm_file://'.length,
+          'reference_url',
+        );
+      } else {
+        final uri = Uri.tryParse(ref.url);
+        _check(
+          uri != null &&
+              {'http', 'https', 'asset'}.contains(uri.scheme) &&
+              uri.host.isNotEmpty &&
+              uri.userInfo.isEmpty,
+          'reference_url',
+        );
+      }
+    }
+    validateLocal(request, references);
+  }
+
+  /// 上传之前只校验本地媒体属性，不要求已有远端地址。
+  void validateLocal(VideoRequest request, List<VideoReference> references) {
+    if (providerType == 'purefox_media') {
+      for (final ref in references) {
+        final limit = switch (ref.role.kind) {
+          VideoMediaKind.image => 20,
+          VideoMediaKind.audio => 25,
+          VideoMediaKind.video => 64,
+        };
+        _check(
+          ref.fileSize > 0 && ref.fileSize <= limit * 1024 * 1024,
+          'file_size',
+        );
+      }
+
+      _check(
+        references.fold<int>(0, (sum, ref) => sum + ref.fileSize) <=
+            128 * 1024 * 1024,
+        'file_size',
+      );
+    }
     final channel = lookupVideoChannelModel(providerType, request.modelId);
     if (channel == null) {
       validateParameters(request, references.map((r) => r.role).toList());
@@ -148,12 +194,6 @@ class VideoCapabilities {
     final durations = <VideoMediaKind, int>{};
     final sizes = <VideoMediaKind, int>{};
     for (final ref in references) {
-      _check(
-        {'http', 'https', 'asset'}.contains(ref.url.scheme) &&
-            ref.url.host.isNotEmpty &&
-            ref.url.userInfo.isEmpty,
-        'reference_url',
-      );
       final kind = ref.role.kind;
       final limits = model.references[kind]!;
       sizes[kind] = (sizes[kind] ?? 0) + ref.fileSize;

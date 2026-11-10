@@ -59,7 +59,7 @@ class PurefoxVideoClient extends VideoClient {
     'quality': request.resolution,
     'ratio': request.ratio,
     'duration': request.durationSeconds,
-    'refs': [for (final ref in references) ref.url.toString()],
+    'refs': [for (final ref in references) ref.url],
   };
 
   @override
@@ -266,19 +266,24 @@ class PurefoxVideoClient extends VideoClient {
     }
   }
 
-  /// 网关接受公网直链并由服务端代为下载，因此直接引用即可；
-  /// 它拉不到的 scheme（如渠道私域 `asset://`）在这里明确拒绝，不做静默上传。
+  /// 接受本渠道上传 key 或公网直链，保持原始字符串。
   List<String> _referenceRefs(List<VideoReference> references) {
     final refs = <String>[];
     for (final reference in references) {
-      final url = reference.url;
-      if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty) {
+      if (isPurefoxUploadKey(reference.url)) {
+        refs.add(reference.url);
+        continue;
+      }
+      final url = Uri.tryParse(reference.url);
+      if (url == null ||
+          !{'http', 'https'}.contains(url.scheme) ||
+          url.host.isEmpty) {
         throw const VideoException(
           VideoErrorCode.invalid_request,
           field: 'reference',
         );
       }
-      refs.add(url.toString());
+      refs.add(reference.url);
     }
     return refs;
   }

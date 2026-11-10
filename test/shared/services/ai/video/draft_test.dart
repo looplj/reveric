@@ -76,7 +76,7 @@ void main() {
             for (final role in roles)
               VideoReference(
                 role: role,
-                url: Uri.https('example.test', '/${role.name}'),
+                url: Uri.https('example.test', '/${role.name}').toString(),
                 mimeType: 'image/png',
                 fileSize: 100,
                 mediaInfo: const VideoMediaInfo(width: 720, height: 720),

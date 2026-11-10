@@ -77,16 +77,14 @@ abstract class VideoClient {
     bool draft = false,
     String? draftId,
   }) async {
-    final json = await _request(
-      'POST',
-      url(createPath),
-      body: await prepareSubmission(
-        request,
-        references,
-        draft: draft,
-        draftId: draftId,
-      ),
+    final body = await prepareSubmission(
+      request,
+      references,
+      draft: draft,
+      draftId: draftId,
     );
+    validateInlineBody(body, references);
+    final json = await _request('POST', url(createPath), body: body);
     try {
       final id = submissionId(json);
       if (id.trim().isEmpty) {
@@ -132,7 +130,22 @@ abstract class VideoClient {
       );
     }
     VideoCapabilities(providerType).validate(request, references);
-    return encode(request, references);
+    final body = encode(request, references);
+    validateInlineBody(body, references);
+    return body;
+  }
+
+  void validateInlineBody(
+    Map<String, dynamic> body,
+    List<VideoReference> references,
+  ) {
+    if (references.any((ref) => ref.url.startsWith('data:')) &&
+        utf8.encode(jsonEncode(body)).length > videoInlineRequestMaxBytes) {
+      throw const VideoException(
+        VideoErrorCode.invalid_request,
+        field: 'file_size',
+      );
+    }
   }
 
   /// 下载完成的视频；默认不带凭据直接 GET，需要鉴权的协议自行覆盖。
@@ -366,7 +379,7 @@ List<Map<String, dynamic>> videoContent(
   for (final ref in references)
     {
       'type': '${ref.role.kind.name}_url',
-      '${ref.role.kind.name}_url': {'url': ref.url.toString()},
+      '${ref.role.kind.name}_url': {'url': ref.url},
       'role': ref.role.name,
     },
 ];

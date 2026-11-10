@@ -27,7 +27,7 @@ VideoReference reference({
   double frameRate = 30,
 }) => VideoReference(
   role: role,
-  url: Uri.https('reference.example', '/media'),
+  url: Uri.https('reference.example', '/media').toString(),
   mimeType:
       mimeType ??
       switch (role.kind) {

@@ -43,6 +43,14 @@ class AppDatabaseMigrations {
     await db.customStatement('DROP TABLE IF EXISTS memories');
   }
 
+  /// v5: 普通上传与认证记录隔离，保存已完成上传的读取地址和有效期。
+  Future<void> migrateToV5(Migrator m) async {
+    await m.addColumn(db.providerAssets, db.providerAssets.kind);
+    await m.addColumn(db.providerAssets, db.providerAssets.contextHash);
+    await m.addColumn(db.providerAssets, db.providerAssets.remoteUrl);
+    await m.addColumn(db.providerAssets, db.providerAssets.expiresAt);
+  }
+
   /// v4: 集合按作品类型分开。
   Future<void> migrateToV4(Migrator m) async {
     if (!await _tableHasColumn('novel_collections', 'content_kind')) {

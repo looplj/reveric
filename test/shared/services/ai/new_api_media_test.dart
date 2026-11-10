@@ -54,7 +54,7 @@ VideoRequest _video(
 );
 VideoReference _reference() => VideoReference(
   role: VideoInputRole.first_frame,
-  url: Uri.parse('https://reference.test/image.png'),
+  url: 'https://reference.test/image.png',
   mimeType: 'image/png',
   fileSize: 100,
   mediaInfo: const VideoMediaInfo(width: 1280, height: 720),
@@ -163,7 +163,7 @@ void main() {
         await http.runWithClient(
           () async {
             final service = AiImageGenerationService(
-              _provider(type),
+              _provider(type).copyWith(baseUrl: ''),
               model: 'gemini-3.1-flash-image',
             );
             final result = type == 'gemini'
@@ -490,7 +490,7 @@ void main() {
       [
         VideoReference(
           role: VideoInputRole.reference_image,
-          url: Uri.parse('https://reference.test/image.png'),
+          url: 'https://reference.test/image.png',
           mimeType: 'image/png',
           fileSize: 100,
           mediaInfo: const VideoMediaInfo(width: 1280, height: 720),

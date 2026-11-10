@@ -1,4 +1,9 @@
 {
+  "settings.object_storage_clear_title": "Clear object storage settings?",
+  "settings.object_storage_clear_confirm": "This clears connection settings and credentials. No files will be deleted.",
+  "settings.object_storage_cleared": "Object storage settings cleared.",
+  "settings.object_storage_clear_failed": "Could not clear object storage settings. Please try again.",
+
   "settings.builtin_provider_metaso": "METASO",
   "settings.codex_check_login": "Check login",
   "settings.codex_checking": "Checking local Codex login…",

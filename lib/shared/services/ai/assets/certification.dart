@@ -102,7 +102,10 @@ class ProviderAssetService {
         ),
         file,
       );
-      final submission = await client.submit(url: reference.url, name: name);
+      final submission = await client.submit(
+        url: Uri.parse(reference.url),
+        name: name,
+      );
       await database.providerAssetDao.write(
         row.id,
         ProviderAssetsCompanion(

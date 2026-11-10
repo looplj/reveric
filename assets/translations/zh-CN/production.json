@@ -1,4 +1,6 @@
 {
+  "production.reference_upload_failed": "参考素材上传失败，请检查渠道凭据、文件格式和网络后重试。",
+  "production.reference_storage_invalid": "对象存储配置无效，请在设置中修复后再上传参考素材。",
   "production.viewComposition": "视角与构图",
   "production.camera": "镜头",
   "production.light": "打光",

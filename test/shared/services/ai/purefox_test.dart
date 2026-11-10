@@ -141,7 +141,7 @@ final _pngBytes = base64Decode(_png);
 
 VideoReference _reference(String url) => VideoReference(
   role: VideoInputRole.reference_image,
-  url: Uri.parse(url),
+  url: url,
   mimeType: 'image/png',
   fileSize: _pngBytes.length,
   mediaInfo: const VideoMediaInfo(width: 1, height: 1),
@@ -431,6 +431,33 @@ void main() {
     ]);
     transport.close();
   });
+
+  test(
+    'video submits uploaded keys verbatim without downloading them',
+    () async {
+      await _registerCatalog();
+      final seen = <http.Request>[];
+      final transport = MockClient((request) async {
+        seen.add(request);
+        expect(request.method, 'POST');
+        return http.Response('{"jobId":"job-1","status":"running"}\n', 200);
+      });
+      final api = PurefoxVideoClient(
+        httpClient: transport,
+        providerType: 'purefox_media',
+        endpoint: Uri.parse('https://img.purefox.org/v1'),
+        apiKey: 'purefox-key',
+      );
+      await api.submit(_videoRequest(mode: VideoMode.reference), [
+        _reference('uploads/AbC.png'),
+      ]);
+      // 已上传 key 只进入生成请求，不尝试 GET 或重新上传。
+      expect(seen, hasLength(1));
+      expect(seen.single.url.path, '/v1/generate');
+      expect(jsonDecode(seen.single.body)['refs'], ['uploads/AbC.png']);
+      transport.close();
+    },
+  );
 
   test('video rejects references the gateway cannot download', () async {
     await _registerCatalog();

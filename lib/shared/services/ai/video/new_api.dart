@@ -47,10 +47,11 @@ class NewApiVideoClient extends VideoClient {
         request.modelId;
     if (catalogId.startsWith('veo-') && references.isNotEmpty) {
       final ref = references.single;
-      if (ref.url.scheme != 'data') {
-        if (!{'http', 'https'}.contains(ref.url.scheme) ||
-            ref.url.host.isEmpty ||
-            ref.url.userInfo.isNotEmpty) {
+      final referenceUrl = Uri.parse(ref.url);
+      if (referenceUrl.scheme != 'data') {
+        if (!{'http', 'https'}.contains(referenceUrl.scheme) ||
+            referenceUrl.host.isEmpty ||
+            referenceUrl.userInfo.isNotEmpty) {
           throw const VideoException(
             VideoErrorCode.invalid_request,
             field: 'references',
@@ -59,7 +60,7 @@ class NewApiVideoClient extends VideoClient {
         try {
           final bytes = await (() async {
             final response = await httpClient.send(
-              http.Request('GET', ref.url),
+              http.Request('GET', referenceUrl),
             );
             if (response.statusCode != 200) {
               await response.stream.drain<void>();
@@ -84,7 +85,7 @@ class NewApiVideoClient extends VideoClient {
           ];
         } catch (error) {
           _log.warning(
-            'reference GET ${ref.url.origin}${ref.url.path} '
+            'reference GET ${referenceUrl.origin}${referenceUrl.path} '
             'type=${error.runtimeType} message=${safeMediaDiagnostic(error, apiKey)}',
           );
           throw const VideoException(VideoErrorCode.unavailable);
@@ -158,9 +159,9 @@ class NewApiVideoClient extends VideoClient {
       'size': _size(request.resolution, request.ratio),
       if (references.isNotEmpty)
         if (catalogId.startsWith('veo-'))
-          'images': [references.single.url.toString()]
+          'images': [references.single.url]
         else
-          'input_reference': references.single.url.toString(),
+          'input_reference': references.single.url,
       if (catalogId.startsWith('veo-'))
         'metadata': {
           'resolution': request.resolution.toLowerCase(),
