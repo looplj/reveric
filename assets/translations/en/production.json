@@ -123,5 +123,7 @@
   "production.certifyErrorConfiguration": "Provider is disabled or missing credentials",
   "production.certifyErrorRequest": "Couldn't submit the compliance check. Check the provider credentials",
   "production.storage_required_title": "Set up storage first",
-  "production.storage_required_message": "Local reference files must be uploaded to your object storage before the video provider can read them. The current action continues after you save."
+  "production.storage_required_message": "Local reference files must be uploaded to your object storage before the video provider can read them. The current action continues after you save.",
+  "production.history_conflict": "This content has changed. This step can no longer be undone or redone.",
+  "production.history_failed": "Could not restore this step. Please try again."
 }

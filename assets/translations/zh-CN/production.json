@@ -123,5 +123,7 @@
   "production.certifyErrorConfiguration": "渠道未启用或缺少凭据",
   "production.certifyErrorRequest": "提交合规校验失败，请检查渠道凭据",
   "production.storage_required_title": "先配置存储",
-  "production.storage_required_message": "本地参考素材要先上传到你的对象存储，视频服务商才能读取。保存后会继续当前操作。"
+  "production.storage_required_message": "本地参考素材要先上传到你的对象存储，视频服务商才能读取。保存后会继续当前操作。",
+  "production.history_conflict": "内容已被修改，无法撤销或重做这一步。",
+  "production.history_failed": "无法恢复这一步，请重试。"
 }

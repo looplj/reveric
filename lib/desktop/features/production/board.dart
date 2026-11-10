@@ -62,6 +62,7 @@ import 'selection_layer.dart';
 import 'selection_actions.dart';
 import 'view/region.dart';
 import 'support.dart';
+import 'history_region.dart';
 import 'task_status.dart' show ProductionTaskActions;
 
 const double _minZoom = .15;
@@ -187,6 +188,7 @@ class ProductionBoard extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final history = ProductionHistoryScope.maybeOf(context)?.history;
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
@@ -844,23 +846,35 @@ class ProductionBoard extends HookConsumerWidget {
       };
     bands.onMove = (positions) => productionRun(context, () async {
       try {
-        await service.write(canvasId, () async {
-          await service.moveNodes(canvasId, {
-            for (final entry in positions.entries)
-              entry.key: (x: entry.value.dx, y: entry.value.dy),
-          });
-          for (final group
-              in controller.nodes.values.whereType<ProductionFlowGroup>()) {
-            if (group.layout is FreeGroupLayout &&
-                (positions.containsKey(group.id) ||
-                    group.nodeIds.any(positions.containsKey))) {
-              await service.groups.resizeFree(
+        await recordProductionChange(
+          context,
+          {
+            ...positions.keys,
+            for (final group
+                in controller.nodes.values.whereType<ProductionFlowGroup>())
+              if (group.layout is FreeGroupLayout &&
+                  (positions.containsKey(group.id) ||
+                      group.nodeIds.any(positions.containsKey)))
                 group.id,
-                group.constrain(group.position.value & group.size.value),
-              );
+          },
+          () => service.write(canvasId, () async {
+            await service.moveNodes(canvasId, {
+              for (final entry in positions.entries)
+                entry.key: (x: entry.value.dx, y: entry.value.dy),
+            });
+            for (final group
+                in controller.nodes.values.whereType<ProductionFlowGroup>()) {
+              if (group.layout is FreeGroupLayout &&
+                  (positions.containsKey(group.id) ||
+                      group.nodeIds.any(positions.containsKey))) {
+                await service.groups.resizeFree(
+                  group.id,
+                  group.constrain(group.position.value & group.size.value),
+                );
+              }
             }
-          }
-        });
+          }),
+        );
       } catch (_) {
         for (final id in positions.keys) {
           final row = latest.value[id];
@@ -925,11 +939,15 @@ class ProductionBoard extends HookConsumerWidget {
                                 row.id,
                                 slot,
                                 asset.id,
+                                history: history,
                               );
                             }
                           }),
-                          onResize: (frame) =>
-                              service.groups.resizeFree(row.id, frame),
+                          onResize: (frame) => service.groups.resizeFree(
+                            row.id,
+                            frame,
+                            history: history,
+                          ),
                         );
                       }
                       final parent = controller.getNode(row?.parentId ?? '');

@@ -26,6 +26,8 @@ import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/theme/theme.dart';
 import '../canvas/widgets/floating_cluster.dart';
 import '../canvas/widgets/glass.dart';
+import 'history_region.dart';
+import 'history_actions.dart';
 
 /// 「＋」菜单里的节点类型。素材类先从资产库选内容再落到画布。
 enum ProductionAddKind {
@@ -53,6 +55,37 @@ class ProductionCanvasTools extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (ProductionHistoryScope.maybeOf(context)?.history
+            case final history?)
+          ListenableBuilder(
+            listenable: history,
+            builder: (context, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CanvasFloatingButton(
+                  icon: RevericIcons.undo,
+                  tooltip: context.t(LocaleKeys.commonUndo),
+                  onTap: history.canUndo
+                      ? () => Actions.invoke(
+                          context,
+                          const ProductionUndoIntent(),
+                        )
+                      : null,
+                  divider: true,
+                ),
+                CanvasFloatingButton(
+                  icon: RevericIcons.redo,
+                  tooltip: context.t(LocaleKeys.commonRedo),
+                  onTap: history.canRedo
+                      ? () => Actions.invoke(
+                          context,
+                          const ProductionRedoIntent(),
+                        )
+                      : null,
+                ),
+              ],
+            ),
+          ),
         CanvasFloatingButton(
           icon: RevericIcons.folder_outlined,
           tooltip: context.t(LocaleKeys.productionAssets),
@@ -168,11 +201,7 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
                 borderRadius: BorderRadius.circular(RevericRadius.xl),
               ),
               child: Center(
-                child: RevericIcon(
-                  icon,
-                  size: 18,
-                  color: colors.textSecondary,
-                ),
+                child: RevericIcon(icon, size: 18, color: colors.textSecondary),
               ),
             ),
             onTap: () => widget.onAdd(kind),

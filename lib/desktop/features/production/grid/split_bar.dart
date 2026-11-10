@@ -30,6 +30,7 @@ import '../../../../shared/theme/theme.dart';
 import '../../canvas/widgets/glass.dart';
 import '../support.dart';
 import 'session.dart';
+import '../history_region.dart';
 import 'spec_picker.dart';
 
 class ProductionSplitBar extends HookConsumerWidget {
@@ -46,6 +47,7 @@ class ProductionSplitBar extends HookConsumerWidget {
   final ProductionNodePlacement Function(Size) place;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final history = ProductionHistoryScope.maybeOf(context)?.history;
     final running = useState<String?>(null);
     final multiplier = useState(2);
     final busy = running.value != null;
@@ -112,6 +114,7 @@ class ProductionSplitBar extends HookConsumerWidget {
         } else {
           group = await operation.split(
             canvas: service,
+            history: history,
             sourceNodeId: node.id,
             rows: spec.rows,
             cols: spec.cols,

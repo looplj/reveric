@@ -5847,6 +5847,9 @@ abstract final class LocaleKeys {
   static const commonRestore = 'common.restore';
   static const commonIgnore = 'common.ignore';
   static const commonApply = 'common.apply';
+  static const productionHistoryConflict = 'production.history_conflict';
+  static const productionHistoryFailed = 'production.history_failed';
+
   static const commonUndo = 'common.undo';
   static const commonRedo = 'common.redo';
   static const directorUnsaved = 'director.unsaved';

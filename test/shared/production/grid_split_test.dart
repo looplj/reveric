@@ -10,6 +10,7 @@ import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
+import 'package:reveric/shared/services/production/canvas_history.dart';
 import 'package:reveric/shared/services/production/grid_split.dart';
 import 'package:reveric/shared/services/production/grid_orchestrator.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
@@ -88,7 +89,10 @@ void main() {
           final board = await canvas.ensureCanvas(episode);
           final source = await canvas.addMedia(board.id, asset.id);
           library.fail = fail;
+          final history = CanvasHistory(canvas.shots, board.id);
+          addTearDown(history.dispose);
           final operation = GridOrchestrator().split(
+            history: history,
             canvas: canvas,
             sourceNodeId: source.id,
             rows: 3,
@@ -129,6 +133,21 @@ void main() {
             expect(edges.single.targetNodeId, group.id);
             expect(edges.single.type, canvasEdgeTypeDerivedOutput);
             expect((await canvas.requireNode(source.id)).parentId, isNull);
+            expect(history.undoCount, 1);
+            await history.undo();
+            expect(await canvas.db.canvasDao.getNodeById(group.id), isNull);
+            for (final member in members) {
+              expect(await canvas.db.canvasDao.getNodeById(member.id), isNull);
+              expect(
+                await canvas.requireAsset(member.mediaAssetId!),
+                isNotNull,
+              );
+            }
+            await history.redo();
+            expect(
+              (await canvas.groups.members(group.id)).map((n) => n.id),
+              members.map((n) => n.id),
+            );
             await canvas.groups.setStoryboardLayout(
               group.id,
               layout.copyWith(numbered: true, ratio: '9:16'),

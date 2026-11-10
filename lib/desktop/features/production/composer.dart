@@ -49,6 +49,7 @@ import 'input_preview.dart';
 import 'character_input.dart';
 import '../../../shared/services/production/voices.dart';
 import 'edit_session.dart';
+import 'history_region.dart';
 import 'prompt_field.dart';
 import 'support.dart';
 import 'style_button.dart';
@@ -367,7 +368,7 @@ class _ComposerForm extends HookConsumerWidget {
       final matching = currentRoles()
           .where((r) => r.kind.name == asset.type)
           .toList();
-      void apply(VideoInputRole role) {
+      Future<void> apply(VideoInputRole role) async {
         if (!context.mounted) {
           return;
         }
@@ -381,7 +382,9 @@ class _ComposerForm extends HookConsumerWidget {
             .firstOrNull;
         if (input == null) {
           input = ProductionInput.asset(asset.id, role);
-          inputs.value = [...inputs.value, input];
+          await changeProductionInputs(context, node.id, save, () {
+            inputs.value = [...inputs.value, input!];
+          });
         }
         if (reference) {
           prompt.insertReference(input.id, asset.name);
@@ -389,7 +392,7 @@ class _ComposerForm extends HookConsumerWidget {
       }
 
       if (matching.length == 1) {
-        apply(matching.single);
+        await apply(matching.single);
       } else {
         await menu([
           for (final role in matching)
@@ -813,14 +816,19 @@ class _ComposerForm extends HookConsumerWidget {
                           service: service,
                           input: displayInputs[i],
                           framesMode: frames,
-                          onChanged: (input) {
-                            final next = [...inputs.value];
-                            next[next.indexWhere(
-                                  (item) => item.id == displayInputs[i].id,
-                                )] =
-                                input;
-                            inputs.value = next;
-                          },
+                          onChanged: (input) => changeProductionInputs(
+                            context,
+                            node.id,
+                            save,
+                            () {
+                              final next = [...inputs.value];
+                              next[next.indexWhere(
+                                    (item) => item.id == displayInputs[i].id,
+                                  )] =
+                                  input;
+                              inputs.value = next;
+                            },
+                          ),
                           child: ProductionInputTile(
                             service: service,
                             input: displayInputs[i],
@@ -834,40 +842,57 @@ class _ComposerForm extends HookConsumerWidget {
                             middleFrameIndex: displayInputs[i].middleFrameIndex(
                               inputs.value,
                             ),
-                            onRole: (r) {
-                              final next = [...inputs.value];
-                              final index = next.indexWhere(
-                                (item) => item.id == displayInputs[i].id,
-                              );
-                              next[index] = next[index].withRole(r);
-                              inputs.value = next;
-                            },
+                            onRole: (r) => changeProductionInputs(
+                              context,
+                              node.id,
+                              save,
+                              () {
+                                final next = [...inputs.value];
+                                final index = next.indexWhere(
+                                  (item) => item.id == displayInputs[i].id,
+                                );
+                                next[index] = next[index].withRole(r);
+                                inputs.value = next;
+                              },
+                            ),
                             onMove:
                                 displayInputs.length < 2 ||
                                     (productionUsesFrames(mode) &&
                                         displayInputs[i].role !=
                                             VideoInputRole.middle_frame)
                                 ? null
-                                : (delta) {
-                                    final to = i + delta;
-                                    if (to < 0 ||
-                                        to >= displayInputs.length ||
-                                        (productionUsesFrames(mode) &&
-                                            displayInputs[to].role !=
-                                                VideoInputRole.middle_frame)) {
-                                      return;
-                                    }
-                                    final next = [...displayInputs];
-                                    next.insert(to, next.removeAt(i));
-                                    inputs.value = next;
-                                  },
-                            onRemove: () {
-                              inputs.value = inputs.value
-                                  .where(
-                                    (input) => input.id != displayInputs[i].id,
-                                  )
-                                  .toList();
-                            },
+                                : (delta) => changeProductionInputs(
+                                    context,
+                                    node.id,
+                                    save,
+                                    () {
+                                      final to = i + delta;
+                                      if (to < 0 ||
+                                          to >= displayInputs.length ||
+                                          (productionUsesFrames(mode) &&
+                                              displayInputs[to].role !=
+                                                  VideoInputRole
+                                                      .middle_frame)) {
+                                        return;
+                                      }
+                                      final next = [...displayInputs];
+                                      next.insert(to, next.removeAt(i));
+                                      inputs.value = next;
+                                    },
+                                  ),
+                            onRemove: () => changeProductionInputs(
+                              context,
+                              node.id,
+                              save,
+                              () {
+                                inputs.value = inputs.value
+                                    .where(
+                                      (input) =>
+                                          input.id != displayInputs[i].id,
+                                    )
+                                    .toList();
+                              },
+                            ),
                           ),
                         ),
                     ],

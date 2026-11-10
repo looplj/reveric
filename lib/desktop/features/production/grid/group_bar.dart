@@ -10,6 +10,7 @@
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 import 'package:flutter/material.dart';
+import '../history_region.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../../shared/components/reveric_button.dart';
 import '../../../../shared/components/reveric_select.dart';
@@ -68,6 +69,7 @@ class ProductionGroupBar extends HookWidget {
   final ProductionNodePlacement Function(Size)? place;
   @override
   Widget build(BuildContext context) {
+    final history = ProductionHistoryScope.maybeOf(context)?.history;
     final busy = useState(false);
     final layout = ProductionGroupLayout.fromStyle(node.style);
     final members = useStream(
@@ -134,9 +136,10 @@ class ProductionGroupBar extends HookWidget {
         await service.groups.toFree(
           node.id,
           rects.map((id, rect) => MapEntry(id, rect.size)),
+          history: history,
         );
       } else {
-        await service.groups.toStoryboard(node.id, rects);
+        await service.groups.toStoryboard(node.id, rects, history: history);
       }
     }
 
@@ -165,6 +168,7 @@ class ProductionGroupBar extends HookWidget {
                       () => service.groups.setStoryboardLayout(
                         node.id,
                         layout.copyWith(ratio: ratio),
+                        history: history,
                       ),
                     ),
                   ),
@@ -177,6 +181,7 @@ class ProductionGroupBar extends HookWidget {
                     () => service.groups.setStoryboardLayout(
                       node.id,
                       layout.copyWith(rows: spec.rows, cols: spec.cols),
+                      history: history,
                     ),
                   ),
                 ),
@@ -189,6 +194,7 @@ class ProductionGroupBar extends HookWidget {
                           () => service.groups.setStoryboardLayout(
                             node.id,
                             layout.copyWith(numbered: numbered),
+                            history: history,
                           ),
                         ),
                 ),
@@ -213,7 +219,10 @@ class ProductionGroupBar extends HookWidget {
                             variant: ConfirmDialogVariant.error,
                           );
                           if (confirmed) {
-                            await service.groups.clear(node.id);
+                            await service.groups.clear(
+                              node.id,
+                              history: history,
+                            );
                           }
                         }),
                 ),
@@ -229,7 +238,11 @@ class ProductionGroupBar extends HookWidget {
                           builder: (_) => _Rename(title: node.title),
                         );
                         if (title != null) {
-                          await service.groups.rename(node.id, title);
+                          await service.groups.rename(
+                            node.id,
+                            title,
+                            history: history,
+                          );
                         }
                       }),
               ),
@@ -265,6 +278,7 @@ class ProductionGroupBar extends HookWidget {
                           sizes: rects.map(
                             (id, rect) => MapEntry(id, rect.size),
                           ),
+                          history: history,
                         );
                       }),
               ),
@@ -329,7 +343,10 @@ class ProductionGroupBar extends HookWidget {
                                     variant: ConfirmDialogVariant.error,
                                   );
                                   if (confirmed) {
-                                    await service.removeNode(node.id);
+                                    await service.removeNode(
+                                      node.id,
+                                      history: history,
+                                    );
                                   }
                                 }),
                               ),

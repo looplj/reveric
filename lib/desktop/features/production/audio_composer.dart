@@ -40,6 +40,7 @@ import '../../../shared/theme/theme.dart';
 import '../canvas/widgets/glass.dart';
 import '../storyboard/edit_form.dart' show ShotField;
 import 'edit_session.dart';
+import 'history_region.dart';
 import 'audio_submit.dart';
 import 'speech_options.dart';
 import 'input_preview.dart';
@@ -351,7 +352,9 @@ class _AudioForm extends HookConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      inputs.value = next;
+      await changeProductionInputs(context, node.id, save, () {
+        inputs.value = next;
+      });
       if (reference &&
           capability?.model.supportsAudioReferencePlaceholders == true &&
           asset.type == 'audio') {
@@ -482,17 +485,28 @@ class _AudioForm extends HookConsumerWidget {
                             onRole: null,
                             onMove: inputs.value.length < 2
                                 ? null
-                                : (delta) {
-                                    final target = i + delta;
-                                    if (target >= 0 &&
-                                        target < inputs.value.length) {
-                                      final next = [...inputs.value];
-                                      next.insert(target, next.removeAt(i));
-                                      inputs.value = next;
-                                    }
-                                  },
-                            onRemove: () =>
-                                inputs.value = [...inputs.value]..removeAt(i),
+                                : (delta) => changeProductionInputs(
+                                    context,
+                                    node.id,
+                                    save,
+                                    () {
+                                      final target = i + delta;
+                                      if (target >= 0 &&
+                                          target < inputs.value.length) {
+                                        final next = [...inputs.value];
+                                        next.insert(target, next.removeAt(i));
+                                        inputs.value = next;
+                                      }
+                                    },
+                                  ),
+                            onRemove: () => changeProductionInputs(
+                              context,
+                              node.id,
+                              save,
+                              () {
+                                inputs.value = [...inputs.value]..removeAt(i);
+                              },
+                            ),
                           ),
                         ],
                       ),

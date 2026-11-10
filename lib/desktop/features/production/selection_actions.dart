@@ -10,6 +10,7 @@
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 import 'package:flutter/material.dart';
+import 'history_region.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import '../../../shared/components/reveric_button.dart';
@@ -37,6 +38,7 @@ class ProductionSelectionActions extends HookWidget {
   final Future<bool> Function()? beforeDelete;
   @override
   Widget build(BuildContext context) {
+    final history = ProductionHistoryScope.maybeOf(context)?.history;
     final busy = useState(false);
     return Observer(
       builder: (_) {
@@ -92,6 +94,7 @@ class ProductionSelectionActions extends HookWidget {
                           await service.removeNodes(
                             roots.first.canvasId,
                             selected,
+                            history: history,
                           );
                           if (context.mounted) {
                             onDeleted();

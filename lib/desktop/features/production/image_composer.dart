@@ -42,6 +42,7 @@ import '../../../shared/theme/theme.dart';
 import '../canvas/widgets/glass.dart';
 import '../storyboard/edit_form.dart' show ShotField;
 import 'edit_session.dart';
+import 'history_region.dart';
 import 'image_submit.dart';
 import 'input_preview.dart';
 import 'prompt_controller.dart';
@@ -301,7 +302,9 @@ class _ImageForm extends HookConsumerWidget {
           .firstOrNull;
       if (input == null) {
         input = ProductionInput.asset(asset.id, VideoInputRole.reference_image);
-        inputs.value = [...inputs.value, input];
+        await changeProductionInputs(context, node.id, save, () {
+          inputs.value = [...inputs.value, input!];
+        });
       }
       if (reference) {
         prompt.insertReference(input.id, asset.name);
@@ -410,17 +413,24 @@ class _ImageForm extends HookConsumerWidget {
                         onRole: null,
                         onMove: inputs.value.length < 2
                             ? null
-                            : (delta) {
-                                final target = i + delta;
-                                if (target >= 0 &&
-                                    target < inputs.value.length) {
-                                  final next = [...inputs.value];
-                                  next.insert(target, next.removeAt(i));
-                                  inputs.value = next;
-                                }
-                              },
+                            : (delta) => changeProductionInputs(
+                                context,
+                                node.id,
+                                save,
+                                () {
+                                  final target = i + delta;
+                                  if (target >= 0 &&
+                                      target < inputs.value.length) {
+                                    final next = [...inputs.value];
+                                    next.insert(target, next.removeAt(i));
+                                    inputs.value = next;
+                                  }
+                                },
+                              ),
                         onRemove: () =>
-                            inputs.value = [...inputs.value]..removeAt(i),
+                            changeProductionInputs(context, node.id, save, () {
+                              inputs.value = [...inputs.value]..removeAt(i);
+                            }),
                       ),
                   ],
                 ),

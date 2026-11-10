@@ -21,6 +21,7 @@
 //   .agents/rules/db-migration.md
 // ⚠️ 修改此文件后必须运行 `make codegen`，否则 .drift.dart / .g.dart 不会更新
 // ⚠️ 新增字段时需要同步更新：DB → service → AI tools（schema/read/write/create/edit） → tool card i18n（fieldLabel/translation）
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -1591,6 +1592,20 @@ class NovelContentDatabase extends _$NovelContentDatabase {
   static final Map<String, _CachedNovelContentDatabase> _databaseCache = {};
 
   final String filePath;
+
+  final Object _transactionContext = Object();
+
+  /// 需要在提交后更新内存状态的操作据此确保自己拥有最外层事务。
+  bool get isInTransaction => Zone.current[_transactionContext] == true;
+
+  @override
+  Future<T> transaction<T>(
+    Future<T> Function() action, {
+    bool requireNew = false,
+  }) => super.transaction(
+    () => runZoned(action, zoneValues: {_transactionContext: true}),
+    requireNew: requireNew,
+  );
 
   late final chapterDao = ChapterDao(this);
 
