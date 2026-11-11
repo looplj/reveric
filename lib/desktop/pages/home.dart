@@ -1328,6 +1328,7 @@ class NovelHomePage extends HookConsumerWidget {
                                 builder: (_) => WorkspaceEditorPage(
                                   novelId: novel.id,
                                   initialSessionId: session.id,
+                                  openChatOnEntry: true,
                                 ),
                               ),
                             );
