@@ -51,6 +51,7 @@
   "library.no_matching_works": "没有匹配的作品",
   "library.clear_filters": "清除筛选",
   "library.status_in_progress": "创作中",
+  "library.status_active": "活跃中",
   "library.status_finished": "已完本",
   "library.status_abandoned": "已放弃",
   "library.status_archived": "已归档",

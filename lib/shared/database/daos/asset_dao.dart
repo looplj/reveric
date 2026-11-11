@@ -42,6 +42,23 @@ class AssetDao extends DatabaseAccessor<AppDatabase> with _$AssetDaoMixin {
     return query.watch();
   }
 
+  /// 作品自己最近入库的一张图片；画布没设封面时拿它当预览。不含跨作品共享资产。
+  Stream<AssetRow?> watchLatestImage(String novelId) =>
+      (select(assets)
+            ..where(
+              (t) =>
+                  t.novelId.equals(novelId) &
+                  t.type.equals('image') &
+                  t.path.isNotNull() &
+                  t.deletedAt.equals(notDeletedSentinel),
+            )
+            ..orderBy([
+              (t) => OrderingTerm.desc(t.createdAt),
+              (t) => OrderingTerm.desc(t.id),
+            ])
+            ..limit(1))
+          .watchSingleOrNull();
+
   /// 单个资产；不存在或已软删除时为 null。
   Stream<AssetRow?> watchAsset(String id) =>
       (select(assets)..where(

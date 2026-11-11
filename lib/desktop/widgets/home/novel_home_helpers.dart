@@ -14,14 +14,18 @@ import 'package:flutter/material.dart';
 import '../../../shared/database/app_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
+import '../../../shared/models/content_kind.dart';
 import '../../../shared/models/content_status.dart';
 import '../../../shared/models/novel_type.dart';
 import '../../../shared/theme/canvas_colors.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/novel/library_shelf_labels.dart';
 
-String homeNovelStatusText(BuildContext context, String status) =>
-    libraryStatusText(context, status);
+String homeNovelStatusText(
+  BuildContext context,
+  String status, {
+  String? contentKind,
+}) => libraryStatusText(context, status, contentKind: contentKind);
 
 String homeNovelTypeText(BuildContext context, String type) {
   return switch (type) {
@@ -88,16 +92,25 @@ class HomeNovelStatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    final shownStatus =
+        novel.contentKind == contentKindCanvas &&
+            novel.status == contentStatusFinished
+        ? contentStatusInProgress
+        : novel.status;
     final statusCfg = novel.draft
         ? HomeNovelStatusConfig(
             color: colors.textMuted,
             bgColor: colors.textMuted.withValues(alpha: 0.12),
             icon: RevericIcons.inbox_outlined,
           )
-        : homeNovelStatusConfig(novel.status, colors);
+        : homeNovelStatusConfig(shownStatus, colors);
     final label = novel.draft
         ? context.t(LocaleKeys.homeFilterDraft)
-        : homeNovelStatusText(context, novel.status);
+        : homeNovelStatusText(
+            context,
+            novel.status,
+            contentKind: novel.contentKind,
+          );
     return Container(
       decoration: BoxDecoration(
         color: colors.canvas.withValues(alpha: 0.92),

@@ -2,6 +2,7 @@
 // 关联文件:
 //   lib/shared/models/novel.dart
 //   lib/shared/models/content_status.dart
+//   lib/shared/models/content_kind.dart
 //   lib/desktop/widgets/home/all_works_header.dart
 //   lib/mobile/features/library/filters.dart
 //   lib/shared/localization/locale_keys.dart
@@ -12,10 +13,22 @@ import 'package:flutter/widgets.dart';
 
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
+import '../../models/content_kind.dart';
 import '../../models/content_status.dart';
 import '../../models/novel.dart';
 
-String libraryStatusText(BuildContext context, String status) {
+String libraryStatusText(
+  BuildContext context,
+  String status, {
+  String? contentKind,
+}) {
+  if (contentKind == contentKindCanvas) {
+    return switch (status) {
+      contentStatusArchived => context.t(LocaleKeys.libraryStatusArchived),
+      contentStatusAbandoned => context.t(LocaleKeys.libraryStatusAbandoned),
+      _ => context.t(LocaleKeys.libraryStatusActive),
+    };
+  }
   return switch (status) {
     contentStatusInProgress => context.t(LocaleKeys.libraryStatusInProgress),
     contentStatusFinished => context.t(LocaleKeys.libraryStatusFinished),

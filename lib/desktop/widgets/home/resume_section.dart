@@ -269,7 +269,7 @@ class _ResumeCover extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final coverPath = watchMediaAssetFile(ref, work.coverAssetId);
+    final coverPath = watchWorkCoverFile(ref, work);
     final isCanvas = work.contentKind == contentKindCanvas;
     return ClipRRect(
       borderRadius: BorderRadius.circular(RevericRadius.large),
@@ -374,7 +374,7 @@ class _RecentItem extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final coverPath = watchMediaAssetFile(ref, work.coverAssetId);
+    final coverPath = watchWorkCoverFile(ref, work);
     final updated = formatHomeNovelUpdatedAt(context, work.updatedAt);
     final where = watchWorkResumePoint(context, ref, work).where;
     return InkWell(
@@ -391,7 +391,11 @@ class _RecentItem extends ConsumerWidget {
                 width: 34,
                 height: 46,
                 child: coverPath == null
-                    ? ColoredBox(color: colors.accent.withValues(alpha: 0.7))
+                    ? work.contentKind == contentKindCanvas
+                          ? const HomeCanvasPlaceholder(iconSize: 14)
+                          : ColoredBox(
+                              color: colors.accent.withValues(alpha: 0.7),
+                            )
                     : Image.file(
                         File(coverPath),
                         fit: BoxFit.cover,

@@ -203,6 +203,7 @@ void _showNovelActionsMenu({
 }) {
   final colors = RevericTheme.colorsOf(context);
 
+  final isCanvas = novel.contentKind == contentKindCanvas;
   final isFinished = novel.status == contentStatusFinished;
   final isAbandoned = novel.status == contentStatusAbandoned;
   final isArchived = novel.status == contentStatusArchived;
@@ -246,13 +247,14 @@ void _showNovelActionsMenu({
       ...collectionWorkMenuItems(context, novel, position: position),
       const RevericMenuDivider(),
       if (isActive) ...[
-        RevericMenuItem(
-          icon: RevericIcons.check_circle_outline,
-          iconColor: colors.accent,
-          labelColor: colors.textSecondary,
-          label: context.t(LocaleKeys.libraryActionFinish),
-          onTap: () => onUpdateStatus(contentStatusFinished),
-        ),
+        if (!isCanvas)
+          RevericMenuItem(
+            icon: RevericIcons.check_circle_outline,
+            iconColor: colors.accent,
+            labelColor: colors.textSecondary,
+            label: context.t(LocaleKeys.libraryActionFinish),
+            onTap: () => onUpdateStatus(contentStatusFinished),
+          ),
         RevericMenuItem(
           icon: RevericIcons.archive_outlined,
           iconColor: colors.accentAmber,
@@ -375,7 +377,7 @@ class _NovelCard extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final resolvedCoverPath = watchMediaAssetFile(ref, novel.coverAssetId);
+    final resolvedCoverPath = watchWorkCoverFile(ref, novel);
     final coverFile = resolvedCoverPath == null
         ? null
         : File(resolvedCoverPath);

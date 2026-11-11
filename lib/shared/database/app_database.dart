@@ -138,7 +138,7 @@ class NovelCollections extends Table {
   TextColumn get filter =>
       text().nullable().map(const CollectionFilterConverter())();
 
-  /// 集合所属的作品类型；null 表示小说库和剧本库共用（只有默认集合）。
+  /// 集合所属的作品类型。null 只留给各库共用的内置「全部」。
   /// 取值由 Dart 侧 [validateContentKind] 校验。
   TextColumn get contentKind => text().nullable()();
   DateTimeColumn get createdAt =>

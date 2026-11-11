@@ -12,6 +12,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../models/content_kind.dart';
+import '../models/novel.dart';
 import '../providers/novel_providers.dart';
 import '../utils/storage_paths.dart';
 
@@ -30,6 +32,23 @@ String? watchMediaAssetFile(WidgetRef ref, String? assetId) =>
     assetId == null || assetId.isEmpty
     ? null
     : ref.watch(mediaAssetFileProvider(assetId)).value;
+
+/// 作品最近入库图片的本地文件；没有时为 null。
+final latestWorkImageFileProvider = StreamProvider.autoDispose
+    .family<String?, String>(
+      (ref, novelId) => ref
+          .watch(appDatabaseProvider)
+          .assetDao
+          .watchLatestImage(novelId)
+          .map((asset) => RevericPaths.resolveStored(asset?.path)),
+    );
+
+/// 作品封面文件；画布没设封面时退到画布里最近的一张图，作为内容预览。
+String? watchWorkCoverFile(WidgetRef ref, Novel work) =>
+    watchMediaAssetFile(ref, work.coverAssetId) ??
+    (work.contentKind == contentKindCanvas
+        ? ref.watch(latestWorkImageFileProvider(work.id)).value
+        : null);
 
 class MediaAssetImage extends ConsumerWidget {
   const MediaAssetImage({

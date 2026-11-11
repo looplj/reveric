@@ -2988,6 +2988,7 @@ abstract final class LocaleKeys {
   static const librarySelectCover = 'library.select_cover';
   static const libraryStartImport = 'library.start_import';
   static const librarySettings = 'library.settings';
+  static const libraryStatusActive = 'library.status_active';
   static const libraryStatusAbandoned = 'library.status_abandoned';
   static const libraryStatusArchived = 'library.status_archived';
   static const libraryStatusFinished = 'library.status_finished';

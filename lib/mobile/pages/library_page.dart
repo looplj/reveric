@@ -1073,6 +1073,7 @@ void _showNovelActionsSheet({
   final colors = RevericTheme.colorsOf(context);
   final typo = RevericTheme.typographyOf(context);
 
+  final isCanvas = novel.contentKind == contentKindCanvas;
   final isFinished = novel.status == contentStatusFinished;
   final isAbandoned = novel.status == contentStatusAbandoned;
   final isArchived = novel.status == contentStatusArchived;
@@ -1152,15 +1153,16 @@ void _showNovelActionsSheet({
                 ),
                 Divider(height: 1, color: colors.borderSubtle),
                 if (isActive) ...[
-                  _SheetItem(
-                    icon: RevericIcons.check_circle_outline,
-                    iconColor: colors.accent,
-                    label: sheetContext.t(LocaleKeys.libraryActionFinish),
-                    onTap: () {
-                      Navigator.of(sheetContext).pop();
-                      onUpdateStatus(contentStatusFinished);
-                    },
-                  ),
+                  if (!isCanvas)
+                    _SheetItem(
+                      icon: RevericIcons.check_circle_outline,
+                      iconColor: colors.accent,
+                      label: sheetContext.t(LocaleKeys.libraryActionFinish),
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        onUpdateStatus(contentStatusFinished);
+                      },
+                    ),
                   _SheetItem(
                     icon: RevericIcons.archive_outlined,
                     iconColor: colors.accentAmber,

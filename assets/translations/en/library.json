@@ -51,6 +51,7 @@
   "library.no_matching_works": "No matching works",
   "library.clear_filters": "Clear filters",
   "library.status_in_progress": "In Progress",
+  "library.status_active": "Active",
   "library.status_finished": "Finished",
   "library.status_abandoned": "Abandoned",
   "library.status_archived": "Archived",
