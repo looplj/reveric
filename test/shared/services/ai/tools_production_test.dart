@@ -1710,6 +1710,10 @@ void main() {
       });
       expect(unknown['error_code'], 'not_found');
       expect(unknown['error'], contains('Run stagings list'));
+      final unknownAction = await director('not-a-staging-action', {});
+      expect(unknownAction['output'], contains('unknown stagings command'));
+      expect(unknownAction['output'], contains('剧本工具使用规范'));
+      expect(unknownAction['output'], isNot(contains('画布作品工具')));
       expect((await stagingService.require(stagingId)).version, before.version);
     },
   );

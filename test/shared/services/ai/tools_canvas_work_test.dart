@@ -384,8 +384,30 @@ void main() {
   );
 
   test(
+    'canvas Run help and invalid subcommands route to the canvas skill',
+    () async {
+      for (final command in ['production', 'styles', 'stagings']) {
+        for (final result in [
+          await run('help', command, {}),
+          await run(command, '', {}),
+          await run(command, 'unknown', {}),
+        ]) {
+          expect(result['output'], contains('画布作品工具'));
+          expect(result['output'], isNot(contains('剧本工具使用规范')));
+        }
+      }
+      expect((await run('help', '', {}))['output'], contains('画布作品工具'));
+      expect((await run('help', 'editing', {}))['output'], contains('媒体处理与剪辑'));
+    },
+  );
+
+  test(
     'staging commands are available, subject generation is rejected',
     () async {
+      final unknown = await run('stagings', 'not-a-staging-action', {});
+      expect(unknown['output'], contains('unknown stagings command'));
+      expect(unknown['output'], contains('画布作品工具'));
+      expect(unknown['output'], isNot(contains('剧本工具使用规范')));
       expect((await run('stagings', 'list', {}))['ok'], true);
       expect(
         (await run('character', 'generate-avatar', {

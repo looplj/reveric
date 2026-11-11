@@ -169,11 +169,11 @@ const List<BundledOfficialSkillSpec> bundledOfficialSkillSpecs = [
       'assets/official_skills/screenplay-writing/references/review.md',
       'assets/official_skills/screenplay-writing/references/scene-writing.md',
     ],
-    version: 2,
+    version: 3,
     contentHash:
-        'fb31abf89118ea081ce5f10b99a5abe0d5205b093235bf81210bb66345f4f255',
+        '8860e7da186e009c9574e80637789cf522bd20613bfcd2bad0775f7de5178998',
     sortOrder: 10,
-    updatedAt: '2026-11-03T01:46:22+08:00',
+    updatedAt: '2026-11-12T01:32:00+08:00',
   ),
   BundledOfficialSkillSpec(
     name: '地图设计指南',
@@ -208,11 +208,11 @@ const List<BundledOfficialSkillSpec> bundledOfficialSkillSpecs = [
       'assets/official_skills/screenplay-production/references/video-prompts.md',
       'assets/official_skills/screenplay-production/references/wan-prompts.md',
     ],
-    version: 4,
+    version: 5,
     contentHash:
-        'b7473335db51c62985bff67127040a8f293ff7f7680361fdf77b075ef0fe6a8b',
+        'afb6d7f8bb687c2a5128a663b63a2832698c0887ba77c1c6880e6b1fb408b865',
     sortOrder: 12,
-    updatedAt: '2026-11-09T00:37:07+08:00',
+    updatedAt: '2026-11-12T13:53:54+08:00',
   ),
 ];
 

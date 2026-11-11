@@ -276,13 +276,27 @@ class ProductionGenerateOrchestrator {
     final shot = node.clipId == null
         ? null
         : await service.shots.getShot(node.clipId!);
-    final raw = shot == null ? null : shotVideoRequest(shot);
-    final providerId = shot?.providerId;
-    if (shot?.kind != 'video' ||
-        raw == null ||
-        providerId == null ||
-        (shot?.durationMs != null && shot!.durationMs! % 1000 != 0)) {
-      throw const StoryboardException('invalid_config');
+    if (shot == null || shot.kind != 'video') {
+      throw const StoryboardException(
+        'invalid_config',
+        'Only video clips can generate video.',
+      );
+    }
+    final raw = shotVideoRequest(shot);
+    final providerId = shot.providerId;
+    if (providerId == null) {
+      throw const StoryboardException(
+        'invalid_config',
+        'provider_id and model_id are not set.',
+      );
+    }
+    final durationMs = shot.durationMs;
+    if (durationMs != null && durationMs % 1000 != 0) {
+      throw StoryboardException(
+        'invalid_config',
+        'duration_ms is in milliseconds and must be whole seconds '
+            '(4 s = 4000); current value: $durationMs.',
+      );
     }
     final provider = await service.library.database.aiProviderDao.getById(
       providerId,
@@ -384,7 +398,7 @@ class ProductionGenerateOrchestrator {
       ordered,
       textInputs: textInputs,
     );
-    final style = await service.effectiveStyle(shot!);
+    final style = await service.effectiveStyle(shot);
     final request = compiled.withPrompt(
       style?.assemble(compiled.prompt) ?? compiled.prompt,
     );

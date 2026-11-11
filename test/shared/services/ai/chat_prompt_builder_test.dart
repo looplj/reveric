@@ -117,6 +117,46 @@ void main() {
     });
   });
 
+  test(
+    'canvas default prompt routes production without novel or screenplay automation',
+    () {
+      final prompt = const ChatPromptUseCase().system(
+        ChatPanelPromptInput(
+          context: const AiSessionContext(
+            workId: 'canvas',
+            contentKind: contentKindCanvas,
+          ),
+          systemInstruction: PromptTemplateService.instance.rawAsset(
+            'assets/prompts/agent/orchestrator',
+          ),
+          mode: AiSessionMode.chat,
+          availableSubAgents: const [],
+        ),
+      );
+      expect(prompt, contains('# 画布作品'));
+      expect(prompt, contains('画布作品工具'));
+      expect(prompt, isNot(contains('# 剧本工作区')));
+      expect(prompt, isNot(contains('# 审查闭环')));
+      expect(prompt, isNot(contains('## 正文写作')));
+      expect(prompt, isNot(contains('## 初始化设置')));
+      expect(prompt, isNot(contains('正文写手')));
+      expect(prompt, isNot(contains('小剧场')));
+      expect(prompt, isNot(contains('角色扮演')));
+      expect(prompt, isNot(contains('圆桌')));
+      expect(prompt, isNot(contains('独白')));
+      expect(prompt, isNot(contains('ai_theater')));
+      expect(prompt, isNot(contains('ai_roleplay')));
+      expect(prompt, isNot(contains('ai_council')));
+      expect(prompt, isNot(contains('需要 seed')));
+      expect(prompt, isNot(contains('{{')));
+      final custom = const AgentPromptUseCase().renderPromptTemplate(
+        '{{#screenplay_workspace}}S{{/screenplay_workspace}}{{^screenplay_workspace}}CUSTOM{{/screenplay_workspace}}',
+        context: const AiSessionContext(contentKind: contentKindCanvas),
+      );
+      expect(custom, 'CUSTOM');
+    },
+  );
+
   group('ChatPromptUseCase.system', () {
     test('保持 chat system prompt 的基础 section 顺序与附加区块分隔', () {
       final prompt = const ChatPromptUseCase().system(
@@ -196,6 +236,10 @@ void main() {
       );
 
       expect(prompt, contains('# 剧本工作区'));
+      expect(prompt, contains('小剧场'));
+      expect(prompt, contains('角色扮演'));
+      expect(prompt, contains('圆桌'));
+      expect(prompt, contains('需要 seed'));
       expect(prompt, contains('scenes/{scene_id}'));
       expect(prompt, isNot(contains('season_2')));
       expect(prompt, isNot(contains('chapters/{chapter_id}')));

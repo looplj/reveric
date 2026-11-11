@@ -295,6 +295,8 @@ class ProductionToolHost {
         error.field ?? error.code.name,
         [error.toString(), ?error.detail].join('\n'),
       );
+    } on StoryboardException catch (error) {
+      throw ToolOperationException(error.code, error.toString());
     }
   }
 

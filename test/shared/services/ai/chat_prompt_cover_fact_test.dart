@@ -58,7 +58,9 @@ void main() {
       expect(raw, contains('没有值得推荐的下一步时不要调用'));
       expect(raw, contains('每回合最多调用一次本工具'));
       expect(raw, contains('多步任务执行途中不要挂建议'));
-      expect(raw, contains('圆桌传议题、小剧场传场景、角色扮演传角色名'));
+      expect(raw, contains('seed 传议题'));
+      expect(raw, contains('seed 传场景'));
+      expect(raw, contains('seed 传角色名'));
       expect(raw, contains('一次为限'));
     });
   });

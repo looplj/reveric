@@ -80,7 +80,7 @@ extension _StagingsCommands on _AiToolManagerBase {
       'restore' => {'staging_id', 'version'},
       'remove' || 'preview' => {'staging_id'},
       _ => throw _RunCommandException(
-        'Unknown staging action. ${_bundledSkillCommandGuidance('stagings')}',
+        'Unknown staging action. ${_bundledSkillCommandGuidance('stagings', contentKind: contentKind)}',
       ),
     };
     // 只在执行边界兼容复数别名，后续校验和执行统一使用规范参数。

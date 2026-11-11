@@ -411,6 +411,36 @@ void main() {
     expect(invalid['error_code'], 'invalid_argument');
   });
 
+  test(
+    'canvas cannot bypass bundled filtering through reference commands',
+    () async {
+      final container = _buildContainer(overrides: const []);
+      addTearDown(container.dispose);
+      final handler = AgentSkillsRunCommandHandler(
+        container: container,
+        assetBundle: _FileAssetBundle(),
+        contentKind: 'canvas',
+      );
+      for (final name in ['创作向导', '剧本工具使用规范', '故事连续性维护']) {
+        final listed = await handler.run({
+          'action': 'reference-list',
+          'name': name,
+        });
+        expect(listed['ok'], false, reason: '$listed');
+        final fetched = await handler.run({
+          'action': 'reference-get',
+          'name': name,
+          'path': 'references/clips.md',
+        });
+        expect(fetched['ok'], false, reason: '$fetched');
+      }
+      expect(
+        (await handler.run({'action': 'reference-list', 'name': '系统管理'}))['ok'],
+        true,
+      );
+    },
+  );
+
   test('continuity references load independently for each task', () async {
     final container = _buildContainer(overrides: const []);
     addTearDown(container.dispose);

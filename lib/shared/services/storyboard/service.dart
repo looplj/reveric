@@ -20,8 +20,16 @@ import '../../utils/short_entity_id.dart';
 import '../../utils/short_entity_id_allocator.dart';
 
 class StoryboardException implements Exception {
-  const StoryboardException(this.code);
+  const StoryboardException(this.code, [this.detail]);
   final String code;
+
+  /// 给 Agent 的具体原因；界面按 [code] 映射文案，不展示它。
+  final String? detail;
+
+  @override
+  String toString() => detail == null
+      ? 'StoryboardException($code)'
+      : 'StoryboardException($code): $detail';
 }
 
 class StoryboardService {

@@ -97,7 +97,8 @@ import '../../utils/json_repair.dart' show tryExtractJson;
 import '../../utils/storage_paths.dart';
 import '../../utils/text_unit_count.dart' show countTextUnitStats;
 import '../../logger/app_logger.dart';
-import '../bundled_control_skills.dart' show bundledControlRunCommandToCallName;
+import '../bundled_control_skills.dart'
+    show bundledControlRunCommandToCallName, bundledControlSkillForRun;
 import '../working_overlay.dart';
 import '../../agent/agent_tool_dispatcher.dart'
     show AgentToolDispatcher, ToolDef, ToolExecutionContext, ToolWorkingChange;

@@ -46,6 +46,7 @@ class AgentPromptUseCase {
           '',
     };
     variables.addAll(extraContext);
+    variables['canvas_workspace'] = context.contentKind == contentKindCanvas;
     variables['screenplay_workspace'] =
         context.contentKind == contentKindScreenplay;
     if (renderer != null) {

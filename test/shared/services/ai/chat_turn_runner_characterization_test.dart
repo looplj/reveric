@@ -33,6 +33,8 @@ import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/content_kind.dart';
+import 'package:reveric/shared/models/novel_agent_skill.dart';
+import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
 import 'package:reveric/shared/models/queued_chat_message.dart';
 import 'package:reveric/shared/models/subagent.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
@@ -192,6 +194,13 @@ const _chronicler = SubAgent(
   sortOrder: 0,
 );
 
+class _SkillContextSkills extends InstalledAgentSkillsNotifier {
+  _SkillContextSkills(this.skills);
+  final List<NovelAgentSkillModel> skills;
+  @override
+  Future<List<NovelAgentSkillModel>> build() async => skills;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -282,6 +291,76 @@ void main() {
       onComposerWarning: onComposerWarning,
       onAgentContextCompacted: onAgentContextCompacted,
       takeQueuedMessage: takeQueuedMessage,
+    );
+  }
+
+  test(
+    'chat bundled summaries and direct loader use the same work-kind filter',
+    () async {
+      final container = buildTestContainer(
+        overrides: [
+          installedAgentSkillsProvider.overrideWith(
+            () => _SkillContextSkills([]),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      for (final kind in [
+        contentKindNovel,
+        contentKindScreenplay,
+        contentKindCanvas,
+      ]) {
+        final context = await buildRunner(
+          container,
+          contentKind: kind,
+        ).skillContextForTest();
+        expect(context.names.contains('创作向导'), kind == contentKindNovel);
+        expect(
+          context.names.contains('剧本工具使用规范'),
+          kind == contentKindScreenplay,
+        );
+        expect(context.names.contains('故事连续性维护'), kind != contentKindCanvas);
+        for (final name in ['创作向导', '剧本工具使用规范', '故事连续性维护', '系统管理', '媒体处理与剪辑']) {
+          expect(
+            await context.load!(name) != null,
+            context.names.contains(name),
+          );
+        }
+      }
+    },
+  );
+
+  for (final enabled in [true, false]) {
+    test(
+      'canvas installed same-name override enabled=$enabled suppresses bundled fallback',
+      () async {
+        const prompt =
+            '<inline-ref type="reference" skill="custom">references/custom.md</inline-ref>';
+        final container = buildTestContainer(
+          overrides: [
+            installedAgentSkillsProvider.overrideWith(
+              () => _SkillContextSkills([
+                NovelAgentSkillModel(
+                  id: 'custom',
+                  sourceKind: AgentSkillSourceKind.novelLocal,
+                  name: '创作向导',
+                  description: 'Custom',
+                  prompt: prompt,
+                  enabled: enabled,
+                ),
+              ]),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final context = await buildRunner(
+          container,
+          contentKind: contentKindCanvas,
+        ).skillContextForTest();
+        expect(context.names.contains('创作向导'), enabled);
+        final loaded = await context.load!('创作向导');
+        expect(loaded?.instructions, enabled ? prompt : null);
+      },
     );
   }
 

@@ -144,6 +144,23 @@ void main() {
     },
   );
 
+  test('production v5 keeps its name and neutral tool-skill routing', () async {
+    final skill = await loader.get(bundle, '剧本制片');
+    expect(skill.version, 5);
+    expect(skill.name, '剧本制片');
+    expect(skill.prompt, contains('画布作品工具'));
+    expect(skill.whenToUse, contains('把剧本做成视频'));
+    for (final ref in skill.references) {
+      expect(ref.content, isNot(contains('剧本工具使用规范')), reason: ref.path);
+    }
+    expect(
+      skill.references
+          .singleWhere((ref) => ref.path == 'references/production.md')
+          .content,
+      contains('文本节点'),
+    );
+  });
+
   test('get returns prompt and uses name as listing id', () async {
     final detail = await loader.get(bundle, '黄金三章');
     expect(detail.listingId, '黄金三章');
@@ -184,6 +201,56 @@ void main() {
   // hash 守卫校验内容指纹，目录守卫检查资源登记；它们不判断发布状态。
   // 按 AGENTS.md 核实当前技能版本是否发布，再决定递增还是合并开发修改。
   // 保留版本号不会触发自动升级，须同步 Debug 数据库中已有的官方安装快照。
+
+  test('writing method defers resource location to the tool skill', () async {
+    final skill = await loader.get(bundle, '剧本写作');
+    expect(skill.version, 3);
+    expect(skill.prompt, contains('剧本工具使用规范'));
+    expect(skill.prompt, contains('当前作品没有该技能时只交付文本'));
+    expect(skill.prompt, isNot(contains('画布作品工具')));
+    for (final ref in skill.references) {
+      expect(ref.content, isNot(contains('剧本工具使用规范')), reason: ref.path);
+      expect(ref.content, isNot(contains('写入剧本工作区')), reason: ref.path);
+    }
+    expect(
+      skill.references
+          .singleWhere((ref) => ref.path == 'references/scene-writing.md')
+          .content,
+      contains('按「工具技能」规定的正文结构'),
+    );
+    expect(
+      skill.references
+          .singleWhere((ref) => ref.path == 'references/scene-writing.md')
+          .content,
+      isNot(contains('未定义的单个字段')),
+    );
+    expect(
+      skill.references
+          .singleWhere((ref) => ref.path == 'references/dialogue.md')
+          .content,
+      contains('小说改稿保留原有叙述格式'),
+    );
+    final duration = skill.references
+        .singleWhere((ref) => ref.path == 'references/duration-estimation.md')
+        .content;
+    expect(duration, contains('本次要估算的完整正文'));
+    expect(duration, isNot(contains('当前集及其场次')));
+  });
+
+  test('production method locates material through the tool skill', () {
+    final production = File(
+      'assets/official_skills/screenplay-production/references/production.md',
+    ).readAsStringSync();
+    final storyboard = File(
+      'assets/official_skills/screenplay-production/references/storyboard.md',
+    ).readAsStringSync();
+    expect(production, contains('## 从剧本拆分镜'));
+    expect(production, contains('按工具技能核对依据'));
+    expect(production, isNot(contains('当前集')));
+    expect(production, isNot(contains('从场次拆分镜')));
+    expect(storyboard, contains('本次剧情依据和目标导演文档'));
+    expect(storyboard, isNot(contains('当前场次正文')));
+  });
 
   test('asset content matches the hash registered in the spec table', () async {
     final drifted = <String>[];

@@ -10,6 +10,7 @@
 //   assets/bundled_skills/story-continuity/references/relations.md
 
 import 'package:reveric/shared/app_config.dart';
+import 'package:reveric/shared/models/content_kind.dart';
 
 import 'dart:convert';
 import 'dart:io';
@@ -29,10 +30,25 @@ import 'package:reveric/shared/services/bundled_control_skills.dart';
 /// 仅覆盖 [load] — [loadString] 由父类默认实现
 /// 走 UTF-8 解码。
 class _FileAssetBundle extends AssetBundle {
+  final loadedPaths = <String>{};
   @override
   Future<ByteData> load(String key) async {
+    loadedPaths.add(key);
     final bytes = await File(key).readAsBytes();
     return ByteData.sublistView(bytes);
+  }
+}
+
+class _OverrideAssetBundle extends _FileAssetBundle {
+  _OverrideAssetBundle(this.values, {this.missing = const {}});
+  final Map<String, String> values;
+  final Set<String> missing;
+  @override
+  Future<String> loadString(String key, {bool cache = true}) async {
+    if (missing.contains(key)) {
+      throw const FileSystemException('Missing test asset');
+    }
+    return values[key] ?? await super.loadString(key, cache: cache);
   }
 }
 
@@ -103,6 +119,230 @@ void main() {
     },
   );
 
+  test(
+    'availability filters listing and direct bundled fallback consistently',
+    () async {
+      final all = await loader.loadAll(bundle);
+      for (final kind in [
+        contentKindNovel,
+        contentKindScreenplay,
+        contentKindCanvas,
+      ]) {
+        final filtered = await loader.loadAll(bundle, contentKind: kind);
+        expect(
+          filtered.map((skill) => skill.callName),
+          all
+              .where((skill) => skill.availableFor(kind))
+              .map((skill) => skill.callName),
+        );
+        for (final skill in all) {
+          expect(
+            await loader.findByCallName(
+                  bundle,
+                  skill.callName,
+                  contentKind: kind,
+                ) !=
+                null,
+            skill.availableFor(kind),
+            reason: '$kind ${skill.callName}',
+          );
+        }
+      }
+      final canvas = (await loader.loadAll(
+        bundle,
+        contentKind: contentKindCanvas,
+      )).map((skill) => skill.callName);
+      expect(canvas, containsAll(['系统管理', '媒体处理与剪辑']));
+      expect(canvas, isNot(contains('创作向导')));
+      expect(canvas, isNot(contains('故事连续性维护')));
+      expect(canvas, isNot(contains('剧本工具使用规范')));
+      for (final command in ['production', 'styles', 'stagings']) {
+        expect(
+          bundledControlSkillForRun(command, contentKind: contentKindCanvas),
+          '画布作品工具',
+        );
+        expect(
+          bundledControlSkillForRun(
+            command,
+            contentKind: contentKindScreenplay,
+          ),
+          '剧本工具使用规范',
+        );
+      }
+    },
+  );
+
+  test(
+    'inline reference extracts only the named second-level section with code fences intact',
+    () async {
+      final source =
+          '# Guide\n## Before\nIgnore\n## Shared\nContent\n### Child\nKeep\n```md\n## Fake heading\n```\n## After\nIgnore';
+      final replacement = _OverrideAssetBundle({
+        'assets/bundled_skills/setup/references/original.md':
+            'Start\n<inline-ref type="reference" skill="剧本工具使用规范" section="Shared">references/clips.md</inline-ref>\nEnd',
+        'assets/bundled_skills/screenplay-tools/references/clips.md': source,
+      });
+      final skill = (await loader.findByCallName(replacement, '创作向导'))!;
+      final result = skill.references
+          .singleWhere((ref) => ref.path == 'references/original.md')
+          .content;
+      expect(
+        result,
+        'Start\n## Shared\nContent\n### Child\nKeep\n```md\n## Fake heading\n```\nEnd',
+      );
+      expect(result, isNot(contains('<inline-ref')));
+    },
+  );
+
+  test('whole registered reference is expanded without path rewriting', () async {
+    final replacement = _OverrideAssetBundle({
+      'assets/bundled_skills/setup/references/original.md':
+          '<inline-ref type="reference" skill="剧本工具使用规范">references/clips.md</inline-ref>',
+      'assets/bundled_skills/screenplay-tools/references/clips.md':
+          '# All\n[Sibling](styles.md)',
+    });
+    final skill = (await loader.findByCallName(replacement, '创作向导'))!;
+    expect(
+      skill.references
+          .singleWhere((ref) => ref.path == 'references/original.md')
+          .content,
+      '# All\n[Sibling](styles.md)',
+    );
+  });
+
+  for (final (tag, source) in [
+    (
+      '<inline-ref type="reference" skill="missing">references/clips.md</inline-ref>',
+      '## Shared\nContent',
+    ),
+    (
+      '<inline-ref type="reference" skill="剧本工具使用规范">references/missing.md</inline-ref>',
+      '## Shared\nContent',
+    ),
+    (
+      '<inline-ref type="reference" skill="剧本工具使用规范" section="Missing">references/clips.md</inline-ref>',
+      '## Shared\nContent',
+    ),
+    (
+      '<inline-ref type="reference" skill="剧本工具使用规范">references/clips.md</inline-ref>',
+      '<inline-ref type="reference" skill="创作向导">references/original.md</inline-ref>',
+    ),
+    ('<inline-ref type="skill">剧本工具使用规范</inline-ref>', '## Shared\nContent'),
+  ]) {
+    test('invalid or nested bundled reference fails: $tag / $source', () async {
+      final replacement = _OverrideAssetBundle({
+        'assets/bundled_skills/setup/references/original.md': tag,
+        'assets/bundled_skills/screenplay-tools/references/clips.md': source,
+      });
+      await expectLater(
+        loader.findByCallName(replacement, '创作向导'),
+        throwsStateError,
+      );
+    });
+  }
+
+  test(
+    'registered but missing inline reference asset throws StateError',
+    () async {
+      final replacement = _OverrideAssetBundle(
+        {
+          'assets/bundled_skills/setup/references/original.md':
+              '<inline-ref type="reference" skill="剧本工具使用规范">references/clips.md</inline-ref>',
+        },
+        missing: {'assets/bundled_skills/screenplay-tools/references/clips.md'},
+      );
+      await expectLater(
+        loader.findByCallName(replacement, '创作向导'),
+        throwsStateError,
+      );
+    },
+  );
+
+  test('all bundled reference output is expanded', () async {
+    for (final skill in await loader.loadAll(bundle)) {
+      for (final reference in skill.references) {
+        expect(
+          reference.content,
+          isNot(contains('<inline-ref')),
+          reason: '${skill.callName}/${reference.path}',
+        );
+      }
+    }
+  });
+
+  test(
+    'canvas production references reuse neutral sections and registered staging attachment',
+    () async {
+      final canvas = (await loader.findByCallName(
+        bundle,
+        '画布作品工具',
+        contentKind: contentKindCanvas,
+      ))!;
+      expect(canvas.references.map((ref) => ref.path), [
+        'references/clips.md',
+        'references/production-canvas.md',
+        'references/stagings.md',
+        'references/styles.md',
+      ]);
+      final screenplay = (await loader.findByCallName(bundle, '剧本工具使用规范'))!;
+      final byPath = {
+        for (final ref in canvas.references) ref.path: ref.content,
+      };
+      expect(
+        byPath['references/stagings.md'],
+        screenplay.references
+            .singleWhere((ref) => ref.path == 'references/stagings.md')
+            .content,
+      );
+      final structure = screenplay.references
+          .singleWhere((ref) => ref.path == 'references/screenplay.md')
+          .content;
+      expect(structure, contains('场景标题写进场次字段，不写进正文'));
+      expect(structure, contains('不得把整场正文或整段 Markdown 塞进一个动作元素'));
+      expect(byPath['references/stagings.md'], contains('本次剧情依据'));
+      expect(byPath['references/stagings.md'], isNot(contains('场次正文')));
+      expect(byPath['references/production-canvas.md'], contains('## 文本节点'));
+      for (final skill in [canvas, screenplay]) {
+        final text = skill.references
+            .singleWhere((ref) => ref.path == 'references/production-canvas.md')
+            .content;
+        expect(text, contains('remove_types=["text"]'));
+        expect(text, contains('输入连线和被此次删除清理的标签'));
+        expect(text, contains('不覆盖新内容'));
+      }
+      expect(byPath['references/production-canvas.md'], contains('## 全景取景'));
+      expect(byPath['references/clips.md'], contains('## 文本输入'));
+      expect(byPath['references/clips.md'], isNot(contains('## 人物与地点图集名称')));
+      for (final ref in canvas.references.where(
+        (ref) => !ref.path.endsWith('stagings.md'),
+      )) {
+        expect(ref.content, isNot(contains('/episodes/')));
+        expect(ref.content, isNot(contains('`/_schema/clips`')));
+        expect(ref.content, isNot(contains('`/clips/')));
+        expect(ref.content, isNot(contains('<inline-ref')));
+      }
+      for (final scenario in ['两人在门口交接钥匙，接收者将钥匙藏进口袋', '夜间追逐后主角返回空房，发现桌上的信']) {
+        // 静态任务矩阵仅核对作品类型与操作入口，不声称验证了模型的触发准确率。
+        for (final kind in [contentKindCanvas, contentKindScreenplay]) {
+          final name = bundledControlSkillForRun(
+            'production',
+            contentKind: kind,
+          )!;
+          final selected = await loader.findByCallName(
+            bundle,
+            name,
+            contentKind: kind,
+          );
+          expect(selected, isNotNull, reason: scenario);
+          expect(
+            selected!.prompt,
+            contains(kind == contentKindCanvas ? 'production/clips' : '剧本'),
+          );
+        }
+      }
+    },
+  );
+
   group('loadAll', () {
     test('returns all bundled control skills in fixed spec order', () {
       // fallback 必须齐齐返回,顺序固定,便于上层按 index 引用或 diff。
@@ -115,6 +355,7 @@ void main() {
             '系统管理',
             if (ideationCanvasEnabled) '画布构图指南',
             '剧本工具使用规范',
+            '画布作品工具',
             '故事连续性维护',
             '媒体处理与剪辑',
           ]),
@@ -430,18 +671,17 @@ void main() {
   test(
     'every enabled bundled file is registered and relative links resolve',
     () async {
-      final skills = await loader.loadAll(bundle);
-      final registered = <String>{};
+      final trackingBundle = _FileAssetBundle();
+      final skills = await loader.loadAll(trackingBundle);
+      final registered = trackingBundle.loadedPaths;
       final link = RegExp(r'\]\(([^)#]+\.md)(?:#[^)]*)?\)');
       for (final skill in skills) {
         final root = File(skill.assetPath).parent;
-        registered.add(skill.assetPath);
         final bodies = {
           skill.assetPath: skill.prompt,
           for (final ref in skill.references)
             '${root.path}/${ref.path}': ref.content,
         };
-        registered.addAll(bodies.keys);
         for (final entry in bodies.entries) {
           for (final match in link.allMatches(entry.value)) {
             final target = match.group(1)!;

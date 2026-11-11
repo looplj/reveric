@@ -20,6 +20,6 @@
 
 视频模型另返回 `catalog_model_id`：同一型号在不同渠道的 `id` 写法不同，该字段给出应用识别出的统一型号，未识别时为 null。片段配置仍写入渠道 `id`。
 
-视频草稿能力看 `capabilities.supports_draft`。为 true 时，`capabilities.draft` 返回 `resolution`、`completion_resolution`、`validity_days` 和 `output_formats`；为 false 或能力未知时，不请求草稿。草稿生成与转高清的调用方式见「剧本工具使用规范」的分镜与媒体节点附件。
+视频草稿能力看 `capabilities.supports_draft`。为 true 时，`capabilities.draft` 返回 `resolution`、`completion_resolution`、`validity_days` 和 `output_formats`；为 false 或能力未知时，不请求草稿。草稿生成与转高清的调用方式见当前作品的工具技能（「剧本工具使用规范」或「画布作品工具」）的分镜与媒体节点附件。
 
-查询完成后回到原业务：制作片段的配置与生成使用「剧本工具使用规范」，角色／物品出图按 `Run help character` / `Run help item` 的说明调用。模型参数以此次查询与提交校验为准，不在其他技能中另维护一张固定型号限制表。
+查询完成后回到原业务：制作片段的配置与生成使用当前作品的工具技能（「剧本工具使用规范」或「画布作品工具」），角色／物品出图按 `Run help character` / `Run help item` 的说明调用。模型参数以此次查询与提交校验为准，不在其他技能中另维护一张固定型号限制表。

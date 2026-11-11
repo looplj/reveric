@@ -257,6 +257,7 @@ class ChatPromptUseCase {
       'workspace_title': '',
       'workspace_content': '',
     };
+    variables['canvas_workspace'] = context.contentKind == contentKindCanvas;
     if (context.contentKind == contentKindScreenplay) {
       variables['screenplay_workspace'] = true;
     }

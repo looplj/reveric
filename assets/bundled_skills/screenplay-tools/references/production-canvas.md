@@ -33,7 +33,9 @@
 
 画布按场把片段节点排成一列：同场片段按场内顺序自上而下排列，整列位置只取该场节点中最左、最上的坐标。整理片段节点时每场占一列，同场节点用相同 `x`，不同场的列横向错开至少 360；不要把同场片段横向排成一行，否则竖排后的长场会压到下方场次，画布只能把它整场顺延下移。
 
-按类型移除使用 `remove_types`，取值为 `video`、`image`、`audio`、`staging`、`media`。只有用户明确要清理相应范围时才执行，比如：
+新建节点只会避开已有节点向下找空位，不按连线摆放，一轮新增后容易挤成一列。完成一批创建、连线或派生后回读画布，检查本次新增与相关节点：参考和文本在下游节点左侧，派生结果贴近来源节点，卡片不重叠，横向间距不小于 420、纵向不小于 300。需要调整时用一次 `positions` 提交，只移动本次新增或相关节点，保留用户已摆好的位置。
+
+按类型移除使用 `remove_types`，取值为 `video`、`image`、`audio`、`staging`、`media`、`text`。只有用户明确要清理相应范围时才执行，比如：
 
 ```json
 {"path":"/episodes/{episode_id}/production/canvas","fields":{"remove_types":["staging"]}}
@@ -46,9 +48,17 @@
 完成布局后回读画布，核对节点身份、引用、坐标和实际移除范围。素材输入、生成、任务记录与结果采用按分镜与媒体节点附件执行，不把保存布局说成已生成视频。
 
 
+## 文本节点
+
+文本节点保存 `title` 与 `content`，不引用媒体资产或其他业务实体。在当前制作画布的 `nodes` 集合中 Create `type=text`，用返回的节点路径读写正文。文本可以作为独立便签，也可连接到视频、图片或音频生成节点，用法见 [分镜与媒体节点](clips.md) 的文本输入。
+
+修改正文只影响后续生成，已经提交的任务保留当时的提示词快照。编辑前读取现有内容，保留无关说明；更新文字不会自动提交生成。
+
+删除文本节点会在同一事务移除下游的 `role=prompt` 输入及提示词中对应的引用标签，保留其余输入、标签和文字；批量 `remove_types=["text"]` 遵循相同规则。界面发起的删除可在当前画布会话内撤销，恢复文本、输入连线和被此次删除清理的标签，重做再次移除；若提示词随后被用户或 AI 改动，该步撤销或重做会拒绝执行，不覆盖新内容。普通提示词和模型设置编辑不进入画布结构撤销。
+
 ## 视频节点操作
 
-需要可继续引用的独立资产时，使用 `Run production`，options 的 `node_id` 从当前作品目标集的画布读取，不使用 clip_id、asset_id 或标题替代。每次调用处理源节点当前采用的视频，创建同画布的派生媒体节点和 `derived_output` 来源边，保留原视频与采用结果。
+需要可继续引用的独立资产时，使用 `Run production`，options 的 `node_id` 从当前制作画布读取，不使用 clip_id、asset_id 或标题替代。每次调用处理源节点当前采用的视频，创建同画布的派生媒体节点和 `derived_output` 来源边，保留原视频与采用结果。
 
 | UI 操作 / subcommand | options |
 |---|---|
@@ -63,7 +73,7 @@
 {"command":"production","subcommand":"capture-frame","options":{"node_id":"{node_id}","position":"last"}}
 ```
 
-后台返回 run_id 后，使用 `Run operations read/wait/cancel` 跟踪同一次操作，不重复提交来查询。最终 result 含 source_node_id、source_asset_id、outputs；每项含 node_id、node_path、type、asset_id、file_path 及可用的 width/height/duration_ms，node_path 为 `/episodes/{episode_id}/production/canvas/nodes/{node_id}`。以最终 ok 和状态判断成功；取消等待媒体执行退出，已完成输出仍保留并返回。若资产登记后节点挂接失败，registered_assets 保留已登记的资产身份，不能把它当作已完成节点或盲目重试。
+后台返回 run_id 后，使用 `Run operations read/wait/cancel` 跟踪同一次操作，不重复提交来查询。最终 result 含 source_node_id、source_asset_id、outputs；每项含 node_id、node_path、type、asset_id、file_path 及可用的 width/height/duration_ms，node_path 与画布读取结果中的节点路径一致。以最终 ok 和状态判断成功；取消等待媒体执行退出，已完成输出仍保留并返回。若资产登记后节点挂接失败，registered_assets 保留已登记的资产身份，不能把它当作已完成节点或盲目重试。
 
 只检查少量画面时优先 `Run ffmpeg frames`，检查拼图不是正式首尾帧。需要让实际尾帧继续作为下一段输入时：读取并确认源视频的实际采用结果 → capture-frame position=last → 等待最终图片节点与资产 → 按 [分镜与媒体节点](clips.md) 的 inputs 契约绑定到下一段。派生来源边本身不等于下一段的生成输入。首尾帧读取与输入绑定不会自动提交生成。
 
@@ -88,7 +98,7 @@ cells 是从0开始按行优先的原图格号，禁止重复或越界；省略�
 
 最终 result 沿用 source_node_id、source_asset_id、outputs。生成项带 clip_id、generated、真实 task_id、result_applied；成功时另有资产及可用规格。宫格另含 group_node_id、members 的 cell→node_id 映射，每个 output 的 cell 保留原格号。资产已登记但建组失败时 registered_assets 保留已登记身份，不把它说成已完成节点。
 
-宫格高清的 ok=true 和 operation completed 只表示提交成功，不表示图片已生成。每格 submitted 表示任务是否已提交，task_id 是真实任务 ID，task_status 和 generated 是返回时的状态快照。用 `Read /clips/{clip_id}/generations/{task_id}` 查询后续结果，用 `Run operations cancel` 的 `options={"task_id":"…"}` 取消某格，不重复提交来查询。提交部分失败时 ok=false，保留已提交项及逐项 failures；模型在提交后失败则以该格任务查询为准。
+宫格高清的 ok=true 和 operation completed 只表示提交成功，不表示图片已生成。每格 submitted 表示任务是否已提交，task_id 是真实任务 ID，task_status 和 generated 是返回时的状态快照。读取该片段 `generations` 下的对应记录查询后续结果，用 `Run operations cancel` 的 `options={"task_id":"…"}` 取消某格，不重复提交来查询。提交部分失败时 ok=false，保留已提交项及逐项 failures；模型在提交后失败则以该格任务查询为准。
 
 取消宫格高清的批量 operation 只停止尚未接受的提交；已提交任务继续运行并可自动采用结果，需要停止时分别按 task_id 取消。未提交格保留草稿，submitted=false；尚未开始提交的格子没有生成任务，取消时正在建任务的格子可能在 failures 中保留已取消的 task_id。取消已提交的单格任务后，远端可能继续，但迟到结果不自动采用。derive-view 仍等待本次生成结果，取消时保留草稿与已完成结果，并在远端可能继续时标明 upstream_may_continue。
 

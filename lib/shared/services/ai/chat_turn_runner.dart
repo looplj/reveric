@@ -32,6 +32,7 @@ import 'dart:math';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../providers/async_read.dart';
@@ -60,7 +61,6 @@ import '../../models/ai_run_failure.dart';
 import '../../models/novel_agent_skill.dart';
 import '../../models/ai_provider.dart';
 import '../../models/ai_session_mode.dart';
-import '../../models/content_kind.dart';
 import '../../models/models_catalog.dart';
 import '../../models/queued_chat_message.dart';
 import '../../utils/storage_paths.dart';
@@ -763,6 +763,18 @@ class ChatTurnRunner {
     };
   }
 
+  @visibleForTesting
+  Future<
+    ({List<String> names, Future<AgentSkillLoadResult?> Function(String)? load})
+  >
+  skillContextForTest() async {
+    final context = await _loadCurrentSkillContext(promptContext.contentKind);
+    return (
+      names: context.summaries.map((skill) => skill.name).toList(),
+      load: context.loader,
+    );
+  }
+
   Future<_ChatSkillContext> _loadCurrentSkillContext(String contentKind) async {
     // 技能应用全局：读取全局可执行 NovelAgentSkill；未命中 name 且该 name ∈
     // bundledControlCallNames 时回落到 Bundled Control Skills。同名
@@ -783,18 +795,13 @@ class ChatTurnRunner {
     // 不在此处捕获（遵循 .agents/rules/error-handling.md 不静默降级）。
     final bundledFallback = <BundledControlSkill>[];
     for (final callName in bundledControlCallNames) {
-      if (contentKind == contentKindScreenplay && callName == '创作向导') {
-        continue;
-      }
-      if (contentKind != contentKindScreenplay && callName == '剧本工具使用规范') {
-        continue;
-      }
       if (installedNames.contains(callName)) {
         continue;
       }
       final bundled = await const BundledControlSkillsLoader().findByCallName(
         rootBundle,
         callName,
+        contentKind: contentKind,
       );
       if (bundled != null) {
         bundledFallback.add(bundled);
@@ -830,6 +837,7 @@ class ChatTurnRunner {
         final bundled = await const BundledControlSkillsLoader().findByCallName(
           rootBundle,
           name,
+          contentKind: contentKind,
         );
         if (bundled == null) {
           return null;
@@ -1208,8 +1216,10 @@ class ChatTurnRunner {
           : _editImage,
       subAgentListProvider: () => availableSubAgents,
       skillLoader: (slug) async => null,
-      agentSkillsCommandCallback: (command) =>
-          AgentSkillsRunCommandHandler(container: container).run(command),
+      agentSkillsCommandCallback: (command) => AgentSkillsRunCommandHandler(
+        container: container,
+        contentKind: novel.contentKind,
+      ).run(command),
       themesCommandCallback: (command) => container
           .read(appSettingsNotifierProvider.notifier)
           .runThemeCommand(command),
@@ -1457,8 +1467,10 @@ class ChatTurnRunner {
                 _suggestNextAction(sessionId, callId, suggestions)
           : null,
       skillLoader: (slug) async => null,
-      agentSkillsCommandCallback: (command) =>
-          AgentSkillsRunCommandHandler(container: container).run(command),
+      agentSkillsCommandCallback: (command) => AgentSkillsRunCommandHandler(
+        container: container,
+        contentKind: novel.contentKind,
+      ).run(command),
       themesCommandCallback: (command) => container
           .read(appSettingsNotifierProvider.notifier)
           .runThemeCommand(command),
