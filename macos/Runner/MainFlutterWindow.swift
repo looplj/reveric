@@ -12,6 +12,31 @@ class MainFlutterWindow: NSWindow {
   /// 窗口 order in 之后 occlusionState 不是同步更新的，只看一次会漏。
   private var pendingLifecycleSyncRetries = 0
 
+  private var unhandledKeyEvent: NSEvent?
+
+  override func keyDown(with event: NSEvent) {
+    let previousEvent = unhandledKeyEvent
+    unhandledKeyEvent = event
+    defer { unhandledKeyEvent = previousEvent }
+    super.keyDown(with: event)
+  }
+
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    // Flutter asynchronously returns unhandled keys to NSWindow. AppKit's
+    // cancel-key fallback can create another Escape when NSApp.currentEvent
+    // has changed. Flutter's identity-based redispatch guard misses that copy,
+    // sending it through Dart and back here indefinitely. Let AppKit finish
+    // its native cancellation instead of feeding the copy into Flutter again.
+    if let unhandledKeyEvent,
+      unhandledKeyEvent.keyCode == 53,
+      event.keyCode == 53,
+      event !== unhandledKeyEvent
+    {
+      return false
+    }
+    return super.performKeyEquivalent(with: event)
+  }
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     MainFlutterWindow.prepareEngineForMultiView(flutterViewController)
