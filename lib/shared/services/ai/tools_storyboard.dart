@@ -15,13 +15,27 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
     Map<String, dynamic> fields = const {},
     ({String oldText, String newText, bool replaceAll})? edit,
   }) async {
-    final service = StoryboardService(_contentService.database);
+    final service = StoryboardService(
+      _contentService.database,
+      contentKind: _targetContentKind,
+    );
+    final canvasWork = _targetContentKind == contentKindCanvas;
     try {
       Map<String, dynamic> data(ProductionClipRow row) => {
         'id': row.id,
-        'path': 'clips/${row.id}',
-        ...service.snapshot(row),
-        'is_storyboard': row.sceneId != null,
+        'path': '${canvasWork ? 'production/' : ''}clips/${row.id}',
+        for (final entry in service.snapshot(row).entries)
+          if (!canvasWork ||
+              !const {
+                'episode_id',
+                'scene_id',
+                'sort_order',
+                'character_id',
+                'location_id',
+                'item_id',
+              }.contains(entry.key))
+            entry.key: entry.value,
+        if (!canvasWork) 'is_storyboard': row.sceneId != null,
         'adopted_asset_id': row.adoptedAssetId,
       };
 
@@ -29,7 +43,9 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
         final sceneId = parsed.queryParameters['scene_id'];
         final episodeId = parsed.queryParameters['episode_id'];
         final rows = <ProductionClipRow>[];
-        if (sceneId != null) {
+        if (canvasWork) {
+          rows.addAll(await service.episodeClips(''));
+        } else if (sceneId != null) {
           final scene = await service.requireScene(sceneId);
           if (episodeId != null && episodeId != scene.episodeId) {
             throw const StoryboardException('source_missing');
@@ -104,7 +120,7 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
       if (operation.tool == _ResourceTool.create) {
         await validateStyle(fields['kind'] as String? ?? 'video');
         final sceneId = fields['scene_id'] as String?;
-        final episodeId = fields['episode_id'] as String?;
+        final episodeId = canvasWork ? '' : fields['episode_id'] as String?;
         if (sceneId == null && episodeId == null) {
           throw const StoryboardException('invalid_config');
         }

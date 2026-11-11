@@ -97,8 +97,9 @@ class ProductionToolHost {
       );
     }
     await canvas.shots.requireEpisode(clip.episodeId);
-    final episode = (await canvas.db.screenplayDao.getEpisode(clip.episodeId))!;
-    final canvasId = episode.canvasId;
+    final canvasId = clip.episodeId.isEmpty
+        ? (await canvas.ensureCanvas('')).id
+        : (await canvas.db.screenplayDao.getEpisode(clip.episodeId))!.canvasId;
     if (canvasId == null) {
       throw const ToolOperationException(
         'failed_precondition',
@@ -446,7 +447,8 @@ class ProductionToolHost {
       );
     }
     final kind = spec.subcommand.substring('generate-'.length);
-    final target = '/clips/$clipId';
+    final target =
+        '${await canvas.shots.isCanvasWork ? '/production' : ''}/clips/$clipId';
     final node = await nodeForClip(clipId);
     final clip = (await canvas.shots.getShot(clipId))!;
     if (clip.kind != kind) {

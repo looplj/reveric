@@ -462,7 +462,11 @@ class MobileLibraryPage extends HookConsumerWidget {
           ),
           data: (everything) {
             final allNovels = everything
-                .where((n) => n.contentKind == contentKind)
+                .where(
+                  (n) =>
+                      n.contentKind != contentKindCanvas &&
+                      n.contentKind == contentKind,
+                )
                 .toList();
             // 搜索时收起继续写和最近，结果直接顶到搜索框下面。
             final recent = allNovels.shelfVisible.sortedForShelf(

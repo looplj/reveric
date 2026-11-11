@@ -102,6 +102,41 @@ void main() {
     await appDb.close();
   });
 
+  test('Canvas council participant uses canvas identity and tools', () async {
+    final context = _context.copyWith(contentKind: 'canvas');
+    final canvasTools = AiToolManager(
+      NovelContentService(contentDb),
+      workingOverlayService: toolManager.workingOverlayService,
+      workId: context.workId,
+      contentKind: context.contentKind,
+    )..registerAllTools();
+    addTearDown(canvasTools.dispose);
+    final fake = FakeProviderClient(
+      responses: const [FakeProviderClientResponse.text('Review complete')],
+    );
+    await (AgentCouncilOrchestrator()..pluginHost = emptyPluginHost())
+        .startDiscussion(
+          novelId: 'current',
+          topic: 'Review the canvas',
+          participants: const [
+            CouncilParticipant(
+              id: 'reviewer',
+              name: 'Reviewer',
+              description: '',
+              prompt: 'Review this work.',
+            ),
+          ],
+          aiService: _PromptCaptureAiClient(fake, canvasTools),
+          context: context,
+          config: const AgentCouncilConfig(maxRounds: 1, autoSummarize: false),
+        );
+    final system = fake.capturedStreamRequests.single.messages.first.content;
+    expect(system, contains('当前作品类型：画布'));
+    expect(system, contains('production/clips/{clip_id}'));
+    expect(system, isNot(contains('chapters/{chapter_id}')));
+    expect(system, isNot(contains('scenes/{scene_id}')));
+  });
+
   for (final malformed in [false, true]) {
     test('Council malformed=$malformed prompt excludes editor context', () async {
       final fakeClient = FakeProviderClient(

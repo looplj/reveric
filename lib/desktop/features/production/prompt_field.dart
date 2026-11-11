@@ -40,6 +40,7 @@ class ProductionPromptField extends StatelessWidget {
     this.footer = true,
     this.contentPadding,
     this.hintText,
+    this.autofocus = false,
   });
   final ProductionPromptController controller;
   final VoidCallback onReference;
@@ -56,6 +57,7 @@ class ProductionPromptField extends StatelessWidget {
   /// 输入区内边距；不给时用全局输入框主题。片段列表传零水平边距，让正文和标题对齐。
   final EdgeInsetsGeometry? contentPadding;
   final String? hintText;
+  final bool autofocus;
   @override
   Widget build(BuildContext context) {
     Future<void> copy({bool cut = false}) async {
@@ -133,6 +135,7 @@ class ProductionPromptField extends StatelessWidget {
           child: TextField(
             // Inline media spans and protocol-aware clipboard need the native editor surface.
             controller: controller,
+            autofocus: autofocus,
             minLines: maxLines == null ? 1 : 3,
             maxLines: maxLines,
             style: RevericTheme.typographyOf(

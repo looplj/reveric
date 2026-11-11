@@ -177,7 +177,7 @@ class _ImageForm extends HookConsumerWidget {
     }
     if (blockedReason == null &&
         referenceRequiredMethods.contains(preset.method) &&
-        inputs.value.isEmpty) {
+        inputs.value.every((input) => input.isPrompt)) {
       blockedReason = context.t(LocaleKeys.productionViewImageRequired);
     }
     if (blockedReason == null &&
@@ -285,6 +285,9 @@ class _ImageForm extends HookConsumerWidget {
     prompt.inputIds = inputs.value.map((i) => i.id).toSet();
     prompt.onPreview = (id) => productionRun(context, () async {
       final input = inputs.value.firstWhere((i) => i.id == id);
+      if (input.isPrompt) {
+        return;
+      }
       final asset = await service.inputAsset(input);
       if (context.mounted) {
         await previewProductionAsset(context, service, asset.id);
@@ -409,7 +412,15 @@ class _ImageForm extends HookConsumerWidget {
                       ProductionInputTile(
                         service: service,
                         input: inputs.value[i],
-                        valid: capability?.allowsReferenceCount(i + 1) ?? false,
+                        valid:
+                            inputs.value[i].isPrompt ||
+                            (capability?.allowsReferenceCount(
+                                  inputs.value
+                                      .take(i + 1)
+                                      .where((input) => !input.isPrompt)
+                                      .length,
+                                ) ??
+                                false),
                         onRole: null,
                         onMove: inputs.value.length < 2
                             ? null

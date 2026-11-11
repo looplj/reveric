@@ -4422,32 +4422,57 @@ class NovelEditorPage extends HookConsumerWidget {
                   },
                   novel: novel,
                   selection: selection.value,
-                  onProductionPrompt: (prompt, {files = const []}) {
-                    if (isChatFloating) {
-                      productionChatNotifier.setOpen(true);
-                    } else {
-                      aiPanelCollapsed.value = false;
-                    }
-                    if (files.isEmpty) {
-                      pendingShortcutDraft.value = AiChatShortcutDraft(
-                        id: 'production_${DateTime.now().microsecondsSinceEpoch}',
-                        text: prompt,
-                        autoSend: false,
-                      );
-                      return;
-                    }
-                    // 带图的请求来自导演台识图：新开会话并直接发送，不打断正在进行的对话。
-                    final title = context.t(LocaleKeys.directorRecognizeTitle);
-                    pendingHandoffDraft.value = AiChatHandoffDraft(
-                      id: 'scene_recognition_${DateTime.now().microsecondsSinceEpoch}',
-                      label: title,
-                      title: title,
-                      content: prompt,
-                      initialText: prompt,
-                      autoSend: true,
-                      files: files,
-                    );
-                  },
+                  onProductionPrompt:
+                      (
+                        prompt, {
+                        files = const [],
+                        send = false,
+                        model,
+                        effort,
+                      }) {
+                        if (isChatFloating) {
+                          productionChatNotifier.setOpen(true);
+                        } else {
+                          aiPanelCollapsed.value = false;
+                        }
+                        // 文本节点输入框选了模型：用它新开对话并直接发送。
+                        if (model != null) {
+                          pendingHandoffDraft.value = AiChatHandoffDraft(
+                            id: 'production_text_${DateTime.now().microsecondsSinceEpoch}',
+                            label: '',
+                            title: '',
+                            content: prompt,
+                            initialText: prompt,
+                            providerId: model.providerId,
+                            model: model.model,
+                            reasoningEffort: effort,
+                            autoSend: true,
+                            files: files,
+                          );
+                          return;
+                        }
+                        if (files.isEmpty) {
+                          pendingShortcutDraft.value = AiChatShortcutDraft(
+                            id: 'production_${DateTime.now().microsecondsSinceEpoch}',
+                            text: prompt,
+                            autoSend: send,
+                          );
+                          return;
+                        }
+                        // 带图的请求来自导演台识图：新开会话并直接发送，不打断正在进行的对话。
+                        final title = context.t(
+                          LocaleKeys.directorRecognizeTitle,
+                        );
+                        pendingHandoffDraft.value = AiChatHandoffDraft(
+                          id: 'scene_recognition_${DateTime.now().microsecondsSinceEpoch}',
+                          label: title,
+                          title: title,
+                          content: prompt,
+                          initialText: prompt,
+                          autoSend: true,
+                          files: files,
+                        );
+                      },
                   onRegisterScreenplaySceneFlush: (flush) {
                     screenplaySceneFlush.value = flush;
                   },

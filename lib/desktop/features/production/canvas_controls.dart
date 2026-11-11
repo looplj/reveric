@@ -15,6 +15,8 @@
 //   assets/translations/zh-CN/common.json
 //   assets/translations/en/assets.json
 //   assets/translations/zh-CN/assets.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
@@ -39,6 +41,8 @@ enum ProductionAddKind {
   compendium,
   audio,
   director,
+  editing,
+  text,
 }
 
 /// 左下角工具簇里跟在缩放后面的一组：从资产库放素材、导入文件。
@@ -112,7 +116,10 @@ class ProductionAddDock extends StatefulWidget {
     required this.enabled,
     required this.onAdd,
     required this.onImport,
+    this.canvasWork = false,
   });
+
+  final bool canvasWork;
 
   /// 各类型当前是否可建（片段、导演台需要第二栏选中场次）。
   final bool Function(ProductionAddKind kind) enabled;
@@ -179,7 +186,29 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
         LocaleKeys.directorTitle,
         LocaleKeys.productionAddDirectorHint,
       ),
+      (
+        ProductionAddKind.text,
+        RevericIcons.file_text,
+        LocaleKeys.productionText,
+        LocaleKeys.productionAddTextHint,
+      ),
     ];
+    if (widget.canvasWork) {
+      items.removeWhere(
+        (item) => const {
+          ProductionAddKind.segment,
+          ProductionAddKind.character,
+          ProductionAddKind.location,
+          ProductionAddKind.compendium,
+        }.contains(item.$1),
+      );
+      items.add((
+        ProductionAddKind.editing,
+        RevericIcons.scissors_outlined,
+        LocaleKeys.editingTitle,
+        LocaleKeys.productionAddEditingHint,
+      ));
+    }
     setState(() => _open = true);
     await showRevericContextMenu(
       context: context,

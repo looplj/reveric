@@ -1085,6 +1085,7 @@ Set<String> readableResourceIdPathsForTesting() {
 }
 
 const _resourceDefinitions = <String, _ResourceDefinition>{
+  'production': _canvasProductionDefinition,
   'profile': _ResourceDefinition(
     segment: 'profile',
     address: _ResourceAddress(_AddressKind.singleton),
@@ -3190,17 +3191,12 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
     hidden: false,
     listing: _ResourceListing(parentQuery: 'scene_id'),
     fields: {
+      ..._productionClipFields,
       'is_storyboard': _ResourceField(
         value: _ValueSchema(_ValueType.boolean),
         description: '是否已编入场次的分镜，可为图片或视频；查询分镜使用 is_storyboard=true。',
         read: _FieldRead(listing: true, path: true),
         query: _FieldQuery(normalization: _QueryNormalization.boolean),
-      ),
-      'style_selection': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
       ),
       'character_id': _ResourceField(
         value: _ValueSchema(_ValueType.string, nullable: true),
@@ -3216,19 +3212,6 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
         value: _ValueSchema(_ValueType.string, nullable: true),
         read: _FieldRead(listing: true, path: true),
         create: _FieldInputUse(),
-      ),
-      'kind': _ResourceField(
-        value: _ValueSchema(
-          _ValueType.string,
-          enumValues: ['video', 'image', 'audio'],
-        ),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(hasDefault: true, defaultValue: 'video'),
-        query: _FieldQuery(),
-      ),
-      'id': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
       ),
       'scene_id': _ResourceField(
         value: _ValueSchema(
@@ -3252,143 +3235,9 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
         read: _FieldRead(listing: true, path: true),
         write: _FieldInputUse(field: true),
       ),
-      'title': _ResourceField(
-        search: {_FieldSearch.short_text},
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-      ),
-      'inputs': _ResourceField(
-        value: _ValueSchema(
-          _ValueType.array,
-          items: _ValueSchema(
-            _ValueType.object,
-            properties: {
-              'id': _ValueProperty(
-                _ValueSchema(_ValueType.string),
-                required: true,
-              ),
-              'ref_type': _ValueProperty(
-                _ValueSchema(_ValueType.string, enumValues: ['asset', 'node']),
-                required: true,
-              ),
-              'ref_id': _ValueProperty(
-                _ValueSchema(_ValueType.string),
-                required: true,
-              ),
-              'role': _ValueProperty(
-                _ValueSchema(
-                  _ValueType.string,
-                  enumValues: [
-                    'reference_image',
-                    'reference_video',
-                    'reference_audio',
-                    'first_frame',
-                    'middle_frame',
-                    'last_frame',
-                  ],
-                ),
-                required: true,
-              ),
-            },
-          ),
-        ),
-        read: _FieldRead(path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'adopted_asset_id': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        write: _FieldInputUse(field: true),
-      ),
-      'prompt': _ResourceField(
-        search: {_FieldSearch.body},
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-      ),
-      'provider_id': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'model_id': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'reference_mode': _ResourceField(
-        value: _ValueSchema(
-          _ValueType.string,
-          enumValues: ['reference', 'first_last_frame'],
-        ),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'duration_ms': _ResourceField(
-        description: '视频生成的计划时长（毫秒），不是已生成媒体或整集成片的实测时长。',
-        value: _ValueSchema(_ValueType.integer, nullable: true, minimum: 1),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'generate_audio': _ResourceField(
-        description: '是否生成音频；null 跟随模型默认。',
-        value: _ValueSchema(_ValueType.boolean, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'ratio': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'resolution': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
     },
     children: [_clipGenerations],
-    operations: [
-      _ResourceOperation(
-        _ResourceTool.read,
-        _ResourceTargetKind.listing,
-        result: _ResourceResult(
-          _ResourceResultKind.listing,
-          references: ['entries[].path'],
-        ),
-      ),
-      _ResourceOperation(
-        _ResourceTool.read,
-        _ResourceTargetKind.resource,
-        result: _ResourceResult(
-          _ResourceResultKind.entity,
-          references: ['path'],
-        ),
-      ),
-      _ResourceOperation(
-        _ResourceTool.create,
-        _ResourceTargetKind.listing,
-        input: _ResourceInput(_ResourceInputKind.create_fields),
-      ),
-      _ResourceOperation(
-        _ResourceTool.write,
-        _ResourceTargetKind.resource,
-        input: _ResourceInput(_ResourceInputKind.resource_fields),
-      ),
-    ],
+    operations: _productionClipOperations,
   ),
   'scenes': _ResourceDefinition(
     segment: 'scenes',

@@ -39,6 +39,7 @@ enum ShortEntityIdType {
   canvasEdge,
   novel,
   screenplay,
+  canvas_work,
   screenplaySeason,
   screenplayEpisode,
   screenplayBeat,
@@ -73,6 +74,7 @@ const Map<ShortEntityIdType, String> shortEntityIdPrefixes = {
   ShortEntityIdType.canvasEdge: 'ced',
   ShortEntityIdType.novel: 'nov',
   ShortEntityIdType.screenplay: 'scr',
+  ShortEntityIdType.canvas_work: 'cnv',
   ShortEntityIdType.screenplaySeason: 'sea',
   ShortEntityIdType.screenplayEpisode: 'epi',
   ShortEntityIdType.screenplayBeat: 'sbt',
@@ -90,7 +92,7 @@ const Map<ShortEntityIdType, String> shortEntityIdPrefixes = {
 /// 关系变化记录 `rch`；
 /// lore 文档 `lrd`、文件夹 `lrf`；materials 文档 `mtd`、文件夹 `mtf`；
 /// 大纲 `out`、大纲节拍 `obt`；画布 `can`、节点 `cnd`、边 `ced`；
-/// novel 作品 `nov`、screenplay 作品 `scr`；剧本季 `sea`、集 `epi`、节拍
+/// novel 作品 `nov`、screenplay 作品 `scr`、canvas 作品 `cnv`；剧本季 `sea`、集 `epi`、节拍
 /// `sbt`、场次 `scn`、正文元素 `elm`；制片片段 `clip`、片段输入 `inp`、生成记录
 /// `gen`。制片画布、节点与连线和小说画布同属画布实体，沿用 `can`/`cnd`/`ced`。
 ///

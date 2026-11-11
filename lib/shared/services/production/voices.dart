@@ -23,7 +23,8 @@ extension ProductionVoices on ProductionCanvasService {
           .watchSingle();
 
   Future<CharacterProfile?> inputCharacter(ProductionInput input) async {
-    if (input.refType != ProductionInputType.node ||
+    if (input.isPrompt ||
+        input.refType != ProductionInputType.node ||
         input.role.kind != VideoMediaKind.image) {
       return null;
     }
@@ -57,7 +58,7 @@ extension ProductionVoices on ProductionCanvasService {
   ) async {
     final audio = <String?>[];
     final voices = <String?>[];
-    for (final input in inputs) {
+    for (final input in inputs.where((input) => !input.isPrompt)) {
       if (input.role.kind == VideoMediaKind.audio) {
         try {
           audio.add((await inputAsset(input)).name);

@@ -30,9 +30,7 @@ class ProductionNodeSource {
     final path = await File(
       canvas.library.resolve(asset),
     ).resolveSymbolicLinks();
-    final episode = await (canvas.db.select(
-      canvas.db.screenplayEpisodes,
-    )..where((t) => t.canvasId.equals(node.canvasId))).getSingle();
-    return ProductionNodeSource._(node, asset, path, episode.id);
+    final episodeId = await canvas.episodeForCanvas(node.canvasId);
+    return ProductionNodeSource._(node, asset, path, episodeId);
   }
 }

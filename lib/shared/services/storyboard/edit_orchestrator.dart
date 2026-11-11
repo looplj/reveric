@@ -151,12 +151,8 @@ class StoryboardEditOrchestrator {
     }
     final copiedInputs = shot.inputs
         .map(
-          (input) => ProductionInput(
-            id: buildShortEntityId(ShortEntityIdType.productionInput),
-            refType: input.refType,
-            refId: input.refId,
-            role: input.role,
-            voiceAssetId: input.voiceAssetId,
+          (input) => input.withId(
+            buildShortEntityId(ShortEntityIdType.productionInput),
           ),
         )
         .toList();

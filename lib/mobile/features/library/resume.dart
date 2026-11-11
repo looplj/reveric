@@ -39,6 +39,9 @@ class MobileResumeCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    if (work.contentKind == contentKindCanvas) {
+      return const SizedBox.shrink();
+    }
     final resume = watchWorkResumePoint(context, ref, work);
     final where = resume.where;
     final excerpt = resume.excerpt;
@@ -182,6 +185,9 @@ class MobileRecentStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visible = works
+        .where((work) => work.contentKind != contentKindCanvas)
+        .toList();
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     return SizedBox(
@@ -189,10 +195,10 @@ class MobileRecentStrip extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: RevericSpacing.x3l),
-        itemCount: works.length,
+        itemCount: visible.length,
         separatorBuilder: (_, _) => const SizedBox(width: RevericSpacing.lg),
         itemBuilder: (context, index) {
-          final work = works[index];
+          final work = visible[index];
           return InkWell(
             onTap: () => onOpen(work),
             borderRadius: BorderRadius.circular(RevericRadius.large),

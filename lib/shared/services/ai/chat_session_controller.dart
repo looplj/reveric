@@ -2063,7 +2063,8 @@ class ChatSessionController {
     }
     final databasePath = scope.databasePath;
     if (section == NovelWorkspaceSection.storyboard &&
-        promptContext.contentKind == contentKindScreenplay &&
+        (promptContext.contentKind == contentKindScreenplay ||
+            promptContext.contentKind == contentKindCanvas) &&
         databasePath != null) {
       final stagingId = container
           .read(productionSubpageProvider(databasePath))
@@ -2084,6 +2085,14 @@ class ChatSessionController {
                 hint: 'Run stagings read',
               );
       }
+    }
+    if (section == NovelWorkspaceSection.storyboard &&
+        promptContext.contentKind == contentKindCanvas) {
+      return CurrentWorkspaceContext(
+        section: section,
+        path: '/production/canvas',
+        title: scope.novel.title.trim(),
+      );
     }
     final itemId = scope.workspaceItemId?.trim();
     if (itemId == null || itemId.isEmpty) {

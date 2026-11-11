@@ -678,6 +678,131 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('production paths localize canvas, clips and settings', (
+    tester,
+  ) async {
+    const databasePath = 'production-path-labels';
+    final initial = await ScreenplayService(db).createInitialStructure();
+    final container = ProviderContainer(
+      overrides: [
+        novelContentDatabaseProvider(databasePath).overrideWithValue(db),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    Future<AiToolResolvedResource?> readPath(String path) async {
+      final provider = toolResolvedResourceProvider((
+        novelId: 'current-work',
+        databasePath: databasePath,
+        path: path,
+      ));
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
+      return container.read(provider.future);
+    }
+
+    final canvas = await readPath('/production/canvas');
+    final settings = await readPath('/production/settings/style_id');
+    final episode = await readPath(
+      '/episodes/${initial.episodeId}/production/canvas/nodes/node_1/title',
+    );
+    expect(canvas?.labelPath, 'production/canvas');
+    expect(settings?.labelPath, 'production/settings/style_id');
+    expect(episode?.subCollection, 'production/canvas/nodes');
+    expect(episode?.field, 'title');
+
+    final labels = {
+      const Locale('zh', 'CN'): const {
+        '/production': '画布制作',
+        '/production/canvas': '画布制作 · 画布',
+        '/production/clips': '画布制作 · 片段',
+        '/production/settings': '画布制作 · 默认设置',
+        '/production/settings/style_id': '画布制作 · 默认设置 · 风格',
+        '/production/canvas/nodes/node_1': '画布制作 · 画布 · 节点',
+        '/production/canvas/nodes/node_1/title': '画布制作 · 画布 · 节点 · 标题',
+        '/production/clips/clip_1/generations/task_1/status':
+            '画布制作 · 片段 · 生成记录 · 状态',
+        '/episodes/episode_1/production/canvas': '分集 · 制片 · 画布',
+        '/works/work_1/production/clips': '作品 · 画布制作 · 片段',
+        '/production/canvas/**': '/画布制作/画布/**',
+      },
+      const Locale('en'): const {
+        '/production': 'Canvas production',
+        '/production/canvas': 'Canvas production · Canvas',
+        '/production/clips': 'Canvas production · Clips',
+        '/production/settings': 'Canvas production · Defaults',
+        '/production/settings/style_id': 'Canvas production · Defaults · Style',
+        '/production/canvas/nodes/node_1': 'Canvas production · Canvas · Nodes',
+        '/production/canvas/nodes/node_1/title':
+            'Canvas production · Canvas · Nodes · Title',
+        '/production/clips/clip_1/generations/task_1/status':
+            'Canvas production · Clips · Generations · Status',
+        '/episodes/episode_1/production/canvas':
+            'Episodes · Production · Canvas',
+        '/works/work_1/production/clips': 'Novel · Canvas production · Clips',
+        '/production/canvas/**': '/Canvas production/Canvas/**',
+      },
+    };
+
+    for (final entry in labels.entries) {
+      final chinese = entry.key.languageCode == 'zh';
+      await tester.pumpWidget(
+        _wrapDescriptorAssertions((context) {
+          for (final path in entry.value.entries) {
+            final label = path.key.endsWith('**')
+                ? localizeGlobPattern(context, path.key)
+                : localizedToolPathLabel(context, path.key);
+            expect(label, path.value, reason: path.key);
+          }
+          final block = AiToolCallBlock(
+            id: 'read_canvas',
+            callId: 'read_canvas',
+            toolName: 'Read',
+            arguments: {'path': '/production/canvas'},
+            status: AiToolCallStatus.success,
+          );
+          expect(
+            localizedToolCallTitle(context, block),
+            chinese ? '读取' : 'Read',
+          );
+          expect(
+            toolRowTarget(context, block, null),
+            chinese ? '画布制作 · 画布' : 'Canvas production · Canvas',
+          );
+          expect(
+            canvas!.displayLabel(context),
+            toolRowTarget(context, block, null),
+          );
+          expect(
+            settings!.displayLabel(context),
+            chinese
+                ? '画布制作 · 默认设置 · 风格'
+                : 'Canvas production · Defaults · Style',
+          );
+          final write = AiToolCallBlock(
+            id: 'write_settings',
+            callId: 'write_settings',
+            toolName: 'Write',
+            arguments: {'path': '/production/settings/style_id'},
+            status: AiToolCallStatus.success,
+          );
+          expect(
+            toolRowTarget(context, write, settings),
+            settings.displayLabel(context),
+          );
+          expect(
+            episode!.displayLabel(context),
+            chinese
+                ? '第 1 季 · 第 1 集 · 制片 · 画布 · 节点 · 标题'
+                : 'Season 1 · Episode 1 · Production · Canvas · Nodes · Title',
+          );
+          expect(episode.displayLabel(context), isNot(contains('node_1')));
+        }, locale: entry.key),
+      );
+      await tester.pumpAndSettle();
+    }
+  });
+
   test(
     'canvas targets expose names and subresources without loading node IDs',
     () async {

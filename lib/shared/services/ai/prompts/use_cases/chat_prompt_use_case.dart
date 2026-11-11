@@ -270,7 +270,7 @@ class ChatPromptUseCase {
       title: '灵魂设定',
       content: input.soulPrompt,
     );
-    if (context.contentKind != contentKindScreenplay &&
+    if (context.contentKind == contentKindNovel &&
         SetupPhaseGate.shouldShow(
           hasNovel: context.databasePath?.trim().isNotEmpty == true,
           hasAgentRules: context.userRules?.trim().isNotEmpty == true,

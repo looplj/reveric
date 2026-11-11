@@ -210,12 +210,10 @@ Future<ProductionNodePlacement> defaultProductionDerivedPlacement(
     );
   }
 
-  final episode = await (canvas.db.select(
-    canvas.db.screenplayEpisodes,
-  )..where((t) => t.canvasId.equals(source.canvasId))).getSingle();
+  final episodeId = await canvas.episodeForCanvas(source.canvasId);
   final positions = productionScenePositions(
     content.nodes,
-    await canvas.shots.episodeShots(episode.id),
+    await canvas.shots.episodeShots(episodeId),
     sizeOf,
   );
   return productionDerivedPlacement(
@@ -269,7 +267,9 @@ Size productionNodeSize(
   }
   return productionCardSize(
     (node.type == canvasNodeTypeStaging ? null : aspect) ??
-        (node.type == canvasNodeTypeImage ? 1.0 : 16 / 9),
+        ({canvasNodeTypeImage, canvasNodeTypeText}.contains(node.type)
+            ? 1.0
+            : 16 / 9),
   );
 }
 

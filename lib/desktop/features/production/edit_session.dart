@@ -32,10 +32,12 @@ class ProductionSceneActions {
     this.ask,
     required this.openDirector,
     this.openEditing,
+    this.uploadScript,
   });
   final void Function(String prompt)? ask;
   final ScreenplayDirectorOpen openDirector;
   final void Function()? openEditing;
+  final Future<void> Function()? uploadScript;
 }
 
 String _draftKey(ProductionClipRow clip) => jsonEncode([

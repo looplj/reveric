@@ -50,6 +50,7 @@ import 'character_input.dart';
 import '../../../shared/services/production/voices.dart';
 import 'edit_session.dart';
 import 'history_region.dart';
+import 'text_inputs.dart';
 import 'prompt_field.dart';
 import 'support.dart';
 import 'style_button.dart';
@@ -224,13 +225,16 @@ class _ComposerForm extends HookConsumerWidget {
     final overlay = ref.watch(workingOverlayServiceProvider(path));
     String value(ShotField field) => form.getValue<String>(field) ?? '';
     String signature() =>
-        '${value(ShotField.title)}|${prompt.source}|${inputs.value.map((i) => '${i.identity}:${i.role.name}:${i.sourceNodeId}:${i.voiceAssetId}').join('|')}|${form.getValue<(String, String)>(ShotField.model)}|${value(ShotField.mode)}|${value(ShotField.ratio)}|${value(ShotField.resolution)}|${value(ShotField.duration)}|${form.getValue<bool>(ShotField.generateAudio)}';
+        '${value(ShotField.title)}|${prompt.source}|${inputs.value.map((i) => '${i.identity}:${i.roleName}:${i.sourceNodeId}:${i.voiceAssetId}').join('|')}|${form.getValue<(String, String)>(ShotField.model)}|${value(ShotField.mode)}|${value(ShotField.ratio)}|${value(ShotField.resolution)}|${value(ShotField.duration)}|${form.getValue<bool>(ShotField.generateAudio)}';
     if (saved.value.isEmpty) {
       saved.value = signature();
     }
     prompt.inputIds = inputs.value.map((i) => i.id).toSet();
     prompt.onPreview = (id) => productionRun(context, () async {
       final input = inputs.value.firstWhere((i) => i.id == id);
+      if (input.isPrompt) {
+        return;
+      }
       final asset = await service.inputAsset(input);
       if (context.mounted) {
         await previewProductionAsset(context, service, asset.id);
@@ -425,7 +429,7 @@ class _ComposerForm extends HookConsumerWidget {
         VideoMode.values.byName(value(ShotField.mode)),
       );
       final candidates = inputs.value
-          .where((i) => allowed.contains(i.role))
+          .where((i) => i.isPrompt || allowed.contains(i.role))
           .toList();
       final labels = <String, String>{};
       for (final input in candidates) {
@@ -527,6 +531,7 @@ class _ComposerForm extends HookConsumerWidget {
       () => value(ShotField.resolution),
     );
     final allowed = productionRoles(mode);
+    final textNodes = ProductionTextInputScope.of(context);
     final supportsMiddleFrames =
         !productionUsesFrames(mode) ||
         (modelConfig?.capabilities.maxMiddleFrames ?? 0) > 0;
@@ -537,26 +542,34 @@ class _ComposerForm extends HookConsumerWidget {
               VideoInputRole.middle_frame,
               VideoInputRole.last_frame,
             ])
-              ...inputs.value.where((input) => input.role == role),
+              ...inputs.value.where(
+                (input) => !input.isPrompt && input.role == role,
+              ),
             ...inputs.value.where(
-              (input) => ![
-                VideoInputRole.first_frame,
-                VideoInputRole.middle_frame,
-                VideoInputRole.last_frame,
-              ].contains(input.role),
+              (input) =>
+                  input.isPrompt ||
+                  ![
+                    VideoInputRole.first_frame,
+                    VideoInputRole.middle_frame,
+                    VideoInputRole.last_frame,
+                  ].contains(input.role),
             ),
           ]
         : inputs.value;
     final audioKey = inputs.value
         .where(
-          (i) => i.role.kind == VideoMediaKind.audio || i.voiceAssetId != null,
+          (i) =>
+              !i.isPrompt &&
+              (i.role.kind == VideoMediaKind.audio || i.voiceAssetId != null),
         )
-        .map((i) => '${i.identity}:${i.role.name}:${i.voiceAssetId}')
+        .map((i) => '${i.identity}:${i.roleName}:${i.voiceAssetId}')
         .join('|');
     final audioNames = useFuture(
       useMemoized(
         () => service.audioInputNames(
-          inputs.value.where((i) => allowed.contains(i.role)).toList(),
+          inputs.value
+              .where((i) => !i.isPrompt && allowed.contains(i.role))
+              .toList(),
         ),
         [service, audioKey, mode],
       ),
@@ -618,11 +631,28 @@ class _ComposerForm extends HookConsumerWidget {
       final roles = activeInputs
           .map((input) => productionSubmitRole(mode, input.role))
           .toList();
+      final promptInputs = inputs.value
+          .where((input) => input.isPrompt)
+          .toList();
+      if (promptInputs.isNotEmpty &&
+          ProductionTextInputScope.hasError(context)) {
+        return context.t(LocaleKeys.productionFailed);
+      }
+      if (promptInputs.isNotEmpty && textNodes == null) {
+        return context.t(LocaleKeys.productionGenerateChecking);
+      }
+      if (promptInputs.any((input) => !textNodes!.containsKey(input.refId))) {
+        return context.t(LocaleKeys.productionGenerateReferenceMissing);
+      }
+      final textInputs = {
+        for (final input in promptInputs) input.id: textNodes![input.refId]!,
+      };
       final parsed = StoryboardPrompt.parse(prompt.source);
       if (parsed.parts.any(
         (part) =>
             part.isReference &&
-            !activeInputs.any((input) => input.id == part.inputId),
+            !activeInputs.any((input) => input.id == part.inputId) &&
+            !textInputs.containsKey(part.inputId),
       )) {
         return context.t(LocaleKeys.productionGenerateReferenceMissing);
       }
@@ -649,6 +679,7 @@ class _ComposerForm extends HookConsumerWidget {
               for (final input in activeInputs)
                 ResolvedProductionInput(input, input.refId),
             ],
+            textInputs: textInputs,
           ),
           roles,
         );
@@ -834,10 +865,11 @@ class _ComposerForm extends HookConsumerWidget {
                             input: displayInputs[i],
                             mode: mode,
                             valid:
+                                displayInputs[i].isPrompt ||
                                 allowed.contains(displayInputs[i].role) &&
-                                (displayInputs[i].role !=
-                                        VideoInputRole.middle_frame ||
-                                    supportsMiddleFrames),
+                                    (displayInputs[i].role !=
+                                            VideoInputRole.middle_frame ||
+                                        supportsMiddleFrames),
                             supportsMiddleFrames: supportsMiddleFrames,
                             middleFrameIndex: displayInputs[i].middleFrameIndex(
                               inputs.value,
@@ -858,6 +890,7 @@ class _ComposerForm extends HookConsumerWidget {
                             onMove:
                                 displayInputs.length < 2 ||
                                     (productionUsesFrames(mode) &&
+                                        !displayInputs[i].isPrompt &&
                                         displayInputs[i].role !=
                                             VideoInputRole.middle_frame)
                                 ? null
@@ -870,6 +903,7 @@ class _ComposerForm extends HookConsumerWidget {
                                       if (to < 0 ||
                                           to >= displayInputs.length ||
                                           (productionUsesFrames(mode) &&
+                                              !displayInputs[to].isPrompt &&
                                               displayInputs[to].role !=
                                                   VideoInputRole
                                                       .middle_frame)) {
@@ -908,6 +942,7 @@ class _ComposerForm extends HookConsumerWidget {
                     ),
                     child: SingleChildScrollView(
                       child: ProductionPromptField(
+                        autofocus: true,
                         controller: prompt,
                         footer: false,
                         maxLines: null,

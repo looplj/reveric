@@ -123,6 +123,51 @@ class EditingRenderService {
     }
   }
 
+  /// 节点封面复用时间线的单帧合成规则，包含裁切、叠层与字幕，不提交整段预览。
+  Future<Uint8List> firstFrame(
+    EditingDocument document, {
+    required MediaCancellation cancellation,
+  }) {
+    final result = _tail.then((_) async {
+      document.validate();
+      _check(cancellation);
+      if (document.totalFrames == 0) {
+        throw StateError('Empty timeline');
+      }
+      await projects.verify(document, cancellation);
+      final size = ProductionSettings.dimensions(document.ratio, '480p');
+      final temporary = await Directory.systemTemp.createTemp(
+        'reveric_editing_poster_',
+      );
+      try {
+        await _block(
+          document,
+          (start: 0, count: 1, size: size, subtitles: EditingSubtitles.burn),
+          temporary,
+          cancellation,
+          (_, _) {},
+          includeAudio: false,
+        );
+        return await captureMediaFrame(
+          runner,
+          '${temporary.path}/video.mp4',
+          File('${temporary.path}/first.png'),
+          cancellation,
+        );
+      } catch (error, stack) {
+        if (!cancellation.cancelled) {
+          _log.error('First frame failed', error: error, stackTrace: stack);
+        }
+        rethrow;
+      } finally {
+        cancellation.onProgress = null;
+        await temporary.delete(recursive: true);
+      }
+    });
+    _tail = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+
   Future<ContactSheet> frames(
     EditingDocument document,
     List<int> frames, {

@@ -84,6 +84,19 @@ class RevericSizes {
   /// 视频节点「裁剪时长」弹窗宽度：画面要看得清切点，比通用弹窗宽。
   static const double productionTrimDialogWidth = 600;
 
+  /// 画布书架卡片：横向画面，宽度上限与固定高度。
+  static const double canvasShelfCardWidth = 280;
+  static const double canvasShelfCardHeight = 250;
+
+  /// 画布书架「继续」区的横向封面宽度。
+  static const double canvasResumeCoverWidth = 224;
+
+  /// 画布作品页头重命名输入框的宽度上限。
+  static const double productionTitleFieldWidth = 320;
+
+  /// 空画布起点卡片的宽度。
+  static const double productionStartTileWidth = 200;
+
   /// 制作画布上贴着图片节点的生成输入框宽度。
   static const double productionComposerWidth = 620;
 
@@ -91,6 +104,9 @@ class RevericSizes {
   static const double productionVideoComposerWidth = 800;
 
   /// 制作画布浮层：结果弹层、比例 · 分辨率弹层。
+  static const double productionInputTileSize = 56;
+  static const double productionTextInputWidth = 160;
+
   static const double productionResultsWidth = 400;
   static const double productionResultsMaxHeight = 360;
   static const double productionSpecWidth = 380;

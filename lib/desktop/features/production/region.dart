@@ -1,4 +1,4 @@
-// 职责: 组合当前集的制作视图、剪辑和导演台，共用聊天浮层并管理离开保护与媒体导入导出。
+// 职责: 复用剧本与独立画布的制作主体，组合剪辑、导演台并管理编辑离开保护与媒体导入。
 // 关联文件:
 //   lib/desktop/features/production/board.dart
 //   lib/desktop/features/production/composer.dart
@@ -16,6 +16,7 @@ import 'dart:async';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
+import '../../../shared/models/ai_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -65,6 +66,10 @@ import 'history_region.dart';
 import 'history_actions.dart';
 import '../editing/shell.dart';
 import 'canvas_controls.dart';
+import 'canvas_empty.dart';
+import 'text_composer.dart';
+import 'text_node.dart';
+import '../../../shared/models/content_kind.dart';
 import 'subject_picker.dart';
 import 'node_bar.dart';
 import 'depth_dialog.dart';
@@ -82,7 +87,16 @@ import 'scene_recognition.dart';
 import '../../../shared/widgets/screenplay/director_shell.dart';
 
 /// 向聊天发一段制片相关的话；带 [files] 时这些文件作为附件放在正文之前。
-typedef ProductionAsk = void Function(String prompt, {List<XFile> files});
+/// [send] 为 true 时打开聊天后直接发送，否则只预填、由用户补完再发。
+/// 带 [model] 时用该模型和 [effort] 档位新开对话并直接发送。
+typedef ProductionAsk =
+    void Function(
+      String prompt, {
+      List<XFile> files,
+      bool send,
+      AiModelOption? model,
+      String? effort,
+    });
 
 class ProductionRegion extends HookConsumerWidget {
   const ProductionRegion({
@@ -121,8 +135,19 @@ class ProductionRegion extends HookConsumerWidget {
         final episodeId = workspace.episodeId!;
         final ask = onAsk == null
             ? null
-            : (String prompt, {List<XFile> files = const []}) =>
-                  askRef.value?.call(prompt, files: files);
+            : (
+                String prompt, {
+                List<XFile> files = const [],
+                bool send = false,
+                AiModelOption? model,
+                String? effort,
+              }) => askRef.value?.call(
+                prompt,
+                files: files,
+                send: send,
+                model: model,
+                effort: effort,
+              );
         Future<void> recognize(
           BuildContext context, {
           required Future<void> Function() reset,
@@ -179,16 +204,22 @@ class ProductionRegion extends HookConsumerWidget {
               key: ValueKey(workspace.episodeId),
               novel: novel,
               episodeId: workspace.episodeId!,
-              child: _EpisodeRegion(
-                key: ValueKey(workspace.episodeId),
-                novel: novel,
-                episodeId: workspace.episodeId!,
-                registerFlush: register,
-                selectedClipId: selectedClipId,
-                sceneActions: ProductionSceneActions(
-                  ask: ask,
-                  openDirector: open,
-                  openEditing: openEditing,
+              child: ProductionTextAsk(
+                ask: ask == null
+                    ? null
+                    : (prompt, {model, effort}) =>
+                          ask(prompt, send: true, model: model, effort: effort),
+                child: ProductionCanvasRegion(
+                  key: ValueKey(workspace.episodeId),
+                  novel: novel,
+                  episodeId: workspace.episodeId!,
+                  registerFlush: register,
+                  selectedClipId: selectedClipId,
+                  sceneActions: ProductionSceneActions(
+                    ask: ask,
+                    openDirector: open,
+                    openEditing: openEditing,
+                  ),
                 ),
               ),
             ),
@@ -224,8 +255,8 @@ class ProductionRegion extends HookConsumerWidget {
   }
 }
 
-class _EpisodeRegion extends HookConsumerWidget {
-  const _EpisodeRegion({
+class ProductionCanvasRegion extends HookConsumerWidget {
+  const ProductionCanvasRegion({
     super.key,
     required this.novel,
     required this.episodeId,
@@ -240,6 +271,8 @@ class _EpisodeRegion extends HookConsumerWidget {
   final ProductionSceneActions sceneActions;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final textAsk = ProductionTextAsk.of(context);
+    final canvasWork = novel.contentKind == contentKindCanvas;
     final path = novel.contentDatabasePath!;
     final shots = ref.watch(storyboardServiceProvider(path));
     final library = ref.watch(mediaLibraryServiceProvider);
@@ -253,7 +286,9 @@ class _EpisodeRegion extends HookConsumerWidget {
     final viewProvider = productionViewProvider(novel.id);
     final viewState = ref.read(viewProvider.notifier);
     // 进入时停在左栏选的视图；之后左栏再切换由下方的 listen 带着焦点处理。
-    final view = useState(ref.read(viewProvider));
+    final view = useState(
+      canvasWork ? ProductionViewMode.canvas : ref.read(viewProvider),
+    );
     final chatProvider = productionChatProvider(novel.id);
     final chatState = ref.read(chatProvider.notifier);
     final chatOpen = ref.watch(chatProvider.select((s) => s.open));
@@ -278,9 +313,9 @@ class _EpisodeRegion extends HookConsumerWidget {
         });
       };
     }, [chatState]);
-    final workspace = ref.watch(
-      screenplayWorkspaceStateControllerProvider(novel.id, path),
-    );
+    final workspace = canvasWork
+        ? null
+        : ref.watch(screenplayWorkspaceStateControllerProvider(novel.id, path));
     final clips =
         ref.watch(storyboardShotsProvider(path, episodeId)).value ??
         <ProductionClipRow>[];
@@ -294,7 +329,7 @@ class _EpisodeRegion extends HookConsumerWidget {
     // 节点右键：在指针处打开工具条的「…」菜单；n 递增表示一次新请求。
     final menuRequest = useState<({String nodeId, Offset at, int n})?>(null);
     final imageJobs = ref.watch(imageTaskServiceProvider);
-    final session = useMemoized(ProductionEditSession.new);
+    final session = scope.session!;
     final camera = useMemoized(ProductionBoardCamera.new);
     final clipSnapshot = useStream(
       useMemoized(
@@ -421,9 +456,9 @@ class _EpisodeRegion extends HookConsumerWidget {
     }, [selectedClipId]);
 
     // 画布视图下在第二栏点场次：平移到这一场的第一个片段节点。
-    final lastScene = useRef(workspace.sceneId);
+    final lastScene = useRef(workspace?.sceneId);
     useEffect(() {
-      final sceneId = workspace.sceneId;
+      final sceneId = workspace?.sceneId;
       if (sceneId == lastScene.value) {
         return null;
       }
@@ -443,7 +478,7 @@ class _EpisodeRegion extends HookConsumerWidget {
         }
       });
       return null;
-    }, [workspace.sceneId]);
+    }, [workspace?.sceneId]);
 
     // 第二栏高亮跟着焦点走：片段视图跟定位的片段，画布视图跟选中节点。
     // 先记下 lastScene，免得上面的「点场次就平移」把选中节点挤掉。
@@ -455,7 +490,7 @@ class _EpisodeRegion extends HookConsumerWidget {
         .firstOrNull
         ?.sceneId;
     useEffect(() {
-      if (focusScene == null || focusScene == workspace.sceneId) {
+      if (focusScene == null || focusScene == workspace?.sceneId) {
         return null;
       }
       lastScene.value = focusScene;
@@ -503,23 +538,28 @@ class _EpisodeRegion extends HookConsumerWidget {
     }
 
     // 左栏切「分镜」/「画布」：走同一条带焦点的切换；被拒时把左栏高亮拉回实际视图。
-    ref.listen(viewProvider, (_, next) async {
-      if (next == view.value) {
-        return;
-      }
-      await run(() => switchView(next));
-      if (context.mounted && view.value != next) {
-        viewState.set(view.value);
-      }
-    });
+    if (!canvasWork) {
+      ref.listen(viewProvider, (_, next) async {
+        if (next == view.value) {
+          return;
+        }
+        await run(() => switchView(next));
+        if (context.mounted && view.value != next) {
+          viewState.set(view.value);
+        }
+      });
+    }
 
     // 画布色带写场次，片段节点写「段 场号-序号」，序号按成片顺序。
     final scenes =
-        ref.watch(screenplayScenesProvider(path, episodeId)).value ??
+        (canvasWork
+            ? null
+            : ref.watch(screenplayScenesProvider(path, episodeId)).value) ??
         const <ScreenplaySceneSummary>[];
     final locationNames = {
       for (final location
-          in ref.watch(locationsProvider(path)).value ?? const <Location>[])
+          in (canvasWork ? null : ref.watch(locationsProvider(path)).value) ??
+              const <Location>[])
         location.id: location.name,
     };
     final sceneLabels = <String, String>{};
@@ -536,7 +576,7 @@ class _EpisodeRegion extends HookConsumerWidget {
     }
     final segmentLabels = <String, String>{};
     final sceneCounts = <String, int>{};
-    for (final clip in clips) {
+    for (final clip in canvasWork ? <ProductionClipRow>[] : clips) {
       final n = sceneCounts.update(
         clip.sceneId ?? '',
         (n) => n + 1,
@@ -689,7 +729,7 @@ class _EpisodeRegion extends HookConsumerWidget {
             final clip = await StoryboardEditOrchestrator().create(
               service: shots,
               overlay: overlay,
-              sceneId: workspace.sceneId,
+              sceneId: workspace?.sceneId,
               values: const {
                 'duration_ms': ProductionCanvasService.defaultDurationMs,
               },
@@ -732,6 +772,20 @@ class _EpisodeRegion extends HookConsumerWidget {
               ),
             );
           }
+        case ProductionAddKind.text:
+          await createAndPlace(
+            () => service.addText(
+              canvas.data!.id,
+              title: context.t(LocaleKeys.productionText),
+            ),
+          );
+        case ProductionAddKind.editing:
+          await createAndPlace(
+            () => service.addEditing(
+              canvas.data!.id,
+              title: context.t(LocaleKeys.editingTitle),
+            ),
+          );
         case ProductionAddKind.audio:
           await createAndPlace(() => service.addAudio(canvas.data!.id));
         case ProductionAddKind.director:
@@ -761,6 +815,26 @@ class _EpisodeRegion extends HookConsumerWidget {
       Offset at,
     ) async {
       if (!await session.close()) {
+        return;
+      }
+      if (source.type == canvasNodeTypeText) {
+        final clip = (await shots.getShot(target.clipId!))!;
+        final inputs = await service.draftInputs(target.id);
+        if (!inputs.any(
+          (input) => input.isPrompt && input.refId == source.id,
+        )) {
+          await service.saveDraft(
+            nodeId: target.id,
+            values: shots.snapshot(clip),
+            inputs: [...inputs, ProductionInput.text(source.id)],
+            overlay: ref.read(workingOverlayServiceProvider(path)),
+            history: history,
+          );
+        }
+        if (context.mounted) {
+          composerEpoch.value++;
+          await select(await service.requireNode(target.id));
+        }
         return;
       }
       if (source.type == canvasNodeTypeGroup) {
@@ -999,9 +1073,10 @@ class _EpisodeRegion extends HookConsumerWidget {
                         onOpen: select,
                         taskActions: taskActions,
                         addControl: ProductionAddDock(
+                          canvasWork: canvasWork,
                           enabled: (kind) =>
                               !busy.value &&
-                              (workspace.sceneId != null ||
+                              (workspace?.sceneId != null ||
                                   kind != ProductionAddKind.segment),
                           onAdd: (kind) => run(() => add(kind)),
                           onImport: () => run(importMedia),
@@ -1023,7 +1098,18 @@ class _EpisodeRegion extends HookConsumerWidget {
                         child: ProductionBoard(
                           service: service,
                           canvasId: canvas.data!.id,
-                          topInset: ScreenplayRegionToolbar.floatingExtent,
+                          topInset: canvasWork
+                              ? 0
+                              : ScreenplayRegionToolbar.floatingExtent,
+                          empty: canvasWork
+                              ? CanvasEmptyStart(
+                                  onUpload: () =>
+                                      run(sceneActions.uploadScript!),
+                                  onPrompt: () =>
+                                      run(() => add(ProductionAddKind.video)),
+                                  onImport: () => run(importMedia),
+                                )
+                              : null,
                           selected: selected.value?.id,
                           revealed: revealed.value,
                           segments: clips,
@@ -1219,7 +1305,19 @@ class _EpisodeRegion extends HookConsumerWidget {
                                     ),
                                   ),
                                 ),
-                          composer: selected.value?.isGenerationNode != true
+                          composer: selected.value?.type == canvasNodeTypeText
+                              ? textAsk == null
+                                    ? null
+                                    : SizedBox(
+                                        width: RevericSizes
+                                            .productionComposerWidth,
+                                        child: ProductionTextComposer(
+                                          key: ValueKey(selected.value!.id),
+                                          node: selected.value!,
+                                          onSend: textAsk,
+                                        ),
+                                      )
+                              : selected.value?.isGenerationNode != true
                               ? null
                               : SizedBox(
                                   width:
@@ -1299,9 +1397,10 @@ class _EpisodeRegion extends HookConsumerWidget {
                               bottom: RevericSpacing.x2l,
                               child: Center(
                                 child: ProductionAddDock(
+                                  canvasWork: canvasWork,
                                   enabled: (kind) =>
                                       !busy.value &&
-                                      (workspace.sceneId != null ||
+                                      (workspace?.sceneId != null ||
                                           kind != ProductionAddKind.segment),
                                   onAdd: (kind) => run(() => add(kind)),
                                   onImport: () => run(importMedia),
@@ -1315,7 +1414,7 @@ class _EpisodeRegion extends HookConsumerWidget {
             ],
           ),
         ),
-        if (view.value != ProductionViewMode.segments)
+        if (!canvasWork && view.value != ProductionViewMode.segments)
           Positioned(top: 0, left: 0, right: 0, child: toolbar),
       ],
     );

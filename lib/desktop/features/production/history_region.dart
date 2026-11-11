@@ -15,6 +15,8 @@ import '../../../shared/database/app_database.dart' show Novel;
 import '../../../shared/providers/storyboard.dart';
 import '../../../shared/providers/production_media.dart';
 import 'support.dart';
+import 'text_inputs.dart';
+import 'edit_session.dart';
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
@@ -43,6 +45,10 @@ class ProductionHistoryRegion extends HookConsumerWidget {
       () => ProductionCanvasService(shots, library, novel.id),
       [shots, library, novel.id],
     );
+    final session = useMemoized(ProductionEditSession.new, [
+      service,
+      episodeId,
+    ]);
     final loaded = useFuture(
       useMemoized(() => service.ensureCanvas(episodeId), [service, episodeId]),
       preserveState: false,
@@ -63,7 +69,12 @@ class ProductionHistoryRegion extends HookConsumerWidget {
       service: service,
       canvas: loaded.data!,
       history: history!,
-      child: child,
+      session: session,
+      child: ProductionTextInputs(
+        service: service,
+        canvasId: loaded.data!.id,
+        child: child,
+      ),
     );
   }
 }
@@ -74,17 +85,21 @@ class ProductionHistoryScope extends InheritedWidget {
     required this.service,
     required this.canvas,
     required this.history,
+    this.session,
     required super.child,
   });
   final ProductionCanvasService service;
   final CanvasEntry canvas;
   final CanvasHistory history;
+  final ProductionEditSession? session;
   static ProductionHistoryScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ProductionHistoryScope>();
   static ProductionHistoryScope of(BuildContext context) => maybeOf(context)!;
   @override
   bool updateShouldNotify(ProductionHistoryScope oldWidget) =>
-      history != oldWidget.history || service != oldWidget.service;
+      history != oldWidget.history ||
+      service != oldWidget.service ||
+      session != oldWidget.session;
 }
 
 /// 一个用户手势的组合写入；所有已有改动节点必须列入 nodeIds，新节点作为结果返回。

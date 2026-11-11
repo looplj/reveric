@@ -53,6 +53,7 @@ class AiToolResolvedResource {
     this.subResourceTitle,
     this.field,
     this.queryParameters = const {},
+    this.labelPath,
   });
 
   final Map<String, int> ordinals;
@@ -70,6 +71,9 @@ class AiToolResolvedResource {
   final String? field;
   final Map<String, String> queryParameters;
 
+  /// 画布制作路径。展示时整段本地化，避免只剩集合名。
+  final String? labelPath;
+
   // 解析结果按实际展示字段比较，正文、字数和更新时间变化不刷新工具行。
   List<Object?> get _displayFields => [
     collection,
@@ -86,6 +90,7 @@ class AiToolResolvedResource {
     subResourceTitle,
     field,
     queryParameters,
+    labelPath,
   ];
 
   @override
@@ -100,6 +105,17 @@ class AiToolResolvedResource {
   int get hashCode => const DeepCollectionEquality().hash(_displayFields);
 
   String displayLabel(BuildContext context) {
+    if (labelPath != null) {
+      final localized = localizedToolPathLabel(context, labelPath!);
+      final parts = <String>[
+        if (isUnavailableWork) context.t(LocaleKeys.toolWorkUnavailable),
+        if (workTitle != null && workTitle!.trim().isNotEmpty)
+          workTitle!.trim(),
+        if (localized.isNotEmpty) localized,
+        ..._localizedQueryParameters(context, queryParameters),
+      ];
+      return parts.join(' · ');
+    }
     final parts = <String>[
       if (isUnavailableWork) context.t(LocaleKeys.toolWorkUnavailable),
       if (workTitle != null && workTitle!.trim().isNotEmpty) workTitle!.trim(),
@@ -225,6 +241,17 @@ final toolResolvedResourceProvider =
               ? null
               : parsed.target.resourceSegment,
           field: parsed.field,
+        );
+      }
+
+      if (parsed.collection == 'production') {
+        return AiToolResolvedResource(
+          collection: parsed.collection,
+          resourceTitle: '',
+          showCollection: false,
+          isListing: parsed.target.isResourceListing,
+          labelPath: parsed.target.displayPath,
+          queryParameters: parsed.queryParameters,
         );
       }
 
@@ -489,6 +516,7 @@ Future<AiToolResolvedResource?> _resolveScreenplayResource(
       if (episode != null) LocaleKeys.screenplayEpisode: episode.episodeNumber,
       LocaleKeys.screenplayScene: ?sceneNumber,
     },
+    subCollection: _productionStructuralTail(parsed.originalPath, parsed.field),
     field: parsed.field ?? detail,
     queryParameters: query,
   );
@@ -660,6 +688,15 @@ String localizedToolPathLabel(
         : '$collection · $canvasName · $sublabel';
   }
 
+  // 画布制作 /production/… 与按集 …/production/canvas/…。id 段不展示。
+  if (segments.first == 'production') {
+    return _localizedProductionSegments(
+      context,
+      segments,
+      canvasWork: true,
+    ).join(' · ');
+  }
+
   if (segments.first == '_schema') {
     final target = segments.length > 2 && segments[1] == 'groups'
         ? switch (segments[2]) {
@@ -672,6 +709,15 @@ String localizedToolPathLabel(
     return '$collection · $target';
   }
   if (_screenplayCollections.contains(segments.first)) {
+    final productionAt = segments.indexOf('production');
+    if (productionAt >= 0) {
+      final tail = _localizedProductionSegments(
+        context,
+        segments.sublist(productionAt),
+        canvasWork: false,
+      ).join(' · ');
+      return [collection, if (tail.isNotEmpty) tail].join(' · ');
+    }
     return [
       collection,
       if (parsed.resourceSegment == 'elements')
@@ -752,9 +798,17 @@ String localizeGlobPattern(BuildContext context, String pattern) {
     return trimmed;
   }
 
+  final canvasWork = segments.first == 'production';
+  final inProduction = canvasWork || segments.contains('production');
   final localizedSegments = <String>[
-    _localizedCollection(context, segments.first),
-    ...segments.skip(1),
+    for (var index = 0; index < segments.length; index++)
+      _localizedGlobSegment(
+        context,
+        segments[index],
+        index: index,
+        inProduction: inProduction,
+        canvasWork: canvasWork,
+      ),
   ];
   final separator = pathPart.endsWith('/') ? '/' : '';
   return '/${localizedSegments.join('/')}$separator$suffix';
@@ -819,6 +873,7 @@ String _localizedCollection(
     'episodes' => LocaleKeys.screenplayEpisodes,
     'scenes' => LocaleKeys.screenplayScenes,
     'clips' => LocaleKeys.productionClips,
+    'production' => LocaleKeys.toolPathProduction,
     'beats' => LocaleKeys.screenplayBeats,
     'profile' => LocaleKeys.workspaceNovelOverview,
     'canvas' => LocaleKeys.workspaceCanvas,
@@ -889,10 +944,159 @@ String? _outlineBeatTitle(List<OutlineBeatDraft>? beats, String id) {
 
 String? _outlineField(_ParsedToolPath parsed) => parsed.target.field;
 
+const _productionStructuralTokens = {
+  'production',
+  'canvas',
+  'clips',
+  'settings',
+  'nodes',
+  'edges',
+  'generations',
+};
+
+const _productionIdParents = {'clips', 'nodes', 'edges', 'generations'};
+
+String? _productionStructuralTail(String path, String? field) {
+  final segments = path
+      .split('/')
+      .where((segment) => segment.trim().isNotEmpty)
+      .toList();
+  final index = segments.indexOf('production');
+  if (index <= 0) {
+    return null;
+  }
+  final tail = segments.sublist(index);
+  if (field != null && tail.isNotEmpty && tail.last == field) {
+    tail.removeLast();
+  }
+  final structural = <String>[];
+  var expectId = false;
+  for (final segment in tail) {
+    final isStructural = _productionStructuralTokens.contains(segment);
+    if (expectId) {
+      expectId = false;
+      if (!isStructural) {
+        continue;
+      }
+    }
+    if (!isStructural) {
+      continue;
+    }
+    structural.add(segment);
+    expectId = _productionIdParents.contains(segment);
+  }
+  if (structural.isEmpty) {
+    return null;
+  }
+  return structural.join('/');
+}
+
+String? _productionTokenLabel(
+  BuildContext context,
+  String token, {
+  required bool canvasWork,
+}) {
+  final key = switch (token) {
+    'production' =>
+      canvasWork
+          ? LocaleKeys.toolPathProduction
+          : LocaleKeys.toolPathEpisodeProduction,
+    'canvas' => LocaleKeys.productionCanvas,
+    'clips' => LocaleKeys.productionClips,
+    'settings' => LocaleKeys.toolPathProductionSettings,
+    'nodes' => LocaleKeys.toolPathCanvasNodes,
+    'edges' => LocaleKeys.toolPathCanvasEdges,
+    'generations' => LocaleKeys.toolPathProductionGenerations,
+    _ => null,
+  };
+  if (key == null) {
+    return null;
+  }
+  return context.t(key);
+}
+
+List<String> _localizedProductionSegments(
+  BuildContext context,
+  List<String> segments, {
+  required bool canvasWork,
+}) {
+  final labels = <String>[];
+  var expectId = false;
+  for (final segment in segments) {
+    final structural = _productionTokenLabel(
+      context,
+      segment,
+      canvasWork: canvasWork,
+    );
+    if (expectId) {
+      expectId = false;
+      if (structural != null) {
+        labels.add(structural);
+        expectId = _productionIdParents.contains(segment);
+        continue;
+      }
+      final fieldLabel = _productionFieldLabel(context, segment);
+      if (fieldLabel != segment) {
+        labels.add(fieldLabel);
+      }
+      continue;
+    }
+    if (structural != null) {
+      labels.add(structural);
+      expectId = _productionIdParents.contains(segment);
+      continue;
+    }
+    labels.add(_productionFieldLabel(context, segment));
+  }
+  return labels;
+}
+
+String _productionFieldLabel(BuildContext context, String field) {
+  // kind 在查询芯片里只展示取值；路径字段仍要译出字段名。
+  final key = switch (field) {
+    'kind' => LocaleKeys.toolFieldKind,
+    _ => null,
+  };
+  if (key != null) {
+    return context.t(key);
+  }
+  return aiToolFieldLabel(context, field);
+}
+
+String _localizedGlobSegment(
+  BuildContext context,
+  String segment, {
+  required int index,
+  required bool inProduction,
+  required bool canvasWork,
+}) {
+  if (inProduction) {
+    final token = _productionTokenLabel(
+      context,
+      segment,
+      canvasWork: canvasWork,
+    );
+    if (token != null) {
+      return token;
+    }
+  }
+  if (index == 0) {
+    return _localizedCollection(context, segment);
+  }
+  return segment;
+}
+
 String _localizedSubCollection(BuildContext context, String collection) {
+  final parts = collection.split('/');
+  if (parts.first == 'production') {
+    return _localizedProductionSegments(
+      context,
+      parts,
+      canvasWork: false,
+    ).join(' · ');
+  }
   final key = switch (collection) {
     'change_logs' => LocaleKeys.historyTitle,
-    'production' => LocaleKeys.storyboardSettings,
     'beats' => LocaleKeys.toolOutlineBeats,
     'nodes' => LocaleKeys.toolPathCanvasNodes,
     'edges' => LocaleKeys.toolPathCanvasEdges,
@@ -979,6 +1183,25 @@ String aiToolFieldLabel(BuildContext context, String field) {
     'source_id' => 'history.field_resource',
     'target_id' => 'history.field_resource',
     'chapter_id' => LocaleKeys.toolQueryChapterId,
+    'ref_type' => LocaleKeys.toolFieldRefType,
+    'ref_id' => LocaleKeys.toolFieldRefId,
+    'panorama' => LocaleKeys.toolFieldPanorama,
+    'image_method' => LocaleKeys.toolFieldImageMethod,
+    'group' => LocaleKeys.toolFieldGroup,
+    'x' => LocaleKeys.toolFieldX,
+    'y' => LocaleKeys.toolFieldY,
+    'style_id' || 'style_selection' => LocaleKeys.toolFieldStyle,
+    'inputs' => LocaleKeys.toolFieldInputs,
+    'adopted_asset_id' => LocaleKeys.toolFieldAdoptedAsset,
+    'provider_id' => LocaleKeys.toolFieldProvider,
+    'generate_audio' => LocaleKeys.toolFieldGenerateAudio,
+    'data' => LocaleKeys.toolFieldData,
+    'positions' => LocaleKeys.toolFieldPositions,
+    'remove_types' => LocaleKeys.toolFieldRemoveTypes,
+    'cancel_requested_at' => LocaleKeys.toolFieldCancelRequestedAt,
+    'result_asset_id' => LocaleKeys.toolFieldResultAsset,
+    'result_file_path' => LocaleKeys.toolFieldResultFile,
+    'result_applied' => LocaleKeys.toolFieldResultApplied,
     _ => '',
   };
   if (key.isEmpty) {
@@ -1082,12 +1305,18 @@ AiToolResolvedResource? _crossWorkResolvedResource(
     workTitle: workTitle,
     isUnavailableWork: isUnavailableWork,
     isListing: !target.hasId && !target.hasField,
+    showCollection: target.collection != 'production',
+    labelPath: target.collection == 'production'
+        ? target.localDisplayPath
+        : null,
     subCollection:
         target.collection == 'relations' &&
             target.resourceSegment == 'change_logs'
         ? 'change_logs'
-        : null,
-    field: parsed.field,
+        : target.collection == 'production'
+        ? null
+        : _productionStructuralTail(target.localDisplayPath, parsed.field),
+    field: target.collection == 'production' ? null : parsed.field,
     queryParameters: parsed.queryParameters,
   );
 }

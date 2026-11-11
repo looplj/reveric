@@ -90,6 +90,43 @@ class ScreenplayService {
     );
   }
 
+  /// 画布作品只初始化制作默认设置和一张画布，不生成隐藏的季、集或场次。
+  Future<void> createCanvasStructure({
+    ProductionStylePreset? style,
+  }) => _write('screenplays,canvases', 'CREATE_CANVAS_WORK', 'new', () async {
+    await _database.transaction(() async {
+      if (await _database.screenplayDao.getRoot() != null) {
+        throw const ScreenplayServiceException(
+          'screenplay_already_exists',
+          'This content database already has production settings.',
+        );
+      }
+      await _insertNew(ShortEntityIdType.screenplay, 'screenplays', (id) async {
+        await _database
+            .into(_database.screenplays)
+            .insert(
+              ScreenplaysCompanion.insert(
+                id: id,
+                styleId: Value(
+                  style == null ? null : PresetProductionStyle(style.id).stored,
+                ),
+              ),
+            );
+      });
+      await _insertNew(ShortEntityIdType.canvas, 'canvases', (id) async {
+        await _database
+            .into(_database.canvases)
+            .insert(
+              CanvasesCompanion.insert(
+                id: id,
+                name: 'production',
+                kind: const Value(canvasKindProduction),
+              ),
+            );
+      });
+    });
+  });
+
   Future<CreatedSeason> createInitialStructure({
     int? plannedEpisodeCount,
     ProductionStylePreset? style,

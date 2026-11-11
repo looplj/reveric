@@ -4,6 +4,8 @@
 //   lib/shared/services/editing/agent_commands.dart
 //   lib/shared/services/editing/sessions.dart
 import 'dart:async';
+import 'package:reveric/shared/models/content_kind.dart';
+import 'package:reveric/shared/models/asset_purpose.dart';
 import 'commands_test.dart' show fixture, videoSource;
 import 'dart:convert';
 import 'package:image/image.dart' as img;
@@ -602,6 +604,70 @@ void main() {
       expect((await db.editingDao.get(editingId))!.title, 'Saved');
     },
   );
+  test(
+    'canvas Run editing imports an adopted clip with empty episode',
+    () async {
+      await ScreenplayService(db).createCanvasStructure();
+      await app.novelDao.create(
+        id: 'work',
+        title: 'Canvas',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: db.filePath,
+      );
+      final library = host.production.canvas.library;
+      final canvas = ProductionCanvasService(
+        StoryboardService(db, contentKind: contentKindCanvas),
+        library,
+        'work',
+      );
+      host = EditingToolHost(
+        ProductionToolHost(
+          canvas: canvas,
+          images: _Images(),
+          audio: _Audio(),
+          video: () => throw StateError('No generation'),
+          results: _Results(),
+          editingSessions: sessions,
+        ),
+        runner: runner,
+      );
+      final source = await outputFile('source.mp4');
+      final asset = await library.importFile(
+        source,
+        name: 'Source.mp4',
+        novelId: 'work',
+        purpose: AssetPurpose.production_output,
+        cancellation: MediaCancellation(),
+      );
+      final clip = await canvas.shots.createVideo(
+        '',
+        values: {'title': 'Shot'},
+      );
+      await (db.update(db.productionClips)..where((t) => t.id.equals(clip.id)))
+          .write(ProductionClipsCompanion(adoptedAssetId: Value(asset.id)));
+      final created = await run('create', {'title': 'Cut', 'ratio': '16:9'});
+      expect(created['node_id'], isNotNull);
+      expect(created['revision'], 0);
+      final result = await run('apply', {
+        'editing_id': created['id'],
+        'expected_revision': 0,
+        'commands': [
+          {
+            'op': 'add_media',
+            'track_id': 'V1',
+            'index': 0,
+            'production_clip_id': clip.id,
+          },
+        ],
+      });
+      expect(result['revision'], 1);
+      final saved = await db.editingDao.get(created['id'] as String);
+      expect(saved!.document.mainClips.single.media!.source.assetId, asset.id);
+      expect(clip.episodeId, '');
+    },
+  );
+
   test(
     'headless create/list/read and atomic batch share UI undo and rename history',
     () async {

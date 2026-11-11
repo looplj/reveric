@@ -80,7 +80,10 @@ final productionResultServiceProvider = Provider<ProductionResultService>((
       throw StateError('Production content database is unavailable');
     }
     return ProductionCanvasService(
-      StoryboardService(NovelContentDatabase(databasePath)),
+      StoryboardService(
+        NovelContentDatabase(databasePath),
+        contentKind: novel.contentKind,
+      ),
       library,
       novelId,
     );

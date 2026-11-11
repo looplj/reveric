@@ -5,6 +5,7 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/queries/collection_filter.dart';
 import 'package:reveric/shared/models/collections/filter.dart';
@@ -61,6 +62,39 @@ void main() {
         CollectionFilter.fromRoot(condition),
         contentKind: 'novel',
       )).map((n) => n.id).toSet();
+  test(
+    'Android excludes canvas from collection queries and desktop includes it',
+    () async {
+      await db.novelDao.create(
+        id: 'canvas',
+        title: 'Canvas',
+        description: '',
+        contentKind: 'canvas',
+      );
+      final filter = CollectionFilter.fromRoot(
+        const CollectionCompare('novel.word_count', 'gte', 0),
+      );
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      expect(
+        (await db.novelCollectionDao.preview(filter)).map((row) => row.id),
+        isNot(contains('canvas')),
+      );
+      expect(
+        await db.novelCollectionDao.preview(filter, contentKind: 'canvas'),
+        isEmpty,
+      );
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      expect(
+        (await db.novelCollectionDao.preview(
+          filter,
+          contentKind: 'canvas',
+        )).single.id,
+        'canvas',
+      );
+    },
+  );
+
   test('case-sensitive literal text and exact JSON array elements', () async {
     expect(
       await matches(

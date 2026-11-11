@@ -18,11 +18,13 @@ _ResourceCallContext? get _currentResourceCallContext =>
 
 enum _ResourceWorkKind {
   novel,
-  screenplay;
+  screenplay,
+  canvas;
 
   static _ResourceWorkKind? parse(String value) => switch (value) {
     contentKindNovel => novel,
     contentKindScreenplay => screenplay,
+    contentKindCanvas => canvas,
     _ => null,
   };
 }

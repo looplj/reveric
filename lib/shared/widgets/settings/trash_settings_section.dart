@@ -182,8 +182,8 @@ class _TrashRow extends HookWidget {
               children: [
                 Row(
                   children: [
-                    if (work.contentKind == contentKindScreenplay) ...[
-                      const ScreenplayKindMark(),
+                    if (work.contentKind != contentKindNovel) ...[
+                      ScreenplayKindMark(contentKind: work.contentKind),
                       const SizedBox(width: RevericSpacing.xs),
                     ],
                     Flexible(

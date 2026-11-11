@@ -1,4 +1,4 @@
-// 职责: 桌面端作品编辑入口 — 解析作品后交给统一的编辑页（小说与剧本共用，rail 内部按类型分叉）。
+// 职责: 按作品类型分派桌面编辑器，画布作品直接进入独立制作页面。
 // 关联文件:
 //   lib/desktop/pages/novel_editor.dart
 //   lib/desktop/widgets/sidebar/rail.dart
@@ -19,6 +19,8 @@ import '../../shared/providers/novel_providers.dart';
 import '../../shared/theme/theme.dart';
 import '../widgets/desktop_window_frame.dart';
 import 'novel_editor.dart';
+import '../../shared/models/content_kind.dart';
+import '../features/production/canvas_work.dart';
 
 class WorkspaceEditorPage extends ConsumerWidget {
   const WorkspaceEditorPage({
@@ -45,6 +47,19 @@ class WorkspaceEditorPage extends ConsumerWidget {
             if (novel == null) {
               return _WorkspaceRouteState(
                 message: context.t(LocaleKeys.libraryWorkspaceLoadFailed),
+              );
+            }
+            if (novel.contentKind == contentKindCanvas) {
+              if (novel.contentDatabasePath == null) {
+                return _WorkspaceRouteState(
+                  message: context.t(LocaleKeys.libraryWorkspaceLoadFailed),
+                );
+              }
+              return CanvasWorkPage(
+                novel: novel,
+                initialSessionId: initialSessionId,
+                initialPrompt: initialChatKickoffPrompt,
+                openChatOnEntry: openChatOnEntry,
               );
             }
             return NovelEditorPage(

@@ -119,6 +119,7 @@ abstract final class PromptFragments {
         !const {
           contentKindNovel,
           contentKindScreenplay,
+          contentKindCanvas,
         }.contains(context.contentKind)) {
       throw StateError('Bound work context requires an explicit contentKind.');
     }
@@ -138,7 +139,11 @@ abstract final class PromptFragments {
       _ => '原作工作路径',
     };
     return [
-      '当前作品类型：${context.contentKind == contentKindNovel ? '小说' : '剧本'}',
+      '当前作品类型：${context.contentKind == contentKindCanvas
+          ? '画布'
+          : context.contentKind == contentKindNovel
+          ? '小说'
+          : '剧本'}',
       '当前作品工作路径：$root',
       if (sourceId != null) '$sourcePathLabel：/works/$sourceId',
     ].join('\n');

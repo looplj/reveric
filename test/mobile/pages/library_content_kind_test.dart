@@ -25,6 +25,7 @@ import 'package:reveric/shared/widgets/novel_export_form.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/mobile/pages/library_page.dart';
+import 'package:reveric/mobile/pages/workspace_editor_page.dart';
 import 'package:reveric/mobile/pages/novel_create_page.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/content_kind.dart';
@@ -55,6 +56,25 @@ void main() {
   });
   setUp(() => rootBundle.clear());
 
+  testWidgets('canvas direct mobile route never enters a novel editor', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        MobileWorkspaceEditorPage(
+          novel: _novel(
+            id: 'canvas',
+            title: 'Hidden canvas',
+            kind: contentKindCanvas,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Canvas works are available on desktop'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('each page shelves only its own kind and opens screenplay '
       'workspaces', (tester) async {
     tester.view.physicalSize = const Size(320, 844);
@@ -77,8 +97,13 @@ void main() {
       path: path,
     );
     final novel = _novel(tags: ['Novel tag']);
+    final canvas = _novel(
+      id: 'canvas',
+      title: 'Hidden canvas',
+      kind: contentKindCanvas,
+    );
     // 书架按集合取作品，集合结果来自数据库，作品和默认集合都得真的落库。
-    for (final work in [novel, script]) {
+    for (final work in [novel, script, canvas]) {
       await appDb.into(appDb.novels).insert(work.toCompanion(true));
     }
     await seedCollections(
@@ -94,12 +119,15 @@ void main() {
         overrides: [
           appDatabaseProvider.overrideWithValue(appDb),
           novelContentDatabaseProvider(path).overrideWithValue(contentDb),
-          novelsProvider.overrideWith((ref) => Stream.value([novel, script])),
+          novelsProvider.overrideWith(
+            (ref) => Stream.value([novel, script, canvas]),
+          ),
         ],
         child: _wrap(const MobileLibraryPage(contentKind: contentKindNovel)),
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Hidden canvas'), findsNothing);
     // 小说页里没有剧本。
     expect(_inGrid('Compact test novel'), findsWidgets);
     expect(find.byType(MobileScreenplayMetaLabel), findsNothing);
@@ -109,7 +137,9 @@ void main() {
         overrides: [
           appDatabaseProvider.overrideWithValue(appDb),
           novelContentDatabaseProvider(path).overrideWithValue(contentDb),
-          novelsProvider.overrideWith((ref) => Stream.value([novel, script])),
+          novelsProvider.overrideWith(
+            (ref) => Stream.value([novel, script, canvas]),
+          ),
         ],
         child: _wrap(
           const MobileLibraryPage(contentKind: contentKindScreenplay),

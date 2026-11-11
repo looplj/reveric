@@ -59,6 +59,7 @@ class RevericMarkdownEditor extends ConsumerStatefulWidget {
     this.autoHeight = false,
     this.showToolbar = true,
     this.minHeight,
+    this.borderless = false,
   });
 
   /// 工具栏「复制全文」按钮，供测试定位。
@@ -90,13 +91,15 @@ class RevericMarkdownEditor extends ConsumerStatefulWidget {
   /// [autoHeight] 下的最小高度，避免空字段塌成一行。
   final double? minHeight;
 
+  /// 不画底色和边框，由宿主容器（如画布文本节点的卡片）充当输入框外观。
+  final bool borderless;
+
   @override
   ConsumerState<RevericMarkdownEditor> createState() =>
       _RevericMarkdownEditorState();
 }
 
-class _RevericMarkdownEditorState
-    extends ConsumerState<RevericMarkdownEditor> {
+class _RevericMarkdownEditorState extends ConsumerState<RevericMarkdownEditor> {
   late MarkdownBlockController _blockController;
   final GlobalKey<MarkdownBlockListViewState> _blockListKey = GlobalKey();
   bool _postFrameRebuildScheduled = false;
@@ -321,17 +324,19 @@ class _RevericMarkdownEditorState
         constraints: widget.autoHeight && widget.minHeight != null
             ? BoxConstraints(minHeight: widget.minHeight!)
             : null,
-        decoration: BoxDecoration(
-          color: fillColor,
-          borderRadius: BorderRadius.circular(RevericRadius.xl),
-          border: Border.all(
-            color: hasError
-                ? colors.deletionBorder
-                : widget.disabled
-                ? colors.borderSubtle
-                : colors.borderInput,
-          ),
-        ),
+        decoration: widget.borderless
+            ? null
+            : BoxDecoration(
+                color: fillColor,
+                borderRadius: BorderRadius.circular(RevericRadius.xl),
+                border: Border.all(
+                  color: hasError
+                      ? colors.deletionBorder
+                      : widget.disabled
+                      ? colors.borderSubtle
+                      : colors.borderInput,
+                ),
+              ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(RevericRadius.xl),
           child: MarkdownBlockListView(

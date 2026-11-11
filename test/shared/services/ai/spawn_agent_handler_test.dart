@@ -1000,6 +1000,40 @@ void main() {
     },
   );
 
+  test(
+    'canvas subagent initializes with canvas tool scope and resource paths',
+    () async {
+      final client = FakeProviderClient(
+        responses: const [FakeProviderClientResponse.text('Done')],
+      );
+      final expert = reviewer.copyWith(prompt: 'Review this work.');
+      final handler = buildHandler(
+        client,
+        availableSubAgents: [expert],
+        toolManager: workTools(contentKindCanvas),
+        allowedToolNames: () => ['Read'],
+        workContext: AiSessionContext(
+          workId: novelId,
+          contentKind: contentKindCanvas,
+        ),
+      );
+      final result = await handler.run(
+        input: {
+          'agent': expert.name,
+          'name': 'Reviewer',
+          'task': 'Review the canvas',
+        },
+      );
+      expect(result['ok'], true, reason: '$result');
+      final system =
+          client.capturedStreamRequests.single.messages.first.content;
+      expect(system, contains('当前作品类型：画布'));
+      expect(system, contains('production/clips/{clip_id}'));
+      expect(system, isNot(contains('chapters/{chapter_id}')));
+      expect(system, isNot(contains('scenes/{scene_id}')));
+    },
+  );
+
   for (final kind in [contentKindNovel, contentKindScreenplay]) {
     test(
       'chronicler loads skill with $kind paths on new and reused sessions',

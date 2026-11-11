@@ -54,6 +54,9 @@ import 'audio_node.dart';
 import 'upload.dart';
 import 'certification.dart';
 import 'support.dart';
+import 'node_title.dart';
+import 'text_node.dart';
+import 'editing_node.dart';
 
 /// 节点有哪些连线口；flow 端口和卡片上的悬停提示点共用这一份判断。
 /// [derived]：有来源连线的产物节点（导演台导出、视频处理结果），左侧带一个只接来源连线的入口。
@@ -66,7 +69,8 @@ import 'support.dart';
       node.isGenerationNode ||
       node.mediaAssetId != null ||
       node.type == canvasNodeTypeStaging ||
-      node.type == canvasNodeTypeGroup,
+      node.type == canvasNodeTypeGroup ||
+      node.type == canvasNodeTypeText,
 );
 
 /// 端口直径；端口由 flow 画在卡片左右边上。
@@ -120,6 +124,7 @@ class ProductionNodeCard extends HookWidget {
     this.storyboardNumber,
     this.onOpenDirector,
     this.taskActions,
+    this.textTitle,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
@@ -140,6 +145,9 @@ class ProductionNodeCard extends HookWidget {
   final int? storyboardNumber;
   final VoidCallback? onOpenDirector;
   final ProductionTaskActions? taskActions;
+
+  /// 卡片外标题的改名状态，由画布持有；正在改这个节点的标题时卡片收起自己的标题。
+  final ProductionNodeTitle? textTitle;
 
   /// 片段节点的「段 x-y」；null 表示自由视频节点。
   final String? segmentLabel;
@@ -186,6 +194,23 @@ class ProductionNodeCard extends HookWidget {
         [service, node.mediaAssetId],
       ),
     ).data;
+    final titleEditing = useListenableSelector(
+      textTitle?.editing,
+      () => textTitle?.editing.value == node.id,
+    );
+    final editing = useStream(
+      useMemoized(
+        () => node.editingId == null
+            ? const Stream<VideoEditingRow?>.empty()
+            : (service.db.select(service.db.videoEditings)..where(
+                    (t) =>
+                        t.id.equals(node.editingId!) &
+                        t.deletedAt.equals(notDeletedSentinel),
+                  ))
+                  .watchSingleOrNull(),
+        [service, node.editingId],
+      ),
+    );
     final ports = productionNodePorts(node, derived: fromDirector || derived);
     final radius = BorderRadius.circular(
       storyboardCell ? 0 : RevericRadius.canvasNode,
@@ -193,6 +218,17 @@ class ProductionNodeCard extends HookWidget {
     final lit = hovered.value || selected;
     final ring = canvasNodeSelectionRing(colors, colors.accent);
     final body = switch (node.type) {
+      canvasNodeTypeEditing => ProductionEditingNode(
+        service: service,
+        node: node,
+        editing: editing,
+      ),
+      canvasNodeTypeText => ProductionTextNode(
+        service: service,
+        node: node,
+        selected: selected,
+        title: textTitle,
+      ),
       canvasNodeTypeAudio => ProductionAudioNode(
         service: service,
         node: node,
@@ -300,12 +336,18 @@ class ProductionNodeCard extends HookWidget {
                   scale: headerScale,
                   lifted: lit,
                   child: _NodeHeader(
-                    node: (row: node, mediaType: media),
+                    node: (
+                      row: editing.data == null
+                          ? node
+                          : node.copyWith(title: editing.data!.title),
+                      mediaType: media,
+                    ),
                     clip: clip,
                     staging: staging,
                     segmentLabel: segmentLabel,
                     fromDirector: fromDirector,
                     lit: lit,
+                    editing: titleEditing,
                     certification: switch ((node.type, media)) {
                       (canvasNodeTypeImage, _) ||
                       (
@@ -440,6 +482,7 @@ class _NodeHeader extends StatelessWidget {
     required this.segmentLabel,
     required this.fromDirector,
     required this.lit,
+    this.editing = false,
     this.certification,
   });
   final ({CanvasNode row, String? mediaType}) node;
@@ -453,6 +496,9 @@ class _NodeHeader extends StatelessWidget {
 
   /// 卡片悬停或选中时名字提亮一级。
   final bool lit;
+
+  /// 正在改标题：输入框叠在名字原位（画布之上的浮层），这里只留类型图标。
+  final bool editing;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
@@ -469,6 +515,11 @@ class _NodeHeader extends StatelessWidget {
       canvasNodeTypeImage when clip?.itemId != null => (
         RevericIcons.inventory_2,
         LocaleKeys.workspaceSidebarCompendium,
+      ),
+      canvasNodeTypeText => (RevericIcons.file_text, LocaleKeys.productionText),
+      canvasNodeTypeEditing => (
+        RevericIcons.movie_outlined,
+        LocaleKeys.editingTitle,
       ),
       canvasNodeTypeImage => (RevericIcons.image, LocaleKeys.productionImage),
       canvasNodeTypeAudio => (RevericIcons.waveform, LocaleKeys.mediaAudio),
@@ -511,24 +562,28 @@ class _NodeHeader extends StatelessWidget {
         children: [
           RevericIcon(icon, size: 12, color: colors.textMuted),
           const SizedBox(width: RevericSpacing.xxs),
-          if (segmentLabel != null) ...[
-            Text(segmentLabel!, maxLines: 1, style: muted),
-            if (name.isNotEmpty) const SizedBox(width: RevericSpacing.xs),
-          ],
-          if (name.isNotEmpty)
-            Flexible(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: typo.uiSmall.copyWith(
-                  color: lit ? colors.textPrimary : colors.textSecondary,
+          if (editing)
+            const SizedBox.shrink()
+          else ...[
+            if (segmentLabel != null) ...[
+              Text(segmentLabel!, maxLines: 1, style: muted),
+              if (name.isNotEmpty) const SizedBox(width: RevericSpacing.xs),
+            ],
+            if (name.isNotEmpty)
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: typo.uiSmall.copyWith(
+                    color: lit ? colors.textPrimary : colors.textSecondary,
+                  ),
                 ),
-              ),
-            )
-          else if (segmentLabel == null)
-            Text(context.t(type), maxLines: 1, style: muted),
-          ?certification,
+              )
+            else if (segmentLabel == null)
+              Text(context.t(type), maxLines: 1, style: muted),
+            ?certification,
+          ],
         ],
       ),
     );

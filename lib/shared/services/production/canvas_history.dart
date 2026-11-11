@@ -13,6 +13,35 @@ import 'package:flutter/foundation.dart';
 import '../../database/novel_content_database.dart';
 import '../storyboard/service.dart';
 
+final _promptCleanupScopeKey = Object();
+
+class _PromptCleanupScope {
+  _PromptCleanupScope(this.shots);
+  final StoryboardService shots;
+  final changes = <String, ({String before, String after})>{};
+}
+
+/// 仅文本结构删除可声明提示词恢复字段；普通 prompt 保存不进入这份名单。
+void recordCanvasPromptCleanup(
+  StoryboardService shots,
+  String clipId, {
+  required String before,
+  required String after,
+}) {
+  final scope = Zone.current[_promptCleanupScopeKey] as _PromptCleanupScope?;
+  if (scope == null || before == after) {
+    return;
+  }
+  if (!identical(scope.shots.database, shots.database)) {
+    throw StateError('Canvas prompt cleanup belongs to a different database');
+  }
+  final previous = scope.changes[clipId];
+  if (previous != null && previous.after != before) {
+    throw StateError('Unrelated prompt write during canvas text deletion');
+  }
+  scope.changes[clipId] = (before: previous?.before ?? before, after: after);
+}
+
 /// 界面可以将冲突转换成提示；失败步骤已经移出对应栈，其他步骤仍保留。
 class CanvasHistoryConflict implements Exception {
   const CanvasHistoryConflict();
@@ -74,14 +103,32 @@ class CanvasHistory extends ChangeNotifier {
     final result = await shots.write('HISTORY_RECORD', canvasId, () async {
       final roots = nodeIds.toSet();
       final before = await _capture(roots);
-      final result = await action();
+      final cleanup = _PromptCleanupScope(shots);
+      final result = await runZoned(
+        action,
+        zoneValues: {_promptCleanupScopeKey: cleanup},
+      );
       if (result is CanvasNode) {
         roots.add(result.id);
       } else if (result is Iterable<CanvasNode>) {
         roots.addAll(result.map((node) => node.id));
       }
       final after = await _capture(roots, include: before);
-      step = _CanvasHistoryStep(label, roots, before, after);
+      for (final entry in cleanup.changes.entries) {
+        if (before.clips[entry.key]?.prompt != entry.value.before ||
+            after.clips[entry.key]?.prompt != entry.value.after) {
+          throw StateError(
+            'Prompt cleanup must be isolated to captured text deletion',
+          );
+        }
+      }
+      step = _CanvasHistoryStep(
+        label,
+        roots,
+        before,
+        after,
+        cleanup.changes.keys.toSet(),
+      );
       return result;
     });
     if (!_disposed && !step.before.same(step.after)) {
@@ -114,7 +161,11 @@ class CanvasHistory extends ChangeNotifier {
           if (!current.same(step.expected)) {
             throw const CanvasHistoryConflict();
           }
-          await _write(redo ? step.after : step.before, current);
+          await _write(
+            redo ? step.after : step.before,
+            current,
+            step.promptClipIds,
+          );
           return _capture(step.roots, include: current);
         },
       );
@@ -135,7 +186,8 @@ class CanvasHistory extends ChangeNotifier {
 
   Future<_Snapshot> _capture(Set<String> roots, {_Snapshot? include}) async {
     final nodeIds = {...roots, ...?include?.nodes.keys};
-    final clipIds = {...?include?.clips.keys};
+    // 只有节点自身的 clip 扩展共享节点；下游快照 clip 不能反向纳入节点。
+    final clipIds = <String>{};
     final nodes = <String, CanvasNode>{};
     // 自动闭包只扩展有效关联行；显式根与已有快照仍保留 tombstone。
     // 后一步撤销产生的软删成员不应进入更早的父组快照。
@@ -180,6 +232,7 @@ class CanvasHistory extends ChangeNotifier {
     // inputs 为 converter 字段；只把真正引用范围内节点的下游行纳入快照。
     for (final clip in await _db.select(_db.productionClips).get()) {
       if (clipIds.contains(clip.id) ||
+          (include?.clips.containsKey(clip.id) ?? false) ||
           (clip.deletedAt == notDeletedSentinel &&
               clip.inputs.any(
                 (input) => nodeIds.contains(input.sourceNodeId),
@@ -195,10 +248,28 @@ class CanvasHistory extends ChangeNotifier {
                   t.id.isIn(include?.edges.keys ?? const <String>[]),
             ))
             .get();
-    return _Snapshot(nodes, {for (final edge in edges) edge.id: edge}, clips);
+    final editingIds = {
+      ...?include?.editings.keys,
+      for (final node in nodes.values)
+        if (node.type == canvasNodeTypeEditing && node.editingId != null)
+          node.editingId!,
+    };
+    final editings = await (_db.select(
+      _db.videoEditings,
+    )..where((t) => t.id.isIn(editingIds))).get();
+    return _Snapshot(
+      nodes,
+      {for (final edge in edges) edge.id: edge},
+      clips,
+      {for (final row in editings) row.id: row},
+    );
   }
 
-  Future<void> _write(_Snapshot target, _Snapshot current) async {
+  Future<void> _write(
+    _Snapshot target,
+    _Snapshot current,
+    Set<String> promptClipIds,
+  ) async {
     final now = DateTime.now();
     for (final row in current.edges.values) {
       if (!target.edges.containsKey(row.id)) {
@@ -222,6 +293,20 @@ class CanvasHistory extends ChangeNotifier {
       )..where((t) => t.id.equals(row.id))).write(
         ProductionClipsCompanion(
           inputs: Value(previous?.inputs ?? row.inputs),
+          prompt: promptClipIds.contains(row.id) && previous != null
+              ? Value(previous.prompt)
+              : const Value.absent(),
+          deletedAt: Value(previous?.deletedAt ?? now),
+          updatedAt: Value(previous?.updatedAt ?? row.updatedAt),
+        ),
+      );
+    }
+    for (final row in current.editings.values) {
+      final previous = target.editings[row.id];
+      await (_db.update(
+        _db.videoEditings,
+      )..where((t) => t.id.equals(row.id))).write(
+        VideoEditingsCompanion(
           deletedAt: Value(previous?.deletedAt ?? now),
           updatedAt: Value(previous?.updatedAt ?? row.updatedAt),
         ),
@@ -242,29 +327,38 @@ class CanvasHistory extends ChangeNotifier {
 }
 
 class _CanvasHistoryStep {
-  _CanvasHistoryStep(this.label, this.roots, this.before, this.after)
-    : expected = after;
+  _CanvasHistoryStep(
+    this.label,
+    this.roots,
+    this.before,
+    this.after,
+    this.promptClipIds,
+  ) : expected = after;
   final String label;
   final Set<String> roots;
   final _Snapshot before, after;
+  final Set<String> promptClipIds;
   _Snapshot expected;
 }
 
 class _Snapshot {
-  _Snapshot(this.nodes, this.edges, this.clips);
+  _Snapshot(this.nodes, this.edges, this.clips, this.editings);
   final Map<String, CanvasNode> nodes;
   final Map<String, CanvasEdge> edges;
   final Map<String, ProductionClipRow> clips;
+  final Map<String, VideoEditingRow> editings;
   bool same(_Snapshot other) => const DeepCollectionEquality().equals(
     [
       nodes.map((id, row) => MapEntry(id, row.toJson())),
       edges.map((id, row) => MapEntry(id, row.toJson())),
       clips.map((id, row) => MapEntry(id, _clipJson(row))),
+      editings.map((id, row) => MapEntry(id, _editingJson(row))),
     ],
     [
       other.nodes.map((id, row) => MapEntry(id, row.toJson())),
       other.edges.map((id, row) => MapEntry(id, row.toJson())),
       other.clips.map((id, row) => MapEntry(id, _clipJson(row))),
+      other.editings.map((id, row) => MapEntry(id, _editingJson(row))),
     ],
   );
 }
@@ -272,4 +366,9 @@ class _Snapshot {
 Map<String, dynamic> _clipJson(ProductionClipRow row) => {
   ...row.toJson(),
   'inputs': row.inputs.map((input) => input.toJson()).toList(),
+};
+
+Map<String, dynamic> _editingJson(VideoEditingRow row) => {
+  ...row.toJson(),
+  'document': row.document.toJson(),
 };

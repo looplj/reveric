@@ -72,7 +72,7 @@ final class StoryboardServiceProvider
   }
 }
 
-String _$storyboardServiceHash() => r'25d47fba72e8c3d3c3b5af5c3ba521ea45632b58';
+String _$storyboardServiceHash() => r'f2961a3579baeda5b2a83244d2dee5de6d2ff30e';
 
 final class StoryboardServiceFamily extends $Family
     with $FunctionalFamilyOverride<StoryboardService, String> {

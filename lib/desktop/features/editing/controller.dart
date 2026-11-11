@@ -280,7 +280,7 @@ class EditingController extends ChangeNotifier {
     );
   }
 
-  Future<void> importAdopted(BuildContext context, String episodeId) async {
+  Future<void> importAdopted(BuildContext context, String? episodeId) async {
     if (_disposed || importing || doc.clips.isNotEmpty) {
       return;
     }
@@ -292,10 +292,12 @@ class EditingController extends ChangeNotifier {
     importing = true;
     notifyListeners();
     try {
-      final (imported, skipped) = await session.projects.fromAdopted(
-        episodeId,
-        snapshot.ratio,
-      );
+      final (imported, skipped) = episodeId == null
+          ? await session.projects.fromCanvasAdopted(
+              session.editingId,
+              snapshot.ratio,
+            )
+          : await session.projects.fromAdopted(episodeId, snapshot.ratio);
       if (_disposed ||
           !context.mounted ||
           !identical(snapshot, session.document)) {

@@ -49,5 +49,8 @@
   "home.nav_works": "作品",
   "home.resume_eyebrow": "继续写",
   "home.resume_recent": "最近",
-  "home.resume_last_written": "上次写于 {time}"
+  "home.resume_last_written": "上次写于 {time}",
+  "home.resume_eyebrow_canvas": "继续制作",
+  "home.resume_open_canvas": "打开画布",
+  "home.resume_last_edited": "上次编辑于 {time}"
 }

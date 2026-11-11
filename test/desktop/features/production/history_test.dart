@@ -34,6 +34,38 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
   });
+  for (final canvasWork in [false, true]) {
+    testWidgets(
+      'Text is available in the ${canvasWork ? 'canvas work' : 'screenplay'} add menu',
+      (tester) async {
+        ProductionAddKind? selected;
+        await tester.pumpWidget(
+          _wrap(
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: ProductionAddDock(
+                canvasWork: canvasWork,
+                enabled: (_) => true,
+                onAdd: (kind) => selected = kind,
+                onImport: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Add node'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Text'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Text'));
+        await tester.pumpAndSettle();
+        expect(selected, ProductionAddKind.text);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
   for (final scenario in ['shortcuts', 'text focus', 'conflict']) {
     testWidgets('canvas history $scenario', (tester) async {
       final db = NovelContentDatabase.forTest(NativeDatabase.memory());

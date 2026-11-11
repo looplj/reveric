@@ -62,27 +62,33 @@ class ToolPermissionContext {
   final String workId;
   final String? sessionId;
   final String? episodeId;
-  List<ToolPermissionScope> get scopes => [
-    if (sessionId != null)
-      ToolPermissionScope(
-        ToolPermissionScopeType.session,
-        workId: workId,
-        id: sessionId!,
-      ),
-    if (episodeId != null)
-      ToolPermissionScope(
-        ToolPermissionScopeType.episode,
-        workId: workId,
-        id: episodeId!,
-      ),
-    if (workId.isNotEmpty)
-      ToolPermissionScope(
-        ToolPermissionScopeType.work,
-        workId: workId,
-        id: workId,
-      ),
-    const ToolPermissionScope.global(),
-  ];
+
+  /// Blank ids are absent scopes. Canvas works store an empty episode id.
+  List<ToolPermissionScope> get scopes {
+    final session = sessionId;
+    final episode = episodeId;
+    return [
+      if (session != null && session.isNotEmpty)
+        ToolPermissionScope(
+          ToolPermissionScopeType.session,
+          workId: workId,
+          id: session,
+        ),
+      if (episode != null && episode.isNotEmpty)
+        ToolPermissionScope(
+          ToolPermissionScopeType.episode,
+          workId: workId,
+          id: episode,
+        ),
+      if (workId.isNotEmpty)
+        ToolPermissionScope(
+          ToolPermissionScopeType.work,
+          workId: workId,
+          id: workId,
+        ),
+      const ToolPermissionScope.global(),
+    ];
+  }
 }
 
 class EffectiveToolPermission {

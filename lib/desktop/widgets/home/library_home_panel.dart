@@ -84,6 +84,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
       const Duration(milliseconds: 250),
     );
     final isScreenplay = contentKind == contentKindScreenplay;
+    final isCanvas = contentKind == contentKindCanvas;
     final settingsAsync = ref.watch(appSettingsProvider);
     final username = settingsAsync.maybeWhen(
       data: (s) => s.username.isNotEmpty ? s.username : null,
@@ -145,14 +146,20 @@ class HomeLibraryPanel extends HookConsumerWidget {
                   sliver: SliverToBoxAdapter(
                     child: GreetingHeader(
                       // 快速开书只落在小说库；剧本库导入走 AI 改编。
-                      onQuickStart: isScreenplay ? null : onQuickStart,
+                      onQuickStart: contentKind == contentKindNovel
+                          ? onQuickStart
+                          : null,
                       onCreateNovel: onCreateNovel,
                       createLabel: context.t(
-                        isScreenplay
+                        isCanvas
+                            ? LocaleKeys.libraryCreateCanvas
+                            : isScreenplay
                             ? LocaleKeys.libraryCreateScreenplay
                             : LocaleKeys.libraryCreateNovel,
                       ),
-                      onImport: isScreenplay
+                      onImport: isCanvas
+                          ? null
+                          : isScreenplay
                           ? onImportScreenplay
                           : onImportNovel,
                       importLabel: context.t(
@@ -229,7 +236,19 @@ class HomeLibraryPanel extends HookConsumerWidget {
                 else if (!isDraftFilter && novels.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: isScreenplay
+                    child: isCanvas
+                        ? RevericPlaceholder.empty(
+                            icon: RevericIcons.flow_arrow,
+                            title: context.t(LocaleKeys.libraryCreateCanvas),
+                            description: context.t(
+                              LocaleKeys.homeCreateCanvasCardSubtitle,
+                            ),
+                            action: RevericButton.primary(
+                              label: context.t(LocaleKeys.libraryCreateCanvas),
+                              onPressed: onCreateNovel,
+                            ),
+                          )
+                        : isScreenplay
                         ? EmptyScreenplayState(
                             onCreate: onCreateNovel,
                             onImport: onImportScreenplay,

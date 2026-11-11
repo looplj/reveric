@@ -22,8 +22,10 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       _currentResourceCallContext?.scope.kind.name ?? contentKind;
 
   @override
-  bool isScreenplayPath(ParsedPath parsed) =>
-      _resourceDefinitions[parsed.collection]?.group == 'screenplay';
+  bool isScreenplayPath(ParsedPath parsed) => const {
+    contentKindScreenplay,
+    contentKindCanvas,
+  }.contains(_resourceDefinitions[parsed.collection]?.group);
 
   @override
   Map<String, dynamic>? _contentKindGate(ParsedPath parsed) {
@@ -88,6 +90,10 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       _productionCanvas,
       _productionNodes,
       _productionEdges,
+      _canvasProductionDefinition,
+      _canvasProductionCanvas,
+      _canvasProductionNodes,
+      _canvasProductionEdges,
     }.contains(parsed._resource!.schema)) {
       return _executeProduction(parsed, operation, fields: fields);
     }
@@ -98,11 +104,12 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
         return {'ok': false, 'error_code': error.code, 'error': error.message};
       }
     }
-    if (parsed.collection == 'screenplay' &&
-        operation.tool != _ResourceTool.read) {
+    if ((parsed.collection == 'screenplay' &&
+            operation.tool != _ResourceTool.read) ||
+        parsed._resource.schema == _canvasProductionSettings) {
       return _executeScreenplayStyle(parsed, operation, fields, edit);
     }
-    if (parsed.collection == 'clips') {
+    if (parsed.resourceSegment == 'clips') {
       return _executeStoryboard(parsed, operation, fields: fields, edit: edit);
     }
     return switch (operation.tool) {

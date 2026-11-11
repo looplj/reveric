@@ -90,9 +90,10 @@ class _ResumeMain extends ConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final resume = watchWorkResumePoint(context, ref, work);
-    final isScreenplay = work.contentKind == contentKindScreenplay;
     final where = resume.where;
     final excerpt = resume.excerpt;
+    // 画布是制作而不是写作，措辞和入口图标跟着换。
+    final isCanvas = work.contentKind == contentKindCanvas;
 
     Future<void> resumeWriting() async {
       final chapterId = resume.chapterId;
@@ -116,12 +117,16 @@ class _ResumeMain extends ConsumerWidget {
                 Row(
                   children: [
                     Text(
-                      context.t(LocaleKeys.homeResumeEyebrow),
+                      context.t(
+                        isCanvas
+                            ? LocaleKeys.homeResumeEyebrowCanvas
+                            : LocaleKeys.homeResumeEyebrow,
+                      ),
                       style: typo.uiTinySemibold.copyWith(color: colors.accent),
                     ),
-                    if (isScreenplay) ...[
+                    if (work.contentKind != contentKindNovel) ...[
                       const SizedBox(width: RevericSpacing.sm),
-                      const ScreenplayKindMark(),
+                      ScreenplayKindMark(contentKind: work.contentKind),
                     ],
                   ],
                 ),
@@ -167,10 +172,13 @@ class _ResumeMain extends ConsumerWidget {
                     Expanded(
                       child: Text(
                         [
-                          if (!isScreenplay && work.wordCount > 0)
+                          if (work.contentKind == contentKindNovel &&
+                              work.wordCount > 0)
                             homeNovelWordCountLabel(context, work.wordCount),
                           context.t(
-                            LocaleKeys.homeResumeLastWritten,
+                            isCanvas
+                                ? LocaleKeys.homeResumeLastEdited
+                                : LocaleKeys.homeResumeLastWritten,
                             namedArgs: {
                               'time': formatHomeNovelUpdatedAt(
                                 context,
@@ -192,8 +200,14 @@ class _ResumeMain extends ConsumerWidget {
                     ),
                     const SizedBox(width: RevericSpacing.sm),
                     RevericButton.primary(
-                      label: context.t(LocaleKeys.homeFeaturedContinueWriting),
-                      icon: RevericIcons.pencil_simple,
+                      label: context.t(
+                        isCanvas
+                            ? LocaleKeys.homeResumeOpenCanvas
+                            : LocaleKeys.homeFeaturedContinueWriting,
+                      ),
+                      icon: isCanvas
+                          ? RevericIcons.flow_arrow
+                          : RevericIcons.pencil_simple,
                       size: RevericButtonSize.prominent,
                       onPressed: resumeWriting,
                     ),
@@ -256,17 +270,24 @@ class _ResumeCover extends ConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final coverPath = watchMediaAssetFile(ref, work.coverAssetId);
+    final isCanvas = work.contentKind == contentKindCanvas;
     return ClipRRect(
       borderRadius: BorderRadius.circular(RevericRadius.large),
       child: SizedBox(
-        width: 140,
+        width: isCanvas ? RevericSizes.canvasResumeCoverWidth : 140,
         child: AspectRatio(
-          aspectRatio: 3 / 4,
+          aspectRatio: isCanvas ? 16 / 10 : 3 / 4,
           child: Stack(
             fit: StackFit.expand,
             children: [
               if (coverPath != null)
-                Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 280)
+                Image.file(
+                  File(coverPath),
+                  fit: BoxFit.cover,
+                  cacheWidth: isCanvas ? 448 : 280,
+                )
+              else if (isCanvas)
+                const HomeCanvasPlaceholder(iconSize: 40)
               else
                 ColoredBox(
                   color: colors.accent,
@@ -395,9 +416,9 @@ class _RecentItem extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      if (work.contentKind == contentKindScreenplay) ...[
+                      if (work.contentKind != contentKindNovel) ...[
                         const SizedBox(width: RevericSpacing.xs),
-                        const ScreenplayKindMark(),
+                        ScreenplayKindMark(contentKind: work.contentKind),
                       ],
                     ],
                   ),

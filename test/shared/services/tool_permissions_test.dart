@@ -153,6 +153,28 @@ void main() {
       expect(await db.select(db.toolPermissionRules).get(), hasLength(1));
     },
   );
+
+  test('blank episode id is not an episode scope', () async {
+    const canvas = ToolPermissionContext(
+      workId: 'work',
+      sessionId: 'session',
+      episodeId: '',
+    );
+    expect(canvas.scopes.map((scope) => scope.type), [
+      ToolPermissionScopeType.session,
+      ToolPermissionScopeType.work,
+      ToolPermissionScopeType.global,
+    ]);
+    await service.setRule(action, work, ToolPermissionDecision.allow);
+    expect((await service.resolve(action, canvas)).source, work);
+    const noSession = ToolPermissionContext(
+      workId: 'work',
+      sessionId: '',
+      episodeId: '',
+    );
+    expect((await service.resolve(action, noSession)).source, work);
+  });
+
   test(
     'approval binds frozen inputs, saves scope before execution and is single-use',
     () async {

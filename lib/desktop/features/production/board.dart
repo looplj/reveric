@@ -58,6 +58,7 @@ import 'grid/outlet.dart';
 import 'grid/group_titles.dart';
 import 'grid/session.dart';
 import 'node_card.dart';
+import 'node_title.dart';
 import 'selection_layer.dart';
 import 'selection_actions.dart';
 import 'view/region.dart';
@@ -124,6 +125,7 @@ class ProductionBoard extends HookConsumerWidget {
     this.tools,
     this.topInset = 0,
     this.controls = const [],
+    this.empty,
     this.taskActions,
   });
   final ProductionCanvasService service;
@@ -161,6 +163,7 @@ class ProductionBoard extends HookConsumerWidget {
   /// 导演台节点卡片上的「打开导演台」。
   final ValueChanged<CanvasNode> onOpenDirector;
   final ProductionBoardCamera camera;
+  final Widget? empty;
 
   /// 贴在选中节点上沿的工具条。
   final Widget? bar;
@@ -239,6 +242,8 @@ class ProductionBoard extends HookConsumerWidget {
       [bands],
     );
     useEffect(() => controller.dispose, [controller]);
+    final textTitle = useMemoized(ProductionNodeTitle.new);
+    useEffect(() => textTitle.dispose, [textTitle]);
     // 平移也会换掉 viewport 值；标题只跟放大倍数走，倍数不变时不让每张卡片的标题重建。
     final headerScale = useMemoized(
       () => Computed(
@@ -319,25 +324,45 @@ class ProductionBoard extends HookConsumerWidget {
       );
     }
 
-    controller.resolvePlugin<ProductionGroupTitles>()!.labels = {
-      for (final (index, group)
-          in nodes.where((n) => n.type == canvasNodeTypeGroup).indexed)
-        group.id:
-            ProductionGroupLayout.fromStyle(group.style)
-                is StoryboardGroupLayout
-            ? context.t(
-                LocaleKeys.productionGroupCount,
-                namedArgs: {
-                  'title': group.title.isEmpty
-                      ? context.t(LocaleKeys.productionGroupStoryboard)
-                      : group.title,
-                  'count': '${membersByParent[group.id]?.length ?? 0}',
-                },
-              )
-            : group.title.isEmpty
-            ? '${context.t(LocaleKeys.productionGroupFree)} ${index + 1}'
-            : group.title,
-    };
+    // 点未选中节点的标题：先由画布完成选中（可能被未保存的编辑拦下），选中落定后再进入标题编辑。
+    final titleRequest = useRef<({String id, DateTime at})?>(null);
+    useEffect(() {
+      final request = titleRequest.value;
+      titleRequest.value = null;
+      if (request == null ||
+          request.id != selected ||
+          DateTime.now().difference(request.at) > const Duration(seconds: 1)) {
+        return null;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          textTitle.starters[request.id]?.call();
+        }
+      });
+      return null;
+    }, [selected]);
+    controller.resolvePlugin<ProductionGroupTitles>()!
+      ..headerScale = (() => headerScale.value)
+      ..onTitleTap = ((id) => titleRequest.value = (id: id, at: DateTime.now()))
+      ..labels = {
+        for (final (index, group)
+            in nodes.where((n) => n.type == canvasNodeTypeGroup).indexed)
+          group.id:
+              ProductionGroupLayout.fromStyle(group.style)
+                  is StoryboardGroupLayout
+              ? context.t(
+                  LocaleKeys.productionGroupCount,
+                  namedArgs: {
+                    'title': group.title.isEmpty
+                        ? context.t(LocaleKeys.productionGroupStoryboard)
+                        : group.title,
+                    'count': '${membersByParent[group.id]?.length ?? 0}',
+                  },
+                )
+              : group.title.isEmpty
+              ? '${context.t(LocaleKeys.productionGroupFree)} ${index + 1}'
+              : group.title,
+      };
 
     final sizeKey = nodes
         .map((n) {
@@ -391,6 +416,12 @@ class ProductionBoard extends HookConsumerWidget {
               ProductionGroupLayout.fromStyle(parent.style)
                   is StoryboardGroupLayout)
             node.id: parent.id,
+    };
+    controller.resolvePlugin<ProductionGroupTitles>()!.titled = {
+      for (final node in nodes)
+        if (node.type != canvasNodeTypeGroup &&
+            !interaction.storyboardParents.containsKey(node.id))
+          node.id,
     };
     final edgeIds = {for (final e in edges) e.id};
     // 导演台导出结果：有 staging_output 入边的素材节点。
@@ -541,12 +572,14 @@ class ProductionBoard extends HookConsumerWidget {
     final connectionLabels = {
       for (final edge in edges)
         if (edge.role case final role?)
-          edge.id: productionRole(
-            context,
-            VideoInputRole.values.byName(role),
-            mode: clipInfo?[byId[edge.targetNodeId]?.clipId]?.mode,
-            middleFrameIndex: edge.middleFrameIndex,
-          ),
+          edge.id: role == 'prompt'
+              ? context.t(LocaleKeys.productionText)
+              : productionRole(
+                  context,
+                  VideoInputRole.values.byName(role),
+                  mode: clipInfo?[byId[edge.targetNodeId]?.clipId]?.mode,
+                  middleFrameIndex: edge.middleFrameIndex,
+                ),
     };
     useEffect(
       () {
@@ -767,7 +800,8 @@ class ProductionBoard extends HookConsumerWidget {
               for (final edge in controller.connections)
                 if (edge.targetNodeId == target?.id &&
                     edge.sourceNodeId != source?.id)
-                  if (latest.value[edge.sourceNodeId] case final existing?)
+                  if (latest.value[edge.sourceNodeId] case final existing?
+                      when existing.type != canvasNodeTypeText)
                     existing.isGenerationNode
                         ? existing.type
                         : latestAssetTypes.value[existing.mediaAssetId] ?? '',
@@ -793,7 +827,8 @@ class ProductionBoard extends HookConsumerWidget {
                 context.targetPort.id == _portIn &&
                 target?.isGenerationNode == true &&
                 mode != null &&
-                (audioAllowed ||
+                (source?.type == canvasNodeTypeText ||
+                    audioAllowed ||
                     (target?.type == canvasNodeTypeImage
                             ? const [VideoInputRole.reference_image]
                             : target?.type == canvasNodeTypeAudio
@@ -999,6 +1034,7 @@ class ProductionBoard extends HookConsumerWidget {
                             onOpenDirector: () =>
                                 latestOnOpenDirector.value(row),
                             taskActions: cardTaskActions,
+                            textTitle: textTitle,
                           );
                           return parent is ProductionFlowGroup &&
                                   layout is StoryboardGroupLayout
@@ -1018,14 +1054,15 @@ class ProductionBoard extends HookConsumerWidget {
                   ),
                 ),
                 if (nodes.isEmpty)
-                  Center(
-                    child: IgnorePointer(
-                      child: Text(
-                        context.t(LocaleKeys.productionEmpty),
-                        style: typo.ui.copyWith(color: colors.textMuted),
+                  empty ??
+                      Center(
+                        child: IgnorePointer(
+                          child: Text(
+                            context.t(LocaleKeys.productionEmpty),
+                            style: typo.ui.copyWith(color: colors.textMuted),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
                 Positioned.fill(
                   child: ProductionGroupOutlet(
                     controller: controller,
@@ -1048,6 +1085,29 @@ class ProductionBoard extends HookConsumerWidget {
                     trailingInset: composerTrailingInset,
                     bottomInset: composerBottomInset,
                     headerExtent: productionNodeHeaderExtent,
+                    // 文本节点的标题随正文一起编辑、一起保存；其余节点只改标题。
+                    title: switch (byId[selected]!.type) {
+                      canvasNodeTypeGroup => const SizedBox.shrink(),
+                      canvasNodeTypeText => ProductionNodeTitleField(
+                        key: ValueKey('title/$selected'),
+                        title: textTitle,
+                        nodeId: selected!,
+                      ),
+                      _ =>
+                        interaction.storyboardParents.containsKey(selected)
+                            ? const SizedBox.shrink()
+                            : ProductionNodeTitleField(
+                                key: ValueKey('title/$selected'),
+                                title: textTitle,
+                                nodeId: selected!,
+                                load: () => service.nodeTitle(selected!),
+                                commit: (text) => service.renameNode(
+                                  selected!,
+                                  text,
+                                  history: history,
+                                ),
+                              ),
+                    },
                     bar:
                         bar == null ||
                             interaction.storyboardParents.containsKey(selected)
@@ -1442,7 +1502,7 @@ class _Band extends StatelessWidget {
   }
 }
 
-enum _AnchorSlot { bar, composer }
+enum _AnchorSlot { bar, composer, title }
 
 /// 按视口把工具条贴在节点上沿、输入框贴在下沿，并夹在视口内。
 /// 两者一起排版：输入框被视口底边顶上去时，工具条随之上移停在输入框上方，两者不重叠。
@@ -1451,6 +1511,7 @@ class _Anchored extends StatelessWidget {
     required this.controller,
     required this.nodeId,
     required this.composer,
+    required this.title,
     this.bar,
     this.topInset = 0,
     this.trailingInset = 0,
@@ -1461,6 +1522,9 @@ class _Anchored extends StatelessWidget {
   final String nodeId;
   final Widget? bar;
   final Widget composer;
+
+  /// 叠在节点标题原位的可输入标题（文本节点编辑时）；不可见时不占命中。
+  final Widget title;
   final double topInset;
   final double trailingInset;
   final double bottomInset;
@@ -1483,10 +1547,8 @@ class _Anchored extends StatelessWidget {
               .toScreen(flow.GraphPosition(node.position.value))
               .offset;
           // 标题按缩放反向放大过，工具条要让过放大后的高度。
-          final header =
-              headerExtent *
-              viewport.zoom *
-              productionHeaderScale(viewport.zoom);
+          final scale = viewport.zoom * productionHeaderScale(viewport.zoom);
+          final header = headerExtent * scale;
           return CustomMultiChildLayout(
             delegate: _AnchorLayout(
               Rect.fromLTRB(
@@ -1499,8 +1561,18 @@ class _Anchored extends StatelessWidget {
               topInset,
               trailingInset,
               bottomInset,
+              viewport.zoom,
             ),
             children: [
+              LayoutId(
+                id: _AnchorSlot.title,
+                // 与卡片标题同一套缩放：按未缩放尺寸排版，再整体放大到屏幕尺寸。
+                child: Transform.scale(
+                  scale: scale,
+                  alignment: Alignment.topLeft,
+                  child: title,
+                ),
+              ),
               if (bar != null) LayoutId(id: _AnchorSlot.bar, child: bar!),
               LayoutId(
                 id: _AnchorSlot.composer,
@@ -1522,7 +1594,9 @@ class _AnchorLayout extends MultiChildLayoutDelegate {
     this.topInset,
     this.trailingInset,
     this.bottomInset,
+    this.zoom,
   );
+  final double zoom;
   final Rect rect;
   final double header;
   final double topInset;
@@ -1535,6 +1609,25 @@ class _AnchorLayout extends MultiChildLayoutDelegate {
 
   @override
   void performLayout(Size size) {
+    // 标题落在卡片标题原位（含选中时的上浮），尺寸是缩放前的画布尺寸。
+    final scale = header / productionNodeHeaderExtent;
+    final inset = RevericSpacing.xxs * zoom;
+    layoutChild(
+      _AnchorSlot.title,
+      BoxConstraints.tight(
+        Size(
+          math.max(0, (rect.width - inset) / scale),
+          productionNodeHeaderExtent,
+        ),
+      ),
+    );
+    positionChild(
+      _AnchorSlot.title,
+      Offset(
+        rect.left + inset,
+        rect.top - header - productionNodeHeaderExtent * zoom * .16,
+      ),
+    );
     final top = topInset + _margin;
     final maxHeight = math.max(
       0.0,
@@ -1600,6 +1693,7 @@ class _AnchorLayout extends MultiChildLayoutDelegate {
   bool shouldRelayout(_AnchorLayout old) =>
       old.rect != rect ||
       old.header != header ||
+      old.zoom != zoom ||
       old.topInset != topInset ||
       old.trailingInset != trailingInset ||
       old.bottomInset != bottomInset;

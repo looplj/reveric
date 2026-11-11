@@ -160,5 +160,10 @@
   "library.collection_order_failed": "顺序保存失败，已保留上次保存的顺序。",
   "library.adapt_banner_title": "从小说改编",
   "library.adapt_banner_hint": "选一本小说作为原著，书名、简介和标签会一并带入。",
-  "library.adapt_no_source_novels": "书架上还没有小说"
+  "library.adapt_no_source_novels": "书架上还没有小说",
+  "library.content_kind_canvas": "画布",
+  "library.create_canvas": "新建画布",
+  "library.default_canvas_title": "未命名画布",
+  "library.create_canvas_card_title": "新建画布",
+  "library.create_canvas_card_subtitle": "从剧本、提示词或素材开始"
 }

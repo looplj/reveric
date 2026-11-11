@@ -126,8 +126,7 @@ class ProductionPanoramaCommands {
       callId: callId,
       workId: host.canvas.novelId,
       kind: spec.operation,
-      targetPath:
-          '/episodes/${source.episodeId}/production/canvas/nodes/$nodeId',
+      targetPath: productionNodePath(source.episodeId, nodeId),
       toolName: 'Run',
       background: true,
       input: options,

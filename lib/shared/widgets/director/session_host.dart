@@ -1,7 +1,7 @@
 // 职责: 在导演页面存活期间加载、持有并释放共享编辑会话。
 // 关联文件:
 //   lib/shared/services/director/session.dart
-//   lib/shared/services/director/actor_models.dart
+//   lib/shared/widgets/screenplay/director_host.dart
 //   lib/shared/widgets/director/workspace.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/director.json
@@ -11,11 +11,9 @@
 // 遵循的 Rules: .agents/rules/hooks.md
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_scene/scene.dart';
 import '../../components/reveric_button.dart';
 import '../../components/reveric_placeholder.dart';
 import '../../logger/app_logger.dart';
-import '../../services/director/actor_models.dart';
 import '../../services/director/session.dart';
 import '../../theme/theme.dart';
 import 'strings.dart';
@@ -29,16 +27,13 @@ class DirectorSessionHost extends HookWidget {
     required this.onClose,
     required this.builder,
   });
+  /// 宿主先准备所用视口的依赖，再加载会话；自定义视口不需要默认 GPU 资源。
   final Future<DirectorSession> Function() sessionLoader;
   final VoidCallback onClose;
   final Widget Function(BuildContext, DirectorSession) builder;
   @override
   Widget build(BuildContext context) {
-    final future = useMemoized(() async {
-      await Scene.initializeStaticResources();
-      await ActorModels.load();
-      return sessionLoader();
-    }, [sessionLoader]);
+    final future = useMemoized(sessionLoader, [sessionLoader]);
     final result = useFuture(future), owned = useRef<DirectorSession?>(null);
     useEffect(() {
       var disposed = false;

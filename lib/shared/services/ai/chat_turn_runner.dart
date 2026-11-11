@@ -636,6 +636,7 @@ class ChatTurnRunner {
               container
                   .read(novelContentServiceProvider(operationDatabasePath))
                   .database,
+              contentKind: novel.contentKind,
             ),
             container.read(mediaLibraryServiceProvider),
             novel.id,

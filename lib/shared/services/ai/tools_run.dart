@@ -1766,6 +1766,12 @@ mixin _AiToolManagerRunMixin
     Map<String, dynamic> options,
     DateTime startedAt,
   ) async {
+    if (contentKind == contentKindCanvas) {
+      throw const ToolOperationException(
+        'unsupported',
+        'Canvas works do not expose subjects. Use production clips.',
+      );
+    }
     final usage = _usageForSubjectImage(spec.operation);
     final prompt = _requiredOption(options, 'prompt', usage: usage);
     final subjectKey = spec.command == 'item' ? 'item' : 'character';

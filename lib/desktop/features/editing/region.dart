@@ -8,6 +8,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -50,7 +52,7 @@ class EditingRegion extends HookConsumerWidget {
     required this.registerFlush,
   });
   final String novelId;
-  final ({String path, String episodeId}) identity;
+  final ({String path, String? episodeId}) identity;
   final String editingId;
   final VoidCallback onClose;
   final ValueChanged<Future<void> Function()?> registerFlush;
@@ -59,7 +61,9 @@ class EditingRegion extends HookConsumerWidget {
     final projects = ref.watch(editingServiceProvider(identity.path));
     final renderer = ref.watch(editingRenderServiceProvider(identity.path));
     final settings = ref
-        .watch(episodeProductionProvider(identity.path, identity.episodeId))
+        .watch(
+          episodeProductionProvider(identity.path, identity.episodeId ?? ''),
+        )
         .value;
     final sessions = ref.watch(editingSessionsProvider);
     final session = useMemoized(() => sessions.get(projects, editingId), [
@@ -73,7 +77,14 @@ class EditingRegion extends HookConsumerWidget {
     useListenable(session);
     useListenable(controller);
     final ratio = settings?.ratio;
-    final load = useFuture(useMemoized(session.ensureLoaded, [session]));
+    final load = useFuture(
+      useMemoized(() async {
+        if (identity.episodeId == null) {
+          await projects.canvasForEditing(editingId);
+        }
+        await session.ensureLoaded();
+      }, [session, identity]),
+    );
     final timelineHeight = useState(368.0);
     final register = useRef(registerFlush)..value = registerFlush;
     useEffect(() {
@@ -119,10 +130,11 @@ class EditingRegion extends HookConsumerWidget {
 
     Future<void> export() async {
       await session.flush();
-      final episode = await projects.database.screenplayDao.getEpisode(
-        identity.episodeId,
-      );
-      if (episode == null) {
+      final episodeId = identity.episodeId;
+      final episode = episodeId == null
+          ? null
+          : await projects.database.screenplayDao.getEpisode(episodeId);
+      if (episodeId != null && episode == null) {
         throw StateError('The episode no longer exists.');
       }
       if (!context.mounted) {
@@ -132,11 +144,13 @@ class EditingRegion extends HookConsumerWidget {
         context,
         renderer: renderer,
         document: session.document!,
-        title: editingEpisodeExportName(
-          context,
-          episode.episodeNumber,
-          episode.title,
-        ),
+        title: episode == null
+            ? session.title
+            : editingEpisodeExportName(
+                context,
+                episode.episodeNumber,
+                episode.title,
+              ),
       );
     }
 
@@ -198,8 +212,14 @@ class EditingRegion extends HookConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RevericIconButton(
-                    icon: RevericIcons.close,
-                    tooltip: context.t(LocaleKeys.commonClose),
+                    icon: identity.episodeId == null
+                        ? RevericIcons.arrow_back
+                        : RevericIcons.close,
+                    tooltip: context.t(
+                      identity.episodeId == null
+                          ? LocaleKeys.productionBackToCanvas
+                          : LocaleKeys.commonClose,
+                    ),
                     onPressed: () => editingRun(context, close),
                   ),
                   const SizedBox(width: RevericSpacing.sm),
@@ -381,7 +401,8 @@ class _Side extends StatelessWidget {
     required this.spec,
   });
   final EditingController controller;
-  final String novelId, path, episodeId, title, spec;
+  final String novelId, path, title, spec;
+  final String? episodeId;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);

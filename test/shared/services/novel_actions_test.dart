@@ -23,6 +23,12 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
+import 'package:reveric/shared/providers/video_tasks.dart';
+import 'package:reveric/shared/providers/production_media.dart';
+import 'package:reveric/shared/services/production/library_service.dart';
+import 'package:reveric/shared/services/production/media_service.dart';
+import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
+import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/content_kind.dart';
@@ -47,6 +53,95 @@ void main() {
   });
 
   group('NovelActionsService', () {
+    test(
+      'canvas creation has one root and board, no story hierarchy or onboarding',
+      () async {
+        await _configureTemporaryStorage('canvas_create');
+        final service = NovelActionsService(appDb);
+        await appDb.novelDao.create(
+          id: 'existing',
+          title: '未命名画布',
+          description: '',
+        );
+        final ids = await Future.wait([
+          service.createCanvas(defaultTitle: '未命名画布'),
+          service.createCanvas(defaultTitle: '未命名画布'),
+        ]);
+        final works = [for (final id in ids) (await appDb.novelDao.get(id))!];
+        expect(works.map((work) => work.title).toSet(), {'未命名画布 2', '未命名画布 3'});
+        for (final work in works) {
+          expect(work.id, matches(RegExp(r'^cnv_[A-Z0-9]{6}$')));
+          expect(work.contentKind, contentKindCanvas);
+          final content = NovelContentDatabase(work.contentDatabasePath!);
+          expect(await content.select(content.screenplays).get(), hasLength(1));
+          expect((await content.screenplayDao.getRoot())!.styleId, isNotNull);
+          final canvases = await content.select(content.canvases).get();
+          expect(canvases, hasLength(1));
+          expect(canvases.single.kind, canvasKindProduction);
+          expect(canvases.single.id, startsWith('can_'));
+          expect(
+            await content.select(content.screenplaySeasons).get(),
+            isEmpty,
+          );
+          expect(
+            await content.select(content.screenplayEpisodes).get(),
+            isEmpty,
+          );
+          expect(await content.select(content.screenplayScenes).get(), isEmpty);
+          expect(await content.select(content.chapters).get(), isEmpty);
+          expect(await content.novelStateDao.get('novel_onboarding'), isNull);
+          final clip = await StoryboardService(
+            content,
+            contentKind: work.contentKind,
+          ).createImage('');
+          final providers = ProviderContainer.test(
+            overrides: [
+              appDatabaseProvider.overrideWithValue(appDb),
+              mediaLibraryServiceProvider.overrideWithValue(
+                MediaLibraryService(
+                  appDb,
+                  MediaService(FfmpegRunner()),
+                  Directory.systemTemp,
+                ),
+              ),
+            ],
+          );
+          try {
+            await providers
+                .read(productionResultServiceProvider)
+                .beforeCreate(work.id, 'production_clip', clip.id);
+          } finally {
+            providers.dispose();
+          }
+
+          await content.close();
+          await service.ensureNovelContentDatabasePath(work);
+          final reopened = NovelContentDatabase(work.contentDatabasePath!);
+          expect(await reopened.select(reopened.chapters).get(), isEmpty);
+          expect(await reopened.select(reopened.canvases).get(), hasLength(1));
+          await reopened.close();
+        }
+      },
+    );
+
+    test(
+      'canvas initialization failure removes only its unregistered database',
+      () async {
+        final temporary = await _configureTemporaryStorage('canvas_failed');
+        await expectLater(
+          NovelActionsService(appDb).createNovel(
+            title: 'Failed canvas',
+            description: '',
+            contentKind: contentKindCanvas,
+            populateContent: (_) async =>
+                throw StateError('failure after initialization'),
+          ),
+          throwsStateError,
+        );
+        await _expectUnregisteredCreation(appDb, 'Failed canvas', temporary);
+      },
+    );
+
     test(
       'creates and deletes works without enqueuing conversion events',
       () async {

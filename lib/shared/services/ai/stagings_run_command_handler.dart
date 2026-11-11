@@ -61,10 +61,11 @@ extension _StagingsCommands on _AiToolManagerBase {
     String action,
     Map<String, dynamic> options,
   ) async {
-    if (contentKind != contentKindScreenplay) {
+    if (contentKind != contentKindScreenplay &&
+        contentKind != contentKindCanvas) {
       throw const ToolOperationException(
         'unavailable',
-        'Staging commands require a screenplay work.',
+        'Staging commands require a screenplay or canvas work.',
       );
     }
     final allowed = switch (action) {

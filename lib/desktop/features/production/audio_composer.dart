@@ -174,7 +174,10 @@ class _AudioForm extends HookConsumerWidget {
       () => form.getValue<String>(ShotField.audioInstructions) ?? '',
     );
     final showInstructions = useState(false);
-    final inputKinds = inputs.value.map((i) => i.role.kind.name).toList();
+    final inputKinds = inputs.value
+        .where((i) => !i.isPrompt)
+        .map((i) => i.role.kind.name)
+        .toList();
     final imageMode = inputKinds.contains('image');
     final referenceTypes = {
       for (final kind in capability?.model.references.keys ?? <String>[])
@@ -200,7 +203,7 @@ class _AudioForm extends HookConsumerWidget {
     }
     if (blockedReason == null &&
         capability!.model.requiresVoice &&
-        inputs.value.isEmpty &&
+        inputs.value.every((input) => input.isPrompt) &&
         voice.trim().isEmpty) {
       blockedReason = context.t(LocaleKeys.productionSpeechVoiceRequired);
     }
@@ -243,7 +246,7 @@ class _AudioForm extends HookConsumerWidget {
           inputs: inputs.value,
           parameters: AudioRequestDefaults(
             voice: ConfigValue(
-              inputs.value.isEmpty &&
+              inputs.value.every((input) => input.isPrompt) &&
                       value(ShotField.audioVoice).trim().isNotEmpty
                   ? value(ShotField.audioVoice).trim()
                   : null,
@@ -374,15 +377,20 @@ class _AudioForm extends HookConsumerWidget {
     }
 
     Future<void> reference() async {
-      if (imageMode ||
-          capability == null ||
-          !capability.model.supportsAudioReferencePlaceholders) {
+      if (!inputs.value.any((input) => input.isPrompt) &&
+          (imageMode ||
+              capability == null ||
+              !capability.model.supportsAudioReferencePlaceholders)) {
         return;
       }
       final box = context.findRenderObject()! as RenderBox;
       final names = <String, String>{};
       for (final input in inputs.value.where(
-        (i) => i.role == VideoInputRole.reference_audio,
+        (i) =>
+            i.isPrompt ||
+            (!imageMode &&
+                capability?.model.supportsAudioReferencePlaceholders == true &&
+                i.role == VideoInputRole.reference_audio),
       )) {
         names[input.identity] = await service.inputName(input);
       }
@@ -449,9 +457,12 @@ class _AudioForm extends HookConsumerWidget {
                     label: context.t(LocaleKeys.productionMention),
                     tooltip: context.t(LocaleKeys.productionReference),
                     onTap:
-                        imageMode ||
-                            capability == null ||
-                            !capability.model.supportsAudioReferencePlaceholders
+                        !inputs.value.any((input) => input.isPrompt) &&
+                            (imageMode ||
+                                capability == null ||
+                                !capability
+                                    .model
+                                    .supportsAudioReferencePlaceholders)
                         ? null
                         : () => productionRun(context, reference),
                   ),
@@ -467,8 +478,9 @@ class _AudioForm extends HookConsumerWidget {
                       Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (inputs.value[i].role ==
-                              VideoInputRole.reference_audio)
+                          if (!inputs.value[i].isPrompt &&
+                              inputs.value[i].role ==
+                                  VideoInputRole.reference_audio)
                             Text(
                               context.t(
                                 LocaleKeys.productionAudioReferenceLabel,

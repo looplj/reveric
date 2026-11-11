@@ -37,18 +37,23 @@ class MediaPreviewDialog extends HookConsumerWidget {
     : path = asset.path!,
       type = asset.type,
       name = asset.name,
-      autoplay = false;
+      autoplay = false,
+      temporary = false;
   const MediaPreviewDialog.file({
     super.key,
     required this.path,
     required this.type,
     required this.name,
     this.autoplay = false,
+    this.temporary = false,
   });
   final String path;
   final String type;
   final String name;
   final bool autoplay;
+
+  /// 应用自己生成的临时文件（如剪辑预览渲染），不在素材库内，直接按绝对路径打开。
+  final bool temporary;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(mediaLibraryServiceProvider);
@@ -68,7 +73,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
           try {
             await playback.open(
               owner: owner,
-              path: library.resolvePath(path),
+              path: temporary ? path : library.resolvePath(path),
               play: autoplay,
             );
             if (active) {
@@ -90,7 +95,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
         active = false;
         unawaited(playback.release(owner));
       };
-    }, [path, playback, library, owner, autoplay]);
+    }, [path, playback, library, owner, autoplay, temporary]);
     useOnAppLifecycleStateChange((previous, current) {
       if (current != AppLifecycleState.resumed) {
         if (ready.value) {

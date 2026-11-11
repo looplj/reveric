@@ -22,18 +22,19 @@ Future<void> requireUnusedProductionSubject(
   final roots = db.screenplays;
   final query =
       db.select(clips).join([
-        innerJoin(episodes, episodes.id.equalsExp(clips.episodeId)),
-        innerJoin(seasons, seasons.id.equalsExp(episodes.seasonId)),
-        innerJoin(
+        leftOuterJoin(episodes, episodes.id.equalsExp(clips.episodeId)),
+        leftOuterJoin(seasons, seasons.id.equalsExp(episodes.seasonId)),
+        leftOuterJoin(
           roots,
           roots.id.equalsExp(episodes.screenplayId) &
               roots.id.equalsExp(seasons.screenplayId),
         ),
       ])..where(
         clips.deletedAt.equals(notDeletedSentinel) &
-            episodes.deletedAt.equals(notDeletedSentinel) &
-            seasons.deletedAt.equals(notDeletedSentinel) &
-            roots.deletedAt.equals(notDeletedSentinel) &
+            (clips.episodeId.equals('') |
+                (episodes.deletedAt.equals(notDeletedSentinel) &
+                    seasons.deletedAt.equals(notDeletedSentinel) &
+                    roots.deletedAt.equals(notDeletedSentinel))) &
             (characterId != null
                 ? clips.characterId.equals(characterId)
                 : locationId != null

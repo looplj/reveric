@@ -2141,7 +2141,6 @@ abstract final class LocaleKeys {
       'screenplay.production_style_screenplay_tag';
   static const productionStyleScreenplayHint =
       'screenplay.production_style_screenplay_hint';
-  static const productionStyleClear = 'screenplay.production_style_clear';
   static const productionStyleInheritHint =
       'screenplay.production_style_inherit_hint';
   static const productionStyleOwnHint = 'screenplay.production_style_own_hint';
@@ -2780,6 +2779,9 @@ abstract final class LocaleKeys {
   static const homeResumeEyebrow = 'home.resume_eyebrow';
   static const homeResumeRecent = 'home.resume_recent';
   static const homeResumeLastWritten = 'home.resume_last_written';
+  static const homeResumeEyebrowCanvas = 'home.resume_eyebrow_canvas';
+  static const homeResumeOpenCanvas = 'home.resume_open_canvas';
+  static const homeResumeLastEdited = 'home.resume_last_edited';
   static const homeSortRecent = 'home.sort_recent';
   static const homeSortCreated = 'home.sort_created';
   static const homeSortTitle = 'home.sort_title';
@@ -5086,6 +5088,31 @@ abstract final class LocaleKeys {
   static const toolPathCanvasEdges = 'tool.path_canvas_edges';
   static const toolPathCanvasLayout = 'tool.path_canvas_layout';
   static const toolPathCanvasNodes = 'tool.path_canvas_nodes';
+  static const toolPathProduction = 'tool.path_production';
+  static const toolPathEpisodeProduction = 'tool.path_episode_production';
+  static const toolPathProductionSettings = 'tool.path_production_settings';
+  static const toolPathProductionGenerations =
+      'tool.path_production_generations';
+  static const toolFieldRefType = 'tool.field_ref_type';
+  static const toolFieldRefId = 'tool.field_ref_id';
+  static const toolFieldPanorama = 'tool.field_panorama';
+  static const toolFieldImageMethod = 'tool.field_image_method';
+  static const toolFieldGroup = 'tool.field_group';
+  static const toolFieldX = 'tool.field_x';
+  static const toolFieldY = 'tool.field_y';
+  static const toolFieldStyle = 'tool.field_style';
+  static const toolFieldKind = 'tool.field_kind';
+  static const toolFieldInputs = 'tool.field_inputs';
+  static const toolFieldAdoptedAsset = 'tool.field_adopted_asset';
+  static const toolFieldProvider = 'tool.field_provider';
+  static const toolFieldGenerateAudio = 'tool.field_generate_audio';
+  static const toolFieldData = 'tool.field_data';
+  static const toolFieldPositions = 'tool.field_positions';
+  static const toolFieldRemoveTypes = 'tool.field_remove_types';
+  static const toolFieldCancelRequestedAt = 'tool.field_cancel_requested_at';
+  static const toolFieldResultAsset = 'tool.field_result_asset';
+  static const toolFieldResultFile = 'tool.field_result_file';
+  static const toolFieldResultApplied = 'tool.field_result_applied';
   static const toolActionGeneratingAvatar = 'tool.action_generating_avatar';
   static const toolActionGeneratingPhoto = 'tool.action_generating_photo';
   static const toolActionUpdatingTasks = 'tool.action_updating_tasks';
@@ -5847,6 +5874,9 @@ abstract final class LocaleKeys {
   static const commonRestore = 'common.restore';
   static const commonIgnore = 'common.ignore';
   static const commonApply = 'common.apply';
+  static const productionBackToCanvas = 'production.back_to_canvas';
+  static const productionEditingMissing = 'production.editing_missing';
+  static const productionText = 'production.text';
   static const productionHistoryConflict = 'production.history_conflict';
   static const productionHistoryFailed = 'production.history_failed';
 
@@ -6155,4 +6185,26 @@ abstract final class LocaleKeys {
       'settings.about_upload_logs_success';
   static const settingsAboutUploadLogsFailed =
       'settings.about_upload_logs_failed';
+  static const productionAddEditingHint = 'production.add_editing_hint';
+  static const productionCanvasStart = 'production.canvas_start';
+  static const productionUploadScript = 'production.upload_script';
+  static const productionWritePrompt = 'production.write_prompt';
+  static const productionImportMedia = 'production.import_media';
+  static const productionCanvasStartHint = 'production.canvas_start_hint';
+  static const productionUploadScriptHint = 'production.upload_script_hint';
+  static const productionWritePromptHint = 'production.write_prompt_hint';
+  static const productionImportMediaHint = 'production.import_media_hint';
+  static const productionCanvasDesktopOnly = 'production.canvas_desktop_only';
+  static const libraryContentKindCanvas = 'library.content_kind_canvas';
+  static const libraryCreateCanvas = 'library.create_canvas';
+  static const libraryDefaultCanvasTitle = 'library.default_canvas_title';
+  static const homeCreateCanvasCardTitle = 'library.create_canvas_card_title';
+  static const homeCreateCanvasCardSubtitle =
+      'library.create_canvas_card_subtitle';
+  static const productionAddTextHint = 'production.add_text_hint';
+  static const productionTextAskHint = 'production.text_ask_hint';
+  static const productionTextTryWrite = 'production.text_try_write';
+  static const productionTextTryStoryboard = 'production.text_try_storyboard';
+  static const productionTextTrySetting = 'production.text_try_setting';
+  static const productionTextTryPolish = 'production.text_try_polish';
 }

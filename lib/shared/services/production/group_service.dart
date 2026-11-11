@@ -13,6 +13,7 @@ import 'package:drift/drift.dart';
 
 import '../../database/novel_content_database.dart';
 import '../../models/production/group_layout.dart';
+import '../../models/storyboard/prompt.dart';
 import '../../utils/short_entity_id.dart';
 import '../../utils/short_entity_id_allocator.dart';
 import '../storyboard/service.dart';
@@ -557,10 +558,52 @@ class ProductionGroupService {
         CanvasNodesCompanion(x: Value(x), y: Value(y)),
       );
 
+  Future<void> _removeTextInputs(String nodeId) async {
+    final clips = await (db.select(
+      db.productionClips,
+    )..where((t) => t.deletedAt.equals(notDeletedSentinel))).get();
+    for (final clip in clips) {
+      final removed = clip.inputs
+          .where((input) => input.isPrompt && input.sourceNodeId == nodeId)
+          .map((input) => input.id)
+          .toSet();
+      if (removed.isEmpty) {
+        continue;
+      }
+      final prompt = StoryboardPrompt.parse(clip.prompt).parts
+          .where((part) => !part.isReference || !removed.contains(part.inputId))
+          .map((part) => part.text)
+          .join();
+      await (db.update(
+        db.productionClips,
+      )..where((t) => t.id.equals(clip.id))).write(
+        ProductionClipsCompanion(
+          inputs: Value(
+            clip.inputs.where((input) => !removed.contains(input.id)).toList(),
+          ),
+          prompt: Value(prompt),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      recordCanvasPromptCleanup(
+        shots,
+        clip.id,
+        before: clip.prompt,
+        after: prompt,
+      );
+    }
+  }
+
   Future<void> _removeOne(CanvasNode node) async {
     if (node.clipId != null) {
       await shots.softDelete(node.clipId!);
     } else {
+      if (node.type == canvasNodeTypeText) {
+        await _removeTextInputs(node.id);
+      }
+      if (node.type == canvasNodeTypeEditing && node.editingId != null) {
+        await db.editingDao.softDelete(node.editingId!);
+      }
       await db.canvasDao.softDeleteNode(node.id);
     }
   }

@@ -10,6 +10,7 @@ import 'package:drift/drift.dart';
 import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
 import '../../models/screenplay.dart';
+import '../../models/content_kind.dart';
 import '../../models/production/settings.dart';
 import '../../models/storyboard/prompt.dart';
 import '../../models/video/request.dart';
@@ -24,7 +25,17 @@ class StoryboardException implements Exception {
 }
 
 class StoryboardService {
-  StoryboardService(this.database);
+  StoryboardService(
+    this.database, {
+    this.contentKind = contentKindScreenplay,
+    this.resolveContentKind,
+  });
+  final String contentKind;
+  final Future<String> Function()? resolveContentKind;
+
+  /// 空集归属只允许来自作品登记或创建上下文的画布类型；不能从数据形状推断。
+  Future<bool> get isCanvasWork async =>
+      (await resolveContentKind?.call() ?? contentKind) == contentKindCanvas;
   final NovelContentDatabase database;
   static final _log = AppLogger.forModule('Storyboard');
   static const _settingsPromptStateKey = 'production_settings';
@@ -156,6 +167,13 @@ class StoryboardService {
   }
 
   Future<void> requireEpisode(String id) async {
+    if (id.isEmpty) {
+      if (await isCanvasWork &&
+          await database.screenplayDao.getRoot() != null) {
+        return;
+      }
+      throw const StoryboardException('source_missing');
+    }
     final episode = await database.screenplayDao.getEpisode(id);
     final root = await database.screenplayDao.getRoot();
     final season = episode == null
@@ -316,6 +334,9 @@ class StoryboardService {
     episodeId,
     () async {
       await requireEpisode(episodeId);
+      if (episodeId.isEmpty) {
+        return _ensureWorkCanvas();
+      }
       final production = (await database.screenplayDao.getEpisode(episodeId))!;
       if (production.canvasId != null) {
         final canvas = await database.canvasDao.getCanvasById(
@@ -362,6 +383,45 @@ class StoryboardService {
     },
   );
 
+  Future<CanvasEntry> _ensureWorkCanvas() async {
+    final existing =
+        await (database.select(database.canvases)
+              ..where(
+                (t) =>
+                    t.kind.equals(canvasKindProduction) &
+                    t.deletedAt.equals(notDeletedSentinel),
+              )
+              ..orderBy([
+                (t) => OrderingTerm.asc(t.createdAt),
+                (t) => OrderingTerm.asc(t.id),
+              ])
+              ..limit(2))
+            .get();
+    if (existing.isNotEmpty) {
+      if (existing.length > 1) {
+        _log.error(
+          '[DB] table=canvases operation=SELECT duplicate production canvases; using ${existing.first.id}',
+        );
+      }
+      return existing.first;
+    }
+    final id = await insertWithShortEntityId(
+      type: ShortEntityIdType.canvas,
+      tableName: 'canvases',
+      idExists: database.canvasDao.canvasIdExists,
+      insert: (id) => database
+          .into(database.canvases)
+          .insert(
+            CanvasesCompanion.insert(
+              id: id,
+              name: 'production',
+              kind: const Value(canvasKindProduction),
+            ),
+          ),
+    );
+    return (await database.canvasDao.getCanvasById(id))!;
+  }
+
   Future<CanvasNode> ensureClipNode(
     String clipId,
   ) => write('ENSURE_NODE', clipId, () async {
@@ -384,7 +444,9 @@ class StoryboardService {
       }
       return existing;
     }
-    final scenes = await database.screenplayDao.getSceneRows(clip.episodeId);
+    final scenes = clip.episodeId.isEmpty
+        ? <ScreenplaySceneRecord>[]
+        : await database.screenplayDao.getSceneRows(clip.episodeId);
     final sceneIndex = scenes.indexWhere((s) => s.id == clip.sceneId);
     var x = 360.0 + (clip.sortOrder ?? 0) * 360;
     var y = 80.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 280;
@@ -474,6 +536,13 @@ class StoryboardService {
     final locationId = values['location_id'] as String?;
     final itemId = values['item_id'] as String?;
     final subjectCount = [characterId, locationId, itemId].nonNulls.length;
+    if (episodeId.isEmpty &&
+        (sceneId != null || order != null || subjectCount != 0)) {
+      throw const StoryboardException('invalid_config');
+    }
+    if (episodeId.isEmpty && restoring) {
+      await requireEpisode(episodeId);
+    }
     if ((previous != null &&
             (previous.characterId != characterId ||
                 previous.locationId != locationId ||
@@ -607,7 +676,11 @@ class StoryboardService {
               ));
       for (final input in references) {
         final source = await database.canvasDao.getNodeById(input.refId);
-        // 删除的来源保持为失效参考，让用户在卡片中修复。
+        if (input.isPrompt && source?.type != canvasNodeTypeText ||
+            !input.isPrompt && source?.type == canvasNodeTypeText) {
+          throw const StoryboardException('invalid_reference');
+        }
+        // 删除的媒体来源保持为失效参考，让用户在卡片中修复。
         if (source != null && source.canvasId != target.canvasId ||
             reaches(target.id, input.refId, {})) {
           throw const StoryboardException('invalid_reference');

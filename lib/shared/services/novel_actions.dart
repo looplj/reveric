@@ -85,14 +85,15 @@ class NovelActionsService {
     bool draft = false,
     Future<void> Function(NovelContentDatabase content)? populateContent,
   }) async {
+    validateContentKind(contentKind);
     if (!draft) {
       await _ensureShelfTitleAvailable(title);
     }
-    final novelId = buildShortEntityId(
-      contentKind == contentKindScreenplay
-          ? ShortEntityIdType.screenplay
-          : ShortEntityIdType.novel,
-    );
+    final novelId = buildShortEntityId(switch (contentKind) {
+      contentKindScreenplay => ShortEntityIdType.screenplay,
+      contentKindCanvas => ShortEntityIdType.canvas_work,
+      _ => ShortEntityIdType.novel,
+    });
     final contentDatabasePath = await buildNovelContentDatabasePath(novelId);
     try {
       await _initializeContentDatabase(
@@ -108,20 +109,25 @@ class NovelActionsService {
         novelId: novelId,
         coverSourcePath: coverSourcePath,
       );
-      await _database.novelDao.create(
-        id: novelId,
-        title: title,
-        authorName: authorName,
-        description: description,
-        coverAssetId: coverAssetId,
-        contentDatabasePath: contentDatabasePath,
-        tags: tags,
-        category: category,
-        type: type ?? novelTypeOriginal,
-        contentKind: contentKind,
-        sourceNovelId: sourceNovelId,
-        draft: draft,
-      );
+      await _database.transaction(() async {
+        if (!draft) {
+          await _ensureShelfTitleAvailable(title);
+        }
+        await _database.novelDao.create(
+          id: novelId,
+          title: title,
+          authorName: authorName,
+          description: description,
+          coverAssetId: coverAssetId,
+          contentDatabasePath: contentDatabasePath,
+          tags: tags,
+          category: category,
+          type: type ?? novelTypeOriginal,
+          contentKind: contentKind,
+          sourceNovelId: sourceNovelId,
+          draft: draft,
+        );
+      });
     } catch (error, stackTrace) {
       await _discardUnregisteredContentDatabase(
         contentDatabasePath,
@@ -131,6 +137,32 @@ class NovelActionsService {
       Error.throwWithStackTrace(error, stackTrace);
     }
     return novelId;
+  }
+
+  /// 默认标题由界面本地化；登记前再查重，处理并发创建抢占同名的情况。
+  Future<String> createCanvas({required String defaultTitle}) async {
+    final base = defaultTitle.trim();
+    if (base.isEmpty) {
+      throw ArgumentError.value(defaultTitle, 'defaultTitle');
+    }
+    var number = 1;
+    while (true) {
+      final title = number == 1 ? base : '$base $number';
+      number++;
+      if (await findNovelByTitle(title) != null) {
+        continue;
+      }
+      try {
+        return await createNovel(
+          title: title,
+          description: '',
+          contentKind: contentKindCanvas,
+          setNovelOnboardingEligible: false,
+        );
+      } on NovelTitleConflictException {
+        // 登记事务中被另一创建占用，重选默认标题；失败的新库已由 createNovel 收尾。
+      }
+    }
   }
 
   Future<void> _initializeContentDatabase({
@@ -146,7 +178,14 @@ class NovelActionsService {
     final contentDatabase = _contentDatabaseFactory(contentDatabasePath);
     Object? operationError;
     try {
-      if (contentKind == contentKindScreenplay) {
+      if (contentKind == contentKindCanvas) {
+        await ScreenplayService(contentDatabase).createCanvasStructure(
+          style: initialProductionStyle(
+            category: category,
+            tags: tags ?? const [],
+          ),
+        );
+      } else if (contentKind == contentKindScreenplay) {
         final seedScreenplay = _seedScreenplayWorkspace;
         if (seedScreenplay == null) {
           await ScreenplayService(contentDatabase).createInitialStructure(
@@ -495,7 +534,9 @@ class NovelActionsService {
       final exists = await File(resolvedPath).exists();
       if (exists) {
         final contentDatabase = NovelContentDatabase(existingPath);
-        await contentDatabase.seedDefaultWorkspace();
+        if (novel.contentKind != contentKindCanvas) {
+          await contentDatabase.seedDefaultWorkspace();
+        }
         await contentDatabase.close();
         // 返回存储原值（相对路径），保持其作为 Riverpod family key 的一致性。
         return existingPath;
@@ -504,7 +545,11 @@ class NovelActionsService {
 
     final databasePath = await buildNovelContentDatabasePath(novel.id);
     final contentDatabase = NovelContentDatabase(databasePath);
-    await contentDatabase.seedDefaultWorkspace();
+    if (novel.contentKind == contentKindCanvas) {
+      await ScreenplayService(contentDatabase).createCanvasStructure();
+    } else {
+      await contentDatabase.seedDefaultWorkspace();
+    }
     await contentDatabase.close();
     await _database.novelDao.updateContentDatabasePath(
       id: novel.id,

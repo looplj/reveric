@@ -12,6 +12,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/desktop/widgets/ai/model/model_selector.dart';
+import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,13 +52,13 @@ void main() {
               modelName: 'MiMo V2.5',
               resolvedId: 'custom::mimo-v2.5',
               availableModels: _models,
-              // footer 用到 i18n，单测里关掉以免引入本地化依赖。
               showAddModel: false,
               onSelect: (option) => picked = option,
             ),
           ),
         ),
       );
+      await tester.pumpAndSettle();
 
       expect(find.text('MiMo V2.5'), findsOneWidget);
       expect(find.text('mimo-v2.5'), findsNothing);
@@ -124,6 +125,7 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     // 未选中闭合态显示 unset 文案。
     expect(find.text('跟随上层'), findsOneWidget);
@@ -158,8 +160,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(
-        theme: RevericThemeData.reveric.toThemeData(),
+      _app(
         home: RevericTheme(
           data: RevericThemeData.reveric,
           child: Scaffold(
@@ -186,6 +187,7 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byType(ModelSelector));
     await tester.pumpAndSettle();
@@ -212,8 +214,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: RevericThemeData.reveric.toThemeData(),
+        _app(
           home: RevericTheme(
             data: RevericThemeData.reveric,
             child: Scaffold(
@@ -236,6 +237,7 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
 
       final triggerTop = tester.getTopLeft(find.byType(ModelSelector)).dy;
 
@@ -263,13 +265,13 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
     expect(find.text('暂无可用模型'), findsOneWidget);
   });
 }
 
 Widget _wrap(Widget child) {
-  return MaterialApp(
-    theme: RevericThemeData.reveric.toThemeData(),
+  return _app(
     home: RevericTheme(
       data: RevericThemeData.reveric,
       child: Scaffold(
@@ -279,4 +281,24 @@ Widget _wrap(Widget child) {
   );
 }
 
-/// effort flyout 的 label 走 i18n，需要真实 EasyLocalization 环境。
+/// 菜单里的搜索框、页脚和 effort 标签都走 i18n，需要真实 EasyLocalization 环境。
+Widget _app({required Widget home}) => EasyLocalization(
+  supportedLocales: const [Locale('en'), Locale('zh', 'CN')],
+  path: 'assets/translations',
+  assetLoader: const MergingAssetLoader(),
+  startLocale: const Locale('en'),
+  fallbackLocale: const Locale('en'),
+  saveLocale: false,
+  child: Builder(
+    builder: (context) => MaterialApp(
+      localizationsDelegates: context.localizationDelegates,
+      supportedLocales: context.supportedLocales,
+      locale: context.locale,
+      theme: RevericThemeData.reveric.toThemeData(),
+      // 与应用一致：主题包在 Navigator 之上，overlay 菜单里也能取到。
+      builder: (context, child) =>
+          RevericTheme(data: RevericThemeData.reveric, child: child!),
+      home: home,
+    ),
+  ),
+);

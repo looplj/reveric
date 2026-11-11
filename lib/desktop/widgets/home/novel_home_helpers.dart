@@ -1,4 +1,4 @@
-// 职责: 桌面端首页作品展示共用格式化与小部件 — 字数与状态角标
+// 职责: 桌面端首页作品展示共用格式化与小部件 — 字数、状态角标与画布占位封面
 // 关联文件:
 //   lib/desktop/widgets/home/resume_section.dart
 //   lib/desktop/widgets/novel_list.dart
@@ -16,6 +16,7 @@ import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/content_status.dart';
 import '../../../shared/models/novel_type.dart';
+import '../../../shared/theme/canvas_colors.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/novel/library_shelf_labels.dart';
 
@@ -119,4 +120,50 @@ class HomeNovelStatusBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 画布作品没有封面时的占位：一块点阵画布加类型图标，和书封区分开。
+class HomeCanvasPlaceholder extends StatelessWidget {
+  const HomeCanvasPlaceholder({super.key, this.iconSize = 32});
+
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    return ColoredBox(
+      color: colors.surfaceDim,
+      child: CustomPaint(
+        painter: _CanvasDotsPainter(canvasFineDotColor(colors)),
+        child: Center(
+          child: RevericIcon(
+            RevericIcons.flow_arrow,
+            size: iconSize,
+            color: colors.textSubtle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CanvasDotsPainter extends CustomPainter {
+  const _CanvasDotsPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const step = RevericSpacing.x2l;
+    final paint = Paint()..color = color;
+    for (var y = step / 2; y < size.height; y += step) {
+      for (var x = step / 2; x < size.width; x += step) {
+        canvas.drawCircle(Offset(x, y), .75, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CanvasDotsPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

@@ -34,11 +34,27 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
     ({String oldText, String newText, bool replaceAll})? edit,
   ) async {
     try {
-      final service = StoryboardService(_contentService.database);
-      return await service.write('UPDATE_SETTINGS', 'screenplay', () async {
+      final service = StoryboardService(
+        _contentService.database,
+        contentKind: _targetContentKind,
+      );
+      final settingsPath = _targetContentKind == contentKindCanvas
+          ? 'production/settings'
+          : 'screenplay';
+      return await service.write('UPDATE_SETTINGS', settingsPath, () async {
         final root = await service.getSettings();
         if (root == null) {
           return _notFound(parsed, 'screenplay');
+        }
+        if (operation.tool == _ResourceTool.read) {
+          final data = {
+            'id': root.id,
+            'path': settingsPath,
+            'style_id': root.styleId,
+            'ratio': root.ratio,
+            'resolution': root.resolution,
+          };
+          return parsed.hasField ? {'value': data[parsed.field]} : data;
         }
         final settings = <String, dynamic>{
           for (final key in ['ratio', 'resolution'])
@@ -83,7 +99,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
         }
         if (next != root.styleId) {
           final change = await workingOverlayService.stageTextChange(
-            resourcePath: 'screenplay/style_id',
+            resourcePath: '$settingsPath/style_id',
             resourceType: 'screenplays',
             resourceId: root.id,
             field: 'style_id',
@@ -107,7 +123,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
         return {
           'ok': true,
           'id': root.id,
-          'path': 'screenplay',
+          'path': settingsPath,
           'style_id': next,
           'ratio': saved.ratio,
           'resolution': saved.resolution,
@@ -164,7 +180,8 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
     for (final task in tasks) {
       entries.add({
         ...await host.summary(task),
-        'path': 'clips/$clipId/generations/${task.id}',
+        'path':
+            '${_targetContentKind == contentKindCanvas ? 'production/' : ''}clips/$clipId/generations/${task.id}',
         'model_id': task.modelId,
         'run_id': operationHost?.operations.state.runs
             .where((run) => run.taskId == task.id && !run.terminal)
@@ -194,28 +211,38 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
     Map<String, dynamic> fields = const {},
   }) async {
     final db = _contentService.database;
-    final shots = StoryboardService(db);
-    final episodeId = parsed.locator('episode_id')!;
-    final base = 'episodes/$episodeId/production/canvas';
+    final shots = StoryboardService(db, contentKind: _targetContentKind);
+    final canvasWork = _targetContentKind == contentKindCanvas;
+    final episodeId = canvasWork ? '' : parsed.locator('episode_id')!;
+    final base = canvasWork
+        ? 'production/canvas'
+        : 'episodes/$episodeId/production/canvas';
     final segment = parsed.resourceSegment;
     final tool = operation.tool;
-    Map<String, dynamic> nodeData(CanvasNode node) => {
-      'id': node.id,
-      'type': node.type,
-      'ref_type': node.refType,
-      'ref_id': node.refId,
-      'title': node.title,
-      'x': node.x,
-      'y': node.y,
-      'width': node.width,
-      'height': node.height,
-      'parent_id': node.parentId,
-      'panorama': PanoramaView.fromStyle(node.style)?.toJson(),
-      'image_method': (node.style?['imageGeneration'] as Map?)?['method'],
-      if (node.type == canvasNodeTypeGroup)
-        'group': ProductionGroupLayout.fromStyle(node.style).toJson(),
-      'path': '$base/nodes/${node.id}',
-    };
+    Future<Map<String, dynamic>> nodeData(CanvasNode node) async {
+      final editing = node.editingId == null
+          ? null
+          : await db.editingDao.get(node.editingId!);
+      return {
+        'id': node.id,
+        'type': node.type,
+        'ref_type': node.refType,
+        'ref_id': node.refId,
+        'title': editing?.title ?? node.title,
+        if (node.type == canvasNodeTypeText) 'content': node.content,
+        'x': node.x,
+        'y': node.y,
+        'width': node.width,
+        'height': node.height,
+        'parent_id': node.parentId,
+        'panorama': PanoramaView.fromStyle(node.style)?.toJson(),
+        'image_method': (node.style?['imageGeneration'] as Map?)?['method'],
+        if (node.type == canvasNodeTypeGroup)
+          'group': ProductionGroupLayout.fromStyle(node.style).toJson(),
+        'path': '$base/nodes/${node.id}',
+      };
+    }
+
     Map<String, dynamic> edgeData(ProductionConnection edge) => {
       'id': edge.id,
       'source_node_id': edge.sourceNodeId,
@@ -228,13 +255,18 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
       await shots.requireEpisode(episodeId);
       if (segment == 'production') {
         final data = <String, dynamic>{
-          'id': episodeId,
-          'path': 'episodes/$episodeId/production',
+          'id': canvasWork ? (await shots.requireSettings()).id : episodeId,
+          'path': canvasWork ? 'production' : 'episodes/$episodeId/production',
+          if (canvasWork) 'settings_path': 'production/settings',
+          if (canvasWork) 'clips_path': 'production/clips',
           'canvas_path': base,
         };
         return parsed.hasField ? {'value': data[parsed.field]} : data;
       }
       Future<CanvasEntry?> readCanvas() async {
+        if (canvasWork) {
+          return shots.ensureCanvas('');
+        }
         final episode = (await db.screenplayDao.getEpisode(episodeId))!;
         final canvas = episode.canvasId == null
             ? null
@@ -263,14 +295,14 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           final data = {
             'id': canvas.id,
             'path': base,
-            'episode_id': episodeId,
-            'nodes': nodes.map(nodeData).toList(),
+            if (!canvasWork) 'episode_id': episodeId,
+            'nodes': await Future.wait(nodes.map(nodeData)),
             'edges': edges.map(edgeData).toList(),
           };
           return parsed.hasField ? {'value': data[parsed.field]} : data;
         }
         final values = segment == 'nodes'
-            ? nodes.map(nodeData).toList()
+            ? await Future.wait(nodes.map(nodeData))
             : edges.map(edgeData).toList();
         if (parsed.isResourceListing) {
           return {'type': 'listing', 'entries': values};
@@ -334,6 +366,9 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
         }
         if (tool == _ResourceTool.create) {
           final type = fields['type'];
+          if (fields.containsKey('content') && type != canvasNodeTypeText) {
+            throw const StoryboardException('invalid_config');
+          }
           String? refId = fields['ref_id'] as String?;
           final expectedRefType = {'video', 'image', 'audio'}.contains(type)
               ? canvasNodeRefTypeProductionClip
@@ -411,6 +446,22 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
                       _activeRunCallId ?? '',
                     )).id,
                   );
+          } else if (type == canvasNodeTypeText ||
+              type == canvasNodeTypeEditing) {
+            if (refId != null || fields['ref_type'] != null) {
+              throw const StoryboardException('invalid_reference');
+            }
+            final service = await _productionStyleService();
+            node = type == canvasNodeTypeText
+                ? await service.addText(
+                    canvas.id,
+                    title: fields['title'] as String? ?? '',
+                    content: fields['content'] as String? ?? '',
+                  )
+                : await service.addEditing(
+                    canvas.id,
+                    title: fields['title'] as String? ?? '',
+                  );
           } else if (type == canvasNodeTypeStaging) {
             final stagings = _contentService.stagingEditService;
             final staging = refId == null
@@ -456,7 +507,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           return {
             'ok': true,
             'created': true,
-            ...nodeData((await db.canvasDao.getNodeById(node.id))!),
+            ...await nodeData((await db.canvasDao.getNodeById(node.id))!),
           };
         }
         final node = await requireNode(parsed.locator('node_id')!);
@@ -468,10 +519,32 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
             'path': '$base/nodes/${node.id}',
           };
         }
+        if (fields.containsKey('content')) {
+          if (node.type != canvasNodeTypeText) {
+            throw const StoryboardException('invalid_config');
+          }
+          await (await _productionStyleService()).updateText(
+            node.id,
+            content: fields['content'] as String,
+            title: fields['title'] as String? ?? node.title,
+          );
+        }
         if (fields.containsKey('title')) {
           // Video content is owned by /clips; canvas writes only change its layout.
           if (node.clipId != null) {
             throw const StoryboardException('invalid_config');
+          }
+          if (node.editingId != null) {
+            final project = await db.editingDao.get(node.editingId!);
+            if (project == null) {
+              throw const StoryboardException('source_missing');
+            }
+            await db.editingDao.save(
+              project.id,
+              expectedRevision: project.revision,
+              document: project.document,
+              title: fields['title'] as String,
+            );
           }
           await db.canvasDao.updateActiveNodeFields(
             node.id,
@@ -482,7 +555,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
         return {
           'ok': true,
           'updated': true,
-          ...nodeData((await db.canvasDao.getNodeById(node.id))!),
+          ...await nodeData((await db.canvasDao.getNodeById(node.id))!),
         };
       });
     } on ToolOperationException catch (error) {
@@ -526,10 +599,11 @@ extension _AssetCommands on _AiToolManagerBase {
     String action,
     Map<String, dynamic> options,
   ) async {
-    if (contentKind != contentKindScreenplay) {
+    if (contentKind != contentKindScreenplay &&
+        contentKind != contentKindCanvas) {
       throw const ToolOperationException(
         'unavailable',
-        'Asset queries require a screenplay work.',
+        'Asset queries require a screenplay or canvas work.',
       );
     }
     if (!{'list', 'read', 'view-image', 'certify'}.contains(action)) {

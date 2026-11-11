@@ -79,9 +79,11 @@ class ProductionNodeCommands {
     try {
       final node = await canvas.requireNode(nodeId);
       late AssetRow source;
-      final episode = await (canvas.db.select(
-        canvas.db.screenplayEpisodes,
-      )..where((t) => t.canvasId.equals(node.canvasId))).getSingle();
+      final episodeId = await canvas.shots.isCanvasWork
+          ? ''
+          : (await (canvas.db.select(
+              canvas.db.screenplayEpisodes,
+            )..where((t) => t.canvasId.equals(node.canvasId))).getSingle()).id;
       final files = SessionFiles(
         root: canvas.library.root.path,
         novelId: canvas.novelId,
@@ -101,7 +103,7 @@ class ProductionNodeCommands {
         }
       }
 
-      final path = '/episodes/${episode.id}/production/canvas/nodes/$nodeId';
+      final path = productionNodePath(episodeId, nodeId);
       return await operations.start(
         context: context,
         callId: callId,
@@ -199,7 +201,7 @@ class ProductionNodeCommands {
               ),
               _ => throw const FormatException('Unknown video node action'),
             };
-            outputs.add(await outputSummary(canvas, output, episode.id));
+            outputs.add(await outputSummary(canvas, output, episodeId));
             stage = 'complete';
             operation.checkCancelled();
             return result({'ok': true});
@@ -273,7 +275,7 @@ Future<Map<String, dynamic>> outputSummary(
       : await canvas.requireAsset(assetId);
   return {
     'node_id': node.id,
-    'node_path': '/episodes/$episodeId/production/canvas/nodes/${node.id}',
+    'node_path': productionNodePath(episodeId, node.id),
     'type': node.type,
     if (node.clipId != null) 'clip_id': node.clipId,
     if (asset != null) ...assetSummary(asset),
@@ -297,3 +299,7 @@ Map<String, dynamic> assetSummary(AssetRow asset) {
     if (content is AudioAssetContent) 'duration_ms': content.durationMs,
   };
 }
+
+String productionNodePath(String episodeId, String nodeId) => episodeId.isEmpty
+    ? '/production/canvas/nodes/$nodeId'
+    : '/episodes/$episodeId/production/canvas/nodes/$nodeId';

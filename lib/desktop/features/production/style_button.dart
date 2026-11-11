@@ -13,7 +13,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../shared/components/reveric_popover.dart';
-import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/database/app_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
@@ -194,7 +193,7 @@ class _StylePopover extends StatelessWidget {
   );
 }
 
-/// 顶栏的剧本全局风格：缩略图 + 名称 ▾，× 清空为无风格。
+/// 顶栏的剧本全局风格：缩略图 + 名称 ▾。清空在风格库里选「无风格」。
 class ProductionScreenplayStyle extends HookWidget {
   const ProductionScreenplayStyle({super.key, required this.service});
   final ProductionCanvasService service;
@@ -203,7 +202,7 @@ class ProductionScreenplayStyle extends HookWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final style = _useStyle(context, service, null);
-    final styled = style.look.kind != ProductionStyleThumbKind.none;
+    // 顶栏把控件放进 Flexible。这层 Row 让 chip 保持内容宽度，长名称仍能截断。
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -253,17 +252,6 @@ class ProductionScreenplayStyle extends HookWidget {
             ),
           ),
         ),
-        if (styled)
-          RevericIconButton(
-            icon: RevericIcons.close,
-            tooltip: context.t(LocaleKeys.productionStyleClear),
-            onPressed: style.ready
-                ? () => productionRun(
-                    context,
-                    () => style.save(const NoProductionStyle()),
-                  )
-                : null,
-          ),
       ],
     );
   }

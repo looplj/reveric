@@ -6,6 +6,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -31,6 +33,9 @@ import '../../../shared/services/production/media_file.dart';
 import '../../../shared/theme/theme.dart';
 import '../asset/library_menu_item.dart';
 import 'controller.dart';
+import '../../../shared/services/editing/service.dart';
+import '../../../shared/database/novel_content_database.dart';
+import '../../../shared/models/screenplay.dart';
 import 'inspector.dart';
 import 'support.dart';
 
@@ -47,17 +52,31 @@ class EditingAssets extends HookConsumerWidget {
 
   /// 内容库路径，用来读本集片段的采用结果。
   final String path;
-  final String episodeId;
+  final String? episodeId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final assets = ref.watch(mediaAssetsProvider).value ?? const [];
     final adoptedById = {for (final asset in assets) asset.id: asset};
-    final shots =
-        ref.watch(storyboardShotsProvider(path, episodeId)).value ?? const [];
-    final scenes =
-        ref.watch(screenplayScenesProvider(path, episodeId)).value ?? const [];
+    final shots = episodeId == null
+        ? const <ProductionClipRow>[]
+        : ref.watch(storyboardShotsProvider(path, episodeId!)).value ??
+              const [];
+    final scenes = episodeId == null
+        ? const <ScreenplaySceneSummary>[]
+        : ref.watch(screenplayScenesProvider(path, episodeId!)).value ??
+              const [];
+    final canvasClips = useStream(
+      useMemoized(
+        () => episodeId == null
+            ? controller.session.projects.watchCanvasAdopted(
+                controller.session.editingId,
+              )
+            : const Stream<List<EditingAdoptedClip>>.empty(),
+        [controller.session, episodeId],
+      ),
+    );
     final replaceFor = controller.replaceFor;
     final filter = useState('video');
     final busy = useState(false);
@@ -197,17 +216,32 @@ class EditingAssets extends HookConsumerWidget {
 
     final sceneById = {for (final s in scenes) s.id: s};
     final perScene = <String, int>{};
-    final segments = [
-      for (final shot in shots.where((s) => s.kind == 'video'))
-        (
-          shot: shot,
-          number:
-              '${sceneById[shot.sceneId]?.sceneNumber ?? '?'}.${perScene.update(shot.sceneId ?? '', (n) => n + 1, ifAbsent: () => 1)}',
-        ),
-    ];
+    final segments = episodeId == null
+        ? [
+            for (final clip in canvasClips.data ?? <EditingAdoptedClip>[])
+              (
+                clipId: clip.id,
+                title: clip.title.trim().isEmpty
+                    ? context.t(LocaleKeys.productionVideoTag)
+                    : clip.title,
+                assetId: clip.assetId,
+                number: null as String?,
+              ),
+          ]
+        : [
+            for (final shot in shots.where((s) => s.kind == 'video'))
+              (
+                clipId: shot.id,
+                title: shot.title,
+                assetId: shot.adoptedAssetId,
+                number:
+                    '${sceneById[shot.sceneId]?.sceneNumber ?? '?'}.${perScene.update(shot.sceneId ?? '', (n) => n + 1, ifAbsent: () => 1)}'
+                        as String?,
+              ),
+          ];
     final adoptedIds = {
       for (final s in segments)
-        if (s.shot.adoptedAssetId != null) s.shot.adoptedAssetId!,
+        if (s.assetId != null) s.assetId!,
     };
     List<EditingMedia> of(String type) => [
       for (final a in assets)
@@ -306,25 +340,30 @@ class EditingAssets extends HookConsumerWidget {
             children: [
               if (filter.value == 'video') ...[
                 section(context.t(LocaleKeys.editingAdoptedSegments)),
+                if (canvasClips.hasError)
+                  Text(context.t(LocaleKeys.commonLoadFailed)),
                 for (final s in segments)
-                  if (adoptedById[s.shot.adoptedAssetId]?.path == null)
+                  if (adoptedById[s.assetId]?.path == null)
                     _PendingItem(
-                      title:
-                          '${context.t(LocaleKeys.productionExportSegment, namedArgs: {'number': s.number})} · ${s.shot.title}',
+                      title: s.number == null
+                          ? s.title
+                          : '${context.t(LocaleKeys.productionExportSegment, namedArgs: {'number': s.number!})} · ${s.title}',
                     )
                   else
                     item(
                       EditingMedia(
-                        assetId: s.shot.adoptedAssetId!,
-                        path: adoptedById[s.shot.adoptedAssetId]!.path!,
+                        assetId: s.assetId!,
+                        path: adoptedById[s.assetId]!.path!,
                         type: 'video',
-                        name: s.shot.title,
-                        productionClipId: s.shot.id,
+                        name: s.title,
+                        productionClipId: s.clipId,
                       ),
-                      subtitle: context.t(
-                        LocaleKeys.productionExportSegment,
-                        namedArgs: {'number': s.number},
-                      ),
+                      subtitle: s.number == null
+                          ? null
+                          : context.t(
+                              LocaleKeys.productionExportSegment,
+                              namedArgs: {'number': s.number!},
+                            ),
                     ),
                 if (others.isNotEmpty) ...[
                   section(context.t(LocaleKeys.editingOtherVideos)),

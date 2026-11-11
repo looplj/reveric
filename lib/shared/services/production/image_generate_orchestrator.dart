@@ -64,7 +64,9 @@ class ProductionImageGenerateOrchestrator {
       throw const StoryboardException('invalid_config');
     }
     final references = <ProductionImageReference>[];
-    final draft = await service.draftInputs(nodeId);
+    final allInputs = await service.draftInputs(nodeId);
+    final textInputs = await service.promptTexts(allInputs);
+    final draft = allInputs.where((input) => !input.isPrompt).toList();
     for (final input in draft) {
       if (input.role != VideoInputRole.reference_image) {
         throw const StoryboardException('invalid_reference');
@@ -88,16 +90,17 @@ class ProductionImageGenerateOrchestrator {
       throw const StoryboardException('invalid_config');
     }
     final originalPrompt = preset.assemble(clip.prompt, draft.firstOrNull?.id);
-    final text = StoryboardPrompt.parse(originalPrompt).parts.map((part) {
-      if (!part.isReference) {
-        return part.text;
-      }
-      final index = references.indexWhere((r) => r.inputId == part.inputId);
-      if (index < 0) {
-        throw const StoryboardException('invalid_reference');
-      }
-      return '图片${index + 1}';
-    }).join();
+    final parsed = StoryboardPrompt.parse(originalPrompt);
+    final text = parsed.render(
+      textInputs: textInputs,
+      reference: (part) {
+        final index = references.indexWhere((r) => r.inputId == part.inputId);
+        if (index < 0) {
+          throw const StoryboardException('invalid_reference');
+        }
+        return '图片${index + 1}';
+      },
+    );
     final style = await service.effectiveStyle(clip);
     final prompt = style?.assemble(text) ?? text;
     final capabilities = ProductionImageCapabilities(provider, clip.modelId!);
@@ -114,7 +117,10 @@ class ProductionImageGenerateOrchestrator {
       ProductionImageRequest(
         providerId: provider.id,
         modelId: clip.modelId!,
-        originalPrompt: originalPrompt,
+        originalPrompt: parsed.render(
+          textInputs: textInputs,
+          reference: (part) => part.text,
+        ),
         prompt: prompt,
         ratio: clip.ratio,
         resolution: clip.resolution,

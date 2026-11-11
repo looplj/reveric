@@ -46,7 +46,7 @@ WorkResumePoint watchWorkResumePoint(
   WidgetRef ref,
   Novel work,
 ) {
-  if (!work.hasContentDatabase) {
+  if (!work.hasContentDatabase || work.contentKind == contentKindCanvas) {
     return const WorkResumePoint();
   }
   final path = work.contentDatabasePath!;

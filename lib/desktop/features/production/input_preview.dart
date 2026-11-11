@@ -20,9 +20,11 @@ import '../../../shared/services/production/generate_orchestrator.dart';
 import '../../../shared/theme/theme.dart';
 import 'node_card.dart';
 import 'support.dart';
+import 'text_input_tile.dart';
+import '../../../shared/database/app_database.dart' show AssetRow;
 
 /// 输入格边长。
-const double productionInputTileSize = 56;
+const double productionInputTileSize = RevericSizes.productionInputTileSize;
 
 class ProductionInputTile extends HookWidget {
   const ProductionInputTile({
@@ -53,13 +55,12 @@ class ProductionInputTile extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final asset = useStream(
-      useMemoized(() => service.watchInputAsset(input), [
-        service,
-        input.id,
-        input.refType,
-        input.refId,
-        input.role,
-      ]),
+      useMemoized(
+        () => input.isPrompt
+            ? const Stream<AssetRow>.empty()
+            : service.watchInputAsset(input),
+        [service, input.id, input.refType, input.refId, input.roleName],
+      ),
     );
     final assetId = asset.hasError ? null : asset.data?.id;
     final colors = RevericTheme.colorsOf(context);
@@ -68,6 +69,14 @@ class ProductionInputTile extends HookWidget {
         ? context.t(LocaleKeys.productionGenerateReferenceMissing)
         : asset.data?.name ?? input.refId;
     final hovered = useState(false);
+    if (input.isPrompt) {
+      return ProductionTextInputTile(
+        service: service,
+        input: input,
+        onMove: onMove,
+        onRemove: onRemove,
+      );
+    }
 
     void menu() {
       final box = context.findRenderObject()! as RenderBox;

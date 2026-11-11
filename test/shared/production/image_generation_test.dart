@@ -159,6 +159,42 @@ void main() {
   });
 
   test(
+    'submitted image task freezes expanded text inputs without media references',
+    () async {
+      final text = await canvas.addText(
+        node.canvasId,
+        content: 'Shared description',
+      );
+      await canvas.shots.restoreInputs(node.clipId!, [
+        ProductionInput.text(text.id).toJson(),
+      ]);
+      final prepared = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      expect(prepared.request.prompt, 'Shared description\nBody');
+      await canvas.updateText(
+        text.id,
+        title: '',
+        content: 'Changed after preview',
+      );
+      final service = jobs((_, request, _) async {
+        expect(request.prompt, prepared.request.prompt);
+        expect(request.references, isEmpty);
+        return AiImageGenerationResult(localFilePath: output.path);
+      });
+      try {
+        final task = await service.requireRun(await submit(service, prepared));
+        expect(task.status, GenerationTaskStatus.completed);
+        expect(task.imageRequest.prompt, prepared.request.prompt);
+        expect(task.imageRequest.references, isEmpty);
+      } finally {
+        await service.shutdown();
+      }
+    },
+  );
+
+  test(
     'derived requests retain their prepared values after later draft edits',
     () async {
       late ProductionImagePreview frozen;

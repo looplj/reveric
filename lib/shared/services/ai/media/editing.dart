@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../../../agent/agent_tool_dispatcher.dart';
 import '../../../logger/app_logger.dart';
+import '../../../database/novel_content_database.dart';
 import '../../../models/editing/document.dart';
 import '../../../models/tool_permission.dart';
 import '../../../models/production/media.dart';
@@ -126,14 +127,29 @@ class EditingToolHost {
     }
     if (action == 'create') {
       keys(options, {'title', 'ratio'});
-      final id = const Uuid().v4();
       final doc = EditingDocument.empty(text(options, 'ratio'));
-      await canvas.db.editingDao.create(id, text(options, 'title'), doc);
+      final canvasWork = await canvas.shots.isCanvasWork;
+      final String id;
+      String? nodeId;
+      if (canvasWork) {
+        final node = await canvas.addEditing(
+          (await canvas.ensureCanvas('')).id,
+          title: text(options, 'title'),
+          ratio: doc.ratio,
+        );
+        id = node.editingId!;
+        nodeId = node.id;
+      } else {
+        id = const Uuid().v4();
+        await canvas.db.editingDao.create(id, text(options, 'title'), doc);
+      }
       return {
         'ok': true,
         'id': id,
         'editing_id': id,
-        'revision': 0,
+        'node_id': ?nodeId,
+        if (nodeId != null) 'node_path': '/production/canvas/nodes/$nodeId',
+        'revision': (await canvas.db.editingDao.get(id))!.revision,
         'document': doc.toJson(),
       };
     }
@@ -157,6 +173,9 @@ class EditingToolHost {
       _ => {'editing_id', 'expected_revision'},
     });
     final id = text(options, 'editing_id');
+    if (await canvas.shots.isCanvasWork) {
+      await service.canvasForEditing(id);
+    }
 
     if (await canvas.db.editingDao.get(id) == null) {
       throw const ToolOperationException(

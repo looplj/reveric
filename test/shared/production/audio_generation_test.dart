@@ -548,8 +548,21 @@ void main() {
       ...canvas.shots.snapshot(clip),
       'model_id': 'music-3.0',
     });
+    final text = await canvas.addText(
+      node.canvasId,
+      content: 'Shared music direction',
+    );
+    await canvas.shots.restoreInputs(clip.id, [
+      ProductionInput.text(text.id).toJson(),
+    ]);
     final frozen = await preview();
     final frozenPrompt = frozen.request.prompt;
+    expect(frozenPrompt, startsWith('Shared music direction'));
+    await canvas.updateText(
+      text.id,
+      title: '',
+      content: 'Changed after preview',
+    );
     await canvas.shots.apply(clip.id, {
       ...canvas.shots.snapshot((await canvas.shots.getShot(clip.id))!),
       'prompt': 'New draft',

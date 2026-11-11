@@ -198,10 +198,13 @@ const String canvasNodeTypeMedia = 'media';
 const String canvasNodeTypeStaging = 'staging';
 // 制作画布分组；成员用 parent_id 指向它，布局参数在 style.group。
 const String canvasNodeTypeGroup = 'group';
+const String canvasNodeTypeText = 'text';
+const String canvasNodeTypeEditing = 'editing';
 // 制作画布节点用 refType/refId 指向内容；不进构思画布的 [canvasNodeRefTypes]。
 const String canvasNodeRefTypeProductionClip = 'production_clip';
 const String canvasNodeRefTypeAsset = 'asset';
 const String canvasNodeRefTypeStaging = 'staging';
+const String canvasNodeRefTypeEditing = 'editing';
 const String canvasEdgeTypeInput = 'generation_input';
 // 导演台节点到它导出结果节点的连线，只由导出生成。
 const String canvasEdgeTypeStagingOutput = 'staging_output';
@@ -218,6 +221,7 @@ extension ProductionCanvasNodeRef on CanvasNode {
       refType == canvasNodeRefTypeProductionClip ? refId : null;
   String? get mediaAssetId => refType == canvasNodeRefTypeAsset ? refId : null;
   String? get stagingId => refType == canvasNodeRefTypeStaging ? refId : null;
+  String? get editingId => refType == canvasNodeRefTypeEditing ? refId : null;
 }
 
 const List<String> canvasKinds = <String>[canvasKindUser];

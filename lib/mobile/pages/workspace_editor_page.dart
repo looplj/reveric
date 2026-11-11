@@ -5,6 +5,9 @@
 //   lib/shared/models/content_kind.dart
 //   lib/shared/database/app_database.dart
 //   lib/mobile/pages/novel_chat_page.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 
@@ -17,6 +20,8 @@ import '../../shared/models/queued_chat_message.dart';
 import '../features/screenplay/editor_page.dart';
 import 'novel_editor_page.dart';
 import 'novel_chat_page.dart';
+import '../../shared/localization/app_localization.dart';
+import '../../shared/localization/locale_keys.dart';
 
 class MobileWorkspaceEditorPage extends HookWidget {
   const MobileWorkspaceEditorPage({
@@ -71,6 +76,15 @@ class MobileWorkspaceEditorPage extends HookWidget {
       return null;
     }, [novel.id, path, isScreenplay, openChatOnEntry, kickoffPrompt]);
 
+    if (novel.contentKind == contentKindCanvas) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Text(context.t(LocaleKeys.productionCanvasDesktopOnly)),
+          ),
+        ),
+      );
+    }
     if (isScreenplay) {
       return MobileScreenplayEditorPage(novel: novel);
     }

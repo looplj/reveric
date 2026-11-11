@@ -38,6 +38,7 @@ void main() {
       ShortEntityIdType.canvasEdge: 'ced',
       ShortEntityIdType.novel: 'nov',
       ShortEntityIdType.screenplay: 'scr',
+      ShortEntityIdType.canvas_work: 'cnv',
       ShortEntityIdType.screenplaySeason: 'sea',
       ShortEntityIdType.screenplayEpisode: 'epi',
       ShortEntityIdType.screenplayBeat: 'sbt',

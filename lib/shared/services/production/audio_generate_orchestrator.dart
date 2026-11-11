@@ -117,7 +117,9 @@ class ProductionAudioGenerateOrchestrator {
         !provider.availableAudioModels.contains(clip.modelId)) {
       throw const StoryboardException('invalid_config');
     }
-    final inputs = await service.draftInputs(node.id);
+    final allInputs = await service.draftInputs(node.id);
+    final textInputs = await service.promptTexts(allInputs);
+    final inputs = allInputs.where((input) => !input.isPrompt).toList();
     for (final input in inputs) {
       if (input.sourceNodeId != null) {
         await service.requireAcyclic(
@@ -138,6 +140,7 @@ class ProductionAudioGenerateOrchestrator {
       clip.prompt,
       references,
       placeholders: capability.model.supportsAudioReferencePlaceholders,
+      textInputs: textInputs,
     );
     final parameters = audioParametersFromStyle(
       node.style,
@@ -150,7 +153,9 @@ class ProductionAudioGenerateOrchestrator {
         providerId: provider.id,
         modelId: clip.modelId!,
         prompt: prompt,
-        originalPrompt: clip.prompt,
+        originalPrompt: StoryboardPrompt.parse(
+          clip.prompt,
+        ).render(textInputs: textInputs, reference: (part) => part.text),
         references: references,
         parameters: parameters,
       ),
@@ -282,12 +287,13 @@ Future<List<AudioReference>> resolveAudioReferences(
     throw const AudioException('invalid_config');
   }
   final capabilities = AudioCapabilities.forProvider(modelId, provider);
-  capabilities.validateSelection(inputs.map((r) => r.role.kind.name));
+  final mediaInputs = inputs.where((input) => !input.isPrompt).toList();
+  capabilities.validateSelection(mediaInputs.map((r) => r.role.kind.name));
   if (inputs.map((r) => r.identity).toSet().length != inputs.length) {
     throw const AudioException('invalid_reference');
   }
   final references = <AudioReference>[];
-  for (final input in inputs) {
+  for (final input in mediaInputs) {
     if (!{'reference_audio', 'reference_image'}.contains(input.role.name)) {
       throw const AudioException('audio_reference_format');
     }
@@ -331,17 +337,18 @@ String compileAudioPrompt(
   String source,
   List<AudioReference> references, {
   bool placeholders = true,
+  Map<String, String> textInputs = const {},
 }) {
   final parsed = StoryboardPrompt.parse(source);
-  final text = parsed.parts.map((part) {
-    if (!part.isReference) {
-      return part.text;
-    }
-    final index = references.indexWhere((r) => r.inputId == part.inputId);
-    if (index < 0 || references[index].kind != 'audio') {
-      throw const AudioException('invalid_reference');
-    }
-    return placeholders ? '@Audio${index + 1}' : '';
-  }).join();
+  final text = parsed.render(
+    textInputs: textInputs,
+    reference: (part) {
+      final index = references.indexWhere((r) => r.inputId == part.inputId);
+      if (index < 0 || references[index].kind != 'audio') {
+        throw const AudioException('invalid_reference');
+      }
+      return placeholders ? '@Audio${index + 1}' : '';
+    },
+  );
   return text;
 }

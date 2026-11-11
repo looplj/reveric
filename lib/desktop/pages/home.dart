@@ -282,7 +282,11 @@ class NovelHomePage extends HookConsumerWidget {
     // 将它注册为排除区域，避免双击按钮时触发窗口最大化/还原。
     // 小说库和剧本库同时挂载，各用一个 key，只登记当前可见的那个。
     final greetingHeaderKeys = useMemoized(
-      () => {contentKindNovel: GlobalKey(), contentKindScreenplay: GlobalKey()},
+      () => {
+        contentKindNovel: GlobalKey(),
+        contentKindScreenplay: GlobalKey(),
+        contentKindCanvas: GlobalKey(),
+      },
       [],
     );
     // 编辑面板标题栏按钮（Save / Cancel / Delete 等）同样在标题栏拖拽层内；
@@ -461,7 +465,38 @@ class NovelHomePage extends HookConsumerWidget {
       );
     }
 
+    Future<void> createCanvas() async {
+      try {
+        final id = await ref
+            .read(novelActionsProvider)
+            .createCanvas(
+              defaultTitle: context.t(LocaleKeys.libraryDefaultCanvasTitle),
+            );
+        if (context.mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => WorkspaceEditorPage(novelId: id),
+            ),
+          );
+        }
+      } catch (error, stack) {
+        _log.error('Create canvas failed', error: error, stackTrace: stack);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.t(LocaleKeys.editorSaveNovelFailed)),
+            ),
+          );
+        }
+      }
+    }
+
     void openCreateNovelDialog(String contentKind) {
+      if (contentKind == contentKindCanvas) {
+        createCanvas();
+        return;
+      }
+
       final isNovel = contentKind == contentKindNovel;
       final novels = novelsAsync.maybeWhen(
         data: (list) => list,
@@ -1026,10 +1061,15 @@ class NovelHomePage extends HookConsumerWidget {
       // 两个库同时挂载、只切换可见的那个：集合作品流不会随切换被释放重查，
       // 切换时不再先闪加载态再出内容；搜索、筛选和滚动位置也各自保留。
       _HomeLibrarySelection(:final contentKind) => IndexedStack(
-        index: contentKind == contentKindScreenplay ? 1 : 0,
+        index: contentKind == contentKindCanvas
+            ? 2
+            : contentKind == contentKindScreenplay
+            ? 1
+            : 0,
         children: [
           buildLibraryPanel(contentKindNovel),
           buildLibraryPanel(contentKindScreenplay),
+          buildLibraryPanel(contentKindCanvas),
         ],
       ),
     };
@@ -1168,6 +1208,15 @@ class NovelHomePage extends HookConsumerWidget {
                       const _HomeLibrarySelection(contentKindScreenplay),
                     );
                   },
+                ),
+                _buildLeafNavItem(
+                  context,
+                  icon: RevericIcons.flow_arrow,
+                  title: context.t(LocaleKeys.libraryContentKindCanvas),
+                  isSelected: libraryKind == contentKindCanvas,
+                  onTap: () => onContentSelected(
+                    const _HomeLibrarySelection(contentKindCanvas),
+                  ),
                 ),
                 const SizedBox(height: RevericSpacing.md),
                 // Section 2: 模型

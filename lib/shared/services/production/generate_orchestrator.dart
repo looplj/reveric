@@ -82,7 +82,7 @@ VideoMode productionSubmitMode(
 List<ProductionInput> productionInputsWithVoices(
   List<ProductionInput> inputs,
 ) => [
-  for (final input in inputs) ...[
+  for (final input in inputs.where((input) => !input.isPrompt)) ...[
     input,
     if (input.voiceAssetId != null)
       ProductionInput(
@@ -162,8 +162,9 @@ List<VideoReferenceSlot> productionSlots(
 VideoRequest compileProductionPrompt(
   String providerType,
   VideoRequest raw,
-  List<ResolvedProductionInput> inputs,
-) {
+  List<ResolvedProductionInput> inputs, {
+  Map<String, String> textInputs = const {},
+}) {
   final parsed = StoryboardPrompt.parse(raw.prompt);
   final slots = productionSlots(
     productionProtocol(providerType),
@@ -180,16 +181,16 @@ VideoRequest compileProductionPrompt(
   if (inputs.map((s) => s.id).toSet().length != slots.length) {
     throw const StoryboardException('invalid_reference');
   }
-  final text = parsed.parts.map((part) {
-    if (!part.isReference) {
-      return part.text;
-    }
-    final slot = slots.where((s) => s.inputId == part.inputId).firstOrNull;
-    if (slot == null) {
-      throw const StoryboardException('invalid_reference');
-    }
-    return slot.slot;
-  }).join();
+  final text = parsed.render(
+    textInputs: textInputs,
+    reference: (part) {
+      final slot = slots.where((s) => s.inputId == part.inputId).firstOrNull;
+      if (slot == null) {
+        throw const StoryboardException('invalid_reference');
+      }
+      return slot.slot;
+    },
+  );
   final middleFrameIds = [
     for (final input in inputs)
       if (input.role == VideoInputRole.middle_frame) input.id,
@@ -240,7 +241,10 @@ VideoRequest compileProductionPrompt(
     durationSeconds: raw.durationSeconds,
     audio: raw.audio ?? defaults?.audio,
     promptExtend: raw.promptExtend ?? defaults?.promptExtend,
-    originalPrompt: raw.prompt,
+    originalPrompt: parsed.render(
+      textInputs: textInputs,
+      reference: (part) => part.text,
+    ),
     referenceSlots: slots,
   );
 }
@@ -300,7 +304,9 @@ class ProductionGenerateOrchestrator {
         field: 'draft',
       );
     }
-    final savedInputs = await service.inputs(nodeId);
+    final allInputs = await service.inputs(nodeId);
+    final textInputs = await service.promptTexts(allInputs);
+    final savedInputs = allInputs.where((input) => !input.isPrompt).toList();
     for (final input in savedInputs.where((i) => i.voiceAssetId != null)) {
       if (productionUsesFrames(raw.mode)) {
         throw const VideoException(
@@ -376,6 +382,7 @@ class ProductionGenerateOrchestrator {
             : null,
       ),
       ordered,
+      textInputs: textInputs,
     );
     final style = await service.effectiveStyle(shot!);
     final request = compiled.withPrompt(
