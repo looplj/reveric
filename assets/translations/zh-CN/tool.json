@@ -260,6 +260,7 @@
   "tool.run_editing_read": "查看剪辑",
   "tool.run_editing_apply": "调整剪辑",
   "tool.run_editing_preview": "预览视频",
+  "tool.run_editing_frames": "查看剪辑画面",
   "tool.run_editing_export": "导出视频",
   "tool.run_operations_list": "查看后台任务",
   "tool.run_operations_read": "查看任务状态",

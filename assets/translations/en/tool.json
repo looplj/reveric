@@ -260,6 +260,7 @@
   "tool.run_editing_read": "View timeline",
   "tool.run_editing_apply": "Edit timeline",
   "tool.run_editing_preview": "Preview video",
+  "tool.run_editing_frames": "View timeline frames",
   "tool.run_editing_export": "Export video",
   "tool.run_operations_list": "List background tasks",
   "tool.run_operations_read": "Check task status",

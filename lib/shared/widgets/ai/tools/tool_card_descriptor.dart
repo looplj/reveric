@@ -144,6 +144,7 @@ const _runActionKeys = <(String, String), String>{
   ('editing', 'undo'): LocaleKeys.commonUndo,
   ('editing', 'redo'): LocaleKeys.commonRedo,
   ('editing', 'preview'): LocaleKeys.toolRunEditingPreview,
+  ('editing', 'frames'): LocaleKeys.toolRunEditingFrames,
   ('editing', 'cleanup'): LocaleKeys.commonDelete,
   ('editing', 'export'): LocaleKeys.toolRunEditingExport,
   ('operations', 'list'): LocaleKeys.toolRunOperationsList,

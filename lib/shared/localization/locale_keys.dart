@@ -5263,6 +5263,7 @@ abstract final class LocaleKeys {
   static const toolRunEditingRead = 'tool.run_editing_read';
   static const toolRunEditingApply = 'tool.run_editing_apply';
   static const toolRunEditingPreview = 'tool.run_editing_preview';
+  static const toolRunEditingFrames = 'tool.run_editing_frames';
   static const toolRunEditingExport = 'tool.run_editing_export';
   static const toolRunOperationsList = 'tool.run_operations_list';
   static const toolRunOperationsRead = 'tool.run_operations_read';
