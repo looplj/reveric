@@ -75,16 +75,47 @@ class AiMarkdownText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StableSelectionArea(
-      selectable: selectable,
-      child: GptMarkdown(
-        _normalizeFullwidthDigits(content.trim()),
-        textDirection: Directionality.of(context),
-        style: style,
-        maxLines: maxLines,
-        overflow: overflow,
-        codeBuilder: buildMarkdownCodeBlock,
-        onLinkTap: (url, _) => unawaited(_openWebLink(context, url)),
+    Widget markdown = GptMarkdown(
+      _normalizeFullwidthDigits(content.trim()),
+      textDirection: Directionality.of(context),
+      style: style,
+      maxLines: maxLines,
+      overflow: overflow,
+      codeBuilder: buildMarkdownCodeBlock,
+      onLinkTap: (url, _) => unawaited(_openWebLink(context, url)),
+    );
+    final textColor = style.color;
+    if (textColor != null) {
+      markdown = GptMarkdownTheme(
+        gptThemeData: _themeForTextColor(context, textColor),
+        child: markdown,
+      );
+    }
+    return StableSelectionArea(selectable: selectable, child: markdown);
+  }
+
+  /// 标题与行内代码默认取 Material Theme 的颜色，与调用方给正文的颜色来源不同；
+  /// 统一改用正文颜色，避免两者不一致时在深色背景上看不清。
+  static GptMarkdownThemeData _themeForTextColor(
+    BuildContext context,
+    Color textColor,
+  ) {
+    final base = GptMarkdownTheme.of(context);
+    // 浅色文字意味着深色背景，沿用 gpt_markdown 深色下更强的底色与描边透明度。
+    final onDark =
+        ThemeData.estimateBrightnessForColor(textColor) == Brightness.light;
+    TextStyle? heading(TextStyle? s) => s?.copyWith(color: textColor);
+    return base.copyWith(
+      h1: heading(base.h1),
+      h2: heading(base.h2),
+      h3: heading(base.h3),
+      h4: heading(base.h4),
+      h5: heading(base.h5),
+      h6: heading(base.h6),
+      inlineCode: base.inlineCode.copyWith(
+        color: textColor,
+        backgroundColor: textColor.withValues(alpha: onDark ? 0.14 : 0.10),
+        borderColor: textColor.withValues(alpha: onDark ? 0.34 : 0.28),
       ),
     );
   }
