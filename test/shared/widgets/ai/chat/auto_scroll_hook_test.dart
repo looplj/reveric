@@ -1,4 +1,4 @@
-// 职责: 测试聊天自动滚动 hook 在 AskUser pending 时只首次揭示并尊重用户回看
+// 职责: 测试聊天滚动 hook 的贴底跟随、AskUser 首次揭示与审批卡定位揭示
 // 关联文件:
 //   lib/shared/widgets/ai/chat/auto_scroll_hook.dart
 //   lib/shared/widgets/ai/chat/ui_message.dart
@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/widgets/ai/chat/auto_scroll_hook.dart';
 import 'package:reveric/shared/widgets/ai/chat/ui_message.dart';
+import 'package:reveric/shared/widgets/ai/tool_approval_card.dart';
 
 void main() {
   testWidgets(
@@ -93,6 +94,108 @@ void main() {
       expect(position.pixels, position.maxScrollExtent);
     },
   );
+
+  testWidgets('locating an approval card scrolls it back into the lazy list', (
+    tester,
+  ) async {
+    // 意图：审批卡所在消息滚出懒加载范围后未挂载，运行条定位仍须把它滚出来并高亮。
+    final locator = ToolApprovalLocator();
+    addTearDown(locator.dispose);
+    final messages = _messagesWithApprovalHost(hostIndex: 2);
+
+    await tester.pumpWidget(
+      _wrap(_RevealHarness(uiMessages: messages, locator: locator)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('approval card'), findsNothing);
+
+    locator.locate('run_1', hostCallId: 'host_call');
+    await tester.pumpAndSettle();
+
+    expect(find.text('approval card'), findsOneWidget);
+    final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+    expect(
+      scrollable.position.pixels,
+      lessThan(scrollable.position.maxScrollExtent),
+    );
+    await tester.pump(const Duration(seconds: 2));
+  });
+}
+
+List<UIMessage> _messagesWithApprovalHost({required int hostIndex}) {
+  return [
+    for (var i = 0; i < 40; i++)
+      UIMessage(
+        id: 'message_$i',
+        role: AiMessageRole.assistant,
+        type: AiMessageType.text,
+        content: 'message $i',
+        blocks: [
+          if (i == hostIndex)
+            const AiToolCallBlock(
+              id: 'host_block',
+              callId: 'host_call',
+              toolName: 'Batch',
+              arguments: {},
+            ),
+        ],
+        isStreaming: false,
+        isStreamingTail: false,
+        sourceIds: ['message_$i'],
+      ),
+  ];
+}
+
+class _RevealHarness extends HookWidget {
+  const _RevealHarness({required this.uiMessages, required this.locator});
+
+  final List<UIMessage> uiMessages;
+  final ToolApprovalLocator locator;
+
+  @override
+  Widget build(BuildContext context) {
+    final userScrolledUp = useRef(false);
+    final controller = useChatAutoScroll(
+      uiMessages: uiMessages,
+      userScrolledUp: userScrolledUp,
+      sessionId: 'session_1',
+    );
+    final revealSlot = useApprovalReveal(
+      locator: locator,
+      controller: controller,
+      uiMessages: uiMessages,
+    );
+    return ListView.builder(
+      controller: controller,
+      itemCount: uiMessages.length,
+      itemBuilder: (context, index) => revealSlot(
+        index,
+        uiMessages[index].blocks.isEmpty
+            ? SizedBox(height: 160, child: Text('message $index'))
+            : _FakeApprovalCard(locator: locator),
+      ),
+    );
+  }
+}
+
+class _FakeApprovalCard extends HookWidget {
+  const _FakeApprovalCard({required this.locator});
+
+  final ToolApprovalLocator locator;
+
+  @override
+  Widget build(BuildContext context) {
+    final anchor = useMemoized(GlobalKey.new);
+    useEffect(() {
+      locator.register('run_1', anchor);
+      return () => locator.release('run_1', anchor);
+    }, const []);
+    return SizedBox(
+      key: anchor,
+      height: 160,
+      child: const Text('approval card'),
+    );
+  }
 }
 
 List<UIMessage> _streamingMessages({required double tailHeight}) {

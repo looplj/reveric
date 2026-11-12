@@ -66,6 +66,7 @@ import '../../../../shared/widgets/ai/chat/tool_operation_strip.dart';
 import '../../../../shared/models/tool_permission.dart';
 import '../../../../shared/widgets/ai/tool_permission_editor.dart';
 import 'package:reveric/shared/widgets/ai/chat/auto_scroll_hook.dart';
+import 'package:reveric/shared/widgets/ai/tool_approval_card.dart';
 import 'package:reveric/shared/widgets/ai/chat/chat_send_completion_guard.dart';
 import 'package:reveric/shared/widgets/ai/chat/assistant_empty_state.dart';
 import 'package:reveric/shared/widgets/ai/chat/chat_message_view.dart';
@@ -1661,6 +1662,11 @@ class _ChatMessageListArea extends HookConsumerWidget {
       sessionId: runtimeSessionId,
       hasTrailingActivity: isCompacting || isWaitingForResponse,
     );
+    final revealSlot = useApprovalReveal(
+      locator: ref.watch(toolApprovalLocatorProvider),
+      controller: scrollController,
+      uiMessages: uiMessages,
+    );
 
     if (uiMessages.isEmpty) {
       return AssistantEmptyState(
@@ -1680,20 +1686,23 @@ class _ChatMessageListArea extends HookConsumerWidget {
       ),
       itemCount: uiMessages.length,
       itemBuilder: (context, index) {
-        return panel._buildChatMessage(
-          context,
-          ref,
-          colors,
-          uiMessages[index],
-          panelState,
-          promptBuilder,
-          promptContext: promptContext,
-          availableSubAgents: availableSubAgents,
-          isCompactingContext: isCompacting && index == uiMessages.length - 1,
-          isWaitingForResponse:
-              isWaitingForResponse && index == uiMessages.length - 1,
-          retryProgress: index == uiMessages.length - 1 ? retryProgress : '',
-          sessionState: sessionState,
+        return revealSlot(
+          index,
+          panel._buildChatMessage(
+            context,
+            ref,
+            colors,
+            uiMessages[index],
+            panelState,
+            promptBuilder,
+            promptContext: promptContext,
+            availableSubAgents: availableSubAgents,
+            isCompactingContext: isCompacting && index == uiMessages.length - 1,
+            isWaitingForResponse:
+                isWaitingForResponse && index == uiMessages.length - 1,
+            retryProgress: index == uiMessages.length - 1 ? retryProgress : '',
+            sessionState: sessionState,
+          ),
         );
       },
     );

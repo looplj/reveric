@@ -54,13 +54,14 @@ class ToolOperationStrip extends HookConsumerWidget {
     final runs = ref.watch(
       aiChatRuntimeProvider(id).select((value) => value.operations.runs),
     );
+    // 审批 id → 审批卡挂靠的工具调用 id（与 ToolOperationActivity 的匹配口径一致）。
     final pending = id == null
-        ? const <String>{}
+        ? const <String, String>{}
         : {
             for (final request
                 in ref.watch(pendingToolApprovalsProvider(id)).value ??
                     const [])
-              request.approvalId,
+              request.approvalId: request.displayCallId ?? request.callId,
           };
 
     // 只为本次挂载期间见过的运行留回执：历史里恢复的终态运行不上条。
@@ -134,9 +135,13 @@ class ToolOperationStrip extends HookConsumerWidget {
         _RunRow(
           key: ValueKey(run.runId),
           run: run,
-          onLocate: pending.contains(run.runId)
-              ? () => ref.read(toolApprovalLocatorProvider).locate(run.runId)
-              : null,
+          onLocate: switch (pending[run.runId]) {
+            final hostCallId? =>
+              () => ref
+                  .read(toolApprovalLocatorProvider)
+                  .locate(run.runId, hostCallId: hostCallId),
+            null => null,
+          },
           onCancel: run.terminal || run.status == ToolOperationStatus.cancelling
               ? null
               : () => cancel(run),

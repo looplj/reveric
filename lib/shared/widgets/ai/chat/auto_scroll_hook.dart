@@ -1,16 +1,20 @@
-// 职责: 聊天列表自动贴底滚动 hook — 流式跟随、用户上滑暂停、ask-user 首次揭示、会话切换重置
+// 职责: 聊天列表滚动 hook — 流式跟随、用户上滑暂停、ask-user 首次揭示、会话切换重置、审批卡定位揭示
 // 关联文件:
 //   lib/shared/widgets/ai/chat/ui_message.dart
 //   lib/shared/models/ai_message_block.dart
+//   lib/shared/widgets/ai/tool_approval_card.dart
 //   lib/desktop/widgets/ai/chat/panel.dart
 //   lib/mobile/pages/chat_session_page.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/ai_message_block.dart';
+import '../tool_approval_card.dart';
 import 'ui_message.dart';
 
 /// 管理聊天列表的自动贴底滚动，返回应挂到 ListView 的 [ScrollController]。
@@ -208,6 +212,115 @@ ScrollController useChatAutoScroll({
   }, [uiMessages, hasTrailingActivity]);
 
   return scrollController;
+}
+
+/// 揭示审批卡最多滚动的帧数；首帧按比例估算，之后每帧移动一屏。
+const _maxRevealSteps = 40;
+
+/// 让运行条能定位到滚出懒加载范围的审批卡，返回包装列表项的函数。
+///
+/// 列表项必须经返回的函数包装，hook 据此得知当前构建了哪些消息：目标消息不在
+/// 构建范围时先按比例跳一次，再朝目标方向逐屏跳，消息建出来后交给
+/// [ToolApprovalLocator.focus] 精确滚到卡片并高亮。程序跳转会让
+/// [useChatAutoScroll] 置位上滑标记，不会被贴底逻辑拉回。
+Widget Function(int index, Widget child) useApprovalReveal({
+  required ToolApprovalLocator locator,
+  required ScrollController controller,
+  required List<UIMessage> uiMessages,
+}) {
+  final built = useMemoized(() => <int>{});
+  final messages = useRef(uiMessages);
+  messages.value = uiMessages;
+
+  useEffect(() {
+    Future<void> reveal(String approvalId, String hostCallId) async {
+      final target = messages.value.indexWhere(
+        (message) => message.blocks.any(
+          (block) => switch (block) {
+            AiToolCallBlock(:final callId) => callId == hostCallId,
+            AiImageBlock(:final id) => id == 'img_$hostCallId',
+            _ => false,
+          },
+        ),
+      );
+      if (target < 0) {
+        return;
+      }
+      for (var step = 0; step < _maxRevealSteps; step++) {
+        if (!controller.hasClients || built.isEmpty) {
+          return;
+        }
+        final pos = controller.position;
+        if (!pos.hasContentDimensions) {
+          return;
+        }
+        final first = built.reduce(math.min);
+        final last = built.reduce(math.max);
+        if (target >= first && target <= last) {
+          locator.focus(approvalId);
+          return;
+        }
+        final count = messages.value.length;
+        final next = step == 0 && count > 1
+            ? pos.maxScrollExtent * target / (count - 1)
+            : target < first
+            ? pos.pixels - pos.viewportDimension
+            : pos.pixels + pos.viewportDimension;
+        controller.jumpTo(
+          next.clamp(pos.minScrollExtent, pos.maxScrollExtent).toDouble(),
+        );
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    }
+
+    locator.addRevealer(reveal);
+    return () => locator.removeRevealer(reveal);
+  }, [locator, controller]);
+
+  return (index, child) =>
+      _RevealSlot(index: index, built: built, child: child);
+}
+
+/// 挂载期间把自己的消息下标登记进 [built]。
+class _RevealSlot extends StatefulWidget {
+  const _RevealSlot({
+    required this.index,
+    required this.built,
+    required this.child,
+  });
+
+  final int index;
+  final Set<int> built;
+  final Widget child;
+
+  @override
+  State<_RevealSlot> createState() => _RevealSlotState();
+}
+
+class _RevealSlotState extends State<_RevealSlot> {
+  @override
+  void initState() {
+    super.initState();
+    widget.built.add(widget.index);
+  }
+
+  @override
+  void didUpdateWidget(_RevealSlot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index || oldWidget.built != widget.built) {
+      oldWidget.built.remove(oldWidget.index);
+      widget.built.add(widget.index);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.built.remove(widget.index);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// 聊天列表滚动通知处理：用户一开始触摸拖动就立即暂停自动跟随。

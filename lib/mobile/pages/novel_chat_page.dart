@@ -117,6 +117,7 @@ import 'package:reveric/shared/widgets/ai/chat/tool_operation_strip.dart';
 import 'package:reveric/shared/widgets/ai/tool_permission_editor.dart';
 import 'package:reveric/shared/models/tool_permission.dart';
 import 'package:reveric/shared/widgets/ai/chat/auto_scroll_hook.dart';
+import 'package:reveric/shared/widgets/ai/tool_approval_card.dart';
 import 'package:reveric/shared/widgets/ai/chat/chat_send_completion_guard.dart';
 import 'package:reveric/shared/widgets/ai/chat/feedback_dialog.dart';
 import 'package:reveric/shared/widgets/ai/chat/message_action_confirm_dialog.dart';
@@ -1664,6 +1665,11 @@ class _MobileChatMessageList extends HookConsumerWidget {
       sessionId: sessionId,
       hasTrailingActivity: isCompacting || isWaitingForResponse,
     );
+    final revealSlot = useApprovalReveal(
+      locator: ref.watch(toolApprovalLocatorProvider),
+      controller: scrollController,
+      uiMessages: uiMessages,
+    );
 
     if (messages.isEmpty) {
       return AssistantEmptyState(
@@ -1687,47 +1693,54 @@ class _MobileChatMessageList extends HookConsumerWidget {
         separatorBuilder: (_, _) => const SizedBox(height: RevericSpacing.lg),
         itemBuilder: (context, index) {
           final msg = uiMessages[index];
-          return ChatMessageView(
-            message: msg,
-            activeSessionId: sessionId,
-            onConfigureImageModel: () =>
-                openMobileAgentModelSettingsPage(context),
-            onSetAsAvatar: (assetId, characterId) => setGeneratedImageAsAvatar(
-              context,
-              ref,
+          return revealSlot(
+            index,
+            ChatMessageView(
+              message: msg,
+              activeSessionId: sessionId,
+              onConfigureImageModel: () =>
+                  openMobileAgentModelSettingsPage(context),
+              onSetAsAvatar: (assetId, characterId) =>
+                  setGeneratedImageAsAvatar(
+                    context,
+                    ref,
+                    databasePath: databasePath,
+                    assetId: assetId,
+                    characterId: characterId,
+                  ),
+              onAddPhoto: (assetId, {characterId, itemId}) =>
+                  addGeneratedImageAsPhoto(
+                    context,
+                    ref,
+                    databasePath: databasePath,
+                    assetId: assetId,
+                    characterId: characterId,
+                    itemId: itemId,
+                  ),
+              onOpenSessionReference: onOpenSessionReference,
               databasePath: databasePath,
-              assetId: assetId,
-              characterId: characterId,
-            ),
-            onAddPhoto: (assetId, {characterId, itemId}) =>
-                addGeneratedImageAsPhoto(
-                  context,
-                  ref,
-                  databasePath: databasePath,
-                  assetId: assetId,
-                  characterId: characterId,
-                  itemId: itemId,
-                ),
-            onOpenSessionReference: onOpenSessionReference,
-            databasePath: databasePath,
-            novelId: novelId,
-            isCompactingContext: isCompacting && index == uiMessages.length - 1,
-            isWaitingForResponse:
-                isWaitingForResponse && index == uiMessages.length - 1,
-            retryProgress: index == uiMessages.length - 1 ? retryProgress : '',
-            // 事件回调按需 read 全量会话态，不在 build 期订阅。
-            onFeedback: () => showAiChatFeedbackDialog(
-              context: context,
-              ref: ref,
-              sessionState: ref.read(aiChatSessionProvider(sessionId)),
               novelId: novelId,
-              databasePath: databasePath,
+              isCompactingContext:
+                  isCompacting && index == uiMessages.length - 1,
+              isWaitingForResponse:
+                  isWaitingForResponse && index == uiMessages.length - 1,
+              retryProgress: index == uiMessages.length - 1
+                  ? retryProgress
+                  : '',
+              // 事件回调按需 read 全量会话态，不在 build 期订阅。
+              onFeedback: () => showAiChatFeedbackDialog(
+                context: context,
+                ref: ref,
+                sessionState: ref.read(aiChatSessionProvider(sessionId)),
+                novelId: novelId,
+                databasePath: databasePath,
+              ),
+              onFork: () => onFork(msg.sourceIds.last),
+              onRollbackTurn: (id) async {
+                await onRollbackTurn(id);
+                return null;
+              },
             ),
-            onFork: () => onFork(msg.sourceIds.last),
-            onRollbackTurn: (id) async {
-              await onRollbackTurn(id);
-              return null;
-            },
           );
         },
       ),
