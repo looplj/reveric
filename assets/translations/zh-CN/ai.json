@@ -1,4 +1,5 @@
 {
+  "ai.image_candidates_fetch_failed": "图片结果获取失败，请重试获取。",
   "ai.permission_file_disclosure": "文件信息或内容会发送给当前模型",
   "ai.permissions_title": "助手权限",
   "ai.permission_allow": "允许",

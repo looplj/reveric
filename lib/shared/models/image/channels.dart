@@ -33,6 +33,13 @@ sealed class ImageProtocolOptions {
   const ImageProtocolOptions();
 }
 
+enum MidjourneyProtocol { proxy, images, atlascloud }
+
+class MidjourneyImageOptions extends ImageProtocolOptions {
+  const MidjourneyImageOptions(this.protocol);
+  final MidjourneyProtocol protocol;
+}
+
 class AgnesImageOptions extends ImageProtocolOptions {
   const AgnesImageOptions({this.sizeTiersWithRatio = false});
 
@@ -103,6 +110,19 @@ final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
       id: ImageChannelModel(catalogId: id),
   },
   ImageProtocol.new_api_images: {
+    'mj_imagine': ImageChannelModel(
+      catalogId: 'midjourney',
+      protocolOptions: MidjourneyImageOptions(MidjourneyProtocol.proxy),
+    ),
+    for (final id in [
+      'midjourney-v8.2',
+      'midjourney-v8.2-fast',
+      'midjourney-v8.2-turbo',
+    ])
+      id: ImageChannelModel(
+        catalogId: 'midjourney-v8.2',
+        protocolOptions: MidjourneyImageOptions(MidjourneyProtocol.images),
+      ),
     ..._pixelSizeChannels,
     for (final id in imageModelsCatalog.keys.where(
       (id) => id.startsWith('gemini-'),
@@ -135,6 +155,25 @@ final purefoxMediaImageModels = <String, ImageChannelModel>{};
 const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
   // https://www.atlascloud.ai/docs/openapi-index
   ImageProtocol.atlascloud_image: {
+    'youchuan/v8.2/text-to-image': ImageChannelModel(
+      catalogId: 'midjourney-v8.2',
+      capabilities: ImageModelCapabilities(
+        resolutions: {'auto', '2K'},
+        ratios: {
+          'auto',
+          '1:1',
+          '16:9',
+          '9:16',
+          '4:3',
+          '3:4',
+          '3:2',
+          '2:3',
+          '21:9',
+          '9:21',
+        },
+      ),
+      protocolOptions: MidjourneyImageOptions(MidjourneyProtocol.atlascloud),
+    ),
     // https://static.atlascloud.ai/model/schema/openai-gpt-image-2.6-sunburst-text-to-image.json
     'openai/gpt-image-2.6-sunburst/text-to-image': ImageChannelModel(
       catalogId: 'gpt-image-2.6-sunburst',

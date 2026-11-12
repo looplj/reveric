@@ -14,7 +14,8 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:ui' show Offset;
 import 'package:drift/drift.dart';
-import '../../database/app_database.dart' show AssetRow, GenerationTask;
+import '../../database/app_database.dart'
+    show AssetRow, GenerationTask, GenerationTaskRequest;
 import '../../models/generation/task.dart';
 import '../../database/novel_content_database.dart';
 import '../../models/video/request.dart';
@@ -1912,20 +1913,27 @@ class ProductionCanvasService {
     return (await shots.getShot(row.id))!;
   });
 
-  Future<void> adoptGenerated(String nodeId, String taskId) =>
-      write(nodeId, () async {
-        final node = await requireNode(nodeId);
-        final task = await library.database.generationTaskDao.getById(taskId);
-        if (task == null ||
-            !canAdoptProductionTask(task) ||
-            task.novelId != novelId ||
-            task.sourceType != 'production_clip' ||
-            task.sourceId != node.clipId ||
-            task.kind.name != node.type) {
-          throw const StoryboardException('invalid_result');
-        }
-        await adopt(nodeId, task.resultAssetId!);
-      });
+  Future<void> adoptGenerated(
+    String nodeId,
+    String taskId, {
+    String? assetId,
+  }) => write(nodeId, () async {
+    final node = await requireNode(nodeId);
+    final task = await library.database.generationTaskDao.getById(taskId);
+    if (task == null ||
+        !canAdoptProductionTask(task) ||
+        task.novelId != novelId ||
+        task.sourceType != 'production_clip' ||
+        task.sourceId != node.clipId ||
+        task.kind.name != node.type) {
+      throw const StoryboardException('invalid_result');
+    }
+    final selected = assetId ?? task.resultAssetId!;
+    if (!task.resultAssetIds.contains(selected)) {
+      throw const StoryboardException('invalid_result');
+    }
+    await adopt(nodeId, selected);
+  });
 
   /// 外部文件先在导入入口登记成资产，这里只接收资产 id。
   Future<void> adopt(String nodeId, String assetId) => write(nodeId, () async {

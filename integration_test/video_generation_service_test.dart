@@ -44,6 +44,26 @@ void main() {
         var creates = 0;
         var uploads = 0;
         var queries = 0;
+        ReferenceStorageService references(AppDatabase db) =>
+            ReferenceStorageService(
+              database: db,
+              storage: FakeObjectStorage(db, ({
+                required file,
+                required sha256,
+                required mimeType,
+                required fileSize,
+              }) async {
+                uploads++;
+                return (url: 'https://reference.test/input', expiresAt: null);
+              }),
+              probe: (_) async => const MediaInfo(
+                duration: Duration.zero,
+                hasAudio: false,
+                hasVideo: true,
+                width: 320,
+                height: 320,
+              ),
+            );
         ProviderContainer containerFor(
           AppDatabase db, {
           bool resumed = false,
@@ -51,31 +71,8 @@ void main() {
           overrides: [
             appDatabaseProvider.overrideWithValue(db),
             videoTaskServiceProvider.overrideWith((ref) async {
-              final references = ReferenceStorageService(
-                database: db,
-                storage: FakeObjectStorage(
-                  db,
-                  ({
-                    required file,
-                    required sha256,
-                    required mimeType,
-                    required fileSize,
-                  }) async {
-                    uploads++;
-                    return (
-                      url: 'https://reference.test/input',
-                      expiresAt: null,
-                    );
-                  },
-                ),
-                probe: (_) async => const MediaInfo(
-                  duration: Duration.zero,
-                  hasAudio: false,
-                  hasVideo: true,
-                  width: 320,
-                  height: 320,
-                ),
-              );
+              final referenceStorage = references(db);
+              ref.onDispose(referenceStorage.dispose);
               final service = VideoTaskService(
                 probeResult: (_) async => const MediaInfo(
                   duration: Duration(seconds: 5),
@@ -87,7 +84,7 @@ void main() {
 
                 database: db,
                 rootDirectory: root,
-                references: references,
+                references: referenceStorage,
                 now: () =>
                     DateTime.now().add(Duration(seconds: resumed ? 11 : 0)),
                 providerTransport: (_) => MockClient((r) async {
@@ -174,7 +171,7 @@ void main() {
               id: 'reference',
               type: 'image',
               purpose: 'upload',
-              path: Value(input.path),
+              path: const Value('source.png'),
               content: const Value(ImageAssetContent(mimeType: 'image/png')),
             ),
           );

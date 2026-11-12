@@ -85,7 +85,8 @@ class NewApiClient {
           return switch (kind) {
             AiModelKind.image =>
               image &&
-                  (model.endpointTypes.contains('image-generation') ||
+                  (model.id == 'mj_imagine' ||
+                      model.endpointTypes.contains('image-generation') ||
                       model.endpointTypes.contains('gemini')),
             AiModelKind.audio =>
               audio &&

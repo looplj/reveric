@@ -356,3 +356,13 @@ class CollectionFilterConverter
   @override
   String toSql(CollectionFilter value) => value.raw;
 }
+
+class ImageTaskOutputsConverter
+    extends TypeConverter<ImageTaskOutputs, String> {
+  const ImageTaskOutputsConverter();
+  @override
+  ImageTaskOutputs fromSql(String column) =>
+      ImageTaskOutputs.fromJson(jsonDecode(column) as Map<String, dynamic>);
+  @override
+  String toSql(ImageTaskOutputs value) => jsonEncode(value.toJson());
+}

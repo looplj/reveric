@@ -2343,7 +2343,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
   final String filterMode;
   final CollectionFilter? filter;
 
-  /// 集合所属的作品类型；null 表示小说库和剧本库共用（只有默认集合）。
+  /// 集合所属的作品类型。null 只留给各库共用的内置「全部」。
   /// 取值由 Dart 侧 [validateContentKind] 校验。
   final String? contentKind;
   final DateTime createdAt;
@@ -9061,6 +9061,18 @@ class $GenerationTasksTable extends GenerationTasks
   final String? _alias;
   $GenerationTasksTable(this.attachedDatabase, [this._alias]);
   @override
+  late final GeneratedColumnWithTypeConverter<ImageTaskOutputs?, String>
+  imageOutputs =
+      GeneratedColumn<String>(
+        'image_outputs',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<ImageTaskOutputs?>(
+        $GenerationTasksTable.$converterimageOutputsn,
+      );
+  @override
   late final GeneratedColumnWithTypeConverter<GenerationKind, String> kind =
       GeneratedColumn<String>(
         'kind',
@@ -9368,6 +9380,7 @@ class $GenerationTasksTable extends GenerationTasks
   );
   @override
   List<GeneratedColumn> get $columns => [
+    imageOutputs,
     kind,
     id,
     draft,
@@ -9609,6 +9622,12 @@ class $GenerationTasksTable extends GenerationTasks
   GenerationTask map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return GenerationTask(
+      imageOutputs: $GenerationTasksTable.$converterimageOutputsn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}image_outputs'],
+        ),
+      ),
       kind: $GenerationTasksTable.$converterkind.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -9735,6 +9754,10 @@ class $GenerationTasksTable extends GenerationTasks
     return $GenerationTasksTable(attachedDatabase, alias);
   }
 
+  static TypeConverter<ImageTaskOutputs, String> $converterimageOutputs =
+      const ImageTaskOutputsConverter();
+  static TypeConverter<ImageTaskOutputs?, String?> $converterimageOutputsn =
+      NullAwareTypeConverter.wrap($converterimageOutputs);
   static JsonTypeConverter2<GenerationKind, String, String> $converterkind =
       const EnumNameConverter<GenerationKind>(GenerationKind.values);
   static JsonTypeConverter2<GenerationTaskStatus, String, String>
@@ -9746,6 +9769,7 @@ class $GenerationTasksTable extends GenerationTasks
 }
 
 class GenerationTask extends DataClass implements Insertable<GenerationTask> {
+  final ImageTaskOutputs? imageOutputs;
   final GenerationKind kind;
   final String id;
 
@@ -9781,6 +9805,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   final DateTime updatedAt;
   final DateTime deletedAt;
   const GenerationTask({
+    this.imageOutputs,
     required this.kind,
     required this.id,
     required this.draft,
@@ -9813,6 +9838,11 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (!nullToAbsent || imageOutputs != null) {
+      map['image_outputs'] = Variable<String>(
+        $GenerationTasksTable.$converterimageOutputsn.toSql(imageOutputs),
+      );
+    }
     {
       map['kind'] = Variable<String>(
         $GenerationTasksTable.$converterkind.toSql(kind),
@@ -9886,6 +9916,9 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
 
   GenerationTasksCompanion toCompanion(bool nullToAbsent) {
     return GenerationTasksCompanion(
+      imageOutputs: imageOutputs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageOutputs),
       kind: Value(kind),
       id: Value(id),
       draft: Value(draft),
@@ -9949,6 +9982,9 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return GenerationTask(
+      imageOutputs: serializer.fromJson<ImageTaskOutputs?>(
+        json['imageOutputs'],
+      ),
       kind: $GenerationTasksTable.$converterkind.fromJson(
         serializer.fromJson<String>(json['kind']),
       ),
@@ -9989,6 +10025,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'imageOutputs': serializer.toJson<ImageTaskOutputs?>(imageOutputs),
       'kind': serializer.toJson<String>(
         $GenerationTasksTable.$converterkind.toJson(kind),
       ),
@@ -10025,6 +10062,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   }
 
   GenerationTask copyWith({
+    Value<ImageTaskOutputs?> imageOutputs = const Value.absent(),
     GenerationKind? kind,
     String? id,
     bool? draft,
@@ -10054,6 +10092,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
     DateTime? updatedAt,
     DateTime? deletedAt,
   }) => GenerationTask(
+    imageOutputs: imageOutputs.present ? imageOutputs.value : this.imageOutputs,
     kind: kind ?? this.kind,
     id: id ?? this.id,
     draft: draft ?? this.draft,
@@ -10091,6 +10130,9 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   );
   GenerationTask copyWithCompanion(GenerationTasksCompanion data) {
     return GenerationTask(
+      imageOutputs: data.imageOutputs.present
+          ? data.imageOutputs.value
+          : this.imageOutputs,
       kind: data.kind.present ? data.kind.value : this.kind,
       id: data.id.present ? data.id.value : this.id,
       draft: data.draft.present ? data.draft.value : this.draft,
@@ -10155,6 +10197,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   @override
   String toString() {
     return (StringBuffer('GenerationTask(')
+          ..write('imageOutputs: $imageOutputs, ')
           ..write('kind: $kind, ')
           ..write('id: $id, ')
           ..write('draft: $draft, ')
@@ -10189,6 +10232,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
 
   @override
   int get hashCode => Object.hashAll([
+    imageOutputs,
     kind,
     id,
     draft,
@@ -10222,6 +10266,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is GenerationTask &&
+          other.imageOutputs == this.imageOutputs &&
           other.kind == this.kind &&
           other.id == this.id &&
           other.draft == this.draft &&
@@ -10253,6 +10298,7 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
 }
 
 class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
+  final Value<ImageTaskOutputs?> imageOutputs;
   final Value<GenerationKind> kind;
   final Value<String> id;
   final Value<bool> draft;
@@ -10283,6 +10329,7 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   final Value<DateTime> deletedAt;
   final Value<int> rowid;
   const GenerationTasksCompanion({
+    this.imageOutputs = const Value.absent(),
     this.kind = const Value.absent(),
     this.id = const Value.absent(),
     this.draft = const Value.absent(),
@@ -10314,6 +10361,7 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
     this.rowid = const Value.absent(),
   });
   GenerationTasksCompanion.insert({
+    this.imageOutputs = const Value.absent(),
     required GenerationKind kind,
     required String id,
     this.draft = const Value.absent(),
@@ -10354,6 +10402,7 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
        status = Value(status),
        requestJson = Value(requestJson);
   static Insertable<GenerationTask> custom({
+    Expression<String>? imageOutputs,
     Expression<String>? kind,
     Expression<String>? id,
     Expression<bool>? draft,
@@ -10385,6 +10434,7 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (imageOutputs != null) 'image_outputs': imageOutputs,
       if (kind != null) 'kind': kind,
       if (id != null) 'id': id,
       if (draft != null) 'draft': draft,
@@ -10418,6 +10468,7 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   }
 
   GenerationTasksCompanion copyWith({
+    Value<ImageTaskOutputs?>? imageOutputs,
     Value<GenerationKind>? kind,
     Value<String>? id,
     Value<bool>? draft,
@@ -10449,6 +10500,7 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
     Value<int>? rowid,
   }) {
     return GenerationTasksCompanion(
+      imageOutputs: imageOutputs ?? this.imageOutputs,
       kind: kind ?? this.kind,
       id: id ?? this.id,
       draft: draft ?? this.draft,
@@ -10484,6 +10536,11 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (imageOutputs.present) {
+      map['image_outputs'] = Variable<String>(
+        $GenerationTasksTable.$converterimageOutputsn.toSql(imageOutputs.value),
+      );
+    }
     if (kind.present) {
       map['kind'] = Variable<String>(
         $GenerationTasksTable.$converterkind.toSql(kind.value),
@@ -10583,6 +10640,7 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   @override
   String toString() {
     return (StringBuffer('GenerationTasksCompanion(')
+          ..write('imageOutputs: $imageOutputs, ')
           ..write('kind: $kind, ')
           ..write('id: $id, ')
           ..write('draft: $draft, ')
@@ -29428,6 +29486,7 @@ typedef $$AiProvidersTableProcessedTableManager =
     >;
 typedef $$GenerationTasksTableCreateCompanionBuilder =
     GenerationTasksCompanion Function({
+      Value<ImageTaskOutputs?> imageOutputs,
       required GenerationKind kind,
       required String id,
       Value<bool> draft,
@@ -29460,6 +29519,7 @@ typedef $$GenerationTasksTableCreateCompanionBuilder =
     });
 typedef $$GenerationTasksTableUpdateCompanionBuilder =
     GenerationTasksCompanion Function({
+      Value<ImageTaskOutputs?> imageOutputs,
       Value<GenerationKind> kind,
       Value<String> id,
       Value<bool> draft,
@@ -29500,6 +29560,12 @@ class $$GenerationTasksTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnWithTypeConverterFilters<ImageTaskOutputs?, ImageTaskOutputs, String>
+  get imageOutputs => $composableBuilder(
+    column: $table.imageOutputs,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   ColumnWithTypeConverterFilters<GenerationKind, GenerationKind, String>
   get kind => $composableBuilder(
     column: $table.kind,
@@ -29657,6 +29723,11 @@ class $$GenerationTasksTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<String> get imageOutputs => $composableBuilder(
+    column: $table.imageOutputs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get kind => $composableBuilder(
     column: $table.kind,
     builder: (column) => ColumnOrderings(column),
@@ -29807,6 +29878,12 @@ class $$GenerationTasksTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumnWithTypeConverter<ImageTaskOutputs?, String>
+  get imageOutputs => $composableBuilder(
+    column: $table.imageOutputs,
+    builder: (column) => column,
+  );
+
   GeneratedColumnWithTypeConverter<GenerationKind, String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
 
@@ -29960,6 +30037,7 @@ class $$GenerationTasksTableTableManager
               $$GenerationTasksTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
+                Value<ImageTaskOutputs?> imageOutputs = const Value.absent(),
                 Value<GenerationKind> kind = const Value.absent(),
                 Value<String> id = const Value.absent(),
                 Value<bool> draft = const Value.absent(),
@@ -29990,6 +30068,7 @@ class $$GenerationTasksTableTableManager
                 Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => GenerationTasksCompanion(
+                imageOutputs: imageOutputs,
                 kind: kind,
                 id: id,
                 draft: draft,
@@ -30022,6 +30101,7 @@ class $$GenerationTasksTableTableManager
               ),
           createCompanionCallback:
               ({
+                Value<ImageTaskOutputs?> imageOutputs = const Value.absent(),
                 required GenerationKind kind,
                 required String id,
                 Value<bool> draft = const Value.absent(),
@@ -30052,6 +30132,7 @@ class $$GenerationTasksTableTableManager
                 Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => GenerationTasksCompanion.insert(
+                imageOutputs: imageOutputs,
                 kind: kind,
                 id: id,
                 draft: draft,

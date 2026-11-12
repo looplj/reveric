@@ -7,8 +7,6 @@
 // 遵循的 Rules:
 //   .agents/rules/service-naming.md
 //   .agents/rules/ai-calling.md
-import 'dart:io';
-import 'package:crypto/crypto.dart';
 import '../../database/novel_content_database.dart';
 import '../../models/generation/task.dart';
 import '../../models/ai_provider.dart';
@@ -40,6 +38,7 @@ typedef ProductionImageInvoke =
       AiProvider provider,
       ProductionImageRequest request,
       ImageSubmitted onSubmitted,
+      ImageOutputsReceived onOutputs,
     );
 
 class ProductionImageGenerateOrchestrator {
@@ -147,17 +146,13 @@ class ProductionImageGenerateOrchestrator {
         provider,
         request,
         (providerTaskId) => jobs.recordSubmission(id, providerTaskId),
+        (urls) => jobs.recordRemoteOutputs(id, urls),
       );
       try {
         if (cancelled) {
           return;
         }
-        final path = result.localFilePath;
-        if (path == null || !await File(path).exists()) {
-          throw const StoryboardException('invalid_result');
-        }
-        final hash = sha256.convert(await File(path).readAsBytes()).toString();
-        await jobs.recordOutput(id, path, hash);
+        await jobs.recordResult(id, result);
         if (!cancelled) {
           await jobs.saveOutput(id);
         }

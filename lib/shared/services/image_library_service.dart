@@ -117,6 +117,16 @@ class ImageLibraryService {
       throw const AiImageGenerationException('生成结果没有可保存的图片。');
     }
     try {
+      for (final candidate in result.additionalImages) {
+        await importGenerated(
+          candidate,
+          novelId: novelId,
+          purpose: purpose,
+          prompt: prompt,
+          model: model,
+          batchId: batchId,
+        );
+      }
       return await importFile(
         localPath,
         novelId: novelId,

@@ -289,6 +289,37 @@ class GenerationTaskDao extends DatabaseAccessor<AppDatabase>
     }
   }
 
+  /// 同一次任务的所有候选原子登记；列表保留顺序，即使两个候选复用同一资产。
+  Future<String?> completeImageResults(
+    String id,
+    Future<List<AssetRow>> Function() register,
+  ) => completeResult(id, () async {
+    final task = (await getById(id))!;
+    if (task.kind != GenerationKind.image) {
+      throw ArgumentError('Only image tasks have candidates');
+    }
+    final assets = await register();
+    if (assets.isEmpty ||
+        assets.length != task.imageOutputs?.items.length ||
+        assets.any(
+          (asset) =>
+              asset.type != 'image' ||
+              (asset.novelId != null && asset.novelId != task.novelId),
+        )) {
+      throw ArgumentError('Candidate assets do not match task');
+    }
+    await (update(generationTasks)..where((t) => t.id.equals(id))).write(
+      GenerationTasksCompanion(
+        imageOutputs: Value(
+          ImageTaskOutputs(
+            assets.map((asset) => ImageTaskOutput(assetId: asset.id)),
+          ),
+        ),
+      ),
+    );
+    return assets.first;
+  });
+
   Future<String?> registerResult(String id, AssetsCompanion asset) =>
       completeResult(id, () async {
         await attachedDatabase.assetDao.insertAsset(asset);

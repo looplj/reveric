@@ -6,6 +6,7 @@
 //   .agents/rules/testing.md
 
 import 'dart:convert';
+import 'package:image/image.dart' as img;
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'dart:io';
 
@@ -45,6 +46,31 @@ void main() {
         );
     if (await supportDir.exists()) await supportDir.delete(recursive: true);
   });
+
+  test(
+    'single-selection callers still preserve every candidate in the library',
+    () async {
+      final outputs = <AiImageGenerationResult>[];
+      for (var i = 0; i < 4; i++) {
+        final file = await File('${supportDir.path}/candidate-$i.png')
+            .writeAsBytes(
+              img.encodePng(
+                img.Image(width: 8, height: 8)
+                  ..setPixelRgb(0, 0, i * 60, 20, 30),
+              ),
+            );
+        outputs.add(AiImageGenerationResult(localFilePath: file.path));
+      }
+      final first = await buildImageLibraryService(database).importGenerated(
+        AiImageGenerationResult.group(outputs),
+        novelId: 'work',
+        purpose: AssetPurpose.ai_chat_generated,
+      );
+      final assets = await database.select(database.assets).get();
+      expect(assets, hasLength(4));
+      expect(assets.map((asset) => asset.id), contains(first.id));
+    },
+  );
 
   test(
     'generated media part commits once without a second temporary copy',

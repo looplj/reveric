@@ -15,7 +15,7 @@ import 'novel_providers.dart';
 import 'video_tasks.dart';
 
 final productionImageInvokeProvider = Provider<ProductionImageInvoke>(
-  (ref) => (provider, request, onSubmitted) async {
+  (ref) => (provider, request, onSubmitted, onOutputs) async {
     final image = AiImageGenerationService(provider, model: request.modelId);
     final database = ref.read(appDatabaseProvider);
     final imageData = <String>[];
@@ -36,6 +36,7 @@ final productionImageInvokeProvider = Provider<ProductionImageInvoke>(
             resolution: request.resolution,
             complexity: request.complexity,
             onSubmitted: onSubmitted,
+            onOutputs: onOutputs,
           )
         : image.editImages(
             request.prompt,
@@ -45,6 +46,7 @@ final productionImageInvokeProvider = Provider<ProductionImageInvoke>(
             resolution: request.resolution,
             complexity: request.complexity,
             onSubmitted: onSubmitted,
+            onOutputs: onOutputs,
           );
   },
 );

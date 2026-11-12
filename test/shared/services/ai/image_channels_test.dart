@@ -246,6 +246,7 @@ void main() {
             _provider('openrouter'),
             request,
             (_) async {},
+            (_) async {},
           );
           expect(
             File(result.localFilePath!).readAsBytesSync(),
@@ -436,6 +437,7 @@ void main() {
               resolution: 'auto',
               size: caps.size('auto', 'auto'),
             ),
+            (_) async {},
             (_) async {},
           );
           expect(

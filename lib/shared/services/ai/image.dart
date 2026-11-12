@@ -18,6 +18,7 @@ import 'image/minimax.dart';
 import 'image/moss.dart';
 import 'image/ark.dart';
 import 'image/atlascloud.dart';
+import 'image/midjourney.dart';
 import 'image/client.dart';
 import 'image/codex.dart';
 import 'image/gemini.dart';
@@ -111,6 +112,9 @@ class AiImageGenerationException implements Exception {
   String toString() => userMessage;
 }
 
+/// 上游返回候选图地址后、下载前回报整组 URL；调用方落库后才开始下载。
+typedef ImageOutputsReceived = Future<void> Function(List<String> urls);
+
 /// 异步任务协议受理后回报上游任务 ID；调用方落库后才开始轮询。
 typedef ImageSubmitted = Future<void> Function(String providerTaskId);
 
@@ -121,14 +125,31 @@ class AiImageFetchException extends AiImageGenerationException {
     super.userMessage, {
     this.url,
     this.providerTaskId,
+    this.urls = const [],
     super.debugMessage,
   });
 
   final String? url;
   final String? providerTaskId;
+  final List<String> urls;
 }
 
 class AiImageGenerationResult {
+  final List<AiImageGenerationResult> additionalImages;
+  List<AiImageGenerationResult> get images => [this, ...additionalImages];
+  factory AiImageGenerationResult.group(List<AiImageGenerationResult> images) {
+    final first = images.first;
+    return AiImageGenerationResult(
+      imageUrl: first.imageUrl,
+      imageBase64: first.imageBase64,
+      localFilePath: first.localFilePath,
+      revisedPrompt: first.revisedPrompt,
+      mimeSubtype: first.mimeSubtype,
+      assetId: first.assetId,
+      additionalImages: List.unmodifiable(images.skip(1)),
+    );
+  }
+
   final String? imageUrl;
   final String? imageBase64;
   final String? revisedPrompt;
@@ -148,10 +169,14 @@ class AiImageGenerationResult {
     this.localFilePath,
     this.assetId,
     this.mimeSubtype = 'png',
+    this.additionalImages = const [],
   });
 
   /// 只清理图片客户端在 media 根目录创建的未登记 .part 结果。
   Future<void> disposeTemporary() async {
+    for (final image in additionalImages) {
+      await image.disposeTemporary();
+    }
     final path = localFilePath;
     if (path == null) {
       return;
@@ -192,24 +217,33 @@ class AiImageGenerationService {
   final String _model;
   final CodexImageClient Function()? _codexImageClientFactory;
 
-  ImageClient? _client() => switch (_config.typeConfig.imageProtocol) {
-    ImageProtocol.moss_image => MossImageClient(_config),
-    ImageProtocol.agnes_image => AgnesImageClient(_config),
-    ImageProtocol.qwen_image => QwenImageClient(_config),
-    ImageProtocol.ark_image => ArkImageClient(_config),
-    ImageProtocol.openrouter_image => OpenRouterImageClient(_config),
-    ImageProtocol.atlascloud_image => AtlasCloudImageClient(_config),
-    ImageProtocol.new_api_images => NewApiClient(_config).image(),
-    ImageProtocol.openai_images => OpenAiImageClient(_config),
-    ImageProtocol.codex_image => CodexImageGenerationClient(
-      _config,
-      clientFactory: _codexImageClientFactory,
-    ),
-    ImageProtocol.gemini_image => GeminiImageClient(_config),
-    ImageProtocol.purefox_media => PurefoxImageClient(_config),
-    ImageProtocol.minimax_image => MinimaxImageClient(_config),
-    null => null,
-  };
+  ImageClient? _client([String? model]) {
+    final options = lookupImageChannelModel(
+      _config.type,
+      model ?? _model,
+    )?.protocolOptions;
+    if (options is MidjourneyImageOptions) {
+      return MidjourneyImageClient(_config, options.protocol);
+    }
+    return switch (_config.typeConfig.imageProtocol) {
+      ImageProtocol.moss_image => MossImageClient(_config),
+      ImageProtocol.agnes_image => AgnesImageClient(_config),
+      ImageProtocol.qwen_image => QwenImageClient(_config),
+      ImageProtocol.ark_image => ArkImageClient(_config),
+      ImageProtocol.openrouter_image => OpenRouterImageClient(_config),
+      ImageProtocol.atlascloud_image => AtlasCloudImageClient(_config),
+      ImageProtocol.new_api_images => NewApiClient(_config).image(),
+      ImageProtocol.openai_images => OpenAiImageClient(_config),
+      ImageProtocol.codex_image => CodexImageGenerationClient(
+        _config,
+        clientFactory: _codexImageClientFactory,
+      ),
+      ImageProtocol.gemini_image => GeminiImageClient(_config),
+      ImageProtocol.purefox_media => PurefoxImageClient(_config),
+      ImageProtocol.minimax_image => MinimaxImageClient(_config),
+      null => null,
+    };
+  }
 
   Future<AiImageGenerationResult> generateImage(
     String prompt, {
@@ -220,9 +254,10 @@ class AiImageGenerationService {
     String? aspectRatio,
     String? resolution,
     ImageSubmitted? onSubmitted,
+    ImageOutputsReceived? onOutputs,
   }) => _run(() async {
     final client =
-        _client() ??
+        _client(model) ??
         (throw AiImageGenerationException('${_config.displayName} 当前不支持生图。'));
     final resolvedModel = model ?? _model;
     return client.generate(
@@ -235,6 +270,7 @@ class AiImageGenerationService {
         aspectRatio: aspectRatio,
         resolution: resolution,
         onSubmitted: onSubmitted,
+        onOutputs: onOutputs,
       ),
     );
   });
@@ -271,6 +307,13 @@ class AiImageGenerationService {
     },
   );
 
+  /// 整组重新下载上游已生成的候选图 URL，不重新出图。
+  Future<AiImageGenerationResult> downloadResults(List<String> urls) =>
+      _run(() async {
+        final client = _client()!;
+        return client.downloadResults(urls);
+      });
+
   /// 重新下载上游已生成的图片 URL，不重新出图。
   Future<AiImageGenerationResult> downloadResult(String url) => _run(() async {
     final client =
@@ -290,11 +333,12 @@ class AiImageGenerationService {
     String? aspectRatio,
     String? resolution,
     ImageSubmitted? onSubmitted,
+    ImageOutputsReceived? onOutputs,
   }) => _run(() async {
     if (imageData.isEmpty) {
       throw const AiImageGenerationException('缺少待编辑的图片内容。');
     }
-    final client = _client();
+    final client = _client(model);
     if (client == null || !client.supportsEdit) {
       throw AiImageGenerationException('${_config.displayName} 当前不支持图片编辑。');
     }
@@ -310,6 +354,7 @@ class AiImageGenerationService {
         resolution: resolution,
         images: imageData,
         onSubmitted: onSubmitted,
+        onOutputs: onOutputs,
       ),
     );
   });

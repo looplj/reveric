@@ -4,10 +4,15 @@
 //   lib/shared/services/production/image_generate_orchestrator.dart
 //   lib/shared/services/image_library_service.dart
 //   lib/shared/providers/production_images.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/ai.json
+//   assets/translations/zh-CN/ai.json
 // 遵循的 Rules:
 //   .agents/rules/service-naming.md
 //   .agents/rules/error-handling.md
 import 'dart:io';
+import 'package:easy_localization/easy_localization.dart';
+import '../../localization/locale_keys.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'package:collection/collection.dart';
 import 'package:crypto/crypto.dart';
@@ -93,7 +98,7 @@ class ImageTaskService {
         return;
       }
       if (row.status == GenerationTaskStatus.running &&
-          row.providerTaskId != null) {
+          (row.providerTaskId != null || row.imageOutputs != null)) {
         // 上游已受理：保留任务 ID，由作者重新获取结果，不阻塞恢复。
         await database.generationTaskDao.transition(
           row.id,
@@ -310,6 +315,95 @@ class ImageTaskService {
     }, GenerationTasksCompanion(providerTaskId: Value(providerTaskId)));
   }
 
+  Future<void> recordRemoteOutputs(String id, List<String> urls) async {
+    await database.generationTaskDao.transition(
+      id,
+      {GenerationTaskStatus.running},
+      GenerationTasksCompanion(
+        imageOutputs: Value(
+          ImageTaskOutputs(urls.map((url) => ImageTaskOutput(url: url))),
+        ),
+      ),
+    );
+  }
+
+  Future<void> recordResult(String id, AiImageGenerationResult result) async {
+    try {
+      await _recordResult(id, result);
+    } catch (error) {
+      final task = await requireRun(id);
+      if (result.additionalImages.isNotEmpty && task.providerTaskId != null) {
+        throw AiImageFetchException(
+          tr(LocaleKeys.aiImageCandidatesFetchFailed),
+          providerTaskId: task.providerTaskId,
+          debugMessage: 'Candidate staging failed: $error',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _recordResult(String id, AiImageGenerationResult result) async {
+    if (result.additionalImages.isEmpty) {
+      final path = result.localFilePath;
+      if (path == null || !await File(path).exists()) {
+        throw const StoryboardException('invalid_result');
+      }
+      await recordOutput(
+        id,
+        path,
+        (await sha256.bind(File(path).openRead()).first).toString(),
+      );
+      return;
+    }
+    final task = await requireRun(id);
+    if (task.status.isTerminal || _disposed) {
+      return;
+    }
+    final outputs = <ImageTaskOutput>[];
+    for (final (index, image) in result.images.indexed) {
+      final path = image.localFilePath;
+      if (path == null || !await File(path).exists()) {
+        throw const StoryboardException('invalid_result');
+      }
+      final hash = (await sha256.bind(File(path).openRead()).first).toString();
+      final relative = RevericPaths.mediaPath(
+        task.novelId,
+        'image',
+        '$id-$index.${image.mimeSubtype}',
+      );
+      final target = File(p.join(RevericPaths.fileWorkspaceParent, relative));
+      await target.parent.create(recursive: true);
+      if (await target.exists()) {
+        if ((await sha256.bind(target.openRead()).first).toString() != hash) {
+          throw const StoryboardException('invalid_result');
+        }
+      } else {
+        // Keep the client's temporary file until every candidate is staged.
+        final staged = File('${target.path}.part');
+        try {
+          await File(path).openRead().pipe(staged.openWrite());
+          await staged.rename(target.path);
+        } finally {
+          if (await staged.exists()) {
+            await staged.delete();
+          }
+        }
+      }
+      outputs.add(ImageTaskOutput(path: relative, hash: hash));
+    }
+    await database.generationTaskDao.transition(
+      id,
+      {GenerationTaskStatus.running, GenerationTaskStatus.action_required},
+      GenerationTasksCompanion(
+        status: const Value(GenerationTaskStatus.saving),
+        path: Value(outputs.first.path),
+        outputHash: Value(outputs.first.hash),
+        imageOutputs: Value(ImageTaskOutputs(outputs)),
+      ),
+    );
+  }
+
   Future<void> recordOutput(String id, String path, String hash) async {
     if (_disposed) {
       return;
@@ -382,9 +476,12 @@ class ImageTaskService {
   }
 
   /// 上游已受理、结果没取回的任务可以重新获取，不重新计费出图。
-  static bool _refetchable(GenerationTask task) =>
-      task.path == null &&
-      (task.outputUrl != null || task.providerTaskId != null);
+  static bool _refetchable(GenerationTask task) => task.imageOutputs != null
+      ? task.imageOutputs!.items.any(
+          (item) => item.path == null && item.assetId == null,
+        )
+      : task.path == null &&
+            (task.outputUrl != null || task.providerTaskId != null);
 
   Future<void> _refetch(GenerationTask task) async {
     final provider = await database.aiProviderDao.getById(task.providerId);
@@ -393,12 +490,7 @@ class ImageTaskService {
     }
     final result = await fetchResult(provider, task);
     try {
-      final path = result.localFilePath;
-      if (path == null || !await File(path).exists()) {
-        throw const StoryboardException('invalid_result');
-      }
-      final hash = sha256.convert(await File(path).readAsBytes()).toString();
-      await recordOutput(task.id, path, hash);
+      await recordResult(task.id, result);
     } finally {
       await result.disposeTemporary();
     }
@@ -417,6 +509,49 @@ class ImageTaskService {
       GenerationTaskStatus.saving,
       GenerationTaskStatus.action_required,
     }.contains(task.status)) {
+      return;
+    }
+    if (task.imageOutputs != null) {
+      final outputs = task.imageOutputs!.items;
+      for (final output in outputs) {
+        if (output.path == null ||
+            output.hash == null ||
+            (await sha256
+                        .bind(
+                          File(
+                            RevericPaths.resolveStored(output.path)!,
+                          ).openRead(),
+                        )
+                        .first)
+                    .toString() !=
+                output.hash) {
+          throw const StoryboardException('invalid_result');
+        }
+      }
+      await database.generationTaskDao.completeImageResults(id, () async {
+        final assets = <AssetRow>[];
+        final title = await sourceName?.call(task);
+        for (final (index, output) in outputs.indexed) {
+          assets.add(
+            await images.importGenerated(
+              AiImageGenerationResult(
+                localFilePath: RevericPaths.resolveStored(output.path),
+              ),
+              novelId: task.novelId,
+              purpose: AssetPurpose.production_generated,
+              name: title == null
+                  ? null
+                  : '$title-${index + 1}${p.extension(output.path!)}',
+              prompt: task.imageRequest.prompt,
+              model: task.modelId,
+            ),
+          );
+        }
+        return assets;
+      });
+      if (!_disposed) {
+        await recoverSources();
+      }
       return;
     }
     if (task.path == null ||
@@ -511,7 +646,7 @@ class ImageTaskService {
       {task.status},
       GenerationTasksCompanion(
         status: Value(
-          task.path == null && fetch == null
+          task.path == null && fetch == null && task.imageOutputs == null
               ? GenerationTaskStatus.failed
               : GenerationTaskStatus.action_required,
         ),
@@ -520,7 +655,7 @@ class ImageTaskService {
               ? 'result_save_failed'
               : fetch?.url != null
               ? 'download_failed'
-              : fetch != null
+              : fetch != null || task.imageOutputs != null
               ? 'result_fetch_failed'
               : 'generation_failed',
         ),
@@ -529,6 +664,13 @@ class ImageTaskService {
               ? error.userMessage
               : null,
         ),
+        imageOutputs: fetch != null && fetch.urls.isNotEmpty
+            ? Value(
+                ImageTaskOutputs(
+                  fetch.urls.map((url) => ImageTaskOutput(url: url)),
+                ),
+              )
+            : const Value.absent(),
         outputUrl: Value.absentIfNull(fetch?.url),
         providerTaskId: Value.absentIfNull(fetch?.providerTaskId),
       ),
@@ -563,6 +705,12 @@ Future<AiImageGenerationResult> _fetchResult(
   GenerationTask task,
 ) {
   final service = AiImageGenerationService(provider, model: task.modelId);
+  if (task.imageOutputs != null &&
+      task.imageOutputs!.items.every((item) => item.url != null)) {
+    return service.downloadResults(
+      task.imageOutputs!.items.map((item) => item.url!).toList(),
+    );
+  }
   return task.outputUrl != null
       ? service.downloadResult(task.outputUrl!)
       : service.resumeResult(task.providerTaskId!);

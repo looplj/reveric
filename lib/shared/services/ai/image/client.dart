@@ -52,6 +52,7 @@ class ImageGenerationRequest {
     this.resolution,
     this.images = const [],
     this.onSubmitted,
+    this.onOutputs,
   });
   final String prompt;
   final String model;
@@ -62,6 +63,7 @@ class ImageGenerationRequest {
   final String? resolution;
   final List<String> images;
   final ImageSubmitted? onSubmitted;
+  final ImageOutputsReceived? onOutputs;
 }
 
 /// 单个图片协议的请求编码与回执解析。渠道未登记的型号不做能力校验，
@@ -261,6 +263,29 @@ abstract class ImageClient {
       localFilePath: localPath,
       mimeSubtype: mimeSubtype,
     );
+  }
+
+  /// 已取得的候选地址作为整组保留，任一下载失败也不能丢掉其余地址。
+  Future<AiImageGenerationResult> downloadResults(List<String> urls) async {
+    if (urls.isEmpty) {
+      throw invalidImageParameter();
+    }
+    final results = <AiImageGenerationResult>[];
+    try {
+      for (final url in urls) {
+        results.add(await downloadResult(url));
+      }
+      return AiImageGenerationResult.group(results);
+    } catch (error) {
+      for (final result in results) {
+        await result.disposeTemporary();
+      }
+      throw AiImageFetchException(
+        tr(LocaleKeys.aiImageCandidatesFetchFailed),
+        urls: urls,
+        debugMessage: 'Candidate download failed: $error',
+      );
+    }
   }
 
   /// 按上游任务 ID 继续查询结果；只有异步任务协议支持。

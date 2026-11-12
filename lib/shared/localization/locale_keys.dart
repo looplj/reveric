@@ -15,6 +15,10 @@
 //   反查某个 key 是否已存在时，优先 Grep value 的片段，不要猜常量名。
 // - 新增或修改 key 必须同步 en 与 zh-CN 两份 JSON，规则见 .agents/rules/i18n.md。
 abstract final class LocaleKeys {
+  static const productionImageCandidates =
+      'screenplay.production.imageCandidates';
+  static const productionImageCandidate =
+      'screenplay.production.imageCandidate';
   static const historyCommitMessagePluginUpdate =
       'history.commit_message.plugin_update';
 
@@ -1287,6 +1291,8 @@ abstract final class LocaleKeys {
   static const aiImageGenUnavailable = 'ai.image_gen_unavailable';
   static const aiImageGenerated = 'ai.image_generated';
   static const aiImageGenerating = 'ai.image_generating';
+  static const aiImageCandidatesFetchFailed =
+      'ai.image_candidates_fetch_failed';
   static const aiImageGenerationFailed = 'ai.image_generation_failed';
   static const aiCodexImageAuthFailed = 'ai.codex_image_auth_failed';
   static const aiCodexImageNeedsChatModel = 'ai.codex_image_needs_chat_model';

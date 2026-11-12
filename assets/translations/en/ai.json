@@ -1,4 +1,5 @@
 {
+  "ai.image_candidates_fetch_failed": "Could not retrieve the generated images. Retry fetching the results.",
   "ai.permission_file_disclosure": "File information or contents will be sent to the current model",
   "ai.permissions_title": "Assistant permissions",
   "ai.permission_allow": "Allow",

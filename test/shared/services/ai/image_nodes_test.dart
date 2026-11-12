@@ -176,7 +176,7 @@ void main() {
     final results = ProductionResultService(appDb, (_) async => canvas);
     requests = [];
     var generatedFiles = 0;
-    invoke = (_, request, _) async {
+    invoke = (_, request, _, _) async {
       final index = ++generatedFiles;
       final output = await File('${root.path}/generated-$index.png')
           .writeAsBytes(
@@ -190,9 +190,9 @@ void main() {
     jobs = ImageTaskService(
       database: appDb,
       images: buildImageLibraryService(appDb),
-      invoke: (provider, request, onSubmitted) {
+      invoke: (provider, request, onSubmitted, onOutputs) {
         requests.add(request);
-        return invoke(provider, request, onSubmitted);
+        return invoke(provider, request, onSubmitted, onOutputs);
       },
 
       beforeCreate: (novelId, sourceType, sourceId) =>
@@ -656,13 +656,13 @@ void main() {
     () async {
       final release = Completer<void>();
       final original = invoke;
-      invoke = (provider, request, onSubmitted) async {
+      invoke = (provider, request, onSubmitted, onOutputs) async {
         final index = requests.length;
         await release.future;
         if (index == 2) {
           throw const AiImageGenerationException('simulated cell failure');
         }
-        return original(provider, request, onSubmitted);
+        return original(provider, request, onSubmitted, onOutputs);
       };
       late List outputs;
       try {
@@ -819,7 +819,7 @@ void main() {
       )..where((p) => p.id.equals('images'))).write(
         const app.AiProvidersCompanion(apiKey: Value('credential-12345')),
       );
-      invoke = (_, _, _) async => throw const AiImageGenerationException(
+      invoke = (_, _, _, _) async => throw const AiImageGenerationException(
         'Please try later.',
         code: AiImageErrorCode.rate_limit,
         debugMessage:
@@ -988,9 +988,9 @@ void main() {
     () async {
       final release = Completer<void>();
       final originalInvoke = invoke;
-      invoke = (provider, request, onSubmitted) async {
+      invoke = (provider, request, onSubmitted, onOutputs) async {
         await release.future;
-        return originalInvoke(provider, request, onSubmitted);
+        return originalInvoke(provider, request, onSubmitted, onOutputs);
       };
       final originalCreate = beforeCreate;
       var preparations = 0;
@@ -1068,9 +1068,9 @@ void main() {
     () async {
       final release = Completer<void>();
       final original = invoke;
-      invoke = (provider, request, onSubmitted) async {
+      invoke = (provider, request, onSubmitted, onOutputs) async {
         await release.future;
-        return original(provider, request, onSubmitted);
+        return original(provider, request, onSubmitted, onOutputs);
       };
       late List outputs;
       try {
@@ -1135,7 +1135,7 @@ void main() {
       final started = Completer<void>();
       final late = Completer<AiImageGenerationResult>();
       final original = invoke;
-      invoke = (_, _, _) {
+      invoke = (_, _, _, _) {
         started.complete();
         return late.future;
       };
@@ -1155,6 +1155,7 @@ void main() {
         await original(
           (await appDb.aiProviderDao.getById('images'))!,
           requests.single,
+          (_) async {},
           (_) async {},
         ),
       );

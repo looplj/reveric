@@ -21,6 +21,23 @@ class ImageModelCatalogEntry {
 
 /// 运行时目录：获取模型后可登记站点返回的动态型号。
 final imageModelsCatalog = <String, ImageModelCatalogEntry>{
+  for (final id in ['midjourney', 'midjourney-v8.2'])
+    id: ImageModelCatalogEntry(
+      capabilities: ImageModelCapabilities(
+        ratios: {
+          'auto',
+          '1:1',
+          '16:9',
+          '9:16',
+          '4:3',
+          '3:4',
+          '3:2',
+          '2:3',
+          '21:9',
+        },
+        resolutions: {'auto'},
+      ),
+    ),
   // https://platform.moss.cn/docs/reference/images-generations/
   'moss-image-base-1.0': _mossImage,
   'moss-image-sft-1.0': _mossImage,

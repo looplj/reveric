@@ -1,4 +1,6 @@
 {
+  "screenplay.production.imageCandidates": "{count} candidates",
+  "screenplay.production.imageCandidate": "Candidate {n}",
   "screenplay.production_speech_instructions_required": "Enter voice instructions before generating.",
   "screenplay.production.addCompendiumHint": "Use photos from the compendium",
   "screenplay.production.audioReferenceLabel": "@Audio{index}",

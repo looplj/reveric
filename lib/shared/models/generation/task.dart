@@ -103,3 +103,66 @@ final class AudioGenerationRequest extends GenerationRequest {
     'request': request.toJson(),
   };
 }
+
+/// 一张候选图当前的保存阶段；入库后只保留资产身份。
+class ImageTaskOutput {
+  const ImageTaskOutput({this.url, this.path, this.hash, this.assetId});
+  final String? url;
+  final String? path;
+  final String? hash;
+  final String? assetId;
+  Map<String, dynamic> toJson() => {
+    if (url != null) 'url': url,
+    if (path != null) 'path': path,
+    if (hash != null) 'hash': hash,
+    if (assetId != null) 'asset_id': assetId,
+  };
+  factory ImageTaskOutput.fromJson(Map<String, dynamic> json) {
+    final output = ImageTaskOutput(
+      url: json['url'] as String?,
+      path: json['path'] as String?,
+      hash: json['hash'] as String?,
+      assetId: json['asset_id'] as String?,
+    );
+    final stages = [
+      output.assetId,
+      output.path,
+      output.url,
+    ].where((value) => value != null).length;
+    if (stages != 1 ||
+        (output.path == null) != (output.hash == null) ||
+        [
+          output.assetId,
+          output.path,
+          output.hash,
+          output.url,
+        ].whereType<String>().any((value) => value.trim().isEmpty)) {
+      throw const FormatException('Invalid image output');
+    }
+    return output;
+  }
+}
+
+class ImageTaskOutputs {
+  ImageTaskOutputs(Iterable<ImageTaskOutput> items)
+    : items = List.unmodifiable(items) {
+    if (this.items.isEmpty) {
+      throw const FormatException('Empty image outputs');
+    }
+  }
+  final List<ImageTaskOutput> items;
+  Map<String, dynamic> toJson() => {
+    'version': 1,
+    'items': items.map((item) => item.toJson()).toList(),
+  };
+  factory ImageTaskOutputs.fromJson(Map<String, dynamic> json) {
+    if (json['version'] != 1) {
+      throw const FormatException('Unsupported image outputs');
+    }
+    return ImageTaskOutputs(
+      (json['items'] as List).map(
+        (item) => ImageTaskOutput.fromJson(item as Map<String, dynamic>),
+      ),
+    );
+  }
+}

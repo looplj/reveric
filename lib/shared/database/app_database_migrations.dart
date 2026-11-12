@@ -25,6 +25,10 @@ class AppDatabaseMigrations {
 
   final AppDatabase db;
 
+  /// v6: 同次图片任务的有序候选结果。
+  Future<void> migrateToV6(Migrator m) =>
+      m.addColumn(db.generationTasks, db.generationTasks.imageOutputs);
+
   /// v2: 插件注册表、插件存储与插件密钥。
   Future<void> migrateToV2(Migrator m) async {
     await m.createTable(db.pluginRegistry);
