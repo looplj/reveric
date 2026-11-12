@@ -36,6 +36,8 @@ enum AiProviderType {
   codex,
   openai_compatible,
   api88,
+  apikey,
+  infistar,
   ooki,
   openrouter,
   xai,
@@ -162,6 +164,20 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     fixedBaseUrl: true,
     usesNewApi: true,
   ),
+  AiProviderType.apikey: AiProviderTypeConfig(
+    displayName: 'APIKEY.FAN',
+    modelIdSource: ModelIdSource.open,
+    textModelKinds: _chatOnlyKinds,
+    fixedBaseUrl: true,
+    usesNewApi: true,
+  ),
+  AiProviderType.infistar: AiProviderTypeConfig(
+    displayName: '无限星河',
+    modelIdSource: ModelIdSource.open,
+    textModelKinds: _chatOnlyKinds,
+    fixedBaseUrl: true,
+    usesNewApi: true,
+  ),
   AiProviderType.ooki: AiProviderTypeConfig(
     displayName: 'OOKiAPI',
     modelIdSource: ModelIdSource.open,
@@ -266,6 +282,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     modelIdSource: ModelIdSource.open,
     imageProtocol: ImageProtocol.agnes_image,
     videoProtocol: VideoProtocol.agnes_video,
+    fixedBaseUrl: true,
   ),
   AiProviderType.purefox: AiProviderTypeConfig(
     displayName: 'PureFox',
@@ -302,8 +319,11 @@ String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
   AiProviderType.moss => 'https://api.mosi.cn/v1',
   AiProviderType.metaso => 'https://metaso.cn/api/minimax',
   AiProviderType.api88 => 'https://api.88api.ai/v1',
+  AiProviderType.apikey => 'https://api.apikey.fan/v1',
+  AiProviderType.infistar => 'https://infistar.cc/v1',
   AiProviderType.ooki => 'https://api.ookiapi.com/v1',
   AiProviderType.atlascloud => 'https://api.atlascloud.ai/v1',
+  AiProviderType.agnes => agnesDefaultBaseUrl,
   AiProviderType.codex => 'https://chatgpt.com/backend-api/codex',
   AiProviderType.openrouter => 'https://openrouter.ai/api/v1',
   AiProviderType.volcengine => 'https://ark.cn-beijing.volces.com/api/v3',
@@ -396,6 +416,27 @@ final List<AiProvider> aiProviderBuiltinDefaults = [
     enabled: false,
     apiKey: '',
     baseUrl: aiProviderFixedBaseUrl(AiProviderType.api88),
+    models: const [],
+    imageModels: const [],
+    audioModels: const [],
+    videoModels: const [],
+    embeddingModels: const [],
+    temperature: 0.7,
+    maxTurns: 512,
+    proxyUrl: '',
+    proxyUsername: '',
+    proxyPassword: '',
+    updatedAt: _builtinEpoch,
+    deletedAt: notDeletedSentinel,
+  ),
+  AiProvider(
+    id: 'apikey',
+    name: 'APIKEY.FAN',
+    builtin: true,
+    type: 'apikey',
+    enabled: false,
+    apiKey: '',
+    baseUrl: aiProviderFixedBaseUrl(AiProviderType.apikey),
     models: const [],
     imageModels: const [],
     audioModels: const [],
@@ -758,8 +799,6 @@ extension AiProviderX on AiProvider {
       ? qwenBaseUrl(baseUrl)
       : typeEnum == AiProviderType.minimax && baseUrl.trim().isEmpty
       ? 'https://api.minimax.cn'
-      : typeEnum == AiProviderType.agnes && baseUrl.trim().isEmpty
-      ? agnesDefaultBaseUrl
       : baseUrl;
 
   bool get hasFixedBaseUrl => typeConfig.fixedBaseUrl;

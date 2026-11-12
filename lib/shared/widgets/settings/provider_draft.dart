@@ -72,8 +72,6 @@ AiProvider retypeProviderDraft(
 AiProvider _applyType(AiProvider draft, AiProviderType type) => draft.copyWith(
   baseUrl: aiProviderTypeConfigs[type]?.fixedBaseUrl == true
       ? aiProviderFixedBaseUrl(type)
-      : type == AiProviderType.agnes
-      ? agnesDefaultBaseUrl
       : '',
   videoModels: type == AiProviderType.metaso
       ? aiProviderBuiltinById('metaso')!.videoModels

@@ -15,6 +15,14 @@ void main() {
   setUp(() => database = AppDatabase.forTest(NativeDatabase.memory()));
   tearDown(() => database.close());
 
+  test('Infistar has no automatic initialization task', () {
+    expect(
+      defaultAppInitializationTasks().map((task) => task.id),
+      isNot(contains('default_infistar_provider_v1')),
+    );
+    expect(aiProviderBuiltinById('infistar'), isNull);
+  });
+
   test(
     'seeds only DeepSeek once and never recreates deleted providers',
     () async {
@@ -71,6 +79,45 @@ void main() {
       );
     },
   );
+
+  test('APIKEY seed preserves edits and deletion and follows 88API', () async {
+    final tasks = defaultAppInitializationTasks()
+        .where((task) => task.id == 'default_apikey_provider_v1')
+        .toList();
+    expect(tasks, hasLength(1));
+    await ensureAppInitializationTasks(database: database, tasks: tasks);
+    final provider = (await database.aiProviderDao.getById('apikey'))!;
+    expect(provider.enabled, false);
+    expect(provider.apiKey, isEmpty);
+    expect(provider.models, isEmpty);
+    expect(provider.canDelete, true);
+    expect(provider.supportedModelKinds, {AiModelKind.chat});
+    expect(provider.effectiveBaseUrl, 'https://api.apikey.fan/v1');
+    final ordered = AiSettings.mergeWithRequiredProviders([
+      provider,
+      aiProviderBuiltinById('deepseek')!,
+      aiProviderBuiltinById('metaso')!,
+      aiProviderBuiltinById('api88')!,
+    ]);
+    expect(ordered.map((p) => p.id), ['metaso', 'api88', 'apikey', 'deepseek']);
+    await database.aiProviderDao.upsert(
+      provider.copyWith(
+        apiKey: 'user-key',
+        models: ['gpt-6.1-sol'],
+        enabled: true,
+      ),
+    );
+    await seedDefaultApikeyProvider(database);
+    final edited = (await database.aiProviderDao.getById('apikey'))!;
+    expect(edited.apiKey, 'user-key');
+    expect(edited.models, ['gpt-6.1-sol']);
+    expect(edited.enabled, true);
+    await database.aiProviderDao.softDelete('apikey');
+    await seedDefaultApikeyProvider(database);
+    await ensureAppInitializationTasks(database: database, tasks: tasks);
+    expect(await database.aiProviderDao.getById('apikey'), isNull);
+    expect(await database.aiProviderDao.getAllIncludingDeleted(), hasLength(1));
+  });
 
   test(
     'METASO seed supplies video models once and preserves user configuration',

@@ -692,6 +692,9 @@ class ProviderStatusDot extends StatelessWidget {
 
 /// Provider 类型展示名；兼容协议名称及有中英文品牌名的渠道走 locale key。
 String localizedProviderTypeName(BuildContext context, AiProviderType type) {
+  if (type == AiProviderType.infistar) {
+    return context.t(LocaleKeys.providerTypeInfistar);
+  }
   if (type == AiProviderType.metaso) {
     return context.t(LocaleKeys.settingsBuiltinProviderMetaso);
   }

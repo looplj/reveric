@@ -129,6 +129,8 @@ class AiProviderInitializer {
           streamHttpClientFactory: _createStreamHttpClient,
         );
       case AiProviderType.api88:
+      case AiProviderType.apikey:
+      case AiProviderType.infistar:
       case AiProviderType.ooki:
         return NewApiClient(_config).chat(
           cacheKeyUserId: _cacheKeyUserId,

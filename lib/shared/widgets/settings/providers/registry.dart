@@ -8,6 +8,8 @@
 import 'package:flutter/widgets.dart';
 
 import 'api88.dart';
+import 'apikey.dart';
+import 'infistar.dart';
 import 'metaso.dart';
 
 /// 供应商专属展示；未登记的供应商使用通用的能力摘要与描述。
@@ -24,4 +26,6 @@ class ProviderShowcase {
 const providerShowcases = <String, ProviderShowcase>{
   'metaso': metasoShowcase,
   'api88': api88Showcase,
+  'apikey': apikeyShowcase,
+  'infistar': infistarShowcase,
 };

@@ -59,6 +59,105 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+  for (final (type, baseUrl) in [
+    ('apikey', 'https://api.apikey.fan/v1'),
+    ('infistar', 'https://infistar.cc/v1'),
+  ]) {
+    for (final platform in [
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+      TargetPlatform.android,
+    ]) {
+      for (final locale in [const Locale('en'), const Locale('zh', 'CN')]) {
+        testWidgets(
+          '$type sponsor overview and links on $platform in $locale',
+          (tester) async {
+            final mobile = platform == TargetPlatform.android;
+            await tester.binding.setSurfaceSize(Size(mobile ? 360 : 900, 900));
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            final launched = <String>[];
+            const channel = MethodChannel('plugins.flutter.io/url_launcher');
+            tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+              channel,
+              (call) async {
+                if (call.method == 'launch') {
+                  launched.add((call.arguments as Map)['url'] as String);
+                }
+                return true;
+              },
+            );
+            addTearDown(
+              () => tester.binding.defaultBinaryMessenger
+                  .setMockMethodCallHandler(channel, null),
+            );
+            late AiProvider draft;
+            await tester.pumpWidget(
+              ProviderScope(
+                overrides: [
+                  appSettingsProvider.overrideWith(() => _Settings()),
+                ],
+                child: _wrap(
+                  SingleChildScrollView(
+                    child: Builder(
+                      builder: (context) {
+                        draft = newProviderDraft(
+                          context,
+                          AiProviderType.values.byName(type),
+                        );
+                        return ProviderOverview(config: draft);
+                      },
+                    ),
+                  ),
+                  locale.languageCode == 'zh',
+                  locale: locale,
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              draft.name,
+              type == 'apikey'
+                  ? 'APIKEY.FAN'
+                  : locale.languageCode == 'zh'
+                  ? '无限星河'
+                  : 'Infistar',
+            );
+            expect(draft.effectiveBaseUrl, baseUrl);
+            expect(draft.supportedModelKinds, {AiModelKind.chat});
+            final types = providerTypePickerTypes();
+            expect(
+              types.indexOf(AiProviderType.values.byName(type)),
+              types.indexOf(
+                    type == 'apikey'
+                        ? AiProviderType.api88
+                        : AiProviderType.apikey,
+                  ) +
+                  1,
+            );
+            expect(find.text('Claude · GPT · Gemini'), findsOneWidget);
+            final buttons = find.byType(RevericButton);
+            expect(buttons, findsNWidgets(2));
+            for (var i = 0; i < 2; i++) {
+              await tester.ensureVisible(buttons.at(i));
+              await tester.tap(buttons.at(i));
+              await tester.pumpAndSettle();
+            }
+            expect(launched, [
+              providerChannelUrls[type],
+              type == 'apikey'
+                  ? 'https://apikey.fun/pricing?aff=axonhub'
+                  : 'https://infistar.cc/pricing?aff=FQHYXMMS&ref_source=link',
+            ]);
+            expect(tester.takeException(), isNull);
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+          },
+          variant: TargetPlatformVariant.only(platform),
+          timeout: const Timeout(Duration(minutes: 1)),
+        );
+      }
+    }
+  }
   for (final platform in [
     TargetPlatform.windows,
     TargetPlatform.macOS,
@@ -128,6 +227,10 @@ void main() {
   testWidgets(
     'all bundled provider logos and an unknown channel render offline',
     (tester) async {
+      expect(
+        providerLogoAsset('openai_compatible'),
+        providerLogoAsset('openai'),
+      );
       await tester.pumpWidget(
         _wrap(
           Wrap(
@@ -278,6 +381,10 @@ void _draftFlowTests() {
       await tester.tap(find.text('Add Custom'));
       await tester.pumpAndSettle();
       expect(find.byType(ProviderTypePickerPanel), findsOneWidget);
+      expect(find.text('88API'), findsOneWidget);
+      expect(find.text('OpenAI Compatible'), findsNothing);
+      await tester.tap(find.text('API formats'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byType(RevericFilterChip),
@@ -337,6 +444,8 @@ void _draftFlowTests() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add Custom'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('API formats'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('OpenAI Compatible'));
       await tester.pumpAndSettle();
       expect(find.text('Unsaved'), findsNWidgets(2));
@@ -362,7 +471,11 @@ void _draftFlowTests() {
       final settings = await _pumpSection(tester, mobile: true);
       await tester.tap(find.byTooltip('Add'));
       await tester.pumpAndSettle();
-      expect(find.text('Choose an API format'), findsOneWidget);
+      expect(find.text('Add provider'), findsOneWidget);
+      expect(find.text('88API'), findsOneWidget);
+      expect(find.text('OpenAI Compatible'), findsNothing);
+      await tester.tap(find.text('API formats'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byType(RevericFilterChip),
@@ -392,13 +505,13 @@ void _draftFlowTests() {
   );
 }
 
-Widget _wrap(Widget child, bool dark) {
+Widget _wrap(Widget child, bool dark, {Locale locale = const Locale('en')}) {
   final theme = dark ? RevericThemeData.revericDark : RevericThemeData.reveric;
   return EasyLocalization(
-    supportedLocales: const [Locale('en')],
+    supportedLocales: const [Locale('en'), Locale('zh', 'CN')],
     path: 'assets/translations',
     assetLoader: const MergingAssetLoader(),
-    startLocale: const Locale('en'),
+    startLocale: locale,
     fallbackLocale: const Locale('en'),
     child: Builder(
       builder: (context) => MaterialApp(

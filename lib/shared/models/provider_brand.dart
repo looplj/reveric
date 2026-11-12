@@ -9,6 +9,8 @@ const providerChannelUrls = {
   'purefox': 'https://purefox.org/keys',
   'purefox_media': 'https://img.purefox.org/',
   'api88': 'https://88api.ai/sign-up?aff=5q8X',
+  'apikey': 'https://apikey.fun/register?aff=axonhub',
+  'infistar': 'https://infistar.cc/register?aff=FQHYXMMS&ref_source=link',
   'ooki': 'https://ookiapi.com/',
   'openai': 'https://platform.openai.com/api-keys',
   'openrouter': 'https://openrouter.ai/settings/keys',
@@ -30,6 +32,7 @@ const providerChannelUrls = {
 
 const providerLogoAssets = <String, String>{
   'openai': 'assets/icons/providers/openai.png',
+  'openai_compatible': 'assets/icons/providers/openai.png',
   'anthropic': 'assets/icons/providers/anthropic.png',
   'deepseek': 'assets/icons/providers/deepseek.png',
   'qwen': 'assets/icons/providers/qwen.png',
@@ -45,6 +48,8 @@ const providerLogoAssets = <String, String>{
   'agnes': 'assets/icons/providers/agnes.png',
   'atlascloud': 'assets/icons/providers/atlascloud.png',
   'api88': 'assets/icons/providers/api88.png',
+  'apikey': 'assets/icons/providers/apikey.png',
+  'infistar': 'assets/icons/providers/infistar.png',
   'ooki': 'assets/icons/providers/ooki.png',
   'metaso': 'assets/icons/providers/metaso.png',
   'purefox': 'assets/icons/providers/purefox.png',

@@ -56,6 +56,10 @@ List<AppInitializationTask> defaultAppInitializationTasks() {
       run: seedDefaultApi88Provider,
     ),
     AppInitializationTask(
+      id: 'default_apikey_provider_v1',
+      run: seedDefaultApikeyProvider,
+    ),
+    AppInitializationTask(
       id: 'default_global_agents_v1',
       run: seedDefaultGlobalAgents,
     ),

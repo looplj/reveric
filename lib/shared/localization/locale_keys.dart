@@ -3541,6 +3541,29 @@ abstract final class LocaleKeys {
   static const readingChapterShort = 'reading.chapter_short';
 
   // ── provider ────────────────────────────────────────
+  static const providerInfistarCategory = 'provider.infistar_category';
+  static const providerInfistarTitle = 'provider.infistar_title';
+  static const providerInfistarSummary = 'provider.infistar_summary';
+  static const providerInfistarListTagline = 'provider.infistar_list_tagline';
+  static const providerInfistarModels = 'provider.infistar_models';
+  static const providerInfistarSetupTitle = 'provider.infistar_setup_title';
+  static const providerInfistarSetup = 'provider.infistar_setup';
+  static const providerInfistarLink = 'provider.infistar_link';
+  static const providerInfistarPricingLink = 'provider.infistar_pricing_link';
+  static const providerInfistarNote = 'provider.infistar_note';
+  static const providerDescriptionInfistar = 'provider.description_infistar';
+  static const providerTypeInfistar = 'provider.type_infistar';
+  static const providerApikeyCategory = 'provider.apikey_category';
+  static const providerApikeyTitle = 'provider.apikey_title';
+  static const providerApikeySummary = 'provider.apikey_summary';
+  static const providerApikeyListTagline = 'provider.apikey_list_tagline';
+  static const providerApikeyModels = 'provider.apikey_models';
+  static const providerApikeySetupTitle = 'provider.apikey_setup_title';
+  static const providerApikeySetup = 'provider.apikey_setup';
+  static const providerApikeyLink = 'provider.apikey_link';
+  static const providerApikeyPricingLink = 'provider.apikey_pricing_link';
+  static const providerApikeyNote = 'provider.apikey_note';
+  static const providerDescriptionApikey = 'provider.description_apikey';
   static const providerApi88DeepseekDiscount =
       'provider.api88_deepseek_discount';
   static const providerApi88DeepseekDetail = 'provider.api88_deepseek_detail';
@@ -3655,7 +3678,8 @@ abstract final class LocaleKeys {
   static const providerProxySection = 'provider.proxy_section';
   static const providerSelectPlaceholder = 'provider.select_placeholder';
   static const providerTypePickerTitle = 'provider.type_picker_title';
-  static const providerTypeFixedUrl = 'provider.type_fixed_url';
+  static const providerTypePresets = 'provider.type_presets';
+  static const providerTypeProtocols = 'provider.type_protocols';
   static const providerKindChat = 'provider.kind_chat';
   static const providerKindImage = 'provider.kind_image';
   static const providerKindVideo = 'provider.kind_video';

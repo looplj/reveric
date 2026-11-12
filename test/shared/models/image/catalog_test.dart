@@ -367,26 +367,23 @@ void main() {
     imageModels: imageModelsForProvider('agnes'),
     videoModels: ['agnes-video-2.5-flash'],
   );
-  test(
-    'Agnes is an independent image/video provider with an editable endpoint',
-    () {
-      expect(customAiProviderTypes, contains(AiProviderType.agnes));
-      expect(provider.supportedModelKinds, {
-        AiModelKind.image,
-        AiModelKind.video,
-      });
-      expect(provider.effectiveBaseUrl, agnesDefaultBaseUrl);
-      expect(provider.hasFixedBaseUrl, false);
-      expect(
-        provider.copyWith(baseUrl: 'https://proxy.test/v1').effectiveBaseUrl,
-        'https://proxy.test/v1',
-      );
-      expect(provider.availableModels, isEmpty);
-      expect(provider.availableAudioModels, isEmpty);
-      expect(provider.availableVideoModels, ['agnes-video-2.5-flash']);
-      expect(provider.isValid, true);
-    },
-  );
+  test('Agnes is a preset image/video provider with its official endpoint', () {
+    expect(customAiProviderTypes, contains(AiProviderType.agnes));
+    expect(provider.supportedModelKinds, {
+      AiModelKind.image,
+      AiModelKind.video,
+    });
+    expect(provider.effectiveBaseUrl, agnesDefaultBaseUrl);
+    expect(provider.hasFixedBaseUrl, true);
+    expect(
+      provider.copyWith(baseUrl: 'https://proxy.test/v1').effectiveBaseUrl,
+      agnesDefaultBaseUrl,
+    );
+    expect(provider.availableModels, isEmpty);
+    expect(provider.availableAudioModels, isEmpty);
+    expect(provider.availableVideoModels, ['agnes-video-2.5-flash']);
+    expect(provider.isValid, true);
+  });
 
   for (final model in imageModelsForProvider('agnes')) {
     test('$model production sizes round trip to documented API parameters', () {
