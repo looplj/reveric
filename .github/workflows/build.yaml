@@ -139,6 +139,41 @@ jobs:
           files: |
             dist/**/*-macos-arm64.dmg
             dist/**/*-macos-arm64.zip
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: ${tag}"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist -type f \( -name '*-macos-arm64.dmg' -o -name '*-macos-arm64.zip' \) -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found in dist/"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            case "$name" in
+              *.dmg) content_type=application/x-apple-diskimage ;;
+              *.zip) content_type=application/zip ;;
+              *) content_type=application/octet-stream ;;
+            esac
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${tag}/${name}" \
+              --file="$file" \
+              --content-type="$content_type" \
+              --remote \
+              --force
+          done
 
   package-windows:
     if: |
@@ -232,6 +267,36 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             dist/**/*-setup.exe
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: ${tag}"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist -type f -name '*-setup.exe' -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found in dist/"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${tag}/${name}" \
+              --file="$file" \
+              --content-type=application/octet-stream \
+              --remote \
+              --force
+          done
 
   package-android:
     if: |
@@ -304,6 +369,36 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             dist/**/*.apk
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: ${tag}"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist -type f -name '*.apk' -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found in dist/"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${tag}/${name}" \
+              --file="$file" \
+              --content-type=application/vnd.android.package-archive \
+              --remote \
+              --force
+          done
 
   package-linux:
     if: |
@@ -430,6 +525,36 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             dist/**/*-linux.zip
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: ${tag}"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist -type f -name '*-linux.zip' -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found in dist/"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${tag}/${name}" \
+              --file="$file" \
+              --content-type=application/zip \
+              --remote \
+              --force
+          done
 
   # 四个平台都打包成功后，用本次 tag 的版本构建官网并部署到 Cloudflare Pages。
   # 手动只打单个平台时，其余打包 job 被跳过，这里也随之跳过；需要时手动运行 Website workflow。

@@ -45,12 +45,14 @@ final class UpdateCheckFailed extends UpdateCheckResult {
 class UpdateInfo {
   final String version;
   final String downloadUrl;
+  final String? fallbackDownloadUrl;
   final int? fileSize;
   final String? releaseNotes;
 
   const UpdateInfo({
     required this.version,
     required this.downloadUrl,
+    this.fallbackDownloadUrl,
     this.fileSize,
     this.releaseNotes,
   });
