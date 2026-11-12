@@ -18,7 +18,7 @@ import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/models/plugin/manifest.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
-import 'package:reveric/desktop/widgets/settings/settings_plugins_section.dart';
+import 'package:reveric/desktop/widgets/agent_management/plugins_page.dart';
 import '../../../services/plugins/host_test.dart' show FakeExecutor;
 import '../plugins_section_test.dart' show wrapPluginSettings;
 
@@ -176,7 +176,7 @@ void main() {
   testWidgets('leaving desktop details with unsaved input asks first', (
     tester,
   ) async {
-    await _pumpDeepSeek(tester, child: const PluginsDesktopSettingsSection());
+    await _pumpDeepSeek(tester, child: const PluginsRegion());
     await tester.tap(find.byKey(_details));
     await _settle(tester);
     await tester.enterText(find.byType(TextField), 'draft-key');

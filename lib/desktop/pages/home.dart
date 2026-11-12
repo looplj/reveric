@@ -69,6 +69,7 @@ import '../../shared/widgets/unsaved_changes_dialog.dart';
 import '../../shared/services/demo_novel.dart';
 import '../widgets/agent_management/ai_shortcut_action_edit_panel.dart';
 import '../widgets/agent_management/agent_model_settings_page.dart';
+import '../widgets/agent_management/plugins_page.dart';
 import '../widgets/agent_management/ai_assistant_page.dart';
 import '../widgets/agent_management/ai_providers_page.dart';
 import '../widgets/agent_management/mcp_page.dart';
@@ -150,6 +151,10 @@ final class _HomeAiAssistantSelection extends _HomeContentSelection {
 
 final class _HomeMcpSelection extends _HomeContentSelection {
   const _HomeMcpSelection();
+}
+
+final class _HomePluginsSelection extends _HomeContentSelection {
+  const _HomePluginsSelection();
 }
 
 final class _HomeSkillListSelection extends _HomeContentSelection {
@@ -728,6 +733,7 @@ class NovelHomePage extends HookConsumerWidget {
         (_HomeAiProvidersSelection(), _HomeAiProvidersSelection()) => true,
         (_HomeAiAssistantSelection(), _HomeAiAssistantSelection()) => true,
         (_HomeMcpSelection(), _HomeMcpSelection()) => true,
+        (_HomePluginsSelection(), _HomePluginsSelection()) => true,
         (_HomeSkillListSelection(), _HomeSkillListSelection()) => true,
         (
           _HomeGlobalSkillSelection(skill: final currentSkill),
@@ -950,6 +956,10 @@ class NovelHomePage extends HookConsumerWidget {
         headerTrailingInset: DesktopWindowFrame.trailingInset,
       ),
       _HomeMcpSelection() => McpPage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+      ),
+      _HomePluginsSelection() => PluginsPage(
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
       ),
@@ -1377,6 +1387,15 @@ class NovelHomePage extends HookConsumerWidget {
                   icon: RevericIcons.settings_outlined,
                   title: context.t(LocaleKeys.librarySettings),
                   onTap: onOpenSettings,
+                ),
+                _buildLeafNavItem(
+                  context,
+                  icon: RevericIcons.layers_outlined,
+                  title: context.t(LocaleKeys.settingsPlugins),
+                  isSelected: selection is _HomePluginsSelection,
+                  onTap: () {
+                    onContentSelected(const _HomePluginsSelection());
+                  },
                 ),
               ],
             ),

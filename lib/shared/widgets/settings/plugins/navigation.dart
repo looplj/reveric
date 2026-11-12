@@ -3,7 +3,7 @@
 //   lib/shared/widgets/settings/plugins/section.dart
 //   lib/shared/widgets/settings/plugins/detail_page.dart
 //   lib/shared/widgets/settings/plugins/preview_page.dart
-//   lib/desktop/widgets/settings/settings_plugins_section.dart
+//   lib/desktop/widgets/agent_management/plugins_page.dart
 import 'package:flutter/material.dart';
 import '../../../services/plugins/package_archive.dart';
 import '../../../theme/theme.dart';
