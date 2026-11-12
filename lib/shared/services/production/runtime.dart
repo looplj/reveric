@@ -5,6 +5,7 @@
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
+import 'package:ffmpeg_kit_flutter_new/log_redirection_strategy.dart';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:path/path.dart' as p;
 
@@ -60,6 +61,11 @@ Future<void> _initialize() async {
     },
   );
   await FFmpegKitConfig.init();
+  // Sessions keep their logs for probe output and failure details; without a
+  // callback the plugin would otherwise print every av_log line to the console.
+  FFmpegKitConfig.setLogRedirectionStrategy(
+    LogRedirectionStrategy.neverPrintLogs,
+  );
   // av_log has one process-wide callback. MDK installs its own while binding
   // FFmpeg; FFmpegKit must own it so FFprobe JSON and session logs are retained.
   // All playback/encoding entry points await this initialization before work.
