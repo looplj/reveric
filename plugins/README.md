@@ -9,7 +9,7 @@
 | 目录 | 内容 |
 | --- | --- |
 | `sdk/` | npm 包 `reveric-plugin-sdk`，MIT 许可（主仓库是 AGPL-3.0） |
-| `memory/`、`web/`、`deepseek/`、`keenable/` | 内置插件 |
+| `memory/`、`web/`、`deepseek/`、`keenable/`、`zhuque/` | 内置插件 |
 | `build.mjs` | 构建内置插件到 `../assets/plugins/`，或运行全部测试 |
 
 `npm ci` 会把 `node_modules/reveric-plugin-sdk` 链接到 `sdk/`。内置插件和第三方插件一样，通过包名 `reveric-plugin-sdk` / `reveric-plugin-sdk/ui` 引用 SDK，所以始终使用仓库里的源码，不依赖 npm 上的发布版本。
@@ -196,6 +196,7 @@ FJS_PROBE_LIBRARY=<target>/debug/libfjs.dylib fvm flutter test -j 1 \
 | `web/` | `reveric.web` | 联网检索与网页读取 |
 | `deepseek/` | `reveric.deepseek` | DeepSeek 搜索与读取，带设置动作 |
 | `keenable/` | `reveric.keenable` | Keenable 搜索与读取，API Key 可选（不填时使用公共接口），带设置动作 |
+| `zhuque/` | `reveric.zhuque` | 朱雀文本 AI 检测，需配置 EdgeOne Makers API Key，带设置动作 |
 
 内置插件的首次启用策略由 `lib/shared/services/plugins/host.dart` 中的 `_defaultEnabledBundledPlugins` 管理；新增默认启用项时，将插件 ID 加入该集合。已有用户选择保持不变。
 

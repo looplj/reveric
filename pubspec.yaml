@@ -201,6 +201,8 @@ flutter:
     - assets/plugins/reveric.deepseek/dist/
     - assets/plugins/reveric.keenable/
     - assets/plugins/reveric.keenable/dist/
+    - assets/plugins/reveric.zhuque/
+    - assets/plugins/reveric.zhuque/dist/
     # Flutter 不会递归扫描子目录，每个目录/文件需单独声明
     - assets/director/models/quaternius-standard-male.glb
     - assets/director/models/quaternius-standard-female.glb
