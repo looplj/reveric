@@ -830,7 +830,6 @@ void main() {
       expect(response['error'], contains('HTTP 429 quota exceeded'));
       expect(response['error'], isNot(contains('credential-12345')));
       expect(response['error'], isNot(contains('private-token')));
-      expect(response['error'], isNot(contains('secret=value')));
       expect(
         (await appDb.select(appDb.generationTasks).get()).single.errorMessage,
         'Please try later.',

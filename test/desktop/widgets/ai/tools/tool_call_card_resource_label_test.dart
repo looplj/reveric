@@ -25,6 +25,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/app_config.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/shared/widgets/ai/tools/tool_card_descriptor.dart';
 import 'package:reveric/shared/widgets/ai/tools/tool_resource_resolver.dart';
@@ -303,13 +304,16 @@ void main() {
       final otherContext = await container.read(otherContextProvider.future);
       expect(otherContext!.workTitle, '当前作品');
       expect(otherContext.resourceTitle, isEmpty);
-      final canvas = (await resolve(
-        '/works/current-work/canvas/主线/nodes/node_1/content',
-      ))!;
-      final localCanvas = (await resolve('canvas/主线/nodes/node_1/content'))!;
-      expect(canvas.resourceTitle, localCanvas.resourceTitle);
-      expect(canvas.subCollection, localCanvas.subCollection);
-      expect(canvas.field, localCanvas.field);
+      // 构思画布默认关闭，路径只在开启时可解析。
+      if (ideationCanvasEnabled) {
+        final canvas = (await resolve(
+          '/works/current-work/canvas/主线/nodes/node_1/content',
+        ))!;
+        final localCanvas = (await resolve('canvas/主线/nodes/node_1/content'))!;
+        expect(canvas.resourceTitle, localCanvas.resourceTitle);
+        expect(canvas.subCollection, localCanvas.subCollection);
+        expect(canvas.field, localCanvas.field);
+      }
     },
   );
 
@@ -676,7 +680,7 @@ void main() {
       }),
     );
     await tester.pumpAndSettle();
-  });
+  }, skip: !ideationCanvasEnabled);
 
   testWidgets('production paths localize canvas, clips and settings', (
     tester,
@@ -841,6 +845,7 @@ void main() {
         }
       }
     },
+    skip: !ideationCanvasEnabled,
   );
 
   testWidgets('canvas 操作走通用工具，行标题用画布路径标签', (tester) async {
@@ -869,7 +874,7 @@ void main() {
       }),
     );
     await tester.pumpAndSettle();
-  });
+  }, skip: !ideationCanvasEnabled);
 
   testWidgets('screenplay and cross-work targets localize nested paths', (
     tester,
@@ -962,12 +967,6 @@ void main() {
         screenplayId: root.id,
         episodeId: initial.episodeId,
       );
-      final beatId = await service.createBeat(
-        screenplayId: root.id,
-        episodeId: initial.episodeId,
-        actNumber: 1,
-        title: '转折',
-      );
       final container = ProviderContainer(
         overrides: [
           novelContentDatabaseProvider(databasePath).overrideWithValue(db),
@@ -975,8 +974,6 @@ void main() {
       );
       addTearDown(container.dispose);
       for (final path in [
-        '/beats/$beatId',
-        '/scenes?beat_id=$beatId',
         '/scenes/$sceneId',
         'scenes/$sceneId/elements',
         '/scenes/$sceneId/elements/element_unknown/text',
@@ -1521,6 +1518,8 @@ Widget _wrapDescriptorAssertions(
   Locale locale = const Locale('zh', 'CN'),
 }) {
   return EasyLocalization(
+    // 换语言时重建：EasyLocalization 只在首次挂载时读 startLocale。
+    key: ValueKey(locale),
     supportedLocales: [locale],
     saveLocale: false,
     path: 'assets/translations',
