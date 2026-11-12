@@ -718,24 +718,32 @@ class ProductionCanvasRegion extends HookConsumerWidget {
       }
     }
 
+    // 场次色带底部的「分镜」：排在这一场末尾，位置由场次排位决定，不挪到视口中心。
+    Future<void> addSegment(String sceneId) async {
+      if (!await session.close() || !context.mounted) {
+        return;
+      }
+      final overlay = ref.read(workingOverlayServiceProvider(path));
+      final node = await recordProductionChange(context, const [], () async {
+        final clip = await StoryboardEditOrchestrator().create(
+          service: shots,
+          overlay: overlay,
+          sceneId: sceneId,
+          values: const {
+            'duration_ms': ProductionCanvasService.defaultDurationMs,
+          },
+        );
+        return service.ensureShotNode(clip.id);
+      });
+      await select(node);
+    }
+
     Future<void> add(ProductionAddKind kind) async {
       if (!await session.close()) {
         return;
       }
       final overlay = ref.read(workingOverlayServiceProvider(path));
       switch (kind) {
-        case ProductionAddKind.segment:
-          await createAndPlace(() async {
-            final clip = await StoryboardEditOrchestrator().create(
-              service: shots,
-              overlay: overlay,
-              sceneId: workspace?.sceneId,
-              values: const {
-                'duration_ms': ProductionCanvasService.defaultDurationMs,
-              },
-            );
-            return service.ensureShotNode(clip.id);
-          });
         case ProductionAddKind.video:
           await createAndPlace(
             () => service.addFree(canvas.data!.id, overlay: overlay),
@@ -1072,15 +1080,6 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                         segments: clips,
                         onOpen: select,
                         taskActions: taskActions,
-                        addControl: ProductionAddDock(
-                          canvasWork: canvasWork,
-                          enabled: (kind) =>
-                              !busy.value &&
-                              (workspace?.sceneId != null ||
-                                  kind != ProductionAddKind.segment),
-                          onAdd: (kind) => run(() => add(kind)),
-                          onImport: () => run(importMedia),
-                        ),
                       )
                     : ProductionHistoryActions(
                         history: history,
@@ -1115,6 +1114,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                           segments: clips,
                           segmentLabels: segmentLabels,
                           sceneLabels: sceneLabels,
+                          onAddSegment: canvasWork
+                              ? null
+                              : (sceneId) => run(() => addSegment(sceneId)),
                           onSelect: select,
                           onContextMenu: (node, at) async {
                             await select(node);
@@ -1398,10 +1400,7 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                               child: Center(
                                 child: ProductionAddDock(
                                   canvasWork: canvasWork,
-                                  enabled: (kind) =>
-                                      !busy.value &&
-                                      (workspace?.sceneId != null ||
-                                          kind != ProductionAddKind.segment),
+                                  enabled: (_) => !busy.value,
                                   onAdd: (kind) => run(() => add(kind)),
                                   onImport: () => run(importMedia),
                                 ),

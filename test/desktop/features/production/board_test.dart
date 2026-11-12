@@ -719,6 +719,215 @@ void main() {
     }
   });
 
+  testWidgets('empty scene band adds a segment and drags its scene node', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    final main = app.AppDatabase.forTest(NativeDatabase.memory());
+    final shots = StoryboardService(db);
+    final screenplay = ScreenplayService(db);
+    final episode = (await screenplay.createInitialStructure()).episodeId;
+    final scene = await screenplay.createScene(
+      screenplayId: (await db.screenplayDao.getRoot())!.id,
+      episodeId: episode,
+    );
+    final canvas = await shots.ensureCanvas(episode);
+    final anchor = (await db.canvasDao.getNodesByCanvas(
+      canvas.id,
+    )).singleWhere((n) => n.sceneId == scene);
+    final service = ProductionCanvasService(
+      shots,
+      MediaLibraryService(
+        main,
+        MediaService(FfmpegRunner()),
+        Directory.systemTemp,
+      ),
+      'work',
+    );
+    final added = <String>[];
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appBackgroundActiveProvider.overrideWithValue(false)],
+          child: EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData(),
+                home: RevericTheme(
+                  data: RevericThemeData.reveric,
+                  child: Scaffold(
+                    body: ProductionBoard(
+                      service: service,
+                      canvasId: canvas.id,
+                      selected: null,
+                      segments: const [],
+                      segmentLabels: const {},
+                      sceneLabels: {scene: 'Scene 1'},
+                      onAddSegment: added.add,
+                      camera: ProductionBoardCamera(),
+                      onSelect: (_) {},
+                      onClear: () {},
+                      onConnect: (_, _, _) {},
+                      onOpenDirector: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Scene 1'), findsOneWidget);
+      await tester.tap(find.text('Segment'));
+      await tester.pumpAndSettle();
+      expect(added, [scene]);
+
+      final zoom = tester
+          .widget<flow.NodeFlowEditor<String, String>>(
+            find.byType(flow.NodeFlowEditor<String, String>),
+          )
+          .controller
+          .viewport
+          .zoom;
+      await tester.runAsync(() async {
+        await tester.drag(
+          find.text('Scene 1'),
+          const Offset(120, 60),
+          kind: PointerDeviceKind.mouse,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+      final moved = (await tester.runAsync(
+        () => db.canvasDao.getNodeById(anchor.id),
+      ))!;
+      // 拖动距离按画布缩放换算回画布坐标；拖动起步阈值吃掉一小段，只核对方向和量级。
+      expect(moved.x - anchor.x, closeTo(120 / zoom, 40 / zoom));
+      expect(moved.y - anchor.y, closeTo(60 / zoom, 40 / zoom));
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await db.close();
+      await main.close();
+    }
+  });
+
+  testWidgets('dragging a segment title moves the whole scene together', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    final main = app.AppDatabase.forTest(NativeDatabase.memory());
+    final shots = StoryboardService(db);
+    final screenplay = ScreenplayService(db);
+    final episode = (await screenplay.createInitialStructure()).episodeId;
+    final scene = await screenplay.createScene(
+      screenplayId: (await db.screenplayDao.getRoot())!.id,
+      episodeId: episode,
+    );
+    for (final title in ['a', 'b', 'c']) {
+      await shots.create(scene, values: {'title': title});
+    }
+    final canvas = await shots.ensureCanvas(episode);
+    final segments = await shots.episodeShots(episode);
+    final service = ProductionCanvasService(
+      shots,
+      MediaLibraryService(
+        main,
+        MediaService(FfmpegRunner()),
+        Directory.systemTemp,
+      ),
+      'work',
+    );
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appBackgroundActiveProvider.overrideWithValue(false)],
+          child: EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData(),
+                home: RevericTheme(
+                  data: RevericThemeData.reveric,
+                  child: Scaffold(
+                    body: ProductionBoard(
+                      service: service,
+                      canvasId: canvas.id,
+                      selected: null,
+                      segments: segments,
+                      segmentLabels: const {},
+                      sceneLabels: {scene: 'Scene 1'},
+                      camera: ProductionBoardCamera(),
+                      onSelect: (_) {},
+                      onClear: () {},
+                      onConnect: (_, _, _) {},
+                      onOpenDirector: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final controller = tester
+          .widget<flow.NodeFlowEditor<String, String>>(
+            find.byType(flow.NodeFlowEditor<String, String>),
+          )
+          .controller;
+      final g = await tester.startGesture(
+        tester.getCenter(find.text('a').first),
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var i = 0; i < 5; i++) {
+        await g.moveBy(const Offset(40, -12));
+        await tester.pump();
+        // 标题在卡片外，按下时不能被画布当成空白框选：整场一直同步移动。
+        final xs = {
+          for (final n in controller.nodes.values) n.position.value.dx,
+        };
+        expect(xs, hasLength(1), reason: 'step $i');
+      }
+      await g.up();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      final rows = (await tester.runAsync(
+        () => db.canvasDao.getNodesByCanvas(canvas.id),
+      ))!;
+      expect({for (final n in rows) n.x}, hasLength(1));
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await db.close();
+      await main.close();
+    }
+  });
+
   testWidgets(
     'default editor mouse pan and touch pan remain available',
     (tester) async {

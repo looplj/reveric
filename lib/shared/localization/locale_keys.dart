@@ -454,8 +454,6 @@ abstract final class LocaleKeys {
   static const productionImportHint = 'screenplay.production.importHint';
   static const productionAddNode = 'screenplay.production.addNode';
   static const productionAddSegment = 'screenplay.production.addSegment';
-  static const productionAddSegmentHint =
-      'screenplay.production.addSegmentHint';
   static const productionAddVideoHint = 'screenplay.production.addVideoHint';
   static const productionAddImageHint = 'screenplay.production.addImageHint';
   static const productionAddAudioHint = 'screenplay.production.addAudioHint';

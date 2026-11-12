@@ -6,6 +6,8 @@
 // 遵循的 Rules:
 //   .agents/rules/error-handling.md
 //   .agents/rules/service-naming.md
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
@@ -353,6 +355,7 @@ class StoryboardService {
         if (canvas == null || canvas.kind != canvasKindProduction) {
           throw const StoryboardException('source_missing');
         }
+        await _ensureSceneNodes(canvas.id, episodeId);
         return canvas;
       }
       final id = await insertWithShortEntityId(
@@ -387,6 +390,7 @@ class StoryboardService {
       for (final clip in clips) {
         await ensureClipNode(clip.id);
       }
+      await _ensureSceneNodes(id, episodeId);
       return (await database.canvasDao.getCanvasById(id))!;
     },
   );
@@ -430,82 +434,158 @@ class StoryboardService {
     return (await database.canvasDao.getCanvasById(id))!;
   }
 
-  Future<CanvasNode> ensureClipNode(
-    String clipId,
-  ) => write('ENSURE_NODE', clipId, () async {
-    final clip = await getShot(clipId);
-    if (clip == null) {
-      throw const StoryboardException('source_missing');
+  Future<CanvasNode> ensureClipNode(String clipId) =>
+      write('ENSURE_NODE', clipId, () async {
+        final clip = await getShot(clipId);
+        if (clip == null) {
+          throw const StoryboardException('source_missing');
+        }
+        final canvas = await ensureCanvas(clip.episodeId);
+        final existing =
+            await (database.select(database.canvasNodes)..where(
+                  (t) =>
+                      t.refType.equals(canvasNodeRefTypeProductionClip) &
+                      t.refId.equals(clipId) &
+                      t.deletedAt.equals(notDeletedSentinel),
+                ))
+                .getSingleOrNull();
+        if (existing != null) {
+          if (existing.canvasId != canvas.id) {
+            throw const StoryboardException('source_missing');
+          }
+          return existing;
+        }
+        final scenes = clip.episodeId.isEmpty
+            ? <ScreenplaySceneRecord>[]
+            : await database.screenplayDao.getSceneRows(clip.episodeId);
+        final sceneIndex = scenes.indexWhere((s) => s.id == clip.sceneId);
+        var x = 360.0 + (clip.sortOrder ?? 0) * 360;
+        var y = 80.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 280;
+        final nodes = await database.canvasDao.getNodesByCanvas(canvas.id);
+        final anchor = nodes
+            .where((n) => n.sceneId != null && n.sceneId == clip.sceneId)
+            .firstOrNull;
+        if (clip.sceneId != null) {
+          // 每场占一列，场内片段向下排列。
+          x = 360.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 360;
+          y = 80.0 + (clip.sortOrder ?? 0) * 280;
+          final siblingIds = (await sceneShots(
+            clip.sceneId!,
+          )).map((sibling) => sibling.id).toSet();
+          final siblings = nodes.where(
+            (node) => siblingIds.contains(node.clipId),
+          );
+          if (siblings.isNotEmpty) {
+            // 新段跟随已移动的场次，避免旧的默认坐标改变整场的布局原点。
+            x = siblings.map((node) => node.x).reduce((a, b) => a < b ? a : b);
+            y =
+                siblings.map((node) => node.y).reduce((a, b) => a > b ? a : b) +
+                280;
+          } else if (anchor != null) {
+            // 空场次的第一段落在场次框原位。
+            x = anchor.x;
+            y = anchor.y;
+          }
+        }
+        // 画布卡片按画面比例渲染，长边最大 260，上方还有一行标题；占位按最大卡片加间距算。
+        // 场内片段由场次节点排位，不另找空位。
+        const slot = 300.0;
+        while (anchor == null &&
+            nodes.any(
+              (n) =>
+                  x < n.x + slot &&
+                  x + slot > n.x &&
+                  y < n.y + slot &&
+                  y + slot > n.y,
+            )) {
+          y += slot;
+        }
+        final id = await insertWithShortEntityId(
+          type: ShortEntityIdType.canvasNode,
+          tableName: 'canvas_nodes',
+          idExists: database.canvasDao.nodeIdExists,
+          insert: (id) => database
+              .into(database.canvasNodes)
+              .insert(
+                CanvasNodesCompanion.insert(
+                  id: id,
+                  canvasId: canvas.id,
+                  type: Value(clip.kind),
+                  refType: const Value(canvasNodeRefTypeProductionClip),
+                  refId: Value(clipId),
+                  title: Value(clip.title),
+                  x: Value(x),
+                  y: Value(y),
+                  width: const Value(300),
+                  height: const Value(220),
+                ),
+              ),
+        );
+        return (await database.canvasDao.getNodeById(id))!;
+      });
+
+  /// 给本集每个还没有场次节点的场次补一个。已有片段节点的场次取这些节点最左、最上的坐标，
+  /// 与原先由片段推出的场次位置一致；空场次排在已有场次右侧，与它们顶边对齐，被占用时往下让。
+  Future<void> _ensureSceneNodes(String canvasId, String episodeId) async {
+    if (episodeId.isEmpty) {
+      return;
     }
-    final canvas = await ensureCanvas(clip.episodeId);
-    final existing =
-        await (database.select(database.canvasNodes)..where(
-              (t) =>
-                  t.refType.equals(canvasNodeRefTypeProductionClip) &
-                  t.refId.equals(clipId) &
-                  t.deletedAt.equals(notDeletedSentinel),
-            ))
-            .getSingleOrNull();
-    if (existing != null) {
-      if (existing.canvasId != canvas.id) {
-        throw const StoryboardException('source_missing');
+    final scenes = await database.screenplayDao.getSceneRows(episodeId);
+    final nodes = await database.canvasDao.getNodesByCanvas(canvasId);
+    final anchored = {for (final n in nodes) ?n.sceneId};
+    final missing = scenes.where((s) => !anchored.contains(s.id)).toList();
+    if (missing.isEmpty) {
+      return;
+    }
+    final clips = await (_shots()..where((t) => t.episodeId.equals(episodeId)))
+        .get();
+    final sceneOfClip = {for (final c in clips) c.id: c.sceneId};
+    for (final scene in missing) {
+      final members = nodes.where((n) => sceneOfClip[n.clipId] == scene.id);
+      double x;
+      double y;
+      if (members.isNotEmpty) {
+        x = members.map((n) => n.x).reduce(math.min);
+        y = members.map((n) => n.y).reduce(math.min);
+      } else {
+        final others = nodes.where((n) => n.sceneId != null);
+        x = others.isEmpty
+            ? 360.0 + scenes.indexOf(scene) * 360
+            : others.map((n) => n.x).reduce(math.max) + 360;
+        y = others.isEmpty ? 80.0 : others.map((n) => n.y).reduce(math.min);
+        // 空场次只有标题和添加入口，按一张卡片的占位找空位。
+        const slot = 300.0;
+        while (nodes.any(
+          (n) =>
+              x < n.x + slot &&
+              x + slot > n.x &&
+              y < n.y + slot &&
+              y + slot > n.y,
+        )) {
+          y += slot;
+        }
       }
-      return existing;
-    }
-    final scenes = clip.episodeId.isEmpty
-        ? <ScreenplaySceneRecord>[]
-        : await database.screenplayDao.getSceneRows(clip.episodeId);
-    final sceneIndex = scenes.indexWhere((s) => s.id == clip.sceneId);
-    var x = 360.0 + (clip.sortOrder ?? 0) * 360;
-    var y = 80.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 280;
-    final nodes = await database.canvasDao.getNodesByCanvas(canvas.id);
-    if (clip.sceneId != null) {
-      // 每场占一列，场内片段向下排列。
-      x = 360.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 360;
-      y = 80.0 + (clip.sortOrder ?? 0) * 280;
-      final siblingIds = (await sceneShots(
-        clip.sceneId!,
-      )).map((sibling) => sibling.id).toSet();
-      final siblings = nodes.where((node) => siblingIds.contains(node.clipId));
-      if (siblings.isNotEmpty) {
-        // 新段跟随已移动的场次，避免旧的默认坐标改变整场的布局原点。
-        x = siblings.map((node) => node.x).reduce((a, b) => a < b ? a : b);
-        y =
-            siblings.map((node) => node.y).reduce((a, b) => a > b ? a : b) +
-            280;
-      }
-    }
-    // 画布卡片按画面比例渲染，长边最大 260，上方还有一行标题；占位按最大卡片加间距算。
-    const slot = 300.0;
-    while (nodes.any(
-      (n) =>
-          x < n.x + slot && x + slot > n.x && y < n.y + slot && y + slot > n.y,
-    )) {
-      y += slot;
-    }
-    final id = await insertWithShortEntityId(
-      type: ShortEntityIdType.canvasNode,
-      tableName: 'canvas_nodes',
-      idExists: database.canvasDao.nodeIdExists,
-      insert: (id) => database
-          .into(database.canvasNodes)
-          .insert(
-            CanvasNodesCompanion.insert(
-              id: id,
-              canvasId: canvas.id,
-              type: Value(clip.kind),
-              refType: const Value(canvasNodeRefTypeProductionClip),
-              refId: Value(clipId),
-              title: Value(clip.title),
-              x: Value(x),
-              y: Value(y),
-              width: const Value(300),
-              height: const Value(220),
+      final id = await insertWithShortEntityId(
+        type: ShortEntityIdType.canvasNode,
+        tableName: 'canvas_nodes',
+        idExists: database.canvasDao.nodeIdExists,
+        insert: (id) => database
+            .into(database.canvasNodes)
+            .insert(
+              CanvasNodesCompanion.insert(
+                id: id,
+                canvasId: canvasId,
+                type: const Value(canvasNodeTypeScene),
+                refType: const Value(canvasNodeRefTypeScreenplayScene),
+                refId: Value(scene.id),
+                x: Value(x),
+                y: Value(y),
+              ),
             ),
-          ),
-    );
-    return (await database.canvasDao.getNodeById(id))!;
-  });
+      );
+      nodes.add((await database.canvasDao.getNodeById(id))!);
+    }
+  }
 
   Future<void> apply(
     String id,

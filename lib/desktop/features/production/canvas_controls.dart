@@ -31,9 +31,8 @@ import '../canvas/widgets/glass.dart';
 import 'history_region.dart';
 import 'history_actions.dart';
 
-/// 「＋」菜单里的节点类型。素材类先从资产库选内容再落到画布。
+/// 「＋」菜单里的节点类型。素材类先从资产库选内容再落到画布；分镜从场次色带底部添加。
 enum ProductionAddKind {
-  segment,
   video,
   image,
   character,
@@ -121,7 +120,7 @@ class ProductionAddDock extends StatefulWidget {
 
   final bool canvasWork;
 
-  /// 各类型当前是否可建（片段、导演台需要第二栏选中场次）。
+  /// 各类型当前是否可建。
   final bool Function(ProductionAddKind kind) enabled;
   final ValueChanged<ProductionAddKind> onAdd;
   final VoidCallback onImport;
@@ -138,12 +137,6 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
     final box = context.findRenderObject()! as RenderBox;
     final anchor = box.localToGlobal(Offset(box.size.width / 2, -12));
     final items = [
-      (
-        ProductionAddKind.segment,
-        RevericIcons.movie_outlined,
-        LocaleKeys.productionAddSegment,
-        LocaleKeys.productionAddSegmentHint,
-      ),
       (
         ProductionAddKind.video,
         RevericIcons.video_camera,
@@ -196,7 +189,6 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
     if (widget.canvasWork) {
       items.removeWhere(
         (item) => const {
-          ProductionAddKind.segment,
           ProductionAddKind.character,
           ProductionAddKind.location,
           ProductionAddKind.compendium,

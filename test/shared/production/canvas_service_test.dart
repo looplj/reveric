@@ -593,7 +593,10 @@ void main() {
       );
       final place = subjects.singleWhere((clip) => clip.locationId == location);
       expect(place.adoptedAssetId, 'set');
-      final nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+      final all = await db.canvasDao.getNodesByCanvas(canvas.id);
+      // 每个场次各有一个场次节点。
+      expect(all.map((node) => node.sceneId).nonNulls.toSet(), {scene, second});
+      final nodes = all.where((node) => node.sceneId == null).toList();
       expect(nodes, hasLength(3));
       expect(
         nodes.singleWhere((node) => node.clipId == place.id).type,
@@ -620,17 +623,32 @@ void main() {
         )).where((clip) => clip.characterId == added),
         hasLength(1),
       );
-      expect(await db.canvasDao.getNodesByCanvas(canvas.id), hasLength(4));
+      expect(
+        (await db.canvasDao.getNodesByCanvas(
+          canvas.id,
+        )).where((node) => node.sceneId == null),
+        hasLength(4),
+      );
 
       // Manual removal remains removed, including after recreating the canvas.
       final placeNode = nodes.singleWhere((node) => node.clipId == place.id);
       await service.removeNode(manual.id);
       await service.removeNode(placeNode.id);
       await service.ensureCanvas(episode);
-      expect(await db.canvasDao.getNodesByCanvas(canvas.id), hasLength(2));
+      expect(
+        (await db.canvasDao.getNodesByCanvas(
+          canvas.id,
+        )).where((node) => node.sceneId == null),
+        hasLength(2),
+      );
       await service.removeCanvas(canvas.id);
       final rebuilt = await service.ensureCanvas(episode);
-      expect(await db.canvasDao.getNodesByCanvas(rebuilt.id), hasLength(2));
+      expect(
+        (await db.canvasDao.getNodesByCanvas(
+          rebuilt.id,
+        )).where((node) => node.sceneId == null),
+        hasLength(2),
+      );
       final retained = await service.shots.episodeClips(episode);
       expect(retained.where((clip) => clip.characterId == character), isEmpty);
       expect(retained.where((clip) => clip.locationId == location), isEmpty);
@@ -756,9 +774,52 @@ void main() {
         location,
       ]);
       expect(clips.every((clip) => clip.adoptedAssetId == null), isTrue);
-      expect(await db.canvasDao.getNodesByCanvas(canvas.id), hasLength(2));
+      final nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+      expect(nodes.where((node) => node.sceneId == null), hasLength(2));
+      // 只给仍存在的场次建场次节点。
+      expect(nodes.map((node) => node.sceneId).nonNulls, [liveScene]);
     },
   );
+
+  test('scene nodes own the scene position and stay in sync', () async {
+    final screenplay = ScreenplayService(db);
+    final shotNode = await service.ensureShotNode(shot.id);
+    final empty = await screenplay.createScene(
+      screenplayId: (await db.screenplayDao.getRoot())!.id,
+      episodeId: episode,
+    );
+    final canvas = await service.ensureCanvas(episode);
+    CanvasNode anchorOf(List<CanvasNode> nodes, String sceneId) =>
+        nodes.singleWhere((n) => n.sceneId == sceneId);
+    var nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+    // 有片段的场次取片段位置；空场次也有场次节点，且不能删除。
+    expect(anchorOf(nodes, scene).x, shotNode.x);
+    expect(anchorOf(nodes, scene).y, shotNode.y);
+    final emptyAnchor = anchorOf(nodes, empty);
+    await expectLater(
+      service.removeNode(emptyAnchor.id),
+      throwsA(isA<StoryboardException>()),
+    );
+
+    // 空场次的第一段落在场次节点原位。
+    final first = await service.ensureShotNode(
+      (await service.shots.create(empty, values: {'title': 'first'})).id,
+    );
+    expect((first.x, first.y), (emptyAnchor.x, emptyAnchor.y));
+
+    // 只移动场次节点：场内片段一起平移。
+    await service.moveNodes(canvas.id, {
+      emptyAnchor.id: (x: emptyAnchor.x + 100, y: emptyAnchor.y + 50),
+    });
+    final moved = await service.requireNode(first.id);
+    expect((moved.x, moved.y), (first.x + 100, first.y + 50));
+
+    // 只移动片段：场次节点跟到片段最左、最上的位置。
+    await service.moveNodes(canvas.id, {shotNode.id: (x: -300, y: -200)});
+    nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+    expect(anchorOf(nodes, scene).x, -300);
+    expect(anchorOf(nodes, scene).y, -200);
+  });
 
   test(
     'deleted assets invalidate media references even while their files remain',
@@ -2483,7 +2544,9 @@ void main() {
       expect(inputs.single.sourceNodeId, isNull);
       expect((await service.shots.getShot(shot.id))!.prompt, prompt);
       expect(
-        (await db.canvasDao.getNodesByCanvas(node.canvasId)),
+        (await db.canvasDao.getNodesByCanvas(
+          node.canvasId,
+        )).where((n) => n.sceneId == null),
         hasLength(1),
       );
       await expectLater(
@@ -3462,7 +3525,12 @@ void main() {
         overlay: overlay,
       );
       await save([direct, linked]);
-      expect((await service.content(target.canvasId)).nodes, hasLength(2));
+      expect(
+        (await service.content(
+          target.canvasId,
+        )).nodes.where((n) => n.sceneId == null),
+        hasLength(2),
+      );
       expect((await db.select(db.canvasEdges).get()), isEmpty);
       final edge = (await service.content(target.canvasId)).edges.single;
       expect(edge.id, '${target.id}:${linked.id}');

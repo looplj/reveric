@@ -279,7 +279,6 @@
   "screenplay.production.importHint": "图片、视频、音频",
   "screenplay.production.addNode": "添加节点",
   "screenplay.production.addSegment": "分镜",
-  "screenplay.production.addSegmentHint": "排在当前场次末尾，进成片",
   "screenplay.production.addVideoHint": "镜头画面、动态片段",
   "screenplay.production.addImageHint": "角色图、场景图、首尾帧",
   "screenplay.production.addAudioHint": "录音、配音、音乐",

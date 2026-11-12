@@ -338,6 +338,14 @@ class ProductionCanvasService {
   Future<CanvasNode> ensureShotNode(String shotId) =>
       shots.ensureClipNode(shotId);
 
+  /// 画布打开期间新加的场次补上场次节点；打开画布时 [ensureCanvas] 已补过一次。
+  Future<void> ensureSceneNodes(String canvasId) => write(canvasId, () async {
+    final episodeId = await episodeForCanvas(canvasId);
+    if (episodeId.isNotEmpty) {
+      await shots.ensureCanvas(episodeId);
+    }
+  });
+
   /// 画布上「＋」新建的片段 / 视频节点默认时长。
   static const defaultDurationMs = 6000;
 

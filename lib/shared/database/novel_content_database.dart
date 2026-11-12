@@ -200,6 +200,9 @@ const String canvasNodeTypeStaging = 'staging';
 const String canvasNodeTypeGroup = 'group';
 const String canvasNodeTypeText = 'text';
 const String canvasNodeTypeEditing = 'editing';
+// 制作画布场次：每场一个，refType 为 screenplay_scene，x / y 是场次框内第一张卡片的左上角。
+// 场内片段由 production_clips.scene_id 决定并按成片顺序排在它下方，不用 parent_id 挂靠。
+const String canvasNodeTypeScene = 'scene';
 // 制作画布节点用 refType/refId 指向内容；不进构思画布的 [canvasNodeRefTypes]。
 const String canvasNodeRefTypeProductionClip = 'production_clip';
 const String canvasNodeRefTypeAsset = 'asset';
@@ -222,6 +225,7 @@ extension ProductionCanvasNodeRef on CanvasNode {
   String? get mediaAssetId => refType == canvasNodeRefTypeAsset ? refId : null;
   String? get stagingId => refType == canvasNodeRefTypeStaging ? refId : null;
   String? get editingId => refType == canvasNodeRefTypeEditing ? refId : null;
+  String? get sceneId => type == canvasNodeTypeScene ? refId : null;
 }
 
 const List<String> canvasKinds = <String>[canvasKindUser];

@@ -279,7 +279,6 @@
   "screenplay.production.importHint": "Images, videos and audio",
   "screenplay.production.addNode": "Add node",
   "screenplay.production.addSegment": "Segment",
-  "screenplay.production.addSegmentHint": "Appended to the selected scene; part of the cut",
   "screenplay.production.addVideoHint": "Shots and motion clips",
   "screenplay.production.addImageHint": "Character, scene, first or last frame",
   "screenplay.production.addAudioHint": "Recording, voice-over, music",

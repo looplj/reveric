@@ -1,4 +1,4 @@
-// 职责: 维护制作画布分组：成员挂接与校验、布局变更、分镜组与普通组互转、整组移动、解组、清空与删除。
+// 职责: 维护制作画布分组：成员挂接与校验、布局变更、分镜组与普通组互转、整组与场次移动、解组、清空与删除。
 // 关联文件:
 //   lib/shared/models/production/group_layout.dart
 //   lib/shared/services/production/canvas_service.dart
@@ -7,6 +7,7 @@
 // 遵循的 Rules:
 //   .agents/rules/service-naming.md
 //   .agents/rules/data-deletion.md
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:drift/drift.dart';
@@ -422,6 +423,10 @@ class ProductionGroupService {
         'remove',
         [node.id],
         () => write(node.id, () async {
+          // 场次节点随剧本场次存在，不能从画布删除。
+          if (node.type == canvasNodeTypeScene) {
+            throw const StoryboardException('invalid_config');
+          }
           if (node.type == canvasNodeTypeGroup) {
             for (final member in await members(node.id)) {
               await _removeOne(member);
@@ -496,8 +501,64 @@ class ProductionGroupService {
         }
         await _setPosition(node.id, at.x, at.y);
       }
+      await _syncScenes(canvasId, nodes, positions);
     }),
   );
+
+  /// 场次节点与场内片段节点保持一致：只移动场次节点时，没一起提交的片段跟着平移；
+  /// 只移动片段时，场次节点取场内片段节点最左、最上的坐标。[before] 是移动前的节点。
+  Future<void> _syncScenes(
+    String canvasId,
+    Map<String, CanvasNode> before,
+    Map<String, ({double x, double y})> positions,
+  ) async {
+    final current = await db.canvasDao.getNodesByCanvas(canvasId);
+    final anchors = {for (final n in current) ?n.sceneId: n};
+    if (anchors.isEmpty) {
+      return;
+    }
+    final clips =
+        await (db.select(db.productionClips)..where(
+              (t) =>
+                  t.id.isIn(current.map((n) => n.clipId).nonNulls) &
+                  t.deletedAt.equals(notDeletedSentinel),
+            ))
+            .get();
+    final sceneOfClip = {for (final c in clips) c.id: c.sceneId};
+    Iterable<CanvasNode> members(String sceneId) =>
+        current.where((n) => sceneOfClip[n.clipId] == sceneId);
+    final movedScenes = <String>{};
+    for (final anchor in before.values) {
+      final sceneId = anchor.sceneId;
+      if (sceneId == null) {
+        continue;
+      }
+      movedScenes.add(sceneId);
+      final at = positions[anchor.id]!;
+      final dx = at.x - anchor.x, dy = at.y - anchor.y;
+      for (final member in members(sceneId)) {
+        if (!positions.containsKey(member.id)) {
+          await _setPosition(member.id, member.x + dx, member.y + dy);
+        }
+      }
+    }
+    final touched = {
+      for (final id in positions.keys)
+        if (before[id]?.clipId case final clipId?) ?sceneOfClip[clipId],
+    }.difference(movedScenes);
+    for (final sceneId in touched) {
+      final anchor = anchors[sceneId];
+      final group = members(sceneId);
+      if (anchor == null || group.isEmpty) {
+        continue;
+      }
+      await _setPosition(
+        anchor.id,
+        group.map((n) => n.x).reduce(math.min),
+        group.map((n) => n.y).reduce(math.min),
+      );
+    }
+  }
 
   StoryboardGroupLayout _storyboard(CanvasNode group) {
     final layout = ProductionGroupLayout.fromStyle(group.style);

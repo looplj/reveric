@@ -854,10 +854,11 @@ void main() {
       expect(change.resourcePath, 'clips/$id');
       await overlay.rejectWorkingChange(change.id);
       expect(await service.getShot(id), isNull);
+      // 场次节点随场次保留，片段节点随片段撤回。
       expect(
-        await db.canvasDao.getNodesByCanvas(
+        (await db.canvasDao.getNodesByCanvas(
           (await db.screenplayDao.getEpisode(episodeId))!.canvasId!,
-        ),
+        )).where((node) => node.sceneId == null),
         isEmpty,
       );
     },
