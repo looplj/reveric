@@ -139,6 +139,7 @@ abstract class ImageClient {
     Uri uri,
     Map<String, dynamic> body, {
     Map<String, String>? headers,
+    Duration? timeout,
   }) async {
     final apiKey = requireApiKey();
     final client = config.createProxyClient() ?? http.Client();
@@ -157,7 +158,7 @@ abstract class ImageClient {
             },
             body: jsonEncode(body),
           )
-          .timeout(imageHttpDataTimeout);
+          .timeout(timeout ?? imageHttpDataTimeout);
       writeImageLog(
         '[IMGDBG] http_response status=${response.statusCode} uri=${safeImageUriForLog(uri)}',
       );

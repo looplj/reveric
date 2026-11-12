@@ -257,6 +257,25 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   ),
 
   // ── Gemini ────────────────────────────────────────────────────────────────
+  // https://ai.google.dev/gemini-api/docs/models
+  // https://aistudio.google.com/learn/gemini-4-carbon-developer-guide
+  // 默认输出上限 64K；输入、思考和输出共用 1M 窗口。
+  'gemini-4-carbon': ModelCatalogEntry(
+    matches: ['gemini-4-carbon-*'],
+    modalities: ModelCatalogModalities(
+      input: ['text', 'image', 'audio', 'video'],
+    ),
+    reasoningEfforts: ['low', 'medium', 'high'],
+    limit: ModelCatalogLimit(context: _1m, output: _64k),
+  ),
+  'gemini-4-argon': ModelCatalogEntry(
+    matches: ['gemini-4-argon-*'],
+    modalities: ModelCatalogModalities(
+      input: ['text', 'image', 'audio', 'video'],
+    ),
+    reasoningEfforts: ['low', 'medium', 'high'],
+    limit: ModelCatalogLimit(context: _1m, output: _64k),
+  ),
   // https://ai.google.dev/gemini-api/docs/thinking
   'gemini-3.8-flash': ModelCatalogEntry(
     matches: ['gemini-3.8-flash-*'],

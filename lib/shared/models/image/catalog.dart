@@ -110,6 +110,12 @@ final imageModelsCatalog = <String, ImageModelCatalogEntry>{
     ),
   ),
   // https://docs.volcengine.com/docs/ark/image-generation-api
+  // Seedream 5.5：1K / 1.5K / 2K，总像素与宽高比同 5.0 pro，最多 10 张参考图。
+  // 不支持组图、联网搜索和 fast 提示词优化。
+  'seedream-5.5': ImageModelCatalogEntry(
+    capabilities: _seedream50ProCapabilities,
+    requestDefaults: _seedream50ProDefaults,
+  ),
   'seedream-5.0-pro': ImageModelCatalogEntry(
     capabilities: _seedream50ProCapabilities,
     requestDefaults: _seedream50ProDefaults,
@@ -524,6 +530,16 @@ final imageModelsCatalog = <String, ImageModelCatalogEntry>{
   'gpt-5-image': ImageModelCatalogEntry(
     capabilities: _gpt5ImageMiniCapabilities,
   ),
+  // https://platform.minimax.io/docs/api-reference/image-generation-h3-generations
+  // 比例加面积档位出图；显式宽高的总像素为 655360–20000000，宽高比 1:3–3:1。
+  'MiniMax-H3-Image': ImageModelCatalogEntry(
+    capabilities: _minimaxH3ImageCapabilities,
+    requestDefaults: _minimaxH3ImageDefaults,
+  ),
+  'MiniMax-H3-Image-Highspeed': ImageModelCatalogEntry(
+    capabilities: _minimaxH3ImageCapabilities,
+    requestDefaults: _minimaxH3ImageDefaults,
+  ),
   'gemini-2.5-flash-image': ImageModelCatalogEntry(
     capabilities: ImageModelCapabilities(
       ratios: {
@@ -846,6 +862,34 @@ const _gpt5ImageMiniCapabilities = ImageModelCapabilities(
   resolutions: {'auto'},
   minReferences: 0,
   maxReferences: 16,
+);
+
+const _minimaxH3ImageCapabilities = ImageModelCapabilities(
+  ratios: {
+    'auto',
+    '1:1',
+    '16:9',
+    '9:16',
+    '4:3',
+    '3:4',
+    '3:2',
+    '2:3',
+    '2:1',
+    '1:2',
+    '21:9',
+    '3:1',
+    '1:3',
+  },
+  resolutions: {'1K', '2K', '4K'},
+  maxReferences: 16,
+  minPixels: ConfigValue(655360),
+  maxPixels: ConfigValue(20000000),
+  maxAspectRatio: ConfigValue(3),
+);
+
+const _minimaxH3ImageDefaults = ImageRequestDefaults(
+  responseFormat: ConfigValue('b64_json'),
+  outputFormat: ConfigValue('png'),
 );
 
 const _agnesImage20FlashDefaults = ImageRequestDefaults(

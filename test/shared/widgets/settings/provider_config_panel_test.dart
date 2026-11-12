@@ -17,6 +17,7 @@ import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/audio/channels.dart';
 import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
@@ -52,13 +53,7 @@ void main() {
   test(
     'image picker offers channel catalogs without fetching chat models',
     () async {
-      for (final type in [
-        'qwen',
-        'doubao',
-        'volcengine',
-        'openrouter',
-        'atlascloud',
-      ]) {
+      for (final type in ['qwen', 'doubao', 'volcengine']) {
         final provider = aiProviderBuiltinById('openai')!.copyWith(type: type);
         final models = await http.runWithClient(
           () => fetchProviderModels(provider, kind: AiModelKind.image),
@@ -69,6 +64,71 @@ void main() {
       }
     },
   );
+  test(
+    'AtlasCloud image picker fetches the image catalog and keeps unknown models',
+    () async {
+      final provider = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(type: 'atlascloud', apiKey: 'key');
+      final models = await http.runWithClient(
+        () => fetchProviderModels(provider, kind: AiModelKind.image),
+        () => MockClient((request) async {
+          expect(
+            request.url.toString(),
+            'https://api.atlascloud.ai/api/v1/models?type=Image',
+          );
+          expect(request.headers['Authorization'], 'Bearer key');
+          return http.Response(
+            jsonEncode({
+              'code': 200,
+              'data': [
+                {
+                  'model': 'openai/gpt-image-2/text-to-image',
+                  'type': 'Image',
+                  'display_console': true,
+                },
+                {
+                  'model': 'vendor/new-image',
+                  'type': 'Image',
+                  'display_console': true,
+                },
+                {
+                  'model': 'hidden/internal',
+                  'type': 'Image',
+                  'display_console': false,
+                },
+                {
+                  'model': 'openai/gpt-4o',
+                  'type': 'Text',
+                  'display_console': true,
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      expect(models, ['openai/gpt-image-2/text-to-image', 'vendor/new-image']);
+      expect(lookupImageChannelModel('atlascloud', 'vendor/new-image'), isNull);
+      expect(
+        lookupImageChannelModel(
+          'atlascloud',
+          'openai/gpt-image-2/text-to-image',
+        )!.catalogId,
+        'gpt-image-2',
+      );
+      final unlisted = ProductionImageCapabilities(
+        provider.copyWith(imageModels: models),
+        'vendor/new-image',
+      );
+      expect(unlisted.isSupported, isTrue);
+      expect(unlisted.verifiedCapabilities, isNull);
+      expect(unlisted.ratios, contains('16:9'));
+      expect(unlisted.resolutions, contains('2K'));
+      expect(unlisted.maxReferences, isNull);
+    },
+  );
+
   test(
     'Agnes image picker offers its catalog without fetching unrelated models',
     () async {
@@ -108,9 +168,10 @@ void main() {
       final provider = aiProviderBuiltinById(
         'openai',
       )!.copyWith(type: 'codex', apiKey: '');
-      expect(await fetchProviderModels(provider, kind: AiModelKind.image), [
-        'gpt-image-2',
-      ]);
+      expect(
+        await fetchProviderModels(provider, kind: AiModelKind.image),
+        codexPresetImageModels,
+      );
     },
   );
 

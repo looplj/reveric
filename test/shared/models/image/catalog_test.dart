@@ -258,6 +258,20 @@ void main() {
       'qwen-image-2.0-pro',
     );
     expect(lookupImageModel('qwen-image-unknown'), isNull);
+    expect(recognizeImageModel('doubao-seedream-5-5-261028'), 'seedream-5.5');
+    final seedream55 = lookupImageChannelModel(
+      'volcengine',
+      'doubao-seedream-5-5-261028',
+    )!;
+    expect(seedream55.catalogId, 'seedream-5.5');
+    expect(seedream55.capabilities.resolutions, {'1K', '1.5K', '2K'});
+    expect(seedream55.capabilities.maxReferences, 10);
+    expect(seedream55.requestDefaults.outputFormat, 'png');
+    expect(seedream55.requestDefaults.promptOptimization, 'standard');
+    expect(
+      imageModelsForProvider('doubao').first,
+      'doubao-seedream-5-5-261028',
+    );
   });
 
   for (final protocol in imageChannelModels.entries) {

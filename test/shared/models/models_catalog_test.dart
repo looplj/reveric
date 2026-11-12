@@ -128,6 +128,8 @@ void main() {
         'o4-mini',
         'claude-opus-4-6',
         'claude-haiku-4-5-20251001',
+        'gemini-4-carbon',
+        'gemini-4-argon',
         'gemini-flash-latest',
         'qwen3.8-max',
         'qwen3.6-plus',
@@ -399,6 +401,8 @@ void main() {
         128000,
         ['low', 'medium', 'high', 'xhigh', 'max'],
       ),
+      ('gemini-4-carbon', 1000000, 64000, ['low', 'medium', 'high']),
+      ('gemini-4-argon-preview', 1000000, 64000, ['low', 'medium', 'high']),
     ];
     for (final (id, context, output, efforts) in cases) {
       expect(lookupCatalogLimit(id)?.context, context, reason: id);

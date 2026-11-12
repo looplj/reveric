@@ -257,6 +257,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     displayName: 'MiniMax',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
+    imageProtocol: ImageProtocol.minimax_image,
     videoProtocol: VideoProtocol.minimax_video_v2,
     audioProtocol: AudioProtocol.minimax_music,
   ),
@@ -314,7 +315,13 @@ String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
 /// Codex 新配置的预设目录。
 const codexPresetModels = <String>['gpt-6-astra', 'gpt-6-luna', 'gpt-6.1-sol'];
 
-const codexPresetImageModels = <String>['gpt-image-2'];
+const codexPresetImageModels = <String>[
+  'gpt-image-2.6-sunburst',
+  'gpt-image-2.6-flare',
+  'gpt-image-2.5-sunburst',
+  'gpt-image-2.5-flare',
+  'gpt-image-2',
+];
 
 /// MiniMax 没有公开的模型列表接口，「获取模型」使用这份目录。
 const minimaxPresetChatModels = <String>[
@@ -538,6 +545,8 @@ final List<AiProvider> aiProviderBuiltinDefaults = [
     apiKey: '',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     models: [
+      'gemini-4-carbon',
+      'gemini-4-argon',
       'gemini-3.1-pro-preview',
       'gemini-3-flash-preview',
       'gemini-3.1-flash-lite-preview',

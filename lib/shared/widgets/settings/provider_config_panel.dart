@@ -801,6 +801,28 @@ String modelsFetchErrorKey(int? statusCode) => switch (statusCode) {
   _ => LocaleKeys.providerFetchModelsServerError,
 };
 
+List<String> _atlasCloudImageModelIds(Map<String, dynamic> body) {
+  final data = body['data'];
+  if (data is! List) {
+    return const [];
+  }
+  final ids = <String>[];
+  for (final item in data) {
+    if (item is! Map) {
+      continue;
+    }
+    if (item['type']?.toString().toLowerCase() != 'image' ||
+        item['display_console'] == false) {
+      continue;
+    }
+    final id = item['model'];
+    if (id is String && id.trim().isNotEmpty) {
+      ids.add(id.trim());
+    }
+  }
+  return ids;
+}
+
 class _ModelsFetchHttpException implements Exception {
   const _ModelsFetchHttpException(this.statusCode);
 
@@ -841,8 +863,12 @@ Future<List<String>> fetchProviderModels(
   if (config.typeEnum == AiProviderType.minimax && kind == AiModelKind.chat) {
     return minimaxPresetChatModels;
   }
-  // 有预设清单的渠道直接使用清单；其余渠道从接口拉取。
-  final imagePresets = kind == AiModelKind.image
+  // 有预设清单的渠道直接使用清单。OpenRouter 与 AtlasCloud 图片走各自的
+  // 模型列表，未登记型号仍返回，沿用制作侧已有的通用规格。
+  final imagePresets =
+      kind == AiModelKind.image &&
+          config.typeEnum != AiProviderType.openrouter &&
+          config.typeEnum != AiProviderType.atlascloud
       ? imageModelsForProvider(config.type)
       : const <String>[];
   if (imagePresets.isNotEmpty) {
@@ -882,7 +908,9 @@ Future<List<String>> fetchProviderModels(
         headers = <String, String>{'Content-Type': 'application/json'};
       case AiProviderType.openrouter:
         url = baseUri.replace(
-          path: '$basePath/models',
+          path: kind == AiModelKind.image
+              ? '$basePath/images/models'
+              : '$basePath/models',
           queryParameters: kind == AiModelKind.chat
               ? {'output_modalities': 'text'}
               : kind == AiModelKind.audio
@@ -890,6 +918,16 @@ Future<List<String>> fetchProviderModels(
               : null,
         );
         headers = {'Authorization': 'Bearer ${config.effectiveApiKey}'};
+      case AiProviderType.atlascloud when kind == AiModelKind.image:
+        final rootPath = basePath.replaceFirst(RegExp(r'/v1/?$'), '');
+        url = baseUri.replace(
+          path: '$rootPath/api/v1/models',
+          queryParameters: {'type': 'Image'},
+        );
+        headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${config.effectiveApiKey}',
+        };
       default:
         url = baseUri.replace(path: '$basePath/models');
         headers = <String, String>{
@@ -921,6 +959,8 @@ Future<List<String>> fetchProviderModels(
             )
             .where((name) => !name.contains('/tunedModels/'))
             .toList(),
+      AiProviderType.atlascloud when kind == AiModelKind.image =>
+        _atlasCloudImageModelIds(body),
       _ =>
         (body['data'] as List<dynamic>)
             .where(

@@ -14,6 +14,7 @@ import '../../utils/storage_paths.dart';
 import '../../models/image/channels.dart';
 import 'codex/image_client.dart';
 import 'image/agnes.dart';
+import 'image/minimax.dart';
 import 'image/moss.dart';
 import 'image/ark.dart';
 import 'image/atlascloud.dart';
@@ -206,6 +207,7 @@ class AiImageGenerationService {
     ),
     ImageProtocol.gemini_image => GeminiImageClient(_config),
     ImageProtocol.purefox_media => PurefoxImageClient(_config),
+    ImageProtocol.minimax_image => MinimaxImageClient(_config),
     null => null,
   };
 

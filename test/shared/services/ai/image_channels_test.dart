@@ -189,7 +189,10 @@ void main() {
           count++;
           final body = jsonDecode(request.body) as Map;
           final model = body['model'] as String;
-          final modern = model.contains('-pro-') || model.contains('-flash-');
+          final modern =
+              model.contains('-pro-') ||
+              model.contains('-flash-') ||
+              model.contains('-5-5-');
           expect(
             request.url.path,
             '/prefix/compatible-mode/v1/images/generations',
@@ -198,7 +201,10 @@ void main() {
           expect(body['size'], '2048x2048');
           expect(body['response_format'], 'b64_json');
           expect(body['watermark'], false);
-          expect(body['output_format'], model.contains('-5-0') ? 'png' : null);
+          expect(
+            body['output_format'],
+            model.contains('-5-0') || model.contains('-5-5-') ? 'png' : null,
+          );
           expect(body.containsKey('sequential_image_generation'), !modern);
           expect(body['optimize_prompt_options'], {
             'mode': model.contains('-4-0') ? 'fast' : 'standard',
@@ -868,5 +874,73 @@ void main() {
         ),
       );
     }
+  });
+
+  test('MiniMax H3 sends ratio and area, or an exclusive pixel size', () async {
+    final provider = _provider(
+      'minimax',
+    ).copyWith(baseUrl: 'https://api.minimax.cn');
+    final service = AiImageGenerationService(
+      provider,
+      model: 'MiniMax-H3-Image',
+    );
+    var editing = false;
+    await http.runWithClient(
+      () async {
+        final generated = await service.generateImage(
+          'cover',
+          aspectRatio: '16:9',
+          resolution: '2K',
+        );
+        expect(
+          File(generated.localFilePath!).readAsBytesSync(),
+          base64Decode(_png),
+        );
+        editing = true;
+        final edited = await service.editImages(
+          'cover',
+          imageData: _references,
+          size: '2720x1536',
+          aspectRatio: '16:9',
+          resolution: '2K',
+        );
+        expect(
+          File(edited.localFilePath!).readAsBytesSync(),
+          base64Decode(_png),
+        );
+      },
+      () => MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.headers['Authorization'], 'Bearer test-key');
+        expect(
+          request.url.toString(),
+          editing
+              ? 'https://api.minimax.cn/v1/images/edits'
+              : 'https://api.minimax.cn/v1/images/generations',
+        );
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['model'], 'MiniMax-H3-Image');
+        expect(body['response_format'], 'b64_json');
+        expect(body['output_format'], 'png');
+        if (editing) {
+          expect(body['size'], '2720x1536');
+          expect(body.containsKey('aspect_ratio'), isFalse);
+          expect(body.containsKey('area'), isFalse);
+          expect(body['images'], _references);
+        } else {
+          expect(body['aspect_ratio'], '16:9');
+          expect(body['area'], '2K');
+          expect(body.containsKey('size'), isFalse);
+        }
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'b64_json': _png},
+            ],
+          }),
+          200,
+        );
+      }),
+    );
   });
 }

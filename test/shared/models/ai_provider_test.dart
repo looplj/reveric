@@ -259,7 +259,7 @@ void main() {
     final added = settings.findConfigById(provider.id)!;
     expect(added.builtin, false);
     expect(added.availableModels, codexPresetModels);
-    expect(added.availableImageModels, ['gpt-image-2']);
+    expect(added.availableImageModels, codexPresetImageModels);
     expect(
       settings
           .updateConfig(added.copyWith(models: []))

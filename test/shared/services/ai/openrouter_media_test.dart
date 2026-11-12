@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/models/audio/request.dart';
 import 'package:reveric/shared/models/audio/exception.dart';
 import 'package:reveric/shared/models/video/request.dart';
@@ -74,9 +76,41 @@ void main() {
               : ['vendor/model'],
         );
       }
+      final images = await http.runWithClient(
+        () => fetchProviderModels(provider, kind: AiModelKind.image),
+        () => MockClient((r) async {
+          expect(r.url.origin, 'https://openrouter.ai');
+          expect(r.url.path, '/api/v1/images/models');
+          expect(r.url.queryParameters, isEmpty);
+          expect(r.headers['Authorization'], 'Bearer key');
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'id': 'qwen/qwen-image-3'},
+                {'id': 'bytedance-seed/seedream-5.5'},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      expect(images, ['bytedance-seed/seedream-5.5', 'qwen/qwen-image-3']);
       expect(
-        await fetchProviderModels(provider, kind: AiModelKind.image),
-        contains('qwen/qwen-image-3'),
+        lookupImageChannelModel('openrouter', 'bytedance-seed/seedream-5.5'),
+        isNull,
+      );
+      final unlisted = ProductionImageCapabilities(
+        provider,
+        'bytedance-seed/seedream-5.5',
+      );
+      expect(unlisted.isSupported, isTrue);
+      expect(unlisted.verifiedCapabilities, isNull);
+      expect(unlisted.ratios, contains('16:9'));
+      expect(unlisted.resolutions, contains('2K'));
+      expect(unlisted.maxReferences, isNull);
+      expect(
+        lookupImageChannelModel('openrouter', 'qwen/qwen-image-3')!.catalogId,
+        'qwen-image-3.0',
       );
       expect(
         await fetchProviderModels(provider, kind: AiModelKind.video),
