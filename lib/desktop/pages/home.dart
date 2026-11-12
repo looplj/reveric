@@ -157,6 +157,10 @@ final class _HomePluginsSelection extends _HomeContentSelection {
   const _HomePluginsSelection();
 }
 
+final class _HomeSettingsSelection extends _HomeContentSelection {
+  const _HomeSettingsSelection();
+}
+
 final class _HomeSkillListSelection extends _HomeContentSelection {
   const _HomeSkillListSelection();
 }
@@ -734,6 +738,7 @@ class NovelHomePage extends HookConsumerWidget {
         (_HomeAiAssistantSelection(), _HomeAiAssistantSelection()) => true,
         (_HomeMcpSelection(), _HomeMcpSelection()) => true,
         (_HomePluginsSelection(), _HomePluginsSelection()) => true,
+        (_HomeSettingsSelection(), _HomeSettingsSelection()) => true,
         (_HomeSkillListSelection(), _HomeSkillListSelection()) => true,
         (
           _HomeGlobalSkillSelection(skill: final currentSkill),
@@ -963,6 +968,10 @@ class NovelHomePage extends HookConsumerWidget {
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
       ),
+      _HomeSettingsSelection() => DesktopSettingsPage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+      ),
       _HomeExpertTeamSelection() => AgentExpertTeamPage(
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
@@ -1109,12 +1118,6 @@ class NovelHomePage extends HookConsumerWidget {
                 recentSessionsAsync,
                 contentSelection,
                 selectContent,
-                () {
-                  showRevericDialog(
-                    context: context,
-                    builder: (_) => const SettingsDialog(),
-                  );
-                },
                 sessionsExpanded,
               ),
               Container(
@@ -1153,7 +1156,6 @@ class NovelHomePage extends HookConsumerWidget {
     AsyncValue<List<AiChatSession>> recentSessionsAsync,
     _HomeContentSelection selection,
     ValueSetter<_HomeContentSelection> onContentSelected,
-    VoidCallback onOpenSettings,
     ValueNotifier<bool> sessionsExpanded,
   ) {
     final colors = RevericTheme.colorsOf(context);
@@ -1386,7 +1388,10 @@ class NovelHomePage extends HookConsumerWidget {
                   context,
                   icon: RevericIcons.settings_outlined,
                   title: context.t(LocaleKeys.librarySettings),
-                  onTap: onOpenSettings,
+                  isSelected: selection is _HomeSettingsSelection,
+                  onTap: () {
+                    onContentSelected(const _HomeSettingsSelection());
+                  },
                 ),
                 _buildLeafNavItem(
                   context,

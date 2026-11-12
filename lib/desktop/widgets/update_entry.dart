@@ -33,10 +33,7 @@ class DesktopUpdateEntry extends ConsumerWidget {
       namedArgs: {'version': info.version},
     );
     void open() {
-      showDialog<void>(
-        context: context,
-        builder: (_) => const SettingsDialog(initialNavId: 'about'),
-      );
+      showSettingsSectionDialog(context, 'about');
     }
 
     if (iconOnly) {

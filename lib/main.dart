@@ -429,10 +429,7 @@ void _initMacOSAboutMenuHandler() {
     if (call.method != 'about') return;
     final context = SystemTrayService().navigatorKey.currentState?.context;
     if (context == null) return;
-    showDialog(
-      context: context,
-      builder: (_) => const SettingsDialog(initialNavId: 'about'),
-    );
+    showSettingsSectionDialog(context, 'about');
   });
 }
 
@@ -665,10 +662,9 @@ class MyApp extends ConsumerWidget {
                             if (_isMobilePlatform) {
                               showMobileAboutPage(navigatorContext);
                             } else {
-                              showDialog<void>(
-                                context: navigatorContext,
-                                builder: (_) =>
-                                    const SettingsDialog(initialNavId: 'about'),
+                              showSettingsSectionDialog(
+                                navigatorContext,
+                                'about',
                               );
                             }
                           },

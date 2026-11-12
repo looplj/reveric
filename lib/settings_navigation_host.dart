@@ -39,7 +39,7 @@ class SettingsNavigationHost extends HookConsumerWidget {
   };
 
   static Set<String> get desktopNavigableSections => {
-    ...SettingsDialog.navigableSections,
+    ...SettingsRegion.navigableSections,
     ..._desktopPageDialogs.keys,
   };
 
@@ -70,10 +70,7 @@ class SettingsNavigationHost extends HookConsumerWidget {
         if (_desktopPageDialogs[section] case final show?) {
           return show(navigator.context);
         }
-        return showDialog<void>(
-          context: navigator.context,
-          builder: (_) => SettingsDialog(initialNavId: section),
-        );
+        return showSettingsSectionDialog(navigator.context, section);
       }
 
       navigation.openSection = open;
