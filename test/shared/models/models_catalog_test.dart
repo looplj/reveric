@@ -35,6 +35,41 @@ final _reasoningProvider = AiProvider(
 );
 
 void main() {
+  test('Gemini 4 shares limits and modalities while Hydrogen adds xhigh', () {
+    final matcher = ModelCatalogMatcher(modelsCatalog);
+    final carbon = matcher.lookup('gemini-4-carbon')!;
+    expect(matcher.lookup('google/gemini-4-argon-preview:free'), same(carbon));
+    for (final id in [
+      'gemini-4-hydrogen',
+      'GOOGLE/GEMINI-4-HYDROGEN-PREVIEW:free',
+    ]) {
+      final hydrogen = matcher.lookup(id)!;
+      expect(hydrogen.limit, same(carbon.limit));
+      expect(hydrogen.modalities, same(carbon.modalities));
+      expect(lookupCatalogReasoningEfforts(id), [
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+      ]);
+      expect(useThinkingLevel(id), isTrue);
+      expect(supportsMultimodalToolResults(id), isTrue);
+      expect(resolveReasoningBudget(id, 'high'), isNull);
+      expect(resolveAgentMaxTokens(id), 48000);
+    }
+    expect(carbon.reasoningEfforts, ['low', 'medium', 'high']);
+    expect(useThinkingLevel('gemini-3.8-flash'), isTrue);
+    expect(useThinkingLevel('gemini-2.5-pro'), isFalse);
+    expect(supportsMultimodalToolResults('gemini-3.8-flash'), isTrue);
+    expect(supportsMultimodalToolResults('gemini-2.5-pro'), isFalse);
+    expect(useThinkingLevel('claude-fable-5'), isFalse);
+    expect(lookupCatalogReasoningEfforts('gemini-4-unknown'), isNull);
+    expect(
+      aiProviderBuiltinDefaults.firstWhere((p) => p.id == 'gemini').models,
+      contains('gemini-4-hydrogen'),
+    );
+  });
+
   group('ModelCatalogMatcher', () {
     const family = ModelCatalogEntry(
       matches: ['sample-*'],

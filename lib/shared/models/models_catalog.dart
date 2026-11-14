@@ -40,6 +40,12 @@ class ModelCatalogEntry {
   /// Anthropic 的 `budget_tokens`。
   final bool useThinkingField;
 
+  /// 使用 Gemini thinkingLevel；旧模型继续使用 thinkingBudget。
+  final bool useThinkingLevel;
+
+  /// 工具结果中的图片可嵌入原生 functionResponse.parts。
+  final bool supportsMultimodalToolResults;
+
   /// 上下文/输出长度限制；null 表示未知（调用方自行取保守默认）。
   /// 数值按各 provider 官方文档的家族沿袭值维护。
   final ModelCatalogLimit? limit;
@@ -51,6 +57,8 @@ class ModelCatalogEntry {
     this.reasoningEfforts,
     this.budgetTokenMap,
     this.useThinkingField = false,
+    this.useThinkingLevel = false,
+    this.supportsMultimodalToolResults = false,
     this.limit,
     this.modalities,
   });
@@ -127,6 +135,10 @@ const _560k = 560000;
 const _1m = 1000000;
 
 const _gptLargeContextLimit = ModelCatalogLimit(context: _560k, output: _128k);
+const _gemini4Limit = ModelCatalogLimit(context: _1m, output: _64k);
+const _geminiInputModalities = ModelCatalogModalities(
+  input: ['text', 'image', 'audio', 'video'],
+);
 
 /// 本地常见 AI 模型参数目录。
 ///
@@ -259,22 +271,24 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // ── Gemini ────────────────────────────────────────────────────────────────
   // https://ai.google.dev/gemini-api/docs/models
   // https://aistudio.google.com/learn/gemini-4-carbon-developer-guide
-  // 默认输出上限 64K；输入、思考和输出共用 1M 窗口。
+  // 单段输出上限 64K；输入、思考和输出共用 1M 窗口。
+  // 同能力型号增加 matches；能力有差异时独立配置，精确匹配优先。
   'gemini-4-carbon': ModelCatalogEntry(
-    matches: ['gemini-4-carbon-*'],
-    modalities: ModelCatalogModalities(
-      input: ['text', 'image', 'audio', 'video'],
-    ),
+    matches: ['gemini-4-carbon-*', 'gemini-4-argon', 'gemini-4-argon-*'],
+    modalities: _geminiInputModalities,
     reasoningEfforts: ['low', 'medium', 'high'],
-    limit: ModelCatalogLimit(context: _1m, output: _64k),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
+    limit: _gemini4Limit,
   ),
-  'gemini-4-argon': ModelCatalogEntry(
-    matches: ['gemini-4-argon-*'],
-    modalities: ModelCatalogModalities(
-      input: ['text', 'image', 'audio', 'video'],
-    ),
-    reasoningEfforts: ['low', 'medium', 'high'],
-    limit: ModelCatalogLimit(context: _1m, output: _64k),
+  // https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-hydrogen
+  'gemini-4-hydrogen': ModelCatalogEntry(
+    matches: ['gemini-4-hydrogen-*'],
+    modalities: _geminiInputModalities,
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
+    limit: _gemini4Limit,
   ),
   // https://ai.google.dev/gemini-api/docs/thinking
   'gemini-3.8-flash': ModelCatalogEntry(
@@ -282,6 +296,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -290,6 +306,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -298,6 +316,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -306,6 +326,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['low', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -314,6 +336,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['low', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -322,6 +346,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -330,6 +356,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -338,6 +366,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -875,6 +905,14 @@ bool useThinkingField(String? modelId) {
   final entry = _catalogEntry(modelId);
   return entry?.useThinkingField ?? false;
 }
+
+/// Gemini 原生档位由模型目录声明，避免客户端重复维护型号判断。
+bool useThinkingLevel(String? modelId) =>
+    modelId != null && (_catalogEntry(modelId)?.useThinkingLevel ?? false);
+
+bool supportsMultimodalToolResults(String? modelId) =>
+    modelId != null &&
+    (_catalogEntry(modelId)?.supportsMultimodalToolResults ?? false);
 
 final _imageInputSeriesPattern = RegExp(
   r'^(?:(?:claude-)?(sonnet|opus|fable)-|(gpt|gemini)-|(kimi)-k?)(\d+)(?:[.-]|$)',
