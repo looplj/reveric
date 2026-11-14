@@ -146,12 +146,17 @@ class ProviderFailure implements Exception {
   });
   final String code, message;
   final String? detail;
-  factory ProviderFailure.fromJson(Map<String, dynamic> value) =>
-      ProviderFailure(
-        code: _text(value['code'], 'error.code'),
-        message: _text(value['message'], 'error.message'),
-        detail: value['detail'] as String?,
-      );
+  factory ProviderFailure.fromJson(Map<String, dynamic> value) {
+    final detail = value['detail'];
+    if (detail != null && detail is! String) {
+      throw const FormatException('error.detail must be a string');
+    }
+    return ProviderFailure(
+      code: _text(value['code'], 'error.code'),
+      message: _text(value['message'], 'error.message'),
+      detail: detail as String?,
+    );
+  }
   Map<String, dynamic> toJson() => {
     'code': code,
     'message': message,

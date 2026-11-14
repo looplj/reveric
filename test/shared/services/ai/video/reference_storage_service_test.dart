@@ -54,6 +54,73 @@ void main() {
         ),
       );
   test(
+    'typed video references enforce aggregate inline budget and refuse video inline',
+    () async {
+      final provider = aiProviderBuiltinById('openai')!;
+      final storage = service(null);
+      final scope = PluginFileScope(
+        pluginId: 'builtin',
+        providerId: provider.id,
+        taskId: 'inline',
+      );
+      final refs = await storage.prepareVideos(
+        [(input, file, media)],
+        provider: provider,
+        supportsCertifiedAssets: false,
+        files: scope,
+        taskId: 'inline',
+      );
+      expect(refs.single['source']['kind'], 'file');
+      expect(refs.single['assetId'], input.assetId);
+      await expectLater(
+        storage.prepareVideos(
+          [
+            (
+              const VideoInput(
+                role: VideoInputRole.reference_video,
+                assetId: 'video',
+                mimeType: 'video/mp4',
+              ),
+              file,
+              media,
+            ),
+          ],
+          provider: provider,
+          supportsCertifiedAssets: false,
+          files: scope,
+          taskId: 'inline',
+        ),
+        throwsA(
+          isA<VideoException>().having(
+            (e) => e.code,
+            'code',
+            VideoErrorCode.configuration_required,
+          ),
+        ),
+      );
+      final large = await File(
+        '${directory.path}/large.png',
+      ).open(mode: FileMode.write);
+      await large.truncate(25 * 1024 * 1024);
+      await large.close();
+      final big = File('${directory.path}/large.png');
+      await expectLater(
+        storage.prepareVideos(
+          [(input, big, media), (input, big, media)],
+          provider: provider,
+          supportsCertifiedAssets: false,
+          files: scope,
+          taskId: 'inline',
+        ),
+        throwsA(
+          isA<VideoException>().having((e) => e.field, 'field', 'file_size'),
+        ),
+      );
+      scope.revoke();
+      storage.dispose();
+    },
+  );
+  test(
     'unconfigured storage fails before probing or sending local bytes',
     () async {
       final storage = ReferenceStorageService(

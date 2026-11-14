@@ -76,7 +76,7 @@ class PurefoxVideoClient extends VideoClient {
       purefoxResult(json, endpoint);
 
   @override
-  Future<VideoSubmission> submit(
+  Future<VideoSubmission> submitNative(
     VideoRequest request,
     List<VideoReference> references, {
     bool draft = false,
@@ -134,7 +134,7 @@ class PurefoxVideoClient extends VideoClient {
 
   /// 读取单任务快照；运行中返回 running，终态直接带回产物或错误。
   @override
-  Future<VideoTaskResult> query(VideoSubmission task) async {
+  Future<VideoTaskResult> queryNative(VideoSubmission task) async {
     final expected = queryUrl(task.taskId, task.modelId);
     if (task.pollingUrl != expected) {
       throw const VideoException(VideoErrorCode.configuration_required);

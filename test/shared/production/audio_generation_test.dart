@@ -598,20 +598,37 @@ void main() {
     }).recover();
     expect(calls, 1);
   });
-  test('cancelled late response cannot adopt output', () async {
-    final pending = Completer<AudioGenerationResult>();
-    final service = jobs((_, _, _, _) => pending.future);
-    final future = submit(service, await preview());
-    final task = await running();
-    await service.cancel(task.id);
-    pending.complete(AudioGenerationResult(bytes));
-    await future;
-    expect(
-      (await service.requireRun(task.id)).status,
-      GenerationTaskStatus.cancelled,
-    );
-    expect((await canvas.shots.getShot(node.clipId!))!.adoptedAssetId, isNull);
-  });
+  test(
+    'audio submission rejects cancellation and preserves its result',
+    () async {
+      final pending = Completer<AudioGenerationResult>();
+      var aborted = false;
+      final service = jobs((_, _, _, abortTrigger) {
+        abortTrigger.then((_) => aborted = true);
+        return pending.future;
+      });
+      final future = submit(service, await preview());
+      final task = await running();
+      await service.cancel(task.id);
+      expect(aborted, isFalse);
+      expect(
+        (await service.requireRun(task.id)).status,
+        GenerationTaskStatus.running,
+      );
+      final results = ProductionResultService(appDb, (_) async => canvas);
+      expect((await results.requestCancellation(task.id)).accepted, isFalse);
+      pending.complete(AudioGenerationResult(bytes));
+      await future;
+      expect(
+        (await service.requireRun(task.id)).status,
+        GenerationTaskStatus.completed,
+      );
+      expect(
+        (await canvas.shots.getShot(node.clipId!))!.adoptedAssetId,
+        isNotNull,
+      );
+    },
+  );
   test(
     'audio download rejects cancellation and still saves and adopts',
     () async {
@@ -651,41 +668,22 @@ void main() {
       );
     },
   );
-  for (final shutdown in [false, true]) {
-    test(
-      '${shutdown ? "shutdown" : "cancel"} signals the active audio request',
-      () async {
-        final entered = Completer<void>();
-        final aborted = Completer<void>();
-        final service = jobs((_, _, _, abortTrigger) async {
-          entered.complete();
-          await abortTrigger;
-          aborted.complete();
-          throw const AudioException('cancelled');
-        });
-        final pending = submit(service, await preview());
-        await entered.future;
-        final task = await running();
-        if (shutdown) {
-          await service.shutdown().timeout(const Duration(seconds: 2));
-        } else {
-          await service.cancel(task.id);
-        }
-        await aborted.future.timeout(const Duration(seconds: 2));
-        await pending.timeout(const Duration(seconds: 2));
-        if (!shutdown) {
-          expect(
-            (await service.requireRun(task.id)).status,
-            GenerationTaskStatus.cancelled,
-          );
-        }
-        expect(
-          (await canvas.shots.getShot(node.clipId!))!.adoptedAssetId,
-          isNull,
-        );
-      },
-    );
-  }
+  test('shutdown signals the active audio request', () async {
+    final entered = Completer<void>();
+    final aborted = Completer<void>();
+    final service = jobs((_, _, _, abortTrigger) async {
+      entered.complete();
+      await abortTrigger;
+      aborted.complete();
+      throw const AudioException('cancelled');
+    });
+    final pending = submit(service, await preview());
+    await entered.future;
+    await service.shutdown().timeout(const Duration(seconds: 2));
+    await aborted.future.timeout(const Duration(seconds: 2));
+    await pending.timeout(const Duration(seconds: 2));
+    expect((await canvas.shots.getShot(node.clipId!))!.adoptedAssetId, isNull);
+  });
   test(
     'known audio HTTP failures persist a safe reason without regeneration',
     () async {

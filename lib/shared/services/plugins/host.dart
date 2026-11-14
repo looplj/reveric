@@ -1245,6 +1245,9 @@ class PluginHostService {
         aiProviderTypeConfigs['plugin:$pluginId'] = AiProviderTypeConfig(
           displayName: provider.name.values.values.first,
           localizedName: provider.name,
+          supportsAssetCertification:
+              methods.contains('assets.submit') &&
+              methods.contains('assets.state'),
           modelIdSource: ModelIdSource.registered,
           providerModelKinds: {
             if (methods.contains('image.submit')) AiModelKind.image,
@@ -2098,10 +2101,11 @@ class PluginHostService {
     final budget = switch (method) {
       'checkConnection' ||
       'assets.state' ||
-      'image.query' ||
-      'video.query' => const Duration(seconds: 30),
-      'listModels' || 'video.submit' => const Duration(seconds: 60),
-      'image.submit' => const Duration(minutes: 5),
+      'image.query' => const Duration(seconds: 30),
+      'listModels' => const Duration(seconds: 60),
+      'image.submit' ||
+      'video.submit' ||
+      'video.query' => const Duration(seconds: 300),
       'uploadReference' || 'assets.submit' => const Duration(minutes: 10),
       _ when action != null => const Duration(seconds: 20),
       _ => throw PluginHostError(
@@ -2151,11 +2155,13 @@ class PluginHostService {
             clientFactory: createClient,
             remainingBudget: () => budget - watch.elapsed,
           );
-    final mediaApi = files == null || mediaFiles == null
+    final mediaApi =
+        files == null || (mediaFiles == null && !method.startsWith('video.'))
         ? null
         : PluginMediaApi(
             scope: files,
             outputs: mediaFiles,
+            video: method.startsWith('video.'),
             clientFactory: createClient,
             remainingBudget: () => budget - watch.elapsed,
           );
@@ -2255,6 +2261,11 @@ class PluginHostService {
         business: business,
         onStop: cancelApis,
         hostCall: (name, args) async {
+          if (name == 'video.request' &&
+              {'video.submit', 'video.query'}.contains(method) &&
+              mediaApi != null) {
+            return mediaApi.request(args);
+          }
           if (name == 'image.request' &&
               {'image.submit', 'image.query'}.contains(method) &&
               mediaApi != null) {

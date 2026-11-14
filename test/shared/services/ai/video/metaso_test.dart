@@ -93,8 +93,8 @@ void main() {
       endpoint: Uri.parse(provider.effectiveBaseUrl),
       apiKey: provider.apiKey,
     );
-    final submission = await client.submit(request(), []);
-    final result = await client.query(submission);
+    final submission = await client.submitNative(request(), []);
+    final result = await client.queryNative(submission);
     expect(result.status, VideoRemoteStatus.succeeded);
     expect(result.videoUrl.toString(), 'https://cdn.example/video.mp4');
     expect(calls, hasLength(2));
@@ -114,7 +114,7 @@ void main() {
       isNotEmpty,
     );
     await expectLater(
-      client.submit(request(resolution: '2K', duration: 16), []),
+      client.submitNative(request(resolution: '2K', duration: 16), []),
       throwsA(
         isA<VideoException>().having((e) => e.field, 'field', 'duration'),
       ),
@@ -135,7 +135,7 @@ void main() {
       endpoint: Uri.parse(provider.effectiveBaseUrl),
       apiKey: provider.apiKey,
     );
-    final result = await client.query(
+    final result = await client.queryNative(
       VideoSubmission(
         taskId: 'job',
         modelId: 'MiniMax-H3',
@@ -179,7 +179,7 @@ void main() {
         endpoint: Uri.parse(provider.effectiveBaseUrl),
         apiKey: provider.apiKey,
       );
-      final submission = await client.submit(
+      final submission = await client.submitNative(
         VideoRequest(
           modelId: model,
           prompt: 'A paper boat floats on a lake.',
@@ -191,7 +191,7 @@ void main() {
         [],
       );
       expect(
-        (await client.query(submission)).videoUrl.toString(),
+        (await client.queryNative(submission)).videoUrl.toString(),
         'https://cdn.example/seedance.mp4',
       );
       final channel = lookupVideoChannelModel('metaso', model)!;
@@ -293,10 +293,10 @@ void main() {
       );
       final restored = VideoRequest.fromJson(request(modelId: alias).toJson());
       expect(restored.modelId, alias);
-      final submission = await client().submit(restored, []);
+      final submission = await client().submitNative(restored, []);
       expect(submission.modelId, alias);
       expect(
-        (await client().query(submission)).status,
+        (await client().queryNative(submission)).status,
         VideoRemoteStatus.succeeded,
       );
       final ordinary = lookupVideoChannelModel('metaso', 'MiniMax-H3')!;
@@ -342,7 +342,7 @@ void main() {
         true,
       );
       await expectLater(
-        client.submit(
+        client.submitNative(
           request(modelId: alias, resolution: '2K', duration: 16),
           [],
         ),

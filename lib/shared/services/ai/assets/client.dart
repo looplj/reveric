@@ -5,7 +5,12 @@
 //   lib/shared/services/ai/assets/atlascloud.dart
 //   lib/shared/models/provider_asset.dart
 
+import 'dart:io';
 import '../../../models/provider_asset.dart';
+
+/// 本地素材身份与 MIME 由 Host 校验；协议适配层负责取得远端可用引用。
+typedef ProviderAssetFile = ({File file, String assetId, String mimeType});
+typedef ProviderAssetUrl = Future<Uri> Function(ProviderAssetFile file);
 
 /// 渠道素材库调用失败；[code] 是渠道错误码或本地分类，[message] 是原始错误信息。
 class ProviderAssetException implements Exception {
@@ -31,9 +36,9 @@ typedef ProviderAssetState = ({
 });
 
 abstract interface class ProviderAssetClient {
-  /// 让渠道从公网 [url] 拉取图片并登记为素材。
+  /// 登记 Host 校验过的本地图片。
   Future<ProviderAssetSubmission> submit({
-    required Uri url,
+    required ProviderAssetFile file,
     required String name,
   });
 

@@ -48,6 +48,7 @@ final referenceStorageServiceProvider = Provider<ReferenceStorageService>((
 /// 渠道私域素材认证；启动时接着轮询上次没出结果的记录。
 final providerAssetServiceProvider = Provider<ProviderAssetService>((ref) {
   final service = ProviderAssetService(
+    pluginHost: ref.watch(pluginHostServiceProvider),
     database: ref.watch(appDatabaseProvider),
     references: ref.watch(referenceStorageServiceProvider),
     probe: ref.watch(mediaServiceProvider).probe,
@@ -102,6 +103,7 @@ final videoTaskServiceProvider = FutureProvider<VideoTaskService>((ref) async {
   }
   final results = ref.watch(productionResultServiceProvider);
   final service = VideoTaskService(
+    pluginHost: ref.watch(pluginHostServiceProvider),
     beforeCreate: results.beforeCreate,
     beforeSubmit: results.beforeSubmit,
     recoverSources: results.recover,

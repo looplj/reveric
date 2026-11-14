@@ -1642,7 +1642,7 @@ void main() {
   );
 
   test(
-    'Wan UNKNOWN after its documented query window becomes expired',
+    'Wan UNKNOWN after its query window expires without resubmission',
     () async {
       final qwen = provider.copyWith(
         id: 'qwen-test',
@@ -2060,7 +2060,11 @@ void main() {
       expect(task.status, GenerationTaskStatus.action_required);
       expect(task.providerTaskId, 'original');
       expect(task.nextPollAt, isNull);
-      expect(task.pollingUrl, contains('ark.cn-beijing.volces.com'));
+      expect(task.pollingUrl, isNull);
+      expect(
+        task.providerState?['queryUrl'],
+        contains('ark.cn-beijing.volces.com'),
+      );
     },
   );
   test(

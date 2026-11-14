@@ -397,12 +397,12 @@ void main() {
         audio: true,
       );
       await expectLater(
-        client.submit(request(5), []),
+        client.submitNative(request(5), []),
         throwsA(isA<VideoException>()),
       );
       expect(calls, 0);
-      final submission = await client.submit(request(6), []);
-      final result = await client.query(submission);
+      final submission = await client.submitNative(request(6), []);
+      final result = await client.queryNative(submission);
       expect(result.status, VideoRemoteStatus.succeeded);
       expect(
         result.videoUrl.toString(),

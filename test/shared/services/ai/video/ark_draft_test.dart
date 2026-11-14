@@ -69,7 +69,7 @@ void main() {
             ],
             VideoMode.reference => [VideoInputRole.reference_image],
           };
-          await client.submit(
+          await client.submitNative(
             request(mode: mode),
             roles.map(reference).toList(),
             draft: true,
@@ -100,7 +100,7 @@ void main() {
       test(
         'HD sends only the draft reference and completion options',
         () async {
-          final receipt = await client.submit(
+          final receipt = await client.submitNative(
             request(mode: VideoMode.reference, resolution: '1080p'),
             [],
             draftId: 'original-draft',
@@ -133,7 +133,7 @@ void main() {
         ]) {
           for (final completion in [false, true]) {
             await expectLater(
-              client.submit(
+              client.submitNative(
                 request(modelId: id, resolution: completion ? '1080p' : '480p'),
                 [],
                 draft: !completion,
@@ -151,7 +151,7 @@ void main() {
           (draft: false, id: 'original', resolution: '1080p', refs: true),
         ]) {
           await expectLater(
-            client.submit(
+            client.submitNative(
               request(resolution: options.resolution),
               [if (options.refs) reference(VideoInputRole.reference_image)],
               draft: options.draft,
@@ -162,14 +162,18 @@ void main() {
         }
         // Draft generation must still perform ordinary capability validation.
         await expectLater(
-          client.submit(request(mode: VideoMode.first_frame), [], draft: true),
+          client.submitNative(
+            request(mode: VideoMode.first_frame),
+            [],
+            draft: true,
+          ),
           throwsA(isA<VideoException>()),
         );
         expect(bodies, isEmpty);
       });
 
       test('normal generation does not enable draft mode', () async {
-        await client.submit(request(resolution: '720p'), []);
+        await client.submitNative(request(resolution: '720p'), []);
         expect(bodies.single['resolution'], '720p');
         expect(bodies.single.containsKey('draft'), false);
         expect(bodies.single.containsKey('output_format'), false);

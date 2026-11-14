@@ -3,6 +3,8 @@
 //   lib/shared/services/plugins/media.dart
 //   lib/shared/services/plugins/media_files.dart
 import 'dart:convert';
+import 'package:reveric/shared/models/video/request.dart'
+    show videoInlineRequestMaxBytes;
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,14 +54,157 @@ void main() {
     await server.close(force: true);
     await directory.delete(recursive: true);
   });
-  Map<String, dynamic> request({Object? body, Object? response}) => {
+  Map<String, dynamic> request({
+    Object? body,
+    Object? response,
+    int? timeoutMs,
+  }) => {
     'url': 'http://127.0.0.1:${server.port}/generate',
     'request': {
       'method': 'POST',
+      'timeoutMs': ?timeoutMs,
       'body': body ?? {'kind': 'json', 'value': <String, dynamic>{}},
       'response': response ?? {'kind': 'json'},
     },
   };
+  for (final grewAfterRegistration in [false, true]) {
+    test(
+      'video rejects encoded JSON beyond limit before HTTP, grew=$grewAfterRegistration',
+      () async {
+        final file = File('${directory.path}/boundary.bin');
+        final rawSize = videoInlineRequestMaxBytes ~/ 4 * 3;
+        var writer = await file.open(mode: FileMode.write);
+        await writer.truncate(grewAfterRegistration ? 1 : rawSize);
+        await writer.close();
+        final boundaryScope = PluginFileScope(
+          pluginId: 'p',
+          providerId: 'instance',
+          taskId: 'boundary',
+        );
+        final info = await boundaryScope.register(
+          file,
+          name: 'boundary.png',
+          mimeType: 'image/png',
+        );
+        expect(
+          ((info['size'] as int) + 2) ~/ 3 * 4,
+          lessThanOrEqualTo(videoInlineRequestMaxBytes),
+        );
+        if (grewAfterRegistration) {
+          writer = await file.open(mode: FileMode.append);
+          await writer.truncate(rawSize);
+          await writer.close();
+        }
+        boundaryScope.claim(
+          pluginId: 'p',
+          providerId: 'instance',
+          taskId: 'boundary',
+        );
+        final video = PluginMediaApi(
+          scope: boundaryScope,
+          video: true,
+          clientFactory: HttpClient.new,
+          remainingBudget: () => const Duration(seconds: 60),
+        );
+        addTearDown(() {
+          video.cancel();
+          boundaryScope.revoke();
+        });
+        var requests = 0;
+        server.listen((r) async {
+          requests++;
+          await r.drain<void>();
+          r.response.write('{}');
+          await r.response.close();
+        });
+        final outcome = await video
+            .request(
+              request(
+                body: {
+                  'kind': 'json',
+                  'value': {'reference': null, 'extra': '中文'},
+                  'files': [
+                    {
+                      'pointer': '/reference',
+                      'handle': info['handle'],
+                      'encoding': 'data_uri',
+                    },
+                  ],
+                },
+              ),
+            )
+            .then<Object?>((value) => value, onError: (Object error) => error);
+        expect(
+          requests,
+          0,
+          reason:
+              'JSON syntax, data URI and extra fields exceed the full request limit',
+        );
+        expect(
+          outcome,
+          isA<PluginHostError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_request',
+          ),
+        );
+      },
+    );
+  }
+  test(
+    'video requests bind files but reject image extraction and long timeout',
+    () async {
+      final video = PluginMediaApi(
+        scope: scope,
+        video: true,
+        clientFactory: HttpClient.new,
+        remainingBudget: () => const Duration(seconds: 2),
+      );
+      addTearDown(video.cancel);
+      var requests = 0;
+      server.listen((r) async {
+        requests++;
+        final body = jsonDecode(await utf8.decoder.bind(r).join()) as Map;
+        expect(body['reference'], 'data:image/png;base64,${base64Encode(png)}');
+        r.response.write('{"id":"video"}');
+        await r.response.close();
+      });
+      for (final response in [
+        {'kind': 'file'},
+        {'kind': 'json', 'images': []},
+      ]) {
+        await expectLater(
+          video.request(request(response: response)),
+          throwsA(isA<PluginHostError>()),
+        );
+      }
+      final tooLong = request();
+      (tooLong['request'] as Map)['timeoutMs'] = 300001;
+      await expectLater(
+        video.request(tooLong),
+        throwsA(isA<PluginHostError>()),
+      );
+      expect(requests, 0);
+      final result = await video.request(
+        request(
+          timeoutMs: 300000,
+          body: {
+            'kind': 'json',
+            'value': {'reference': null},
+            'files': [
+              {
+                'pointer': '/reference',
+                'handle': handle,
+                'encoding': 'data_uri',
+              },
+            ],
+          },
+        ),
+      );
+      expect(result['body'], {'id': 'video'});
+      expect(requests, 1);
+    },
+  );
   test(
     'JSON binding stays in Host and output has persisted ownership',
     () async {

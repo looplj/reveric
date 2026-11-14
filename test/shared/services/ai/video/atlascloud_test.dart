@@ -178,9 +178,12 @@ void testAtlasRoutes() {
               );
             }),
           );
-          final task = await api.submit(request(model, mode), refs);
+          final task = await api.submitNative(request(model, mode), refs);
           expect(task.modelId, model);
-          expect((await api.query(task)).status, VideoRemoteStatus.succeeded);
+          expect(
+            (await api.queryNative(task)).status,
+            VideoRemoteStatus.succeeded,
+          );
           expect(methods, ['POST', 'GET']);
         },
       );
@@ -216,7 +219,7 @@ void testWireConventions() {
       final middleB = image(VideoInputRole.middle_frame, 'b');
       final last = image(VideoInputRole.last_frame, 'last');
       final raw = request('kwaivgi/kling-v4.0', VideoMode.first_last_frame);
-      await api.submit(raw, [last, middleB, first, middleA]);
+      await api.submitNative(raw, [last, middleB, first, middleA]);
       expect(seen.single['image'], first.url.toString());
       expect(seen.single['middle_images'], [
         middleB.url.toString(),
@@ -224,9 +227,9 @@ void testWireConventions() {
       ]);
       expect(seen.single['last_image'], last.url.toString());
       expect(seen.single.containsKey('aspect_ratio'), false);
-      await api.submit(raw, [first, middleA]);
+      await api.submitNative(raw, [first, middleA]);
       expect(seen.last.containsKey('last_image'), false);
-      await api.submit(raw, [first, ...List.filled(8, middleA), last]);
+      await api.submitNative(raw, [first, ...List.filled(8, middleA), last]);
       expect(seen.last['middle_images'], hasLength(8));
       final count = seen.length;
       for (final refs in [
@@ -236,12 +239,12 @@ void testWireConventions() {
         [first, middleA, last, last],
       ]) {
         await expectLater(
-          api.submit(raw, refs),
+          api.submitNative(raw, refs),
           throwsA(isA<VideoException>()),
         );
       }
       await expectLater(
-        api.submit(request('minimax/h3', VideoMode.first_last_frame), [
+        api.submitNative(request('minimax/h3', VideoMode.first_last_frame), [
           first,
           middleA,
           last,
@@ -249,7 +252,7 @@ void testWireConventions() {
         throwsA(isA<VideoException>()),
       );
       await expectLater(
-        api.submit(request('kwaivgi/kling-v4.0', VideoMode.reference), [
+        api.submitNative(request('kwaivgi/kling-v4.0', VideoMode.reference), [
           middleA,
         ]),
         throwsA(isA<VideoException>()),
@@ -274,7 +277,7 @@ void testWireConventions() {
         reference(VideoInputRole.reference_audio),
       ];
       await expectLater(
-        api.submit(request(model, VideoMode.reference), refs),
+        api.submitNative(request(model, VideoMode.reference), refs),
         throwsA(
           isA<VideoException>().having(
             (e) => e.field,
@@ -343,7 +346,7 @@ void testWireConventions() {
       expect(body.containsKey('ratio'), isFalse);
       expect(body['generate_audio'], false);
       await expectLater(
-        api.submit(
+        api.submitNative(
           request(
             'google/veo3.1',
             VideoMode.text,
@@ -450,11 +453,13 @@ void testWireConventions() {
         audio: frameRequest.audio,
       );
       await expectLater(
-        api.submit(unsupported, [reference(VideoInputRole.reference_image)]),
+        api.submitNative(unsupported, [
+          reference(VideoInputRole.reference_image),
+        ]),
         throwsA(isA<VideoException>()),
       );
       await expectLater(
-        api.submit(
+        api.submitNative(
           request(
             'xai/grok-imagine-video-v1.5',
             VideoMode.reference,

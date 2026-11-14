@@ -273,6 +273,7 @@ void main() {
       apiKey: 'key',
       enabled: true,
       models: const [],
+      imageModels: const [],
       videoModels: ['MiniMax-H3'],
     );
     expect(provider.effectiveBaseUrl, 'https://api.minimax.cn');

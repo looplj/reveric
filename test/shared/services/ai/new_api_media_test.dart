@@ -5,6 +5,11 @@
 //   lib/shared/services/ai/audio/gemini.dart
 //   lib/shared/services/ai/video/new_api.dart
 import 'dart:async';
+import 'package:drift/native.dart';
+import 'package:reveric/shared/database/app_database.dart';
+import 'package:reveric/shared/models/production/media.dart';
+import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
+import '../../../helpers/fake_object_storage.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -130,31 +135,69 @@ void main() {
     },
   );
 
-  test('Seedream sends reference URLs in image generations JSON', () async {
-    await http.runWithClient(
-      () async {
-        await AiImageGenerationService(
-          _provider(),
-          model: 'doubao-seedream-5-0-pro',
-        ).editImage(
-          'edit',
-          imageData: 'https://reference.test/image.png',
-          size: '1024x1024',
-        );
-      },
-      () => MockClient((request) async {
-        expect(request.url.path, '/v1/images/generations');
-        expect((jsonDecode(request.body) as Map)['image'], [
-          'https://reference.test/image.png',
-        ]);
-        return _json({
-          'data': [
-            {'b64_json': _png},
-          ],
-        });
-      }),
-    );
-  });
+  test(
+    'Seedream downloads URL references and sends declared file bytes in JSON',
+    () async {
+      final database = AppDatabase.forTest(NativeDatabase.memory());
+      final references = ReferenceStorageService(
+        database: database,
+        storage: FakeObjectStorage(
+          database,
+          ({
+            required file,
+            required sha256,
+            required mimeType,
+            required fileSize,
+          }) async =>
+              (url: 'https://reference.test/image.png', expiresAt: null),
+        ),
+        probe: (_, {cancellation}) async => const MediaInfo(
+          duration: Duration.zero,
+          hasAudio: false,
+          hasVideo: true,
+          width: 1,
+          height: 1,
+        ),
+      );
+      addTearDown(() async {
+        references.dispose();
+        await database.close();
+      });
+      await http.runWithClient(
+        () async {
+          await AiImageGenerationService(
+            _provider(),
+            model: 'doubao-seedream-5-0-pro',
+            referenceStorage: references,
+          ).editImage(
+            'edit',
+            imageData: 'https://reference.test/image.png',
+            size: '1024x1024',
+          );
+        },
+        () => MockClient((request) async {
+          if (request.url.toString() == 'https://reference.test/image.png') {
+            expect(request.headers['authorization'], isNull);
+            return http.Response.bytes(
+              base64Decode(_png),
+              200,
+              headers: {'content-type': 'image/png'},
+            );
+          }
+          expect(request.url.origin, 'https://api.88api.ai');
+          expect(request.url.path, '/v1/images/generations');
+          expect((jsonDecode(request.body) as Map)['image'], [
+            'data:image/png;base64,$_png',
+          ]);
+          return _json({
+            'data': [
+              {'b64_json': _png},
+            ],
+          });
+        }),
+      );
+    },
+  );
 
   for (final type in ['gemini', 'api88']) {
     test(
@@ -435,11 +478,11 @@ void main() {
       });
       addTearDown(transport.close);
       final client = NewApiClient(_provider()).video(transport);
-      final task = await client.submit(
+      final task = await client.submitNative(
         _video('seedance-2.0官方版', mode: VideoMode.first_frame, audio: true),
         [_reference()],
       );
-      final result = await client.query(task);
+      final result = await client.queryNative(task);
       expect(result.status, VideoRemoteStatus.succeeded);
       expect(
         await (await client.download(
@@ -516,7 +559,7 @@ void main() {
         return _json({'id': 'task_2', 'status': 'queued'});
       });
       addTearDown(transport.close);
-      await NewApiClient(_provider()).video(transport).submit(
+      await NewApiClient(_provider()).video(transport).submitNative(
         _video('veo-3.1', mode: VideoMode.first_frame),
         [_reference()],
       );
@@ -537,7 +580,7 @@ void main() {
       apiKey: 'key',
     );
     await expectLater(
-      client.submit(_video('veo-3.1'), []),
+      client.submitNative(_video('veo-3.1'), []),
       throwsA(
         isA<VideoException>().having(
           (e) => e.code,

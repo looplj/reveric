@@ -212,6 +212,17 @@ class NewApiVideoClient extends VideoClient {
   }
 
   @override
+  Map<String, String> outputHeaders(Uri url, VideoSubmission task) {
+    final expected = this.url(
+      'videos/${Uri.encodeComponent(task.taskId)}/content',
+    );
+    if (url != expected || apiKey.trim().isEmpty) {
+      throw const VideoException(VideoErrorCode.configuration_required);
+    }
+    return {'Authorization': 'Bearer $apiKey'};
+  }
+
+  @override
   Future<http.StreamedResponse> download(
     http.Client transport,
     Uri url,

@@ -340,7 +340,7 @@ void main() {
   }
 
   test(
-    'configured OSS takes priority for a new AtlasCloud reference',
+    'AtlasCloud channel upload takes priority over configured OSS',
     () async {
       final storage = ReferenceStorageService(
         database: db,
@@ -352,14 +352,20 @@ void main() {
             required sha256,
             required mimeType,
             required fileSize,
-          }) async => (url: 'https://oss.example/a', expiresAt: null),
+          }) async => throw StateError('S3 must not bypass channel upload'),
         ),
-        uploadClient: (_) => throw StateError('unexpected channel upload'),
+        uploadClient: (_) => MockClient((request) async {
+          expect(request.url.host, 'api.atlascloud.ai');
+          return http.Response(
+            '{"data":{"download_url":"https://media.example/a"}}',
+            200,
+          );
+        }),
       );
       addTearDown(storage.dispose);
       expect(
         (await storage.ensure(input, file, provider: provider)).url,
-        'https://oss.example/a',
+        'https://media.example/a',
       );
       expect(
         await db.providerAssetDao.find(
@@ -367,7 +373,7 @@ void main() {
           provider.id,
           kind: ProviderAssetKind.upload,
         ),
-        isNull,
+        isNotNull,
       );
     },
   );

@@ -1,4 +1,4 @@
-// 职责: 准备本地参考素材的元数据，优先 OSS、其次渠道上传，图片／音频最后使用 Base64，并合并重复上传。
+// 职责: 准备本地参考素材的元数据，优先渠道上传、其次对象存储，图片／音频最后使用 Base64，并合并重复上传。
 // 关联文件:
 //   lib/shared/providers/video_tasks.dart
 //   lib/shared/models/video/request.dart
@@ -239,6 +239,21 @@ class ReferenceStorageService {
     );
   }
 
+  Future<bool> _hasUpload(AiProvider provider) async {
+    if (provider.pluginId == null) {
+      return provider.typeConfig.uploadProtocol != null;
+    }
+    final host = pluginHost;
+    if (host == null) {
+      throw PluginHostError(
+        'configuration_required',
+        'Plugin Host is required for video references',
+      );
+    }
+    await host.start();
+    return host.providerHasMethod(provider.pluginId!, 'uploadReference');
+  }
+
   /// [providerId] 为空时只检查 OSS；渠道已删除时按无渠道处理。
   Future<bool> preflight({
     String? providerId,
@@ -270,13 +285,16 @@ class ReferenceStorageService {
       }
       inputs = pending;
     }
+    if (provider != null && await _hasUpload(provider)) {
+      return true;
+    }
     if (await _storageTarget() != null) {
       return true;
     }
     if (provider == null) {
       return false;
     }
-    if (provider.effectiveApiKey.trim().isEmpty) {
+    if (!provider.isPluginProvider && provider.effectiveApiKey.trim().isEmpty) {
       throw const VideoException(
         VideoErrorCode.authentication,
         field: 'reference_upload',
@@ -299,8 +317,9 @@ class ReferenceStorageService {
     if (inputs.isEmpty) {
       return [];
     }
-    final target = await _storageTarget();
-    if (target == null && provider.typeConfig.uploadProtocol == null) {
+    final channel = await _hasUpload(provider);
+    final target = channel ? null : await _storageTarget();
+    if (target == null && !channel) {
       var encodedSize = 0;
       for (final (input, file, _) in inputs) {
         if (!_canInline(input)) {
@@ -315,7 +334,7 @@ class ReferenceStorageService {
         );
       }
     }
-    if (target == null && provider.typeConfig.uploadProtocol != null) {
+    if (channel) {
       for (final (input, file, _) in inputs) {
         _validateUpload(provider, input.mimeType, await file.length());
       }
@@ -331,6 +350,135 @@ class ReferenceStorageService {
           mediaInfo: mediaInfo,
         ),
       );
+    }
+    return result;
+  }
+
+  /// 按输入顺序准备视频参考；认证、渠道上传、对象存储、内联只选择一次。
+  Future<List<Map<String, dynamic>>> prepareVideos(
+    List<(VideoInput, File, VideoMediaInfo)> inputs, {
+    required AiProvider provider,
+    required bool supportsCertifiedAssets,
+    required PluginFileScope files,
+    required String taskId,
+    AgentCancellationToken? cancellation,
+  }) async {
+    if (files.providerId != provider.id ||
+        files.taskId != taskId ||
+        (provider.pluginId != null && files.pluginId != provider.pluginId)) {
+      throw PluginHostError(
+        'permission_denied',
+        'Video reference scope belongs to another task',
+      );
+    }
+    if (inputs.isEmpty) {
+      return [];
+    }
+    final certified = <int, String>{};
+    for (final (index, (input, _, _)) in inputs.indexed) {
+      if (supportsCertifiedAssets) {
+        final row = await database.providerAssetDao.find(
+          input.assetId,
+          provider.id,
+        );
+        if (row?.status == ProviderAssetStatus.active &&
+            row?.remoteId?.trim().isNotEmpty == true) {
+          certified[index] = row!.remoteId!;
+        }
+      }
+    }
+    final pending = certified.length != inputs.length;
+    final channel = pending && await _hasUpload(provider);
+    final target = pending && !channel
+        ? await _storageTarget(cancellation: cancellation)
+        : null;
+    var encodedSize = 0;
+    for (final (index, (input, file, _)) in inputs.indexed) {
+      if (certified.containsKey(index)) {
+        continue;
+      }
+      final size = await file.length();
+      if (size < 1) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'file_size',
+        );
+      }
+      if (channel) {
+        _validateUpload(provider, input.mimeType, size);
+      } else if (target == null) {
+        if (!_canInline(input)) {
+          throw _storageRequired();
+        }
+        encodedSize += ((size + 2) ~/ 3) * 4;
+      }
+    }
+    if (encodedSize > videoInlineRequestMaxBytes) {
+      throw const VideoException(
+        VideoErrorCode.invalid_request,
+        field: 'file_size',
+      );
+    }
+    final result = <Map<String, dynamic>>[];
+    for (final (index, (input, file, media)) in inputs.indexed) {
+      if (_disposed || cancellation?.isCancellationRequested == true) {
+        throw PluginHostError(
+          'cancelled',
+          'Video reference preparation cancelled',
+        );
+      }
+      final Map<String, dynamic> source;
+      if (certified[index] case final id?) {
+        source = {'kind': 'certified', 'remoteId': id};
+      } else if (channel) {
+        final uploaded = await _channelUpload(
+          provider,
+          input,
+          file,
+          taskId: taskId,
+          cancellation: cancellation,
+        );
+        source = {
+          'kind': 'uploaded',
+          'ref': uploaded.url,
+          if (uploaded.expiresAt != null)
+            'expiresAt': uploaded.expiresAt!.toUtc().toIso8601String(),
+        };
+      } else if (target != null) {
+        final uploaded = await target.upload(
+          file: file,
+          sha256: (await sha256.bind(file.openRead()).first).toString(),
+          mimeType: input.mimeType,
+          fileSize: await file.length(),
+        );
+        _validateResult(uploaded);
+        source = {
+          'kind': 'url',
+          'url': uploaded.url,
+          if (uploaded.expiresAt != null)
+            'expiresAt': uploaded.expiresAt!.toUtc().toIso8601String(),
+        };
+      } else {
+        final info = await files.register(
+          file,
+          name: p.basename(file.path),
+          mimeType: input.mimeType,
+        );
+        source = {'kind': 'file', 'handle': info['handle']};
+      }
+      result.add({
+        'assetId': input.assetId,
+        'role': input.role.name,
+        'mimeType': input.mimeType,
+        'fileSize': await file.length(),
+        'mediaInfo': {
+          'width': media.width,
+          'height': media.height,
+          'durationMs': media.durationMs,
+          'frameRate': media.frameRate,
+        },
+        'source': source,
+      });
     }
     return result;
   }
@@ -734,7 +882,9 @@ class ReferenceStorageService {
       input,
       file,
       provider: provider,
-      target: await _storageTarget(),
+      target: provider != null && await _hasUpload(provider)
+          ? null
+          : await _storageTarget(),
     );
   }
 
@@ -745,7 +895,7 @@ class ReferenceStorageService {
     required ({String key, ReferenceUploader upload})? target,
     VideoMediaInfo? mediaInfo,
   }) async {
-    final channel = provider?.typeConfig.uploadProtocol != null;
+    final channel = provider != null && await _hasUpload(provider);
     final inline =
         target == null && !channel && provider != null && _canInline(input);
     if (target == null && !channel && !inline) {
@@ -798,6 +948,7 @@ class ReferenceStorageService {
     if (!inline) {
       _validateResult(
         result,
+        allowOpaque: provider?.isPluginProvider == true,
         allowPurefoxKey:
             provider?.typeConfig.uploadProtocol ==
             UploadProtocol.purefox_uploads,

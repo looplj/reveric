@@ -29,6 +29,7 @@ const providerAssetGroupName = 'reveric';
 class VolcengineAssetClient implements ProviderAssetClient {
   VolcengineAssetClient({
     required this.httpClient,
+    required this.referenceUrl,
     required this.accessKeyId,
     required this.secretAccessKey,
     required this.projectName,
@@ -36,6 +37,7 @@ class VolcengineAssetClient implements ProviderAssetClient {
   }) : now = now ?? (() => DateTime.now().toUtc());
 
   final http.Client httpClient;
+  final ProviderAssetUrl referenceUrl;
   final String accessKeyId;
   final String secretAccessKey;
   final String projectName;
@@ -85,9 +87,10 @@ class VolcengineAssetClient implements ProviderAssetClient {
 
   @override
   Future<ProviderAssetSubmission> submit({
-    required Uri url,
+    required ProviderAssetFile file,
     required String name,
   }) async {
+    final url = await referenceUrl(file);
     final groupId = await ensureGroup(providerAssetGroupName);
     final remoteId = await createAsset(
       groupId: groupId,
@@ -143,6 +146,9 @@ class VolcengineAssetClient implements ProviderAssetClient {
       body: payload,
     );
     final text = utf8.decode(response.bodyBytes, allowMalformed: true);
+    if (_log.isDebugEnabled) {
+      _log.debug("$uri status=${response.statusCode} body=$text");
+    }
     Map<String, dynamic>? json;
     try {
       json = (jsonDecode(text) as Map).cast<String, dynamic>();

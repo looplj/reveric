@@ -7,6 +7,7 @@
 //   lib/shared/models/video/capabilities.dart
 
 import 'dart:async';
+import 'package:reveric/shared/services/plugins/files.dart';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -230,6 +231,93 @@ Map<String, dynamic> result(
 };
 
 void main() {
+  test(
+    'unified native video boundary preserves state and returns one URL',
+    () async {
+      final seen = <http.Request>[];
+      final api = client(
+        VideoProtocol.ark_video,
+        MockClient((r) async {
+          seen.add(r);
+          return http.Response(
+            jsonEncode(
+              r.method == 'POST'
+                  ? {'id': 'remote'}
+                  : {
+                      'status': 'succeeded',
+                      'content': {'video_url': 'https://cdn.test/video.mp4'},
+                    },
+            ),
+            200,
+          );
+        }),
+      );
+      final input = SubmitVideoInput(
+        request: request(VideoProtocol.ark_video, 'doubao-seedance-2-5-260628'),
+        references: [],
+        defaults: {
+          'extra': {'preserved': true},
+        },
+      );
+      expect(input.toJson()['request']['defaults'], {
+        'extra': {'preserved': true},
+      });
+      final scope = PluginFileScope(
+        pluginId: 'builtin',
+        providerId: 'instance',
+        taskId: 'task',
+      );
+      await api.validateSubmission(input, scope);
+      final submitted = await api.submit(input, scope) as ProviderSubmitted;
+      expect(submitted.remoteTaskId, 'remote');
+      expect(submitted.state?['queryUrl'], contains('/remote'));
+      final result =
+          await api.query(
+                ProviderQueryInput(
+                  submitted.remoteTaskId,
+                  state: submitted.state,
+                ),
+              )
+              as ProviderSucceeded;
+      expect(result.outputs, hasLength(1));
+      expect((result.outputs.single as ProviderUrlOutput).headers, isEmpty);
+      expect(seen.map((r) => r.method), ['POST', 'GET']);
+      scope.revoke();
+    },
+  );
+
+  test(
+    'POST query transport failure is classified by phase, not verb',
+    () async {
+      final api = client(
+        VideoProtocol.ark_video,
+        MockClient((request) async {
+          expect(request.method, 'POST');
+          throw TimeoutException('mock transport deadline');
+        }),
+      );
+      for (final submitting in [false, true]) {
+        await expectLater(
+          api.sendRequest(
+            'POST',
+            Uri.parse('https://mock.invalid/query'),
+            submitting: submitting,
+            body: {},
+          ),
+          throwsA(
+            isA<VideoException>().having(
+              (e) => e.code,
+              'phase error',
+              submitting
+                  ? VideoErrorCode.submission_unknown
+                  : VideoErrorCode.unavailable,
+            ),
+          ),
+        );
+      }
+    },
+  );
+
   for (final (suffix, mode, role) in [
     ('t2v', VideoMode.text, null),
     ('i2v', VideoMode.first_frame, VideoInputRole.first_frame),
@@ -303,8 +391,8 @@ void main() {
           }),
         );
         addTearDown(api.httpClient.close);
-        final task = await api.submit(req, refs);
-        final result = await api.query(task);
+        final task = await api.submitNative(req, refs);
+        final result = await api.queryNative(task);
         expect(result.status, VideoRemoteStatus.succeeded);
         expect(result.videoUrl.toString(), 'https://result.example/video.mp4');
         expect(calls, 2);
@@ -336,7 +424,7 @@ void main() {
             );
           }),
         );
-        await api.submit(
+        await api.submitNative(
           request(
             VideoProtocol.atlascloud_video,
             'bytedance/seedance-2.5',
@@ -358,7 +446,10 @@ void main() {
       MockClient((_) async => throw bug),
     );
     await expectLater(
-      api.submit(request(VideoProtocol.agnes_video, 'agnes-video-2.5'), []),
+      api.submitNative(
+        request(VideoProtocol.agnes_video, 'agnes-video-2.5'),
+        [],
+      ),
       throwsA(same(bug)),
     );
   });
@@ -380,7 +471,10 @@ void main() {
       }),
     );
     await expectLater(
-      api.submit(request(VideoProtocol.agnes_video, 'agnes-video-2.5'), []),
+      api.submitNative(
+        request(VideoProtocol.agnes_video, 'agnes-video-2.5'),
+        [],
+      ),
       throwsA(
         isA<VideoException>().having(
           (e) => e.code,
@@ -419,10 +513,17 @@ void main() {
       ),
     );
     await expectLater(
-      api.submit(request(VideoProtocol.agnes_video, 'agnes-video-2.5'), []),
+      api.submitNative(
+        request(VideoProtocol.agnes_video, 'agnes-video-2.5'),
+        [],
+      ),
       throwsA(isA<VideoException>()),
     );
-    final log = lines.join('\n');
+    final log = lines.where((line) => line.contains('[WARN]')).join('\n');
+    expect(
+      lines.where((line) => line.contains('[DEBUG]')).join('\n'),
+      isNot(contains('Bearer upstream-token')),
+    );
     expect(log, contains('status=503'));
     expect(log, contains('No available channel'));
     expect(log, contains('https://signed.example/video?token=private-token'));
@@ -454,7 +555,10 @@ void main() {
           timeout: const Duration(milliseconds: 50),
         );
         await expectLater(
-          api.submit(request(VideoProtocol.agnes_video, 'agnes-video-2.5'), []),
+          api.submitNative(
+            request(VideoProtocol.agnes_video, 'agnes-video-2.5'),
+            [],
+          ),
           throwsA(
             isA<VideoException>()
                 .having((e) => e.code, 'code', VideoErrorCode.unavailable)
@@ -493,7 +597,7 @@ void main() {
       expect(body['last_frame'], 'https://reference.example/last_frame');
       expect(body.containsKey('images'), false);
       await expectLater(
-        api.submit(req, refs),
+        api.submitNative(req, refs),
         throwsA(
           isA<VideoException>().having(
             (e) => e.code,
@@ -514,7 +618,7 @@ void main() {
       final url = api.queryUrl('video/id?x=1&y=2', 'agnes-video-2.5');
       expect(url.queryParameters['video_id'], 'video/id?x=1&y=2');
       await expectLater(
-        api.query(
+        api.queryNative(
           VideoSubmission(
             taskId: 'video/id?x=1&y=2',
             modelId: 'agnes-video-2.5',
@@ -577,7 +681,7 @@ void main() {
           MockClient((_) async => http.Response(jsonEncode(payload), 200)),
         );
         final model = videoModelsForProvider(videoProviderType(protocol)).first;
-        final received = await api.query(
+        final received = await api.queryNative(
           VideoSubmission(
             taskId: 'task-1',
             modelId: model,
@@ -632,7 +736,7 @@ void main() {
             ),
           );
           await expectLater(
-            api.submit(
+            api.submitNative(
               request(
                 protocol,
                 videoModelsForProvider(videoProviderType(protocol)).first,
@@ -671,7 +775,7 @@ void main() {
           ),
         );
         await expectLater(
-          api.submit(
+          api.submitNative(
             request(
               protocol,
               videoModelsForProvider(videoProviderType(protocol)).first,
@@ -737,7 +841,7 @@ void main() {
             }),
           );
           await expectLater(
-            api.submit(
+            api.submitNative(
               request(
                 protocol,
                 videoModelsForProvider(videoProviderType(protocol)).first,
@@ -803,7 +907,7 @@ void main() {
           if (protocol != VideoProtocol.openrouter_video)
             reference(VideoInputRole.reference_audio),
         ];
-        final submission = await api.submit(
+        final submission = await api.submitNative(
           request(
             protocol,
             model,
@@ -813,7 +917,7 @@ void main() {
           ),
           refs,
         );
-        final output = await api.query(submission);
+        final output = await api.queryNative(submission);
         expect(output.status, VideoRemoteStatus.succeeded);
         expect(
           output.videoUrl.toString(),
@@ -943,20 +1047,23 @@ void main() {
           MockClient((_) => throw StateError('must not send')),
         );
         await expectLater(
-          api.submit(request(protocol, model), [
+          api.submitNative(request(protocol, model), [
             reference(VideoInputRole.reference_image),
           ]),
           throwsA(isA<VideoException>()),
         );
         await expectLater(
-          api.submit(request(protocol, model, duration: 31), []),
+          api.submitNative(request(protocol, model, duration: 31), []),
           throwsA(isA<VideoException>()),
         );
         await expectLater(
-          api.submit(request(protocol, model, mode: VideoMode.first_frame), [
-            reference(VideoInputRole.first_frame),
-            reference(VideoInputRole.reference_audio),
-          ]),
+          api.submitNative(
+            request(protocol, model, mode: VideoMode.first_frame),
+            [
+              reference(VideoInputRole.first_frame),
+              reference(VideoInputRole.reference_audio),
+            ],
+          ),
           throwsA(isA<VideoException>()),
         );
       });
@@ -1009,7 +1116,7 @@ void main() {
             ),
           );
           await expectLater(
-            api.submit(request(protocol, model), []),
+            api.submitNative(request(protocol, model), []),
             throwsA(
               isA<VideoException>()
                   .having((e) => e.code, 'code', entry.value)
@@ -1041,7 +1148,7 @@ void main() {
             }),
           );
           await expectLater(
-            api.submit(request(protocol, model), []),
+            api.submitNative(request(protocol, model), []),
             throwsA(
               isA<VideoException>().having(
                 (e) => e.code,
@@ -1061,7 +1168,7 @@ void main() {
           }),
         );
         await expectLater(
-          api.submit(request(protocol, model), []),
+          api.submitNative(request(protocol, model), []),
           throwsA(
             isA<VideoException>().having(
               (e) => e.code,
@@ -1081,7 +1188,7 @@ void main() {
           MockClient((_) => throw StateError('must not send')),
         );
         await expectLater(
-          api.query(
+          api.queryNative(
             VideoSubmission(
               taskId: 'task-1',
               modelId: videoModelsForProvider(
@@ -1115,13 +1222,16 @@ void main() {
           return http.Response('{"id":"task-alias"}', 200);
         }),
       );
-      await api.submit(
+      await api.submitNative(
         request(VideoProtocol.ark_video, model, mode: VideoMode.first_frame),
         [reference(VideoInputRole.first_frame)],
       );
       expect(posts, 1);
       await expectLater(
-        api.submit(request(VideoProtocol.ark_video, model, duration: 31), []),
+        api.submitNative(
+          request(VideoProtocol.ark_video, model, duration: 31),
+          [],
+        ),
         throwsA(
           isA<VideoException>().having((e) => e.field, 'field', 'duration'),
         ),

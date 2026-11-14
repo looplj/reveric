@@ -18,6 +18,17 @@ class OpenRouterVideoClient extends VideoClient {
   }) : super(endpoint: Uri.parse('https://openrouter.ai/api/v1'));
 
   @override
+  Map<String, String> outputHeaders(Uri url, VideoSubmission task) {
+    final expected = Uri.parse(
+      'https://openrouter.ai/api/v1/videos/${Uri.encodeComponent(task.taskId)}/content',
+    );
+    if (url != expected || apiKey.trim().isEmpty) {
+      throw const VideoException(VideoErrorCode.configuration_required);
+    }
+    return {'Authorization': 'Bearer $apiKey'};
+  }
+
+  @override
   Future<http.StreamedResponse> download(
     http.Client transport,
     Uri url,

@@ -245,7 +245,7 @@ void main() {
                 );
                 return;
               }
-              await client.submit(
+              await client.submitNative(
                 const VideoRequest(
                   modelId: 'agnes-video-2.5-flash',
                   prompt: 'bird',

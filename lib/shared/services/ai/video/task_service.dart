@@ -43,6 +43,10 @@ import 'ark.dart';
 import 'agnes.dart';
 import 'atlascloud.dart';
 import 'client.dart';
+import '../../plugins/files.dart';
+import '../../plugins/host.dart';
+import '../../../agent/agent_tool_dispatcher.dart';
+import 'plugin.dart';
 import 'draft.dart';
 import 'minimax.dart';
 import 'openrouter.dart';
@@ -75,6 +79,7 @@ class VideoTaskService {
     required this.rootDirectory,
     required this.references,
     required this.probeResult,
+    this.pluginHost,
     this.beforeCreate,
     this.beforeSubmit,
     this.recoverSources,
@@ -101,6 +106,7 @@ class VideoTaskService {
   final Future<String?> Function(GenerationTask task)? sourceName;
   final Future<MediaInfo> Function(String path) probeResult;
   final AppDatabase database;
+  final PluginHostService? pluginHost;
   final Directory rootDirectory;
   final ReferenceStorageService references;
   final http.Client Function(AiProvider) providerTransport;
@@ -110,6 +116,8 @@ class VideoTaskService {
   final _busy = <String>{};
   final _failures = <String, int>{};
   final _clients = <http.Client>{};
+  final _calls = <String, AgentCancellationController>{};
+  final _cancelSubscriptions = <String, StreamSubscription<GenerationTask?>>{};
   final _creating = <String, Future<String>>{};
   Completer<void>? _idle;
   Future<void> _submissions = Future.value();
@@ -434,6 +442,7 @@ class VideoTaskService {
   }
 
   Future<void> _submit(String id, bool acknowledge) async {
+    PluginFileScope? files;
     _requireActive();
     final preparedTask = await _task(id);
     if (await _cancelUnsubmitted(preparedTask)) {
@@ -456,6 +465,7 @@ class VideoTaskService {
     if (!_online || !_busy.add(id)) {
       return;
     }
+    final cancellation = _beginCall(id);
     try {
       var task = await _task(id);
       if (task.status != GenerationTaskStatus.prepared ||
@@ -489,25 +499,35 @@ class VideoTaskService {
           field: 'model',
         );
       }
-      final prepared = await _prepare(task, provider);
+      files = PluginFileScope(
+        pluginId: provider.pluginId ?? 'builtin:${provider.type}',
+        providerId: provider.id,
+        taskId: task.id,
+      );
+      final prepared = await _prepare(task, provider, files, cancellation);
       final transport = providerTransport(provider);
       _clients.add(transport);
+      cancellation.onCancel(transport.close);
       try {
-        final client = _client(provider, transport);
-        String? draftId;
+        final client = _client(provider, transport, id, cancellation);
+        ({String remoteTaskId, Map<String, dynamic>? state})? draftOf;
         if (task.draftTaskId != null) {
           final source = await _requireDraft(task.draftTaskId!);
           await _ensureDraftAvailable(source, except: task.id);
-          draftId = source.providerTaskId!;
+          draftOf = (
+            remoteTaskId: source.providerTaskId!,
+            state: source.providerState,
+          );
         }
-        // Complete capability validation before entering the uncertain POST window.
-        final body = client.encodeSubmission(
-          task.videoRequest,
-          prepared,
+        final snapshot = task.requestJson as VideoGenerationRequest;
+        final input = SubmitVideoInput(
+          request: task.videoRequest,
+          references: prepared,
+          defaults: snapshot.requestDefaults ?? const {},
           draft: task.draft,
-          draftId: draftId,
+          draftOf: draftOf,
         );
-        client.validateInlineBody(body, prepared);
+        await client.validateSubmission(input, files);
         final submitting = await database.transaction(() async {
           final current = await _task(id);
           if (current.status != GenerationTaskStatus.uploading ||
@@ -519,54 +539,71 @@ class VideoTaskService {
         if (!submitting) {
           return;
         }
-        final receipt = await client.submit(
-          task.videoRequest,
-          prepared,
-          draft: task.draft,
-          draftId: draftId,
-        );
-        if (_disposed) {
-          return;
+        final receipt = await client.submit(input, files);
+        if (receipt is! ProviderSubmitted) {
+          throw const VideoException(VideoErrorCode.submission_unknown);
         }
-        final saved = await database.generationTaskDao.transition(
-          id,
-          {GenerationTaskStatus.submitting},
-          GenerationTasksCompanion(
-            providerTaskId: Value(receipt.taskId),
-            pollingUrl: Value(receipt.pollingUrl.toString()),
-            submittedAt: Value(now()),
-            status: const Value(GenerationTaskStatus.running),
-            nextPollAt: Value(now().add(const Duration(seconds: 10))),
-            errorCode: const Value(null),
-            errorMessage: const Value(null),
-            errorDetail: const Value(null),
-          ),
-        );
-        if (!saved) {
-          await database.generationTaskDao.transition(
-            id,
-            {GenerationTaskStatus.action_required},
-            GenerationTasksCompanion(
-              providerTaskId: Value(receipt.taskId),
-              pollingUrl: Value(receipt.pollingUrl.toString()),
-              submittedAt: Value(now()),
-            ),
-          );
-        }
+        await recordSubmission(id, receipt);
       } finally {
         _clients.remove(transport);
         transport.close();
       }
     } catch (error, stack) {
-      if (!_disposed) {
+      if (error is InvalidVideoReceipt) {
+        await recordSubmission(id, error.receipt);
+        await _status(
+          await _task(id),
+          GenerationTaskStatus.reconciliation_required,
+          error: 'invalid_response',
+          detail: error.detail,
+        );
+      } else if (!_disposed) {
         await _failure(id, error, submitting: true);
       }
       _logFailure(id, 'submit', error, stack);
       rethrow;
     } finally {
+      files?.revoke();
       _releaseTask(id);
       _schedule();
     }
+  }
+
+  /// 已返回的远端身份与本地取消在同一事务内确定最终状态。
+  Future<void> recordSubmission(String id, ProviderSubmitted receipt) async {
+    await database.transaction(() async {
+      final current = await _task(id);
+      final paused =
+          current.status == GenerationTaskStatus.action_required ||
+          current.cancelRequestedAt != null ||
+          _disposed;
+      await database.generationTaskDao.transition(
+        id,
+        {GenerationTaskStatus.submitting, GenerationTaskStatus.action_required},
+        GenerationTasksCompanion(
+          providerTaskId: Value(receipt.remoteTaskId),
+          providerState: Value(receipt.state),
+          submittedAt: Value(now()),
+          status: Value(
+            paused
+                ? GenerationTaskStatus.action_required
+                : GenerationTaskStatus.running,
+          ),
+          nextPollAt: Value(
+            paused ? null : now().add(const Duration(seconds: 10)),
+          ),
+          errorCode: current.status == GenerationTaskStatus.action_required
+              ? const Value.absent()
+              : Value(paused ? 'local_wait_cancelled' : null),
+          errorMessage: current.status == GenerationTaskStatus.action_required
+              ? const Value.absent()
+              : const Value(null),
+          errorDetail: current.status == GenerationTaskStatus.action_required
+              ? const Value.absent()
+              : const Value(null),
+        ),
+      );
+    });
   }
 
   /// 提交时是否要把本地参考素材上传到存储；已认证进渠道素材库的素材直接引用，不需要上传。
@@ -610,11 +647,13 @@ class VideoTaskService {
         : null;
   }
 
-  Future<List<VideoReference>> _prepare(
+  Future<List<PreparedVideoReference>> _prepare(
     GenerationTask task,
     AiProvider provider,
+    PluginFileScope scope,
+    AgentCancellationToken cancellation,
   ) async {
-    final prepared = <VideoReference>[];
+    final prepared = <PreparedVideoReference>[];
     if (task.draftTaskId != null) {
       return prepared;
     }
@@ -662,46 +701,18 @@ class VideoTaskService {
           : VideoRequestDefaults.fromJson(snapshot.requestDefaults!),
     ).validateLocal(task.videoRequest, local);
 
-    final certifiedReferences = <String, String>{};
-    final uploads = <(VideoInput, File, VideoMediaInfo)>[];
-    for (final (index, input) in task.videoInputs.indexed) {
-      final certified = await _certifiedAsset(
-        input.assetId,
-        task.providerId,
-        providerAssets,
-      );
-      if (certified != null) {
-        certifiedReferences[input.assetId] = providerAssetUri(
-          certified.remoteId!,
-        );
-      } else {
-        uploads.add((input, files[index], local[index].mediaInfo));
-      }
-    }
-    _requireActive();
-    final uploaded = (await references.prepare(
-      uploads,
+    final values = await references.prepareVideos(
+      [
+        for (final (index, input) in task.videoInputs.indexed)
+          (input, files[index], local[index].mediaInfo),
+      ],
       provider: provider,
-    )).iterator;
-    for (final (index, input) in task.videoInputs.indexed) {
-      final certifiedUrl = certifiedReferences[input.assetId];
-      if (certifiedUrl != null) {
-        final ref = local[index];
-        prepared.add(
-          VideoReference(
-            role: ref.role,
-            url: certifiedUrl,
-            mimeType: ref.mimeType,
-            fileSize: ref.fileSize,
-            mediaInfo: ref.mediaInfo,
-          ),
-        );
-      } else {
-        uploaded.moveNext();
-        prepared.add(uploaded.current);
-      }
-    }
-    return prepared;
+      supportsCertifiedAssets: providerAssets,
+      files: scope,
+      taskId: task.id,
+      cancellation: cancellation,
+    );
+    return values.map(PreparedVideoReference.fromJson).toList();
   }
 
   Future<void> start() => _starting ??= (() async {
@@ -804,7 +815,9 @@ class VideoTaskService {
     if (_disposed || !_online || _busy.length >= 2 || !_busy.add(id)) {
       return;
     }
+    final cancellation = _beginCall(id);
     http.Client? transport;
+    var downloading = false;
     try {
       var task = await _task(id);
       if (!{
@@ -813,8 +826,7 @@ class VideoTaskService {
             GenerationTaskStatus.submitting,
             GenerationTaskStatus.reconciliation_required,
           }.contains(task.status) ||
-          task.providerTaskId == null ||
-          task.pollingUrl == null) {
+          task.providerTaskId == null) {
         return;
       }
       if (await _completeExisting(task)) {
@@ -823,13 +835,26 @@ class VideoTaskService {
       final provider = await _provider(task);
       transport = providerTransport(provider);
       _clients.add(transport);
-      final client = _client(provider, transport);
-      final submission = VideoSubmission(
-        taskId: task.providerTaskId!,
-        modelId: task.modelId,
-        pollingUrl: Uri.parse(task.pollingUrl!),
+      cancellation.onCancel(transport.close);
+      final client = _client(provider, transport, id, cancellation);
+      var queryState = task.providerState;
+      if (!provider.isPluginProvider) {
+        final stateUrl = queryState?['queryUrl'];
+        final queryUrl =
+            stateUrl ??
+            (queryState == null || queryState.isEmpty ? task.pollingUrl : null);
+        if (queryUrl is! String || queryUrl.trim().isEmpty) {
+          throw const VideoException(VideoErrorCode.configuration_required);
+        }
+        queryState = {
+          ...?queryState,
+          'queryUrl': queryUrl,
+          'modelId': task.modelId,
+        };
+      }
+      final result = await client.query(
+        ProviderQueryInput(task.providerTaskId!, state: queryState),
       );
-      final result = await client.query(submission);
       if (_disposed) {
         return;
       }
@@ -838,52 +863,89 @@ class VideoTaskService {
         return;
       }
       _failures.remove(id);
-      switch (result.status) {
-        case VideoRemoteStatus.queued:
-        case VideoRemoteStatus.running:
-          await _status(
-            task,
-            GenerationTaskStatus.running,
-            next: now().add(Duration(seconds: _foreground ? 10 : 60)),
+      switch (result) {
+        case ProviderPending():
+          await database.generationTaskDao.transition(
+            task.id,
+            {task.status},
+            GenerationTasksCompanion(
+              status: const Value(GenerationTaskStatus.running),
+              errorCode: const Value(null),
+              errorMessage: const Value(null),
+              errorDetail: const Value(null),
+              providerState: Value.absentIfNull(result.state),
+              nextPollAt: Value(
+                now().add(Duration(seconds: _foreground ? 10 : 60)),
+              ),
+            ),
           );
-        case VideoRemoteStatus.succeeded:
-          if (!await _status(task, GenerationTaskStatus.saving)) {
+        case ProviderSucceeded():
+          if (result.outputs.length != 1 ||
+              result.outputs.single is! ProviderUrlOutput) {
+            throw const VideoException(VideoErrorCode.invalid_response);
+          }
+          final output = result.outputs.single as ProviderUrlOutput;
+          if (!await database.generationTaskDao.transition(
+            task.id,
+            {task.status},
+            GenerationTasksCompanion(
+              status: const Value(GenerationTaskStatus.saving),
+              errorCode: const Value(null),
+              errorMessage: const Value(null),
+              errorDetail: const Value(null),
+              outputUrl: Value(output.url),
+            ),
+          )) {
             return;
           }
           task = await _task(id);
-          await _save(task, result.videoUrl!, client, submission, provider);
-        case VideoRemoteStatus.failed:
+          downloading = true;
+          // 鉴权头只随本次查询结果在内存中使用；重试时重新查询获取。
+          await _save(task, Uri.parse(output.url), provider, output.headers);
+        case ProviderFailed():
           await _status(
             task,
             GenerationTaskStatus.failed,
-            error: 'upstream_failed',
-            message:
-                result.providerMessage ??
-                (result.messageKey == null ? null : tr(result.messageKey!)),
-            detail: result.detail,
+            error: result.error.code,
+            message: result.error.message,
+            detail: result.error.detail,
           );
-        case VideoRemoteStatus.cancelled:
-          await _status(task, GenerationTaskStatus.cancelled);
-        case VideoRemoteStatus.expired:
+        case ProviderStopped():
           await _status(
             task,
-            GenerationTaskStatus.expired,
-            error: 'result_expired',
+            result.cancelled
+                ? GenerationTaskStatus.cancelled
+                : GenerationTaskStatus.expired,
+            error: result.cancelled ? null : 'result_expired',
           );
-        case VideoRemoteStatus.unknown:
+        case ProviderUnknown():
+          // wan 等渠道在结果保留期后对过期任务返回 UNKNOWN。
+          final expired = _outsideQueryWindow(task);
           await _status(
             task,
-            _outsideQueryWindow(task)
+            expired
                 ? GenerationTaskStatus.expired
                 : GenerationTaskStatus.reconciliation_required,
-            error: _outsideQueryWindow(task)
-                ? 'result_expired'
-                : 'upstream_unknown',
+            error: expired ? 'result_expired' : 'upstream_unknown',
+            detail: result.reason,
           );
       }
     } catch (error, stack) {
       if (!_disposed) {
-        await _failure(id, error, submitting: false);
+        if (downloading) {
+          final current = await _task(id);
+          if (current.status == GenerationTaskStatus.saving) {
+            await _status(
+              current,
+              GenerationTaskStatus.saving,
+              next: now().add(const Duration(seconds: 10)),
+              error: 'download_failed',
+              detail: '$error',
+            );
+          }
+        } else {
+          await _failure(id, error, submitting: false);
+        }
       }
       _logFailure(id, 'query/download', error, stack);
     } finally {
@@ -895,12 +957,41 @@ class VideoTaskService {
     }
   }
 
+  Future<http.StreamedResponse> _download(
+    http.Client client,
+    Uri url,
+    Map<String, String> headers,
+  ) async {
+    var target = url;
+    for (var redirect = 0; redirect <= 5; redirect++) {
+      if (!{'http', 'https'}.contains(target.scheme) ||
+          target.host.isEmpty ||
+          target.userInfo.isNotEmpty) {
+        throw const VideoException(VideoErrorCode.invalid_response);
+      }
+      final response = await client.send(
+        http.Request('GET', target)
+          ..followRedirects = false
+          ..headers.addAll(redirect == 0 ? headers : const {}),
+      );
+      if (!{301, 302, 303, 307, 308}.contains(response.statusCode)) {
+        return response;
+      }
+      final location = response.headers['location'];
+      await response.stream.drain<void>();
+      if (location == null) {
+        break;
+      }
+      target = target.resolve(location);
+    }
+    throw const VideoException(VideoErrorCode.invalid_response);
+  }
+
   Future<void> _save(
     GenerationTask task,
     Uri url,
-    VideoClient api,
-    VideoSubmission submission,
     AiProvider provider,
+    Map<String, String> headers,
   ) async {
     final relative = RevericPaths.mediaPath(
       task.novelId,
@@ -916,7 +1007,7 @@ class VideoTaskService {
     final sink = partial.openWrite();
     try {
       await (() async {
-        final response = await api.download(client, url, submission);
+        final response = await _download(client, url, headers);
         if (response.statusCode != 200) {
           throw VideoException(
             VideoErrorCode.unavailable,
@@ -1097,6 +1188,7 @@ class VideoTaskService {
       refreshAfter = await _status(
         task,
         GenerationTaskStatus.saving,
+        clearCancellation: true,
         next: now(),
       );
     } finally {
@@ -1137,6 +1229,7 @@ class VideoTaskService {
         refreshAfter = await _status(
           task,
           GenerationTaskStatus.running,
+          clearCancellation: true,
           next: now(),
         );
       }
@@ -1151,7 +1244,25 @@ class VideoTaskService {
     }
   }
 
+  AgentCancellationToken _beginCall(String id) {
+    final controller = AgentCancellationController();
+    _calls[id] = controller;
+    _cancelSubscriptions[id] = database.generationTaskDao.watchTask(id).listen((
+      task,
+    ) {
+      // 提交请求已发出时中断只会丢失远端身份，不能撤销计费。
+      if (task?.cancelRequestedAt != null &&
+          task?.status != GenerationTaskStatus.submitting &&
+          task?.status != GenerationTaskStatus.saving) {
+        controller.cancel();
+      }
+    });
+    return controller.token;
+  }
+
   void _releaseTask(String id) {
+    _calls.remove(id);
+    unawaited(_cancelSubscriptions.remove(id)?.cancel());
     _busy.remove(id);
     if (_busy.isEmpty) {
       _idle?.complete();
@@ -1182,6 +1293,16 @@ class VideoTaskService {
     final task = await _task(id);
     if (task.status == GenerationTaskStatus.action_required &&
         task.errorCode?.startsWith('provider_configuration_changed') == true) {
+      return;
+    }
+    if (task.cancelRequestedAt != null &&
+        task.providerTaskId != null &&
+        task.status != GenerationTaskStatus.saving) {
+      await _status(
+        task,
+        GenerationTaskStatus.action_required,
+        error: 'local_wait_cancelled',
+      );
       return;
     }
     final code = error is VideoException
@@ -1287,11 +1408,15 @@ class VideoTaskService {
   }
 
   Future<AiProvider> _provider(GenerationTask task) async {
+    await pluginHost?.start();
     final provider = await database.aiProviderDao.getById(task.providerId);
     if (provider == null ||
         !provider.enabled ||
         provider.type != task.providerType ||
-        !provider.hasCredentialConfiguration) {
+        !provider.hasCredentialConfiguration ||
+        (provider.isPluginProvider &&
+            pluginHost?.providerHasMethod(provider.pluginId!, 'video.submit') !=
+                true)) {
       throw const VideoException(VideoErrorCode.configuration_required);
     }
     return provider;
@@ -1310,7 +1435,25 @@ class VideoTaskService {
         !task.submittedAt!.add(retention).isAfter(now());
   }
 
-  VideoClient _client(AiProvider provider, http.Client transport) {
+  VideoClient _client(
+    AiProvider provider,
+    http.Client transport,
+    String taskId,
+    AgentCancellationToken cancellation,
+  ) {
+    if (provider.isPluginProvider) {
+      final host = pluginHost;
+      if (host == null) {
+        throw const VideoException(VideoErrorCode.configuration_required);
+      }
+      return PluginVideoClient(
+        provider: provider,
+        host: host,
+        taskId: taskId,
+        httpClient: transport,
+        cancellation: cancellation,
+      );
+    }
     final type = provider.type;
     final endpoint = Uri.parse(provider.effectiveBaseUrl);
     final apiKey = provider.effectiveApiKey;
@@ -1386,12 +1529,16 @@ class VideoTaskService {
     String? error,
     String? message,
     String? detail,
+    bool clearCancellation = false,
   }) => database.generationTaskDao.transition(
     task.id,
     {task.status},
     GenerationTasksCompanion(
       status: Value(status),
       nextPollAt: Value(next),
+      cancelRequestedAt: clearCancellation
+          ? const Value(null)
+          : const Value.absent(),
       errorCode: Value(error),
       errorMessage: Value(message),
       errorDetail: Value(detail),
@@ -1434,6 +1581,9 @@ class VideoTaskService {
   void dispose() {
     _disposed = true;
     _timer?.cancel();
+    for (final call in _calls.values) {
+      call.cancel();
+    }
     for (final client in _clients) {
       client.close();
     }

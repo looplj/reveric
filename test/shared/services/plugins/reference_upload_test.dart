@@ -4,6 +4,7 @@
 //   lib/shared/services/plugins/host.dart
 import 'dart:io';
 import 'dart:async';
+import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show Value;
@@ -321,7 +322,57 @@ ${supportsUpload ? "async uploadReference(input, context){const response=await c
         mime: 'image/jpeg',
       );
       expect(uploads, 7);
+      final videoStorage = service();
+      final beforeS3 = ossUploads;
+      final beforeLoads = objectStorage.loads;
+      final videoRefs = await videoStorage.prepare([
+        (
+          const VideoInput(
+            role: VideoInputRole.first_frame,
+            assetId: 'video-first',
+            mimeType: 'image/png',
+          ),
+          file,
+          const VideoMediaInfo(width: 2, height: 3),
+        ),
+        (
+          const VideoInput(
+            role: VideoInputRole.last_frame,
+            assetId: 'video-last',
+            mimeType: 'image/png',
+          ),
+          file,
+          const VideoMediaInfo(width: 2, height: 3),
+        ),
+      ], provider: provider);
+      expect(videoRefs.map((r) => r.role), [
+        VideoInputRole.first_frame,
+        VideoInputRole.last_frame,
+      ]);
+      expect(videoRefs.map((r) => r.url), ['remote-8', 'remote-9']);
+      expect(ossUploads, beforeS3);
+      expect(
+        objectStorage.loads,
+        beforeLoads,
+        reason: 'S3 must not bypass channel upload',
+      );
       reject = true;
+      await expectLater(
+        videoStorage.prepare([
+          (
+            const VideoInput(
+              role: VideoInputRole.reference_image,
+              assetId: 'video-reject',
+              mimeType: 'image/png',
+            ),
+            file,
+            const VideoMediaInfo(width: 2, height: 3),
+          ),
+        ], provider: provider),
+        throwsA(isA<PluginExecutionError>()),
+      );
+      expect(ossUploads, beforeS3);
+      uploads = 7;
       await host.saveProviderConfig(
         provider,
         settings: {'project': 'reject'},
@@ -356,6 +407,59 @@ ${supportsUpload ? "async uploadReference(input, context){const response=await c
       );
       expect(uploads, 8);
       expect(ossUploads, 1);
+      final certified = await database.providerAssetDao.start(
+        'certified',
+        provider.id,
+      );
+      await database.providerAssetDao.write(
+        certified.id,
+        const ProviderAssetsCompanion(
+          status: Value(ProviderAssetStatus.active),
+          remoteId: Value('asset-remote'),
+        ),
+      );
+      final scope = PluginFileScope(
+        pluginId: provider.pluginId!,
+        providerId: provider.id,
+        taskId: 'video-mixed',
+      );
+      final mixed = await service().prepareVideos(
+        [
+          (
+            const VideoInput(
+              role: VideoInputRole.first_frame,
+              assetId: 'certified',
+              mimeType: 'image/png',
+            ),
+            file,
+            const VideoMediaInfo(width: 2, height: 3),
+          ),
+          (
+            const VideoInput(
+              role: VideoInputRole.last_frame,
+              assetId: 'uncertified',
+              mimeType: 'image/png',
+            ),
+            file,
+            const VideoMediaInfo(width: 2, height: 3),
+          ),
+        ],
+        provider: provider,
+        supportsCertifiedAssets: true,
+        files: scope,
+        taskId: 'video-mixed',
+      );
+      expect(mixed.map((r) => r['assetId']), ['certified', 'uncertified']);
+      expect(mixed.first['source'], {
+        'kind': 'certified',
+        'remoteId': 'asset-remote',
+      });
+      expect(mixed.last['source'], {
+        'kind': 'url',
+        'url': 'https://storage.example/image',
+      });
+      expect(ossUploads, 2);
+      scope.revoke();
     },
   );
 }

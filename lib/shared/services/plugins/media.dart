@@ -3,6 +3,7 @@
 //   lib/shared/services/plugins/files.dart
 //   lib/shared/services/plugins/media_files.dart
 //   lib/shared/services/plugins/media_pointer.dart
+import '../../models/video/request.dart' show videoInlineRequestMaxBytes;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -15,12 +16,14 @@ import 'runtime.dart';
 class PluginMediaApi {
   PluginMediaApi({
     required this.scope,
-    required this.outputs,
+    this.outputs,
+    this.video = false,
     required this.clientFactory,
     required this.remainingBudget,
   });
   final PluginFileScope scope;
-  final PluginMediaFiles outputs;
+  final PluginMediaFiles? outputs;
+  final bool video;
   final HttpClient Function() clientFactory;
   final Duration Function() remainingBudget;
   final _clients = <HttpClient>{};
@@ -56,7 +59,8 @@ class PluginMediaApi {
         uri.userInfo.isNotEmpty) {
       throw PluginHostError('invalid_request', 'Invalid media request');
     }
-    final timeout = raw['timeoutMs'] ?? 300000;
+    const maxTimeout = 300000;
+    final timeout = raw['timeoutMs'] ?? maxTimeout;
     final method = raw['method'];
     final headers = raw['headers'] ?? <String, String>{};
     final body = raw['body'];
@@ -66,12 +70,14 @@ class PluginMediaApi {
         v.entries.every((e) => e.key is String && e.value is String);
     if (timeout is! int ||
         timeout < 1 ||
-        timeout > 300000 ||
+        timeout > maxTimeout ||
         !{'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'}.contains(method) ||
         !strings(headers) ||
         body is! Map ||
         response is! Map ||
-        !{'json', 'file'}.contains(response['kind'])) {
+        !{'json', 'file'}.contains(response['kind']) ||
+        (video &&
+            (response['kind'] != 'json' || response.containsKey('images')))) {
       throw PluginHostError('invalid_request', 'Invalid media options');
     }
     final remaining = remainingBudget();
@@ -92,9 +98,7 @@ class PluginMediaApi {
     }
 
     final client = clientFactory();
-    client.connectionTimeout = effective < const Duration(seconds: 30)
-        ? effective
-        : const Duration(seconds: 30);
+    client.connectionTimeout = effective;
     _clients.add(client);
     Future<Map<String, dynamic>> send() async {
       Stream<List<int>> stream;
@@ -106,14 +110,32 @@ class PluginMediaApi {
         if (bindings is! List) {
           throw PluginHostError('invalid_request', 'Expected file bindings');
         }
+        var encodedSize = 0;
         for (final binding in bindings) {
+          if (video && binding is Map) {
+            encodedSize +=
+                ((scope.resolve(binding['handle']).size + 2) ~/ 3) * 4;
+            if (encodedSize > videoInlineRequestMaxBytes) {
+              throw PluginHostError(
+                'invalid_request',
+                'Video inline request exceeds 64 MB',
+              );
+            }
+          }
           if (binding is! Map ||
               !{'base64', 'data_uri'}.contains(binding['encoding'])) {
             throw PluginHostError('invalid_request', 'Invalid file binding');
           }
           final slot = pluginMediaPointer(value, binding['pointer']);
           final file = scope.resolve(binding['handle']);
-          final encoded = base64Encode(await file.file.readAsBytes());
+          final data = await file.file.readAsBytes();
+          if (video && data.length != file.size) {
+            throw PluginHostError(
+              'invalid_request',
+              'Video reference file size changed after registration',
+            );
+          }
+          final encoded = base64Encode(data);
           checkActive();
           slot.replace(
             binding['encoding'] == 'base64'
@@ -122,6 +144,12 @@ class PluginMediaApi {
           );
         }
         final bytes = utf8.encode(jsonEncode(value));
+        if (video && bytes.length > videoInlineRequestMaxBytes) {
+          throw PluginHostError(
+            'invalid_request',
+            'Encoded video JSON request exceeds 64 MB',
+          );
+        }
         stream = Stream.value(bytes);
         length = bytes.length;
         contentType = 'application/json';
@@ -168,7 +196,7 @@ class PluginMediaApi {
       final result = await request.close();
       final success = result.statusCode >= 200 && result.statusCode < 300;
       final bytes = <int>[];
-      final limit = success ? 128 * 1024 * 1024 : 5 * 1024 * 1024;
+      final limit = success && !video ? 128 * 1024 * 1024 : 5 * 1024 * 1024;
       await for (final chunk in result) {
         if (bytes.length + chunk.length > limit) {
           throw PluginHostError(
@@ -183,7 +211,7 @@ class PluginMediaApi {
       if (!success) {
         value = utf8.decode(bytes, allowMalformed: true);
       } else if (response['kind'] == 'file') {
-        value = await outputs.stage(bytes, ensureActive: checkActive);
+        value = await outputs!.stage(bytes, ensureActive: checkActive);
       } else {
         value = jsonDecode(utf8.decode(bytes));
         bytes.clear();
@@ -217,7 +245,7 @@ class PluginMediaApi {
             encoded = encoded.substring(match.end);
           }
           slot.replace(
-            await outputs.stage(
+            await outputs!.stage(
               base64Decode(encoded),
               ensureActive: checkActive,
             ),

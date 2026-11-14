@@ -95,6 +95,7 @@ class AiProviderTypeConfig {
   final VideoProtocol? videoProtocol;
   final AudioProtocol? audioProtocol;
   final UploadProtocol? uploadProtocol;
+  final bool supportsAssetCertification;
 
   /// 不经过媒体协议的能力（chat）。
   final Set<AiModelKind> _textModelKinds;
@@ -109,6 +110,7 @@ class AiProviderTypeConfig {
     this.videoProtocol,
     this.audioProtocol,
     this.uploadProtocol,
+    this.supportsAssetCertification = false,
     this.fixedBaseUrl = false,
     this.usesNewApi = false,
   });
@@ -133,6 +135,7 @@ final Map<String, AiProviderTypeConfig> aiProviderTypeConfigs = {
     fixedBaseUrl: true,
   ),
   'atlascloud': AiProviderTypeConfig(
+    supportsAssetCertification: true,
     displayName: 'AtlasCloud',
     uploadProtocol: UploadProtocol.atlascloud_media,
     modelIdSource: ModelIdSource.registered,
@@ -262,6 +265,7 @@ final Map<String, AiProviderTypeConfig> aiProviderTypeConfigs = {
     videoProtocol: VideoProtocol.ark_video,
   ),
   'volcengine': AiProviderTypeConfig(
+    supportsAssetCertification: true,
     displayName: 'Volcengine',
     modelIdSource: ModelIdSource.registered,
     textModelKinds: _chatOnlyKinds,

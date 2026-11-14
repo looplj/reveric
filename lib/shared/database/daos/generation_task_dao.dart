@@ -73,11 +73,18 @@ class GenerationTaskDao extends DatabaseAccessor<AppDatabase>
       task.submittedAt == null &&
       task.errorCode != 'provider_configuration_changed';
 
-  /// 音视频一旦拿到输出便继续下载和保存，避免丢弃已经生成的结果。
+  /// 音视频提交请求发出后中断也无法撤销远端计费，只会丢失远端身份；
+  /// 音频同步提交以 running 表示，收到远端 ID 后才可停止轮询。
+  /// 一旦拿到输出便继续下载和保存，避免丢弃已经生成的结果。
   static bool canRequestCancellation(GenerationTask task) =>
       !task.status.isTerminal &&
       (task.kind == GenerationKind.image ||
-          (task.status != GenerationTaskStatus.saving &&
+          (task.status != GenerationTaskStatus.submitting &&
+              !(task.kind == GenerationKind.audio &&
+                  task.status == GenerationTaskStatus.running &&
+                  task.submittedAt != null &&
+                  task.providerTaskId == null) &&
+              task.status != GenerationTaskStatus.saving &&
               task.outputUrl == null &&
               task.outputHash == null &&
               task.path == null &&

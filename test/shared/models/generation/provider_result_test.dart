@@ -6,6 +6,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/models/generation/provider_result.dart';
 
 void main() {
+  test(
+    'failure detail is optional text and invalid types are format errors',
+    () {
+      for (final detail in [123, true, [], <String, dynamic>{}]) {
+        expect(
+          () => ProviderQueryResult.fromJson({
+            'status': 'failed',
+            'error': {
+              'code': 'failed',
+              'message': 'Rejected',
+              'detail': detail,
+            },
+          }),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'field',
+              contains('error.detail'),
+            ),
+          ),
+        );
+      }
+      for (final detail in [null, '', 'diagnostic']) {
+        final result =
+            ProviderQueryResult.fromJson({
+                  'status': 'failed',
+                  'error': {
+                    'code': 'failed',
+                    'message': 'Rejected',
+                    'detail': detail,
+                  },
+                })
+                as ProviderFailed;
+        expect(result.error.detail, detail);
+      }
+    },
+  );
   test('preserves task state and keeps download headers per candidate', () {
     final submitted =
         ProviderSubmitResult.fromJson({
