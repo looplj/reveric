@@ -216,6 +216,13 @@ void main() {
               ),
             );
             await tester.pumpAndSettle();
+            expect(
+              find.descendant(
+                of: find.byType(ProductionNodeBar),
+                matching: find.text('Copy'),
+              ),
+              type == 'image' ? findsOneWidget : findsNothing,
+            );
             Future<void> expectPreview() async {
               for (
                 var i = 0;

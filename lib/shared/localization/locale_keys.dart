@@ -1935,7 +1935,9 @@ abstract final class LocaleKeys {
   static const commonContinue = 'common.continue';
   static const commonContinueInBackground = 'common.continue_in_background';
   static const commonCopy = 'common.copy';
+  static const commonDuplicate = 'common.duplicate';
   static const commonCopied = 'common.copied';
+  static const commonCopyFailed = 'common.copy_failed';
   static const commonCover = 'common.cover';
   static const commonRequired = 'common.required';
   static const commonCreate = 'common.create';
