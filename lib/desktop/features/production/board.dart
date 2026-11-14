@@ -53,6 +53,7 @@ import '../../../shared/services/production/derived_placement.dart';
 export '../../../shared/services/production/derived_placement.dart'
     show productionSceneBand, productionScenePositions;
 import 'interaction.dart';
+import 'drop_region.dart';
 import 'grid/group_node.dart';
 import 'grid/cell.dart';
 import 'grid/outlet.dart';
@@ -1013,7 +1014,7 @@ class ProductionBoard extends HookConsumerWidget {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return ProductionGridWorkspace(
+    final board = ProductionGridWorkspace(
       nodeId: selected,
       child: ProductionViewWorkspace(
         nodeId: selected,
@@ -1269,6 +1270,12 @@ class ProductionBoard extends HookConsumerWidget {
           ),
         ),
       ),
+    );
+    return ProductionDropRegion(
+      service: service,
+      canvasId: canvasId,
+      controller: controller,
+      child: board,
     );
   }
 }
