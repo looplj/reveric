@@ -222,7 +222,16 @@ void main() {
           ),
         ),
       );
-      final log = lines.join('\n');
+      final log = lines.where((line) => !line.contains(' body=')).join('\n');
+      expect(
+        lines.any(
+          (line) =>
+              line.contains(' body=') &&
+              line.contains('Bearer upstream-token') &&
+              line.contains('sk-private-key'),
+        ),
+        isTrue,
+      );
       expect(log, contains('status=503'));
       expect(log, contains('provider=volcengine'));
       expect(log, contains('No available channel'));

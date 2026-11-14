@@ -48,7 +48,6 @@ const _pickerKinds = [
   AiModelKind.audio,
 ];
 
-/// 预设平台优先，本机 Codex 登录列在平台末尾；通用接口以 OpenAI 兼容开头。
 /// Codex 依赖桌面登录，移动端不提供。
 List<String> providerTypePickerTypes() {
   final mobile =
@@ -58,12 +57,20 @@ List<String> providerTypePickerTypes() {
     for (final type in customAiProviderTypes)
       if (!mobile || type != 'codex') type,
   ];
+  const trailingPlatforms = ['moss', 'atlascloud', 'agnes', 'openrouter'];
   bool fixed(String type) => aiProviderTypeConfigs[type]?.fixedBaseUrl ?? false;
-  int rank(String type) => fixed(type)
-      ? (type == 'codex' ? 1 : 0)
-      : (type == 'openai_compatible' ? 2 : 3);
+  int rank(String type) {
+    final trailingIndex = trailingPlatforms.indexOf(type);
+    if (trailingIndex >= 0) {
+      return 2 + trailingIndex;
+    }
+    return fixed(type)
+        ? (type == 'codex' ? 1 : 0)
+        : (type == 'openai_compatible' ? 6 : 7);
+  }
+
   return [
-    for (final r in [0, 1, 2, 3])
+    for (var r = 0; r < 8; r++)
       for (final type in types)
         if (rank(type) == r) type,
   ];

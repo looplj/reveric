@@ -47,7 +47,7 @@ class NewApiImageClient extends ImageClient {
         'complexity': complexity,
     };
     Map<String, dynamic> data;
-    final base = config.effectiveBaseUrl;
+    final base = config.effectiveImageBaseUrl;
     if (request.references.isEmpty) {
       data = await postImageJson(Uri.parse('$base/images/generations'), fields);
     } else if (catalogId.startsWith('seedream-')) {

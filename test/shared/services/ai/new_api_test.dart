@@ -24,7 +24,6 @@ AiProvider _provider([String type = 'api88']) =>
       apiKey: 'test-key',
       baseUrl: 'https://gateway.test/prefix/',
     );
-const _allChat = ['openai', 'openai-response', 'anthropic', 'gemini'];
 Map<String, dynamic> _model(String id, List<String> endpoints) => {
   'id': id,
   'supported_endpoint_types': endpoints,
@@ -47,6 +46,69 @@ void main() {
     expect(aiProviderBuiltinById('infistar'), isNull);
     expect(providerShowcases, contains('infistar'));
   });
+  test('91Token is seeded by default with a sponsor showcase', () {
+    expect(customAiProviderTypes, contains(AiProviderType.token91.name));
+    expect(aiProviderBuiltinById('token91'), isNotNull);
+    expect(providerShowcases, contains('token91'));
+  });
+  test(
+    '91Token separates native video families from chat without an exact model whitelist',
+    () async {
+      expect(customAiProviderTypes, contains('token91'));
+      await http.runWithClient(
+        () async {
+          final client = NewApiClient(_provider('token91'));
+          expect(await client.modelIds(AiModelKind.chat), ['claude-opus-5-5']);
+          expect(await client.modelIds(AiModelKind.image), [
+            'gemini-nano-banana-2.1',
+            'gpt-image-2.5-flare',
+          ]);
+          expect(await client.modelIds(AiModelKind.video), [
+            'MiniMax-H3',
+            'doubao-seedance-2-0',
+            'doubao-seedance-2-0-fast',
+            'doubao-seedance-2-0-mini',
+            'doubao-seedance-2-5',
+            'grok-video-3',
+            'viduq3-ad',
+            'viduq3-pro',
+            'viduq3-turbo',
+            'viduq4-preview',
+            'viduq5-future',
+            'wan3.0-video',
+          ]);
+        },
+        () => MockClient((request) async {
+          expect(request.url.toString(), 'https://api.91token.com/v1/models');
+          return _json({
+            'data': [
+              _model('claude-opus-5-5', ['anthropic', 'openai']),
+              _model('gpt-image-2.5-flare', ['image-generation', 'openai']),
+              _model('gemini-nano-banana-2.1', ['gemini', 'openai']),
+              for (final id in [
+                'doubao-seedance-2-0',
+                'doubao-seedance-2-0-fast',
+                'doubao-seedance-2-0-mini',
+                'doubao-seedance-2-5',
+              ])
+                _model(id, ['openai', 'video-generation']),
+              _model('MiniMax-H3', ['openai-video']),
+              _model('wan3.0-video', ['openai']),
+              for (final id in [
+                'grok-video-3',
+                'viduq3-ad',
+                'viduq3-pro',
+                'viduq3-turbo',
+                'viduq4-preview',
+                'viduq5-future',
+              ])
+                _model(id, ['openai']),
+            ],
+          });
+        }),
+      );
+    },
+  );
   test(
     'standard model lists without endpoint metadata retain chat models',
     () async {
@@ -86,6 +148,7 @@ void main() {
     ('ooki', 'https://api.ookiapi.com/v1'),
     ('apikey', 'https://api.apikey.fan/v1'),
     ('infistar', 'https://infistar.cc/v1'),
+    ('token91', 'https://api.91token.com/v1'),
   ]) {
     group(type, () => _testProvider(type, baseUrl));
   }
@@ -96,17 +159,7 @@ void _testProvider(String type, String baseUrl) {
     'New API provider exposes its supported kinds without a separate client type',
     () {
       expect(_provider(type).effectiveBaseUrl, baseUrl);
-      expect(
-        _provider(type).supportedModelKinds,
-        ['apikey', 'infistar'].contains(type)
-            ? {AiModelKind.chat}
-            : {
-                AiModelKind.chat,
-                AiModelKind.image,
-                AiModelKind.audio,
-                AiModelKind.video,
-              },
-      );
+      expect(_provider(type).supportedModelKinds, AiModelKind.values.toSet());
       expect(customAiProviderTypes, contains(AiProviderType.api88.name));
       expect(
         AiProviderType.values.map((type) => type.name),
@@ -116,11 +169,11 @@ void _testProvider(String type, String baseUrl) {
     },
   );
 
-  if (!['apikey', 'infistar'].contains(type)) {
+  {
     test(
       'all registered media channel entries resolve to usable capabilities',
       () {
-        for (final type in ['api88', 'ooki']) {
+        for (final type in ['api88', 'ooki', 'apikey', 'infistar', 'token91']) {
           for (final channel
               in imageChannelModels[ImageProtocol.new_api_images]!.values) {
             expect(channel.model, isNotNull);
@@ -147,13 +200,20 @@ void _testProvider(String type, String baseUrl) {
           () async {
             expect(await fetchProviderModels(_provider(type)), [
               'deepseek-v4-flash',
+              'renamed-gemini-model',
             ]);
             expect(
               await fetchProviderModels(
                 _provider(type),
                 kind: AiModelKind.image,
               ),
-              ['gemini-3.1-flash-image', 'gpt-image-2'],
+              [
+                'gemini-3.1-flash-image',
+                'gpt-image-2',
+                'new-image-model',
+                'renamed-edit-model',
+                'renamed-gemini-model',
+              ],
             );
             expect(
               await fetchProviderModels(
@@ -167,7 +227,7 @@ void _testProvider(String type, String baseUrl) {
                 _provider(type),
                 kind: AiModelKind.video,
               ),
-              ['seedance-2.0官方版', 'veo-3.1'],
+              ['seedance-2.0官方版', 'unknown-video', 'veo-3.1'],
             );
           },
           () => MockClient((request) async {
@@ -176,8 +236,11 @@ void _testProvider(String type, String baseUrl) {
             expect(request.headers['Authorization'], 'Bearer test-key');
             return _json({
               'data': [
-                _model('deepseek-v4-flash', _allChat),
+                _model('deepseek-v4-flash', ['openai']),
                 _model('gpt-image-2', ['image-generation', 'openai']),
+                _model('new-image-model', ['image-generation']),
+                _model('renamed-edit-model', ['image-edit', 'openai']),
+                _model('renamed-gemini-model', ['gemini']),
                 _model('gemini-3.1-flash-image', ['gemini', 'openai']),
                 _model('gemini-3.1-flash-tts', ['gemini', 'openai']),
                 _model('seedance-2.0官方版', ['openai-video']),

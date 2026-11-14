@@ -695,6 +695,58 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       },
     ),
   ),
+  // https://platform.vidu.com/docs/api-reference/video-models
+  for (final id in ['viduq3-pro', 'viduq3-turbo', 'viduq4-preview'])
+    id: VideoModelCatalogEntry(
+      capabilities: VideoModelCapabilities(
+        resolutions: id == 'viduq4-preview'
+            ? {'540p', '720p', '1080p', '2K', '4K'}
+            : {'540p', '720p', '1080p'},
+        ratios: {'1:1', '9:16', '16:9', '3:4', '4:3'},
+        durations: {
+          for (var i = id == 'viduq4-preview' ? 3 : 1; i <= 16; i++) i,
+        },
+        modes: id == 'viduq4-preview'
+            ? [VideoMode.first_frame, VideoMode.reference]
+            : id == 'viduq3-pro'
+            ? [
+                VideoMode.text,
+                VideoMode.first_frame,
+                VideoMode.first_last_frame,
+              ]
+            : VideoMode.values,
+        frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
+        maxReferences: 7,
+        supportsAudioOnlyReference: false,
+        references: {
+          VideoMediaKind.image: VideoReferenceLimits(
+            maxCount: 7,
+            maxSizeMb: ConfigValue(50),
+            mimeTypes: ConfigValue(_imageFormats),
+          ),
+          VideoMediaKind.video: VideoReferenceLimits(maxCount: 7),
+        },
+      ),
+      requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
+    ),
+  'viduq3-ad': VideoModelCatalogEntry(
+    capabilities: VideoModelCapabilities(
+      resolutions: {'720p', '1080p'},
+      ratios: {'1:1', '16:9', '9:16'},
+      durations: {for (var i = 3; i <= 15; i++) i},
+      modes: [VideoMode.reference],
+      frameRoles: {VideoInputRole.first_frame},
+      maxReferences: 7,
+      supportsAudioOnlyReference: false,
+      references: {
+        VideoMediaKind.image: VideoReferenceLimits(
+          maxCount: 7,
+          mimeTypes: ConfigValue(_imageFormats),
+        ),
+      },
+    ),
+    requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
+  ),
   'wan3.0-video': _wan,
   'wan3.0-video-prime': _wanPrime,
 };

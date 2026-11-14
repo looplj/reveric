@@ -45,6 +45,7 @@ abstract class VideoClient {
   final Uri endpoint;
   final String apiKey;
   final Duration timeout;
+  Duration get submitTimeout => timeout;
   String get createPath;
   String queryPath(String id);
   Uri queryUrl(String id, String modelId) =>
@@ -354,6 +355,12 @@ abstract class VideoClient {
     Map<String, dynamic>? body,
   }) async {
     VideoException? httpFailure;
+    int? receivedStatus;
+    String? receivedRetryAfter;
+    final clock = Stopwatch()..start();
+    final requestTimeout = submitting ? submitTimeout : timeout;
+    var phase = 'preparing';
+    var receivedBytes = 0;
     try {
       return await (() async {
         final request = http.Request(method, uri)
@@ -370,21 +377,37 @@ abstract class VideoClient {
         if (body != null) {
           request.body = jsonEncode(body);
         }
+        phase = 'awaiting_headers';
+        if (_log.isDebugEnabled) {
+          _log.debug(
+            '$method $uri phase=$phase timeout_ms=${requestTimeout.inMilliseconds} request_bytes=${request.bodyBytes.length}',
+          );
+        }
         final response = await httpClient.send(request);
+        receivedStatus = response.statusCode;
+        receivedRetryAfter = response.headers['retry-after'];
+        phase = 'reading_body';
+        final bytes = await http.ByteStream(
+          response.stream.map((chunk) {
+            receivedBytes += chunk.length;
+            return chunk;
+          }),
+        ).toBytes();
+        final responseBody = utf8.decode(bytes, allowMalformed: true);
+        if (_log.isDebugEnabled) {
+          _log.debug(
+            '$method $uri status=${response.statusCode} body=$responseBody',
+          );
+        }
         if (response.statusCode < 200 || response.statusCode >= 300) {
           final status = response.statusCode;
           final retryAfter = _retryAfter(response.headers['retry-after']);
           // Preserve the received status even if reading the error body fails.
           httpFailure = _httpFailure(status, submitting, retryAfter);
-          final bytes = <int>[];
-          await for (final chunk in response.stream) {
-            if (bytes.length + chunk.length > 64 * 1024) {
-              throw const FormatException('Error response too large');
-            }
-            bytes.addAll(chunk);
+          if (bytes.length > 64 * 1024) {
+            throw const FormatException('Error response too large');
           }
-          // Adapt the HTTP body to the same message envelope used by SDK errors.
-          final diagnosticBody = utf8.decode(bytes, allowMalformed: true);
+          final diagnosticBody = responseBody;
           final message = tryReadProviderMessage((message: diagnosticBody));
           httpFailure = _httpFailure(
             status,
@@ -400,18 +423,25 @@ abstract class VideoClient {
           );
           throw httpFailure!;
         }
-        final bytes = <int>[];
-        await for (final chunk in response.stream) {
-          if (bytes.length + chunk.length > 1024 * 1024) {
-            throw const FormatException('Response too large');
-          }
-          bytes.addAll(chunk);
+        if (bytes.length > 1024 * 1024) {
+          throw const FormatException('Response too large');
         }
+        phase = 'parsing_body';
         return jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      })().timeout(timeout);
+      })().timeout(requestTimeout);
     } on VideoException {
       rethrow;
     } catch (error) {
+      final status = receivedStatus;
+      if (httpFailure == null &&
+          status != null &&
+          (status < 200 || status >= 300)) {
+        httpFailure = _httpFailure(
+          status,
+          submitting,
+          _retryAfter(receivedRetryAfter),
+        );
+      }
       if (httpFailure != null) {
         _log.warning(
           '$method ${uri.origin}${uri.path} '
@@ -421,6 +451,7 @@ abstract class VideoClient {
       }
       _log.warning(
         '$method ${uri.origin}${uri.path} '
+        'phase=$phase elapsed_ms=${clock.elapsedMilliseconds} status=${receivedStatus ?? "unknown"} received_bytes=$receivedBytes '
         'type=${error.runtimeType} message=${safeMediaDiagnostic(error, apiKey)}',
       );
       if (error is Error && error is! TypeError) {

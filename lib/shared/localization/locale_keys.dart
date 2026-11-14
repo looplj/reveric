@@ -3638,6 +3638,20 @@ abstract final class LocaleKeys {
   static const providerApi88VoiceModels = 'provider.api88_voice_models';
   static const providerApi88Link = 'provider.api88_link';
   static const providerApi88PricingNote = 'provider.api88_pricing_note';
+  static const providerToken91Category = 'provider.token91_category';
+  static const providerToken91Title = 'provider.token91_title';
+  static const providerToken91Summary = 'provider.token91_summary';
+  static const providerToken91ListTagline = 'provider.token91_list_tagline';
+  static const providerToken91ChatModels = 'provider.token91_chat_models';
+  static const providerToken91ImageModels = 'provider.token91_image_models';
+  static const providerToken91VideoModels = 'provider.token91_video_models';
+  static const providerToken91VideoModelsList =
+      'provider.token91_video_models_list';
+  static const providerToken91VoiceModels = 'provider.token91_voice_models';
+  static const providerToken91SetupTitle = 'provider.token91_setup_title';
+  static const providerToken91Setup = 'provider.token91_setup';
+  static const providerToken91Link = 'provider.token91_link';
+  static const providerToken91Note = 'provider.token91_note';
   static const providerSponsoredBadge = 'provider.sponsored_badge';
   static const providerMetasoLink = 'provider.metaso_link';
   static const providerMetasoCategory = 'provider.metaso_category';
@@ -3694,6 +3708,7 @@ abstract final class LocaleKeys {
       'provider.description_openai_compatible';
   static const providerDescriptionApi88 = 'provider.description_api88';
   static const providerDescriptionOoki = 'provider.description_ooki';
+  static const providerDescriptionToken91 = 'provider.description_token91';
   static const providerDescriptionOpenrouter =
       'provider.description_openrouter';
   static const providerDescriptionXai = 'provider.description_xai';

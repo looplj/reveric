@@ -80,6 +80,60 @@ void main() {
     },
   );
 
+  test(
+    '91Token seed preserves edits and deletion and follows 88API',
+    () async {
+      final tasks = defaultAppInitializationTasks()
+          .where((task) => task.id == 'default_token91_provider_v1')
+          .toList();
+      expect(tasks, hasLength(1));
+      await ensureAppInitializationTasks(database: database, tasks: tasks);
+      final provider = (await database.aiProviderDao.getById('token91'))!;
+      expect(provider.type, 'token91');
+      expect(provider.name, '91Token');
+      expect(provider.enabled, false);
+      expect(provider.apiKey, isEmpty);
+      expect(provider.models, isEmpty);
+      expect(provider.canDelete, true);
+      expect(provider.supportedModelKinds, AiModelKind.values.toSet());
+      expect(provider.effectiveBaseUrl, 'https://api.91token.com/v1');
+      final ordered = AiSettings.mergeWithRequiredProviders([
+        aiProviderBuiltinById('apikey')!,
+        aiProviderBuiltinById('deepseek')!,
+        provider,
+        aiProviderBuiltinById('metaso')!,
+        aiProviderBuiltinById('api88')!,
+      ]);
+      expect(ordered.map((p) => p.id), [
+        'metaso',
+        'api88',
+        'token91',
+        'apikey',
+        'deepseek',
+      ]);
+      await database.aiProviderDao.upsert(
+        provider.copyWith(
+          apiKey: 'user-key',
+          models: ['gpt-6.1-sol'],
+          enabled: true,
+        ),
+      );
+      await seedDefaultToken91Provider(database);
+      final edited = (await database.aiProviderDao.getById('token91'))!;
+      expect(edited.apiKey, 'user-key');
+      expect(edited.models, ['gpt-6.1-sol']);
+      expect(edited.enabled, true);
+      await database.aiProviderDao.softDelete('token91');
+      await seedDefaultToken91Provider(database);
+      await ensureAppInitializationTasks(database: database, tasks: tasks);
+      expect(await database.aiProviderDao.getById('token91'), isNull);
+      expect(
+        await database.aiProviderDao.getAllIncludingDeleted(),
+        hasLength(1),
+      );
+    },
+  );
+
   test('APIKEY seed preserves edits and deletion and follows 88API', () async {
     final tasks = defaultAppInitializationTasks()
         .where((task) => task.id == 'default_apikey_provider_v1')
@@ -91,7 +145,7 @@ void main() {
     expect(provider.apiKey, isEmpty);
     expect(provider.models, isEmpty);
     expect(provider.canDelete, true);
-    expect(provider.supportedModelKinds, {AiModelKind.chat});
+    expect(provider.supportedModelKinds, AiModelKind.values.toSet());
     expect(provider.effectiveBaseUrl, 'https://api.apikey.fan/v1');
     final ordered = AiSettings.mergeWithRequiredProviders([
       provider,

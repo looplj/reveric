@@ -68,6 +68,7 @@ String localizedProviderTypeDescription(
     AiProviderType.apikey => LocaleKeys.providerDescriptionApikey,
     AiProviderType.infistar => LocaleKeys.providerDescriptionInfistar,
     AiProviderType.ooki => LocaleKeys.providerDescriptionOoki,
+    AiProviderType.token91 => LocaleKeys.providerDescriptionToken91,
     AiProviderType.openrouter => LocaleKeys.providerDescriptionOpenrouter,
     AiProviderType.xai => LocaleKeys.providerDescriptionXai,
     AiProviderType.anthropic => LocaleKeys.providerDescriptionAnthropic,

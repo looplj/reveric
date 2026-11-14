@@ -186,17 +186,20 @@ abstract class AudioClient {
         }
         final response = await client.send(post);
         status = response.statusCode;
+        final bytes = await response.stream.toBytes();
+        if (_log.isDebugEnabled) {
+          final binary =
+              response.headers['content-type']?.startsWith('audio/') == true;
+          _log.debug(
+            '$method $endpoint status=$status body=${binary ? bytes : utf8.decode(bytes, allowMalformed: true)}',
+          );
+        }
         if (status != 200) {
-          // The received status survives an invalid, oversized or stalled body.
           httpFailure = _httpFailure(status!);
         }
-        final bytes = <int>[];
         final limit = httpFailure == null ? 32 * 1024 * 1024 : 64 * 1024;
-        await for (final chunk in response.stream) {
-          if (bytes.length + chunk.length > limit) {
-            throw const FormatException('Audio response too large');
-          }
-          bytes.addAll(chunk);
+        if (bytes.length > limit) {
+          throw const FormatException('Audio response too large');
         }
         if (httpFailure != null) {
           diagnosticBody = utf8.decode(bytes, allowMalformed: true);
@@ -236,6 +239,9 @@ abstract class AudioClient {
     } catch (error) {
       if (cancelled || error is AudioException && error.code == 'cancelled') {
         throw const AudioException('cancelled');
+      }
+      if (httpFailure == null && status != null && status != 200) {
+        httpFailure = _httpFailure(status!);
       }
       _log.warning(
         'provider=$providerType $method ${endpoint.origin}${endpoint.path} '

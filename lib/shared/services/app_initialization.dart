@@ -56,6 +56,10 @@ List<AppInitializationTask> defaultAppInitializationTasks() {
       run: seedDefaultApi88Provider,
     ),
     AppInitializationTask(
+      id: 'default_token91_provider_v1',
+      run: seedDefaultToken91Provider,
+    ),
+    AppInitializationTask(
       id: 'default_apikey_provider_v1',
       run: seedDefaultApikeyProvider,
     ),

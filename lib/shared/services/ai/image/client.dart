@@ -397,6 +397,11 @@ void throwForImageHttpFailure({
   required dynamic data,
   required String? providerId,
 }) {
+  if (_log.isDebugEnabled) {
+    _log.debug(
+      'HTTP $uri status=$statusCode body=${data is String ? data : jsonEncode(data)}',
+    );
+  }
   final code = statusCode ?? -1;
   if (code >= 200 && code < 300) {
     return;

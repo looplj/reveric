@@ -30,6 +30,16 @@ Future<void> seedDefaultApi88Provider(AppDatabase database) async {
   });
 }
 
+Future<void> seedDefaultToken91Provider(AppDatabase database) async {
+  await database.transaction(() async {
+    final existing = await database.aiProviderDao.getAllIncludingDeleted();
+    if (existing.any((provider) => provider.id == 'token91')) {
+      return;
+    }
+    await database.aiProviderDao.upsert(aiProviderBuiltinById('token91')!);
+  });
+}
+
 Future<void> seedDefaultMetasoProvider(AppDatabase database) async {
   await database.transaction(() async {
     final existing = await database.aiProviderDao.getAllIncludingDeleted();

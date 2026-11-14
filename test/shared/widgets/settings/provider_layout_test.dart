@@ -298,12 +298,16 @@ void main() {
                   : 'Infistar',
             );
             expect(draft.effectiveBaseUrl, baseUrl);
-            expect(draft.supportedModelKinds, {AiModelKind.chat});
+            expect(draft.supportedModelKinds, AiModelKind.values.toSet());
             final types = providerTypePickerTypes();
             expect(
               types.indexOf(type),
-              types.indexOf(type == 'apikey' ? 'api88' : 'apikey') + 1,
+              types.indexOf(type == 'apikey' ? 'api88' : 'token91') + 1,
             );
+            if (type == 'infistar') {
+              expect(types.indexOf('token91'), types.indexOf('apikey') + 1);
+              expect(types.indexOf('ooki'), types.indexOf('infistar') + 1);
+            }
             expect(find.text('Claude · GPT · Gemini'), findsOneWidget);
             final buttons = find.byType(RevericButton);
             expect(buttons, findsNWidgets(2));
@@ -326,6 +330,75 @@ void main() {
           timeout: const Timeout(Duration(minutes: 1)),
         );
       }
+    }
+  }
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.android,
+  ]) {
+    for (final locale in [const Locale('en'), const Locale('zh', 'CN')]) {
+      testWidgets(
+        'token91 sponsor overview and link on $platform in $locale',
+        (tester) async {
+          final mobile = platform == TargetPlatform.android;
+          await tester.binding.setSurfaceSize(Size(mobile ? 360 : 900, 900));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final launched = <String>[];
+          const channel = MethodChannel('plugins.flutter.io/url_launcher');
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            channel,
+            (call) async {
+              if (call.method == 'launch') {
+                launched.add((call.arguments as Map)['url'] as String);
+              }
+              return true;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(channel, null),
+          );
+          final token91 = aiProviderBuiltinById('token91')!;
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                appSettingsProvider.overrideWith(() => _Settings()),
+              ],
+              child: _wrap(
+                SingleChildScrollView(
+                  child: ProviderOverview(config: token91),
+                ),
+                locale.languageCode == 'zh',
+                locale: locale,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(token91.name, '91Token');
+          expect(token91.effectiveBaseUrl, 'https://api.91token.com/v1');
+          expect(token91.supportedModelKinds, AiModelKind.values.toSet());
+          expect(
+            find.text(locale.languageCode == 'zh' ? '推广' : 'Sponsored'),
+            findsOneWidget,
+          );
+          expect(
+            find.text('GPT · Claude · Gemini · DeepSeek'),
+            findsOneWidget,
+          );
+          final button = find.byType(RevericButton);
+          expect(button, findsOneWidget);
+          await tester.ensureVisible(button);
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          expect(launched, [providerChannelUrls['token91']]);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        },
+        variant: TargetPlatformVariant.only(platform),
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
     }
   }
   for (final platform in [

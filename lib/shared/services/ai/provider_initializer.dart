@@ -107,6 +107,15 @@ class AiProviderInitializer {
       _config.createProxyClient() ?? http.Client();
 
   Future<ProviderClient> _createClient() async {
+    if (_config.typeConfig.usesNewApi) {
+      return NewApiClient(_config).chat(
+        cacheKeyUserId: _cacheKeyUserId,
+        model: _chatModel,
+        httpClient: _httpClient,
+        streamClientFactory: _createStreamHttpClient,
+        traceHeadersProvider: _traceHeadersProvider,
+      );
+    }
     switch (_config.typeEnum) {
       case AiProviderType.purefox_media:
         throw UnsupportedError(
@@ -127,17 +136,6 @@ class AiProviderInitializer {
               _traceHeadersProvider?.call()['x-session-id'],
           httpClient: _httpClient,
           streamHttpClientFactory: _createStreamHttpClient,
-        );
-      case AiProviderType.api88:
-      case AiProviderType.apikey:
-      case AiProviderType.infistar:
-      case AiProviderType.ooki:
-        return NewApiClient(_config).chat(
-          cacheKeyUserId: _cacheKeyUserId,
-          model: _chatModel,
-          httpClient: _httpClient,
-          streamClientFactory: _createStreamHttpClient,
-          traceHeadersProvider: _traceHeadersProvider,
         );
       case AiProviderType.openai:
         return OpenAIResponsesClient(
@@ -201,6 +199,8 @@ class AiProviderInitializer {
           streamHttpClientFactory: _createStreamHttpClient,
           traceHeadersProvider: _traceHeadersProvider,
         );
+      default:
+        throw UnsupportedError('Unsupported provider type: ${_config.type}');
     }
   }
 }

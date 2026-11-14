@@ -88,13 +88,17 @@ class NewApiClient {
         .where((model) {
           final image = lookupImageChannelModel(config.type, model.id) != null;
           final audio = lookupAudioChannelModel(config.type, model.id) != null;
-          final video = lookupVideoChannelModel(config.type, model.id) != null;
+          final video =
+              isNewApiVideoModel(model.id) ||
+              lookupVideoChannelModel(config.type, model.id) != null ||
+              model.endpointTypes.contains('openai-video') ||
+              model.endpointTypes.contains('video-generation');
           return switch (kind) {
             AiModelKind.image =>
-              image &&
-                  (model.id == 'mj_imagine' ||
-                      model.endpointTypes.contains('image-generation') ||
-                      model.endpointTypes.contains('gemini')),
+              model.id == 'mj_imagine' ||
+                  model.endpointTypes.contains('image-generation') ||
+                  model.endpointTypes.contains('image-edit') ||
+                  (model.endpointTypes.contains('gemini') && !audio && !video),
             AiModelKind.audio =>
               audio &&
                   model.endpointTypes.contains(
@@ -105,8 +109,7 @@ class NewApiClient {
                         ? 'gemini'
                         : 'openai',
                   ),
-            AiModelKind.video =>
-              video && model.endpointTypes.contains('openai-video'),
+            AiModelKind.video => video,
             AiModelKind.chat =>
               !image &&
                   !audio &&
@@ -117,7 +120,9 @@ class NewApiClient {
                       .containsKey(model.id) &&
                   lookupVideoModel(model.id) == null &&
                   !model.endpointTypes.contains('image-generation') &&
+                  !model.endpointTypes.contains('image-edit') &&
                   !model.endpointTypes.contains('openai-video') &&
+                  !model.endpointTypes.contains('video-generation') &&
                   (model.endpointTypes.isEmpty ||
                       model.endpointTypes.any(
                         {

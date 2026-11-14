@@ -1554,7 +1554,9 @@ void main() {
       await service.refresh(id);
       expect(
         (await service.getTask(id))!.status,
-        GenerationTaskStatus.reconciliation_required,
+        anomaly.contains('UNKNOWN')
+            ? GenerationTaskStatus.reconciliation_required
+            : GenerationTaskStatus.running,
       );
       anomalous = false;
       await service.refresh(id);
@@ -1616,7 +1618,7 @@ void main() {
   );
 
   test(
-    'query missing result fields pauses reconciliation rather than polling forever',
+    'query missing result fields retains the receipt and schedules a GET retry',
     () async {
       final service = make(
         respond: (r) async => http.Response(
@@ -1635,8 +1637,9 @@ void main() {
       await service.submit(id);
       await service.refresh(id);
       final task = (await service.getTask(id))!;
-      expect(task.status, GenerationTaskStatus.reconciliation_required);
-      expect(task.nextPollAt, isNull);
+      expect(task.status, GenerationTaskStatus.running);
+      expect(task.nextPollAt, isNotNull);
+      expect(task.errorCode, 'invalid_response');
       expect(posts, 1);
     },
   );
@@ -1753,7 +1756,11 @@ void main() {
       expect(task.status, GenerationTaskStatus.failed);
       expect(task.errorCode, 'unavailable');
       expect(
-        lines.where((line) => line.contains('[VideoClient]')),
+        lines.where(
+          (line) =>
+              line.contains('[VideoClient]') &&
+              line.contains('type=VideoException'),
+        ),
         hasLength(1),
       );
       final taskLogs = lines
@@ -1781,6 +1788,62 @@ void main() {
       expect(queries, 0);
     },
   );
+  test(
+    'malformed query retries automatically and recovers the same task after restart',
+    () async {
+      var time = DateTime(2026, 11, 14);
+      var broken = true;
+      final service = make(
+        now: () => time,
+        respond: (r) async => http.Response(
+          r.method == 'POST'
+              ? '{"id":"original"}'
+              : broken
+              ? '{"base_resp":{"status_code":1000}}'
+              : '{"status":"running"}',
+          200,
+        ),
+      );
+      final id = await service.create(
+        novelId: 'test-novel',
+        sourceType: 'storyboard_shot',
+        sourceId: 'test-shot',
+        providerId: provider.id,
+        request: request,
+      );
+      await service.submit(id);
+      await service.refresh(id);
+      final failed = (await service.getTask(id))!;
+      expect(failed.status, GenerationTaskStatus.running);
+      expect(failed.errorCode, 'invalid_response');
+      expect(failed.providerTaskId, 'original');
+      broken = false;
+      time = failed.nextPollAt!.add(const Duration(seconds: 1));
+      await service.refreshDue();
+      expect((await service.getTask(id))!.errorCode, isNull);
+      expect(posts, 1);
+      expect(queries, 2);
+      service.dispose();
+      await db.generationTaskDao.transition(
+        id,
+        {GenerationTaskStatus.running},
+        const GenerationTasksCompanion(
+          status: Value(GenerationTaskStatus.reconciliation_required),
+          errorCode: Value('invalid_response'),
+          nextPollAt: Value(null),
+        ),
+      );
+      final resumed = make(now: () => time);
+      await resumed.start();
+      expect(
+        (await resumed.getTask(id))!.status,
+        GenerationTaskStatus.completed,
+      );
+      expect((await resumed.getTask(id))!.providerTaskId, 'original');
+      expect(posts, 1);
+    },
+  );
+
   test(
     'polling HTTP 503 retains the receipt and clears the error after recovery',
     () async {

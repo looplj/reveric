@@ -42,6 +42,7 @@ enum AiProviderType {
   apikey,
   infistar,
   ooki,
+  token91,
   openrouter,
   xai,
   anthropic,
@@ -106,16 +107,22 @@ class AiProviderTypeConfig {
     this.providerModelKinds = const {},
     required this.modelIdSource,
     this._textModelKinds = const {},
-    this.imageProtocol,
-    this.videoProtocol,
-    this.audioProtocol,
+    ImageProtocol? imageProtocol,
+    VideoProtocol? videoProtocol,
+    AudioProtocol? audioProtocol,
     this.uploadProtocol,
     this.supportsAssetCertification = false,
     this.fixedBaseUrl = false,
     this.usesNewApi = false,
-  });
+  }) : imageProtocol =
+           imageProtocol ?? (usesNewApi ? ImageProtocol.new_api_images : null),
+       videoProtocol =
+           videoProtocol ?? (usesNewApi ? VideoProtocol.new_api_video : null),
+       audioProtocol =
+           audioProtocol ?? (usesNewApi ? AudioProtocol.new_api_speech : null);
 
   Set<AiModelKind> get supportedModelKinds => {
+    if (usesNewApi) AiModelKind.chat,
     ..._textModelKinds,
     ...providerModelKinds,
     if (imageProtocol != null) AiModelKind.image,
@@ -179,6 +186,12 @@ final Map<String, AiProviderTypeConfig> aiProviderTypeConfigs = {
     displayName: 'APIKEY.FAN',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
+    fixedBaseUrl: true,
+    usesNewApi: true,
+  ),
+  'token91': AiProviderTypeConfig(
+    displayName: '91Token',
+    modelIdSource: ModelIdSource.open,
     fixedBaseUrl: true,
     usesNewApi: true,
   ),
@@ -331,6 +344,7 @@ String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
   AiProviderType.apikey => 'https://api.apikey.fan/v1',
   AiProviderType.infistar => 'https://infistar.cc/v1',
   AiProviderType.ooki => 'https://api.ookiapi.com/v1',
+  AiProviderType.token91 => 'https://api.91token.com/v1',
   AiProviderType.atlascloud => 'https://api.atlascloud.ai/v1',
   AiProviderType.agnes => agnesDefaultBaseUrl,
   AiProviderType.codex => 'https://chatgpt.com/backend-api/codex',
@@ -425,6 +439,27 @@ final List<AiProvider> aiProviderBuiltinDefaults = [
     enabled: false,
     apiKey: '',
     baseUrl: aiProviderFixedBaseUrl(AiProviderType.api88),
+    models: const [],
+    imageModels: const [],
+    audioModels: const [],
+    videoModels: const [],
+    embeddingModels: const [],
+    temperature: 0.7,
+    maxTurns: 512,
+    proxyUrl: '',
+    proxyUsername: '',
+    proxyPassword: '',
+    updatedAt: _builtinEpoch,
+    deletedAt: notDeletedSentinel,
+  ),
+  AiProvider(
+    id: 'token91',
+    name: '91Token',
+    builtin: true,
+    type: 'token91',
+    enabled: false,
+    apiKey: '',
+    baseUrl: aiProviderFixedBaseUrl(AiProviderType.token91),
     models: const [],
     imageModels: const [],
     audioModels: const [],
@@ -818,6 +853,9 @@ extension AiProviderX on AiProvider {
       : baseUrl;
 
   bool get hasFixedBaseUrl => !isPluginProvider && typeConfig.fixedBaseUrl;
+
+  String get effectiveImageBaseUrl =>
+      type == 'token91' ? 'https://api-no.91token.com/v1' : effectiveBaseUrl;
 
   String get fixedBaseUrl => aiProviderFixedBaseUrl(typeEnum);
 

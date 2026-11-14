@@ -138,7 +138,7 @@ class VideoChannelModel {
       capabilities.supportsAdaptiveTextRatio && ratios.contains('adaptive');
 }
 
-const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
+final videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
   VideoProtocol.new_api_video: {
     'doubao-seedance-2-5-260628': VideoChannelModel(
       capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
@@ -190,6 +190,65 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
     'grok-imagine-video-1.5': VideoChannelModel(
       catalogId: 'grok-imagine-video-1.5',
       capabilities: _newApiSingleFrame,
+    ),
+    for (final id in ['wan3.0-video', 'wan3.0-video-prime'])
+      id: VideoChannelModel(
+        catalogId: id,
+        capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
+        requestDefaults: VideoRequestDefaults(
+          audio: ConfigValue(true),
+          promptExtend: ConfigValue(true),
+        ),
+      ),
+    'MiniMax-H3': VideoChannelModel(
+      catalogId: 'MiniMax-H3',
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
+    ),
+    'MiniMax-H3-Max': VideoChannelModel(
+      catalogId: 'MiniMax-H3',
+      capabilities: VideoModelCapabilities(
+        resolutions: {'480P', '768P'},
+        durations: {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+        framesRequireAdaptiveRatio: true,
+      ),
+    ),
+    for (final id in [
+      'viduq3-pro',
+      'viduq3-turbo',
+      'viduq4-preview',
+      'viduq3-ad',
+    ])
+      id: VideoChannelModel(catalogId: id),
+    for (final id in ['grok-video-3', 'grok-imagine-video'])
+      id: VideoChannelModel(
+        catalogId: 'xai-grok-imagine-video',
+        capabilities: VideoModelCapabilities(
+          modes: [VideoMode.text, VideoMode.first_frame, VideoMode.reference],
+        ),
+      ),
+    'grok-imagine-video-1.5-preview': VideoChannelModel(
+      catalogId: 'grok-imagine-video-1.5',
+      capabilities: VideoModelCapabilities(
+        resolutions: {'480p', '720p'},
+        modes: [VideoMode.text, VideoMode.first_frame],
+        maxReferences: 1,
+      ),
+    ),
+    'doubao-seedance-2-5': VideoChannelModel(
+      catalogId: 'doubao-seedance-2-5-260628',
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
+      protocolOptions: VideoProtocolOptions(
+        supportsOmniReferenceTaskType: true,
+      ),
+    ),
+    'doubao-seedance-2-0': VideoChannelModel(
+      catalogId: 'doubao-seedance-2-0-260128',
+    ),
+    'doubao-seedance-2-0-fast': VideoChannelModel(
+      catalogId: 'doubao-seedance-2-0-fast-260128',
+    ),
+    'doubao-seedance-2-0-mini': VideoChannelModel(
+      catalogId: 'doubao-seedance-2-0-mini-260615',
     ),
   },
   // https://www.atlascloud.ai/docs/more-models/bytedance/seedance-2.5-reference-to-video/generateVideo
@@ -2602,6 +2661,17 @@ final _providerVideoModels = <String, Map<String, VideoChannelModel>>{
 /// PureFox 媒体网关的视频型号目录：不预置，填 key 后按站点 `/v1/models`
 /// 返回的 kind / qualities / duration / ref* 登记。
 final purefoxMediaVideoModels = <String, VideoChannelModel>{};
+
+/// 部分网关将视频型号标为 openai，按协议系列识别而不限定具体型号。
+bool isNewApiVideoModel(String id) {
+  final name = id.toLowerCase();
+  return name.startsWith('doubao-seedance-') ||
+      name.startsWith('wan3') ||
+      name.startsWith('minimax-h3') ||
+      name.startsWith('vidu') ||
+      name.startsWith('grok-video-') ||
+      name.startsWith('grok-imagine-video');
+}
 
 List<String> videoModelsForProvider(String providerType) =>
     (_providerVideoModels[providerType] ??

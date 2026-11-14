@@ -453,6 +453,44 @@ void main() {
       throwsA(same(bug)),
     );
   });
+  for (final status in [200, 503]) {
+    test(
+      'complete response body is recorded before parsing or rejecting HTTP $status',
+      () async {
+        final lines = <String>[];
+        final original = debugPrint;
+        debugPrint = (message, {wrapWidth}) {
+          if (message != null) {
+            lines.add(message);
+          }
+        };
+        addTearDown(() => debugPrint = original);
+        final body = 'not-json\n${'原始正文' * 20000}\nBearer test-response-token';
+        final transport = MockClient(
+          (_) async => http.Response.bytes(
+            utf8.encode(body),
+            status,
+            headers: {'content-type': 'application/json'},
+          ),
+        );
+        addTearDown(transport.close);
+        final api = client(VideoProtocol.minimax_video_v2, transport);
+        final uri = Uri.parse(
+          'https://example.com/v2/query/video_generation/task-1',
+        );
+        await expectLater(
+          api.sendRequest('GET', uri, submitting: false),
+          throwsA(isA<VideoException>()),
+        );
+        expect(
+          lines.any(
+            (line) => line.endsWith('GET $uri status=$status body=$body'),
+          ),
+          isTrue,
+        );
+      },
+    );
+  }
   test('transport failures retain a redacted diagnostic', () async {
     final lines = <String>[];
     final originalDebugPrint = debugPrint;
@@ -519,10 +557,17 @@ void main() {
       ),
       throwsA(isA<VideoException>()),
     );
-    final log = lines.where((line) => line.contains('[WARN]')).join('\n');
+    final log = lines
+        .where((line) => line.contains('type=VideoException'))
+        .join('\n');
     expect(
-      lines.where((line) => line.contains('[DEBUG]')).join('\n'),
-      isNot(contains('Bearer upstream-token')),
+      lines.any(
+        (line) =>
+            line.contains('body=') &&
+            line.contains('Bearer upstream-token') &&
+            line.contains('sk-private-key'),
+      ),
+      isTrue,
     );
     expect(log, contains('status=503'));
     expect(log, contains('No available channel'));

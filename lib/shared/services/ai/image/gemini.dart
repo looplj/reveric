@@ -26,8 +26,8 @@ class GeminiImageClient extends ImageClient {
     validatedChannel(request);
     final url = geminiModelEndpoint(
       useGateway
-          ? config.effectiveBaseUrl.replaceFirst(RegExp(r'/v1$'), '')
-          : config.effectiveBaseUrl,
+          ? config.effectiveImageBaseUrl.replaceFirst(RegExp(r'/v1$'), '')
+          : config.effectiveImageBaseUrl,
       request.model,
       'generateContent',
     );

@@ -1620,7 +1620,9 @@ class _BandLayer extends flow.NodeFlowPlugin implements LayerProvider {
 
   @override
   Widget? buildLayer(BuildContext context) {
-    if (_controller == null) {
+    if (_controller == null ||
+        (anchors.isEmpty &&
+            !segments.any((segment) => segment.sceneId != null))) {
       return null;
     }
     final add = onAdd;

@@ -789,11 +789,15 @@ class VideoTaskService {
               ))
               .where(
                 (t) =>
-                    {
-                      GenerationTaskStatus.running,
-                      GenerationTaskStatus.saving,
-                      GenerationTaskStatus.submitting,
-                    }.contains(t.status) &&
+                    ({
+                          GenerationTaskStatus.running,
+                          GenerationTaskStatus.saving,
+                          GenerationTaskStatus.submitting,
+                        }.contains(t.status) ||
+                        (t.status ==
+                                GenerationTaskStatus.reconciliation_required &&
+                            t.errorCode == 'invalid_response' &&
+                            t.cancelRequestedAt == null)) &&
                     t.providerTaskId != null &&
                     (t.nextPollAt == null || !t.nextPollAt!.isAfter(now())),
               )
@@ -1379,12 +1383,11 @@ class VideoTaskService {
         message: message,
         detail: detail,
       );
-    } else if (code == VideoErrorCode.invalid_response) {
+    } else if (code == VideoErrorCode.invalid_response &&
+        task.status == GenerationTaskStatus.saving) {
       await _status(
         task,
-        task.status == GenerationTaskStatus.saving
-            ? GenerationTaskStatus.action_required
-            : GenerationTaskStatus.reconciliation_required,
+        GenerationTaskStatus.action_required,
         error: code.name,
         message: message,
         detail: detail,
@@ -1402,7 +1405,9 @@ class VideoTaskService {
       }
       await _status(
         task,
-        task.status,
+        task.status == GenerationTaskStatus.reconciliation_required
+            ? GenerationTaskStatus.running
+            : task.status,
         next: now().add(delay),
         error: code.name,
         message: message,
