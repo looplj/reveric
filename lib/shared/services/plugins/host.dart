@@ -2145,6 +2145,7 @@ class PluginHostService {
 
     final http = PluginHttpApi(
       direct: false,
+      logResponses: true,
       remainingBudget: () => budget - watch.elapsed,
       clientFactory: createClient,
     );

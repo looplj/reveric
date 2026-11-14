@@ -6,17 +6,22 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'runtime.dart';
+import '../../logger/app_logger.dart';
+
+final _log = AppLogger.forModule('PluginHttp');
 
 class PluginHttpApi {
   PluginHttpApi({
     HttpClient Function()? clientFactory,
     this.requestLimit = 50,
     this.direct = true,
+    this.logResponses = false,
     this.remainingBudget,
   }) : _clientFactory = clientFactory ?? HttpClient.new;
   final HttpClient Function() _clientFactory;
   final int? requestLimit;
   final bool direct;
+  final bool logResponses;
   final Duration Function()? remainingBudget;
   final Set<HttpClient> _clients = {};
   final List<Completer<void>> _waiting = [];
@@ -193,6 +198,9 @@ class PluginHttpApi {
           } on FormatException {
             body = latin1.decode(bytes);
           }
+        }
+        if (logResponses && _log.isDebugEnabled) {
+          _log.debug('HTTP $target status=${response.statusCode} body=$body');
         }
         return {
           'status': response.statusCode,

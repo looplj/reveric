@@ -1277,8 +1277,12 @@ class VideoTaskService {
     StackTrace stack,
   ) {
     if (error is VideoException) {
-      _log.warning(
-        '$operation failed id=$id code=${error.code.name} status=${error.statusCode}',
+      _log.error(
+        '$operation failed id=$id code=${error.code.name} '
+        'status=${error.statusCode} field=${error.field} '
+        'providerMessage=${error.providerMessage} detail=${error.detail}',
+        error: error,
+        stackTrace: stack,
       );
     } else {
       _log.error('$operation failed id=$id', error: error, stackTrace: stack);

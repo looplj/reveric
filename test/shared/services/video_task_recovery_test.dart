@@ -1761,8 +1761,8 @@ void main() {
           .toList();
       expect(taskLogs, hasLength(1));
       expect(taskLogs.single, contains('id=$id'));
-      expect(taskLogs.single, contains('[WARN]'));
-      expect(lines.join('\n'), isNot(contains('[ERROR]')));
+      expect(taskLogs.single, contains('status=503'));
+      expect(taskLogs.single, contains('detail=No available channel'));
 
       expect(task.errorMessage, LocaleKeys.aiProviderChannelUnavailable);
       expect(task.errorDetail, contains('No available channel'));

@@ -9,6 +9,9 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'runtime.dart';
+import '../../logger/app_logger.dart';
+
+final _log = AppLogger.forModule('PluginFiles');
 
 /// Host 创建并绑定一次调用；插件只能使用随机句柄。
 class PluginFileScope {
@@ -199,6 +202,11 @@ class PluginFilesApi {
           throw PluginHostError('too_large', 'Upload response exceeds 5 MB');
         }
         bytes.addAll(chunk);
+      }
+      if (_log.isDebugEnabled) {
+        _log.debug(
+          'HTTP $uri status=${response.statusCode} body=${utf8.decode(bytes, allowMalformed: true)}',
+        );
       }
       final outputHeaders = <String, String>{};
       response.headers.forEach(

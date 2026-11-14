@@ -12,6 +12,9 @@ import 'files.dart';
 import 'media_files.dart';
 import 'media_pointer.dart';
 import 'runtime.dart';
+import '../../logger/app_logger.dart';
+
+final _log = AppLogger.forModule('PluginMedia');
 
 class PluginMediaApi {
   PluginMediaApi({
@@ -205,6 +208,11 @@ class PluginMediaApi {
           );
         }
         bytes.addAll(chunk);
+      }
+      if (response['kind'] == 'json' && _log.isDebugEnabled) {
+        _log.debug(
+          'HTTP $uri status=${result.statusCode} body=${utf8.decode(bytes, allowMalformed: true)}',
+        );
       }
       checkActive();
       Object? value;
