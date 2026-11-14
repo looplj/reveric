@@ -299,7 +299,7 @@ void main() {
 
     final result = await service.generateImage('a cover');
 
-    expect(requestedResponseFormat, 'b64_json');
+    expect(requestedResponseFormat, isNull);
     expect(result.imageBase64, isNull);
     expect(result.imageUrl, 'http://127.0.0.1:${server.port}/generated.png');
     expect(result.localFilePath, isNotNull);
