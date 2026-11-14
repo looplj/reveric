@@ -54,15 +54,28 @@ class AgentSkillImportOrchestrator {
             source.revisionPath.length - (source.singleFile ? 1 : 0);
         for (var count = maxSegments; count >= 1; count--) {
           final ref = source.revisionPath.take(count).join('/');
-          final response = await client.get<Object?>(
-            source.revisionUri(ref).toString(),
-            cancelToken: cancelToken,
-            options: Options(
-              validateStatus: (status) => status == 200 || status == 404,
-              receiveTimeout: const Duration(seconds: 20),
-              sendTimeout: const Duration(seconds: 20),
-            ),
-          );
+          final Response<Object?> response;
+          try {
+            response = await client.get<Object?>(
+              source.revisionUri(ref).toString(),
+              cancelToken: cancelToken,
+              options: Options(
+                validateStatus: (status) => status == 200 || status == 404,
+                receiveTimeout: const Duration(seconds: 20),
+                sendTimeout: const Duration(seconds: 20),
+              ),
+            );
+          } on DioException catch (error) {
+            // GitHub 对不存在的 ref 返回 422；其他校验错误仍交给调用方。
+            final data = error.response?.data;
+            if (source.host == 'github.com' &&
+                error.response?.statusCode == 422 &&
+                data is Map &&
+                data['message'] == 'No commit found for SHA: $ref') {
+              continue;
+            }
+            rethrow;
+          }
           if (response.statusCode == 404) {
             continue;
           }
