@@ -6,6 +6,7 @@
 //   lib/shared/widgets/ai/tools/tool_card_descriptor.dart
 
 import '../../models/ai_message_block.dart';
+import 'run_command_parser.dart';
 import 'tool_error_normalize.dart';
 
 /// The submission receipt stays in history; the matching run supplies its
@@ -55,6 +56,12 @@ Map<String, dynamic>? aiToolOperationResult(AiToolCallBlock block) {
 }
 
 AiToolCallBlock aiToolOperationDisplayBlock(AiToolCallBlock block) {
+  // Control calls return a snapshot of another operation. Its running status
+  // must not restart a completed read, wait (including timeout), or cancel call.
+  if (block.toolName == 'Run' &&
+      ParsedRunCommand.fromBlock(block)?.topLevel == 'operations') {
+    return block;
+  }
   final result = aiToolOperationResult(block);
   if (result == null) {
     return block;

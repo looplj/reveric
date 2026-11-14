@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:reveric/shared/components/reveric_spinner.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/ai_message_block.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
@@ -34,6 +35,55 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+
+  for (final width in [390.0, 1000.0]) {
+    testWidgets('completed waits stop spinning at $width', (tester) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final submission = AiToolCallBlock(
+        id: 'submit',
+        callId: 'submit',
+        toolName: 'Run',
+        arguments: const {'command': 'canvas', 'subcommand': 'generate'},
+        status: AiToolCallStatus.success,
+        result: const {'ok': true, 'run_id': 'image', 'status': 'running'},
+      );
+      final waits = [
+        for (var i = 0; i < 2; i++)
+          AiToolCallBlock(
+            id: 'wait-$i',
+            callId: 'wait-$i',
+            toolName: 'Run',
+            arguments: const {
+              'command': 'operations',
+              'subcommand': 'wait',
+              'options': {'run_id': 'image'},
+            },
+            status: AiToolCallStatus.success,
+            result: const {
+              'ok': true,
+              'run_id': 'image',
+              'status': 'running',
+              'timed_out': true,
+            },
+          ),
+      ];
+      await tester.pumpWidget(
+        _wrap(AiToolActivityGroup(blocks: [submission, ...waits])),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(RevericSpinner), findsOneWidget);
+      await tester.pumpWidget(_wrap(AiToolActivityGroup(blocks: waits)));
+      await tester.pumpAndSettle();
+      expect(find.byType(RevericSpinner), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    });
+  }
 
   for (final width in [390.0, 1000.0]) {
     testWidgets(
