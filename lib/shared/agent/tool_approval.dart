@@ -6,7 +6,7 @@
 import 'dart:async';
 import '../models/tool_permission.dart';
 
-enum ToolApprovalOutcome { allowed, denied, cancelled }
+enum ToolApprovalOutcome { allowed, denied, cancelled, recheck }
 
 class AiToolApprovalRequest {
   AiToolApprovalRequest({
@@ -40,15 +40,18 @@ class AiToolApprovalRequest {
 
 /// A single application broker holds only pending requests; terminal requests are removed.
 /// Requests are keyed by their own approval identity: several operations from one
-/// tool call wait side by side and are resolved independently.
+/// tool call wait side by side. Saved permissions wake matching requests so their
+/// gates can re-evaluate the effective rule without granting a one-time override.
 class AiToolApprovalController {
   final _changes = StreamController<List<AiToolApprovalRequest>>.broadcast();
   final _pending = <(String, String), AiToolApprovalRequest>{};
+  final _ruleRevisions = <String, int>{};
   bool _disposed = false;
   List<AiToolApprovalRequest> get pending => List.unmodifiable(_pending.values);
   List<AiToolApprovalRequest> pendingFor(String sessionId) =>
       pending.where((r) => r.ownerSessionId == sessionId).toList();
   Stream<List<AiToolApprovalRequest>> get stream => _changes.stream;
+  int ruleRevisionFor(String sessionId) => _ruleRevisions[sessionId] ?? 0;
   void _publish() {
     if (!_disposed) {
       _changes.add(pending);
@@ -102,6 +105,16 @@ class AiToolApprovalController {
         req,
         allow ? ToolApprovalOutcome.allowed : ToolApprovalOutcome.denied,
       );
+      if (allow && scope != null) {
+        _ruleRevisions[req.ownerSessionId] =
+            ruleRevisionFor(req.ownerSessionId) + 1;
+        for (final pending in pendingFor(req.ownerSessionId)) {
+          if (pending.action == req.action &&
+              pending.permissionContext.scopes.contains(scope)) {
+            recheck(pending);
+          }
+        }
+      }
       return true;
     } catch (_) {
       req.saveFailed = true;
@@ -125,6 +138,14 @@ class AiToolApprovalController {
 
   void cancel(AiToolApprovalRequest req) =>
       _finish(req, ToolApprovalOutcome.cancelled);
+
+  void recheck(AiToolApprovalRequest req) {
+    // A decision already being saved belongs to that explicit user action.
+    if (!req.resolving) {
+      _finish(req, ToolApprovalOutcome.recheck);
+    }
+  }
+
   void cancelSession(String sessionId) {
     for (final req in pendingFor(sessionId)) {
       cancel(req);
@@ -136,6 +157,7 @@ class AiToolApprovalController {
       cancel(req);
     }
     _disposed = true;
+    _ruleRevisions.clear();
     unawaited(_changes.close());
   }
 }
