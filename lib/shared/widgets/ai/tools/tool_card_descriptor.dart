@@ -354,14 +354,6 @@ AiToolCallStatus aiDisplayStatus(AiToolCallBlock block) {
   return aiToolOperationDisplayBlock(block).status;
 }
 
-/// 普通模式不暴露一般工具失败标志；需要用户感知的特例由调用方显式放行。
-bool shouldShowAiToolStatus(
-  AiToolCallStatus status, {
-  required bool debugMode,
-}) {
-  return debugMode || status != AiToolCallStatus.error;
-}
-
 bool isIncompleteAiToolCall(AiToolCallBlock block) {
   return block.result?['error_code'] == toolCallIncompleteErrorCode;
 }

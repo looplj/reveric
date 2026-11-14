@@ -494,13 +494,8 @@ class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
     final displayStatus = awaitingRunSubcommand
         ? AiToolCallStatus.running
         : aiDisplayStatus(block);
-    final debugMode = ref.watch(appDebugModeProvider);
     final isIncompleteToolCall = isIncompleteAiToolCall(block);
-    final showStatus =
-        !isUntrackedBackgroundSpawn(block) &&
-        (isIncompleteToolCall ||
-            aiToolOperationResult(block) != null ||
-            shouldShowAiToolStatus(displayStatus, debugMode: debugMode));
+    final showStatus = !isUntrackedBackgroundSpawn(block);
     final path = toolPrimaryPath(block);
     final resourceAsync =
         novelId == null ||
@@ -584,7 +579,11 @@ class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
                     ),
                   )
                 else if (showStatus)
-                  AiToolStatusDot(status: displayStatus)
+                  AiToolStatusDot(
+                    status: displayStatus == AiToolCallStatus.error
+                        ? AiToolCallStatus.success
+                        : displayStatus,
+                  )
                 else
                   const SizedBox(width: 18, height: 18),
                 const SizedBox(width: RevericSpacing.sm),

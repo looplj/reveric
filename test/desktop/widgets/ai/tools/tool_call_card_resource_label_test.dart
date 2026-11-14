@@ -1318,27 +1318,6 @@ void main() {
     expect(shouldUseResolvedResourceForToolCard(failedEdit), isTrue);
   });
 
-  test('tool failure status is only shown in debug mode', () {
-    const failedBlock = AiToolCallBlock(
-      id: 'failed',
-      callId: 'call_failed',
-      toolName: 'Read',
-      arguments: {'path': '/chapters/1'},
-      status: AiToolCallStatus.error,
-      errorMessage: 'boom',
-    );
-
-    expect(aiDisplayStatus(failedBlock), AiToolCallStatus.error);
-    expect(
-      shouldShowAiToolStatus(aiDisplayStatus(failedBlock), debugMode: false),
-      isFalse,
-    );
-    expect(
-      shouldShowAiToolStatus(aiDisplayStatus(failedBlock), debugMode: true),
-      isTrue,
-    );
-  });
-
   testWidgets('tool row target uses target-only labels', (tester) async {
     await tester.pumpWidget(
       _wrapDescriptorAssertions((context) {
