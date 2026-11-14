@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import '../../logger/app_logger.dart';
 import '../../models/production/media.dart';
 import 'ffmpeg_runner.dart';
+import 'frame_capture.dart';
 
 final _log = AppLogger.forModule('Media');
 
@@ -117,6 +118,16 @@ class MediaService {
       cancellation,
     ).whenComplete(() => _encoding = false);
     return EncodingOperation(result, cancellation);
+  }
+
+  /// 截取第 0 帧缩略图到 [output]（PNG，最长边 640px）；不额外探测输出。
+  Future<void> captureThumbnail(
+    String input,
+    File output, {
+    MediaCancellation? cancellation,
+  }) async {
+    final token = cancellation ?? MediaCancellation();
+    await captureMediaFrame(_runner, input, output, token);
   }
 
   /// 截一帧 PNG。[last] 截最后一帧；否则截 [at] 处，落在末尾 100ms 内时按最后一帧截。

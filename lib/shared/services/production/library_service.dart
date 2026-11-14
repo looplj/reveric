@@ -17,6 +17,7 @@ import '../../utils/storage_paths.dart';
 import 'ffmpeg_runner.dart';
 import 'import_orchestrator.dart';
 import 'media_service.dart';
+import 'video_thumbnail_cache.dart';
 
 final _log = AppLogger.forModule('MediaLibrary');
 
@@ -27,6 +28,24 @@ class MediaLibraryService {
   final Directory root;
 
   final _metadata = <(String, int, DateTime), Future<MediaInfo>>{};
+  late final VideoThumbnailCache _videoThumbnails = VideoThumbnailCache(
+    media: media,
+    root: root,
+  );
+
+  /// 抽取并缓存视频第 0 帧 PNG 缩略图，源文件大小或修改时间变更时自动失效。
+  Future<File> videoThumbnail(
+    String stored, {
+    MediaCancellation? cancellation,
+  }) {
+    final path = relativePath(stored);
+    final resolved = resolvePath(path);
+    return _videoThumbnails.getOrCreate(
+      relativePath: path,
+      resolvedPath: resolved,
+      cancellation: cancellation,
+    );
+  }
 
   /// Managed outputs are immutable; stat keys also invalidate replaced/imported files.
   Future<MediaInfo> probePath(String stored) async {

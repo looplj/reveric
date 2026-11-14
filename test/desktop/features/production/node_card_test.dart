@@ -31,6 +31,7 @@ import 'package:reveric/desktop/features/production/subject_picker.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
+import 'package:reveric/shared/models/production/media.dart';
 import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
@@ -1074,4 +1075,172 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'input tile renders extracted first frame for video assets',
+    (tester) async {
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      final main = app.AppDatabase.forTest(NativeDatabase.memory());
+      final root = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('video-input-tile-'),
+      ))!;
+      final file = File('${root.path}/file_workspaces/work/videos/ref.mp4');
+      final media = _ThumbnailMedia();
+      try {
+        await tester.runAsync(() async {
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(const [1, 2, 3, 4]);
+        });
+        await main.assetDao.insertAsset(
+          app.AssetsCompanion.insert(
+            id: 'video_asset_reference',
+            type: 'video',
+            purpose: 'upload',
+            path: const Value('file_workspaces/work/videos/ref.mp4'),
+            content: const Value(
+              VideoAssetContent(mimeType: 'video/mp4', durationMs: 2000),
+            ),
+          ),
+        );
+        final service = ProductionCanvasService(
+          StoryboardService(db),
+          MediaLibraryService(main, media, root),
+          'work',
+        );
+        await tester.pumpWidget(
+          _wrap(
+            Center(
+              child: ProductionInputTile(
+                service: service,
+                input: ProductionInput.asset(
+                  'video_asset_reference',
+                  VideoInputRole.reference_video,
+                ),
+                valid: true,
+                onRole: null,
+                onMove: null,
+                onRemove: () {},
+              ),
+            ),
+          ),
+        );
+        final decodedImage = find.byWidgetPredicate(
+          (widget) => widget is RawImage && widget.image != null,
+        );
+        for (var i = 0; i < 50 && decodedImage.evaluate().isEmpty; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+        }
+        expect(media.thumbnailCalls, 1);
+        expect(decodedImage, findsOneWidget);
+        expect(find.byType(ErrorWidget), findsNothing);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await db.close();
+        await main.close();
+        await tester.runAsync(() => root.delete(recursive: true));
+      }
+    },
+  );
+
+  testWidgets(
+    'compact canvas zoom skips video thumbnail extraction until uncompacted',
+    (tester) async {
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      final main = app.AppDatabase.forTest(NativeDatabase.memory());
+      final root = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('video-thumb-compact-'),
+      ))!;
+      final file = File('${root.path}/file_workspaces/work/videos/clip.mp4');
+      final media = _ThumbnailMedia();
+      try {
+        await tester.runAsync(() async {
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(const [1, 2, 3, 4]);
+        });
+        final service = ProductionCanvasService(
+          StoryboardService(db),
+          MediaLibraryService(main, media, root),
+          'work',
+        );
+        Widget buildThumb({required bool compact}) => _wrap(
+          Center(
+            child: SizedBox(
+              width: 160,
+              height: 90,
+              child: ProductionCardCompact(
+                compact: compact,
+                child: ProductionAssetThumb(
+                  service: service,
+                  filePath: 'file_workspaces/work/videos/clip.mp4',
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.pumpWidget(buildThumb(compact: true));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)),
+        );
+        await tester.pump();
+        expect(media.thumbnailCalls, 0);
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is RevericIcon &&
+                widget.assetPath == RevericIcons.movie_outlined,
+          ),
+          findsOneWidget,
+        );
+
+        await tester.pumpWidget(buildThumb(compact: false));
+        final decodedImage = find.byWidgetPredicate(
+          (widget) => widget is RawImage && widget.image != null,
+        );
+        for (var i = 0; i < 50 && decodedImage.evaluate().isEmpty; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+        }
+        expect(media.thumbnailCalls, 1);
+        expect(decodedImage, findsOneWidget);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await db.close();
+        await main.close();
+        await tester.runAsync(() => root.delete(recursive: true));
+      }
+    },
+  );
+}
+
+class _ThumbnailMedia extends MediaService {
+  _ThumbnailMedia() : super(FfmpegRunner());
+
+  int thumbnailCalls = 0;
+
+  @override
+  Future<void> captureThumbnail(
+    String input,
+    File output, {
+    MediaCancellation? cancellation,
+  }) async {
+    if (cancellation?.cancelled == true) {
+      throw const MediaException(MediaFailure.cancelled);
+    }
+    thumbnailCalls++;
+    await output.writeAsBytes(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ),
+    );
+  }
 }

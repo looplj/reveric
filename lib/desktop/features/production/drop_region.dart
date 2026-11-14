@@ -3,6 +3,7 @@
 //   lib/desktop/features/production/board.dart
 //   lib/desktop/features/production/drop_orchestrator.dart
 //   lib/desktop/features/production/support.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart' as drop;
 import '../../../shared/services/production/canvas_service.dart';
@@ -20,6 +21,12 @@ class ProductionDropRegion extends StatefulWidget {
     required this.controller,
     required this.child,
   });
+
+  /// `super_drag_and_drop` 在 `flutter test` 环境缺少原生 DropManager/DragManager 实现；
+  /// 仅当测试专门验证拖入区域本身时再显式开启。
+  @visibleForTesting
+  static bool enableInTests = false;
+
   final ProductionCanvasService service;
   final String canvasId;
   final flow.NodeFlowController<String, String> controller;
@@ -41,6 +48,10 @@ class _ProductionDropRegionState extends State<ProductionDropRegion> {
 
   @override
   Widget build(BuildContext context) {
+    if (Platform.environment.containsKey('FLUTTER_TEST') &&
+        !ProductionDropRegion.enableInTests) {
+      return widget.child;
+    }
     final colors = RevericTheme.colorsOf(context);
     final history = ProductionHistoryScope.maybeOf(context)?.history;
     return drop.DropRegion(

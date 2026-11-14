@@ -115,10 +115,26 @@ class MediaCancellation {
   void Function(Duration processed)? onProgress;
   bool _cancelled = false;
   Future<void> Function()? _cancel;
+  final List<void Function()> _listeners = [];
   bool get cancelled => _cancelled;
   Future<void> cancel() async {
     _cancelled = true;
+    for (final listener in List<void Function()>.of(_listeners)) {
+      listener();
+    }
     await _cancel?.call();
+  }
+
+  void addCancelListener(void Function() listener) {
+    if (_cancelled) {
+      listener();
+      return;
+    }
+    _listeners.add(listener);
+  }
+
+  void removeCancelListener(void Function() listener) {
+    _listeners.remove(listener);
   }
 
   Future<void> bind(Future<void> Function() cancel) async {

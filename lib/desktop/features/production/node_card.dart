@@ -57,6 +57,7 @@ import 'support.dart';
 import 'node_title.dart';
 import 'text_node.dart';
 import 'editing_node.dart';
+import 'video_thumb.dart';
 
 /// 节点有哪些连线口；flow 端口和卡片上的悬停提示点共用这一份判断。
 /// [derived]：有来源连线的产物节点（导演台导出、视频处理结果），左侧带一个只接来源连线的入口。
@@ -978,7 +979,7 @@ class _FrameBadge extends StatelessWidget {
   }
 }
 
-/// 资产缩略：图片读文件，视频和音频画类型图标占位。
+/// 资产缩略：图片读文件，视频异步截取首帧，音频画类型图标占位。
 class ProductionAssetThumb extends HookWidget {
   const ProductionAssetThumb({
     super.key,
@@ -1012,40 +1013,30 @@ class ProductionAssetThumb extends HookWidget {
       );
     }
     if (type == 'image' && absolute != null) {
-      // 按显示尺寸解码，不把原图整张解成纹理；留出画布最大缩放的余量，放大后仍清晰。
-      return LayoutBuilder(
-        builder: (context, box) {
-          final ImageProvider file = FileImage(File(absolute));
-          final side =
-              math.max(box.maxWidth, box.maxHeight) *
-              productionCanvasMaxZoom *
-              MediaQuery.devicePixelRatioOf(context);
-          return Image(
-            image: side.isFinite && side > 0
-                ? ResizeImage(
-                    file,
-                    width: side.ceil(),
-                    height: side.ceil(),
-                    policy: ResizeImagePolicy.fit,
-                  )
-                : file,
-            fit: BoxFit.cover,
-            errorBuilder: (_, error, stack) => ColoredBox(
-              color: colors.surfaceDim,
-              child: Center(
-                child: RevericIcon(
-                  RevericIcons.broken_image_outlined,
-                  size: 16,
-                  color: colors.error,
-                ),
-              ),
+      return ProductionCoverFileImage(
+        file: File(absolute),
+        maxZoom: productionCanvasMaxZoom,
+        fallback: ColoredBox(
+          color: colors.surfaceDim,
+          child: Center(
+            child: RevericIcon(
+              RevericIcons.broken_image_outlined,
+              size: 16,
+              color: colors.error,
             ),
-          );
-        },
+          ),
+        ),
       );
     }
-    // 视频没有缩略帧，和图片一样用低一级的底色 + 类型图标占位。不能借文字色当底：
-    // 深色主题的 textSecondary 是浅灰，会在画布上亮出一整块。
+    if (type == 'video' && path != null && absolute != null) {
+      return ProductionVideoThumb(
+        service: service,
+        filePath: path,
+        maxZoom: productionCanvasMaxZoom,
+        compact: ProductionCardCompact.of(context),
+      );
+    }
+    // 音频和未识别占位沿用低一级底色 + 类型图标，不借文字色当底避免深色主题发亮。
     return ColoredBox(
       color: colors.surfaceDim,
       child: Center(
