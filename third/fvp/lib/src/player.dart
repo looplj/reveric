@@ -173,23 +173,30 @@ class Player {
   }
 
   /// Release resources
-  Future<void> dispose() async {
+  Future<void> dispose() => _disposeFuture ??= _dispose().then(
+        (_) {},
+        onError: (Object error, StackTrace stack) {
+          _disposeFuture = null;
+          Error.throwWithStackTrace(error, stack);
+        },
+      );
+
+  Future<void> _dispose() async {
     if (_pp == nullptr) {
       textureId.dispose();
       return;
     }
-    // Keep the renderer and its callbacks alive while MDK drains audio on stop.
-    // Detaching them first can leave AudioRenderer::flush waiting indefinitely.
-    // The state setter only requests the transition; wait for native completion.
-    final nativeState = _player.ref.state
-        .asFunction<int Function(Pointer<mdkPlayer>)>()(_player.ref.object);
-    final stopped = nativeState == PlaybackState.stopped.rawValue
-        ? null
-        : onStateChanged.firstWhere(
-            (event) => event.newValue == PlaybackState.stopped,
-          );
-    state = PlaybackState.stopped;
-    await stopped;
+    // Pause must be confirmed by MDK before stopping: the Dart state setter
+    // updates its cache before the audio backend has processed the command.
+    // Give pending audio completions time to arrive, as in upstream FVP #416.
+    if (state == PlaybackState.playing ||
+        _nativeState == PlaybackState.playing.rawValue) {
+      await _transitionTo(PlaybackState.paused, const Duration(seconds: 1));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Keep the renderer and callbacks alive until native stop is confirmed.
+    // A timeout must leave them intact instead of tearing down an active player.
+    await _transitionTo(PlaybackState.stopped, const Duration(seconds: 3));
     // await: ensure no player ref in fvp plugin before mdkPlayerAPI_delete() in dart
     await updateTexture(width: -1);
     Libfvp.unregisterPort(nativeHandle);
@@ -206,6 +213,29 @@ class Player {
     calloc.free(_pp);
     _pp = nullptr;
     textureId.dispose();
+  }
+
+  int get _nativeState => _player.ref.state
+      .asFunction<int Function(Pointer<mdkPlayer>)>()(_player.ref.object);
+
+  Future<void> _transitionTo(PlaybackState target, Duration timeout) async {
+    final completed = Completer<void>();
+    final subscription = onStateChanged.listen((event) {
+      if (event.newValue == target && !completed.isCompleted) {
+        completed.complete();
+      }
+    });
+    try {
+      if (_nativeState == target.rawValue) {
+        completed.complete();
+      }
+      // Install the listener before submitting the command. The timeout bounds
+      // callback delivery; it cannot interrupt a blocked synchronous FFI call.
+      state = target;
+      await completed.future.timeout(timeout);
+    } finally {
+      await subscription.cancel();
+    }
   }
 
   /// Release current texture then create a new one for current [media], and update [textureId].
@@ -952,6 +982,7 @@ class Player {
 
   final _player = Libmdk.instance.mdkPlayerAPI_new();
   var _pp = calloc<Pointer<mdkPlayerAPI>>();
+  Future<void>? _disposeFuture;
 
   bool _live = false;
   var _videoSize = Completer<ui.Size?>();
