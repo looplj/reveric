@@ -1,0 +1,41 @@
+{
+  "id": "reveric.xiaoyunque",
+  "name": {
+    "en": "Xiaoyunque - Short films",
+    "zh-CN": "小云雀-短片"
+  },
+  "description": {
+    "en": "Generate video clips from prompts, frames, or reference media.",
+    "zh-CN": "使用提示词、首尾帧或参考素材生成视频片段。"
+  },
+  "version": "1.0.0",
+  "author": "Reveric",
+  "pluginApiVersion": "^1",
+  "main": "dist/index.js",
+  "provider": {
+    "name": {
+      "en": "Xiaoyunque - Short films",
+      "zh-CN": "小云雀-短片"
+    },
+    "settings": {
+      "fields": {
+        "accessKey": {
+          "type": "secret",
+          "title": "Access Key",
+          "required": true
+        }
+      },
+      "actions": {
+        "queryCredits": {
+          "title": {
+            "zh-CN": "查询积分",
+            "en": "Query credits"
+          },
+          "requires": [
+            "accessKey"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -197,6 +197,8 @@ FJS_PROBE_LIBRARY=<target>/debug/libfjs.dylib fvm flutter test -j 1 \
 | `deepseek/` | `reveric.deepseek` | DeepSeek 搜索与读取，带设置动作 |
 | `keenable/` | `reveric.keenable` | Keenable 搜索与读取，API Key 可选（不填时使用公共接口），带设置动作 |
 | `zhuque/` | `reveric.zhuque` | 朱雀文本 AI 检测，需配置 EdgeOne Makers API Key，带设置动作 |
+| `xiaoyunque/` | `reveric.xiaoyunque` | 小云雀-短片：10 个视频模型，支持首尾帧、参考素材与积分查询 |
+| `xiaoyunque-marketing/` | `reveric.xiaoyunque-marketing` | 小云雀-营销：4 个营销视频模型，支持字幕开关与积分查询 |
 
 内置插件的首次启用策略由 `lib/shared/services/plugins/host.dart` 中的 `_defaultEnabledBundledPlugins` 管理；新增默认启用项时，将插件 ID 加入该集合。已有用户选择保持不变。
 

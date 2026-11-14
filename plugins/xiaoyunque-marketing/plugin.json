@@ -1,0 +1,49 @@
+{
+  "id": "reveric.xiaoyunque-marketing",
+  "name": {
+    "en": "Xiaoyunque - Marketing",
+    "zh-CN": "小云雀-营销"
+  },
+  "description": {
+    "en": "Generate marketing videos from product information and reference media.",
+    "zh-CN": "根据商品信息和参考素材生成营销视频，可设置是否显示字幕。"
+  },
+  "version": "1.0.0",
+  "author": "Reveric",
+  "pluginApiVersion": "^1",
+  "main": "dist/index.js",
+  "provider": {
+    "name": {
+      "en": "Xiaoyunque - Marketing",
+      "zh-CN": "小云雀-营销"
+    },
+    "settings": {
+      "fields": {
+        "accessKey": {
+          "type": "secret",
+          "title": "Access Key",
+          "required": true
+        },
+        "showSubtitle": {
+          "type": "boolean",
+          "title": {
+            "en": "Marketing video subtitles",
+            "zh-CN": "营销视频字幕"
+          },
+          "default": true
+        }
+      },
+      "actions": {
+        "queryCredits": {
+          "title": {
+            "zh-CN": "查询积分",
+            "en": "Query credits"
+          },
+          "requires": [
+            "accessKey"
+          ]
+        }
+      }
+    }
+  }
+}
