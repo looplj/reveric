@@ -39,6 +39,9 @@ import 'ai_mode_processing.dart';
 import 'webdav_backup_providers.dart';
 import 'plugin_providers.dart';
 import '../services/debug/debug_ai_provider.dart';
+import '../services/plugins/provider_config.dart';
+import '../services/plugins/provider_models.dart';
+import '../models/plugin/provider_registry.dart';
 
 export '../services/auto_backup_scheduler.dart' show BackupFrequency;
 
@@ -1812,13 +1815,30 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     await _persistPartial(searchEngine: searchEngine);
   }
 
+  Future<void> _aiWrites = Future<void>.value();
+
+  Future<T> _serializeAiSettings<T>(Future<T> Function() action) {
+    final lease = ref.keepAlive();
+    final next = _aiWrites.then((_) {
+      if (!ref.mounted) {
+        throw StateError('Settings owner was disposed');
+      }
+      return action();
+    });
+    _aiWrites = next.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace stack) {},
+    );
+    return next.whenComplete(lease.close);
+  }
+
   Future<void> _setAiSettings(
     AppSettings currentState,
     AiSettings newAiSettings, {
     bool persistProviders = false,
     bool publishState = true,
   }) async {
-    final nextState = currentState.copyWith(aiSettings: newAiSettings);
+    final nextState = state.requireValue.copyWith(aiSettings: newAiSettings);
 
     if (publishState) {
       state = AsyncValue.data(nextState);
@@ -1826,34 +1846,227 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     await _persistPartial(
       aiProviders: persistProviders
           ? newAiSettings.providers
-                .where((provider) => !isDebugAiProviderId(provider.id))
+                .where(
+                  (provider) =>
+                      !isDebugAiProviderId(provider.id) &&
+                      currentState.aiSettings.findConfigById(provider.id) !=
+                          provider,
+                )
                 .toList()
           : null,
       aiSettings: newAiSettings.copyWith(providers: const []),
     );
   }
 
-  Future<void> setAiProviderConfig(AiProvider config) async {
+  Future<void> setAiProviderConfig(AiProvider config) =>
+      _serializeAiSettings(() => _setAiProviderConfig(config));
+
+  Future<void> _setAiProviderConfig(AiProvider config) async {
     final currentState = await _requireCurrentState('SET_AI_PROVIDER_CONFIG');
 
+    final existing = currentState.aiSettings.findConfigById(config.id);
+    if (config.isPluginProvider && existing != null) {
+      // Plugin model IDs are written only with their declarations by the selection command.
+      config = config.copyWith(
+        models: existing.models,
+        imageModels: existing.imageModels,
+        videoModels: existing.videoModels,
+        audioModels: existing.audioModels,
+      );
+    }
     final newAiSettings = currentState.aiSettings.updateConfig(config);
     await _setAiSettings(currentState, newAiSettings, persistProviders: true);
   }
 
-  Future<void> toggleAiProviderEnabled(String providerId, bool enabled) async {
+  Future<void> savePluginProviderConfiguration(
+    String providerId, {
+    required Map<String, Object?> settings,
+    required Map<String, String?> secrets,
+  }) => _serializeAiSettings(
+    () => _savePluginProviderConfiguration(
+      providerId,
+      settings: settings,
+      secrets: secrets,
+    ),
+  );
+
+  Future<void> _savePluginProviderConfiguration(
+    String providerId, {
+    required Map<String, Object?> settings,
+    required Map<String, String?> secrets,
+  }) async {
+    final lease = ref.keepAlive();
+    try {
+      final current = await _requireCurrentState('SAVE_PLUGIN_PROVIDER');
+      final provider = current.aiSettings.findConfigById(providerId);
+      if (provider == null || !provider.isPluginProvider) {
+        throw const FormatException('Unknown plugin provider');
+      }
+      final host = ref.read(pluginHostServiceProvider);
+      final manifest = host.providerManifest(provider.pluginId!);
+      if (manifest?.provider == null) {
+        throw const FormatException('Provider plugin is unavailable');
+      }
+      final database = ref.read(appSettingsDatabaseProvider);
+      late AiSettings next;
+      await database.transaction(() async {
+        await host.saveProviderConfig(
+          provider,
+          settings: settings,
+          secrets: secrets,
+        );
+        final snapshot = await readPluginProviderConfiguration(
+          database.pluginDao,
+          manifest!,
+          providerId,
+        );
+        final updated = provider.copyWith(
+          enabled:
+              provider.enabled &&
+              snapshot.invalidField(manifest.provider!) == null,
+          updatedAt: DateTime.now(),
+        );
+        next = current.aiSettings.updateConfig(updated);
+        await _setAiSettings(
+          current,
+          next,
+          persistProviders: true,
+          publishState: false,
+        );
+      });
+      if (ref.mounted) {
+        state = AsyncValue.data(state.requireValue.copyWith(aiSettings: next));
+      }
+    } catch (error, stack) {
+      _log.error(
+        '[DB] plugin_storage/plugin_secrets/ai_providers UPSERT provider=$providerId',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    } finally {
+      lease.close();
+    }
+  }
+
+  Future<void> selectPluginProviderModels(
+    PluginProviderDiscovery discovery,
+    Set<(AiModelKind, String)> selected,
+  ) => _serializeAiSettings(
+    () => _selectPluginProviderModels(discovery, selected),
+  );
+
+  Future<void> _selectPluginProviderModels(
+    PluginProviderDiscovery discovery,
+    Set<(AiModelKind, String)> selected,
+  ) async {
+    final lease = ref.keepAlive();
+    try {
+      final current = await _requireCurrentState('SELECT_PLUGIN_MODELS');
+      late AiSettings next;
+      await ref
+          .read(pluginHostServiceProvider)
+          .saveProviderModels(
+            discovery,
+            selected,
+            saveProvider: (provider) async {
+              next = current.aiSettings.updateConfig(provider);
+              await _setAiSettings(
+                current,
+                next,
+                persistProviders: true,
+                publishState: false,
+              );
+            },
+          );
+      if (ref.mounted) {
+        state = AsyncValue.data(state.requireValue.copyWith(aiSettings: next));
+      }
+    } catch (error, stack) {
+      _log.error(
+        '[DB] plugin_storage/ai_providers UPDATE provider=${discovery.providerId}',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    } finally {
+      lease.close();
+    }
+  }
+
+  Future<void> removePluginProviderModel(
+    String providerId,
+    AiModelKind kind,
+    String id,
+  ) => _serializeAiSettings(() async {
+    final current = await _requireCurrentState('REMOVE_PLUGIN_MODEL');
+    late AiSettings next;
+    try {
+      await ref
+          .read(pluginHostServiceProvider)
+          .removeProviderModel(
+            providerId,
+            kind,
+            id,
+            saveProvider: (provider) async {
+              next = current.aiSettings.updateConfig(provider);
+              await _setAiSettings(
+                current,
+                next,
+                persistProviders: true,
+                publishState: false,
+              );
+            },
+          );
+      if (ref.mounted) {
+        state = AsyncValue.data(state.requireValue.copyWith(aiSettings: next));
+      }
+    } catch (error, stack) {
+      _log.error(
+        '[DB] ai_providers UPDATE provider=$providerId remove model=$id',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    }
+  });
+
+  Future<void> toggleAiProviderEnabled(String providerId, bool enabled) =>
+      _serializeAiSettings(() => _toggleAiProviderEnabled(providerId, enabled));
+
+  Future<void> _toggleAiProviderEnabled(String providerId, bool enabled) async {
     final currentState = await _requireCurrentState('TOGGLE_AI_PROVIDER');
     final currentConfig = currentState.aiSettings.findConfigById(providerId);
-    if (enabled && currentConfig?.enableValidationMessage != null) {
+    if (enabled &&
+        currentConfig?.isPluginProvider != true &&
+        currentConfig?.enableValidationMessage != null) {
       return;
     }
     if (currentConfig == null || currentConfig.enabled == enabled) {
       return;
     }
-    await setAiProviderConfig(currentConfig.copyWith(enabled: enabled));
+    if (enabled && currentConfig.isPluginProvider) {
+      final host = ref.read(pluginHostServiceProvider);
+      final manifest = host.providerManifest(currentConfig.pluginId!);
+      if (manifest?.provider != null) {
+        final snapshot = await readPluginProviderConfiguration(
+          ref.read(appSettingsDatabaseProvider).pluginDao,
+          manifest!,
+          providerId,
+        );
+        if (snapshot.invalidField(manifest.provider!) != null) {
+          throw const FormatException('Provider configuration is incomplete');
+        }
+      }
+    }
+    await _setAiProviderConfig(currentConfig.copyWith(enabled: enabled));
     return;
   }
 
-  Future<void> setDefaultAiModelForKind(
+  Future<void> setDefaultAiModelForKind(AiModelKind kind, String? optionId) =>
+      _serializeAiSettings(() => _setDefaultAiModelForKind(kind, optionId));
+
+  Future<void> _setDefaultAiModelForKind(
     AiModelKind kind,
     String? optionId,
   ) async {
@@ -1868,6 +2081,13 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
   }
 
   Future<void> setDefaultChatModelWithEffort(
+    AiModelOption option,
+    String effort,
+  ) => _serializeAiSettings(
+    () => _setDefaultChatModelWithEffort(option, effort),
+  );
+
+  Future<void> _setDefaultChatModelWithEffort(
     AiModelOption option,
     String effort,
   ) async {
@@ -1893,7 +2113,10 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     await _setAiSettings(currentState, newAiSettings);
   }
 
-  Future<void> setDefaultAiModelForRole(
+  Future<void> setDefaultAiModelForRole(AiModelRole role, String? optionId) =>
+      _serializeAiSettings(() => _setDefaultAiModelForRole(role, optionId));
+
+  Future<void> _setDefaultAiModelForRole(
     AiModelRole role,
     String? optionId,
   ) async {
@@ -1907,14 +2130,75 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     await _setAiSettings(currentState, newAiSettings);
   }
 
-  Future<String> addCustomProvider(AiProvider config) async {
+  Future<String> addPluginProvider(
+    AiProvider config, {
+    required Map<String, Object?> settings,
+    required Map<String, String?> secrets,
+  }) => _serializeAiSettings(() async {
+    final current = await _requireCurrentState('ADD_PLUGIN_PROVIDER');
+    final database = ref.read(appSettingsDatabaseProvider);
+    final host = ref.read(pluginHostServiceProvider);
+    final manifest = host.providerManifest(config.pluginId!);
+    if (manifest?.provider == null ||
+        current.aiSettings.findConfigById(config.id) != null) {
+      throw const FormatException('Invalid new plugin provider');
+    }
+    final next = current.aiSettings.addCustomConfig(
+      config.copyWith(enabled: false),
+    );
+    try {
+      await database.transaction(() async {
+        if (await database.aiProviderDao.getById(config.id) != null) {
+          throw const FormatException('Provider already exists');
+        }
+        await host.saveProviderConfig(
+          config,
+          settings: settings,
+          secrets: secrets,
+        );
+        final snapshot = await readPluginProviderConfiguration(
+          database.pluginDao,
+          manifest!,
+          config.id,
+        );
+        if (snapshot.invalidField(manifest.provider!) != null) {
+          throw const FormatException('Invalid plugin configuration');
+        }
+        await _setAiSettings(
+          current,
+          next,
+          persistProviders: true,
+          publishState: false,
+        );
+      });
+    } catch (error, stack) {
+      _log.error(
+        '[DB] ai_providers/plugin_storage/plugin_secrets INSERT provider=${config.id}',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    }
+    if (ref.mounted) {
+      state = AsyncValue.data(state.requireValue.copyWith(aiSettings: next));
+    }
+    return config.id;
+  });
+
+  Future<String> addCustomProvider(AiProvider config) =>
+      _serializeAiSettings(() => _addCustomProvider(config));
+
+  Future<String> _addCustomProvider(AiProvider config) async {
     final currentState = await _requireCurrentState('ADD_CUSTOM_PROVIDER');
     final newAiSettings = currentState.aiSettings.addCustomConfig(config);
     await _setAiSettings(currentState, newAiSettings, persistProviders: true);
     return config.id;
   }
 
-  Future<void> removeProvider(String id) async {
+  Future<void> removeProvider(String id) =>
+      _serializeAiSettings(() => _removeProvider(id));
+
+  Future<void> _removeProvider(String id) async {
     final currentState = await _requireCurrentState('REMOVE_PROVIDER');
     final config = currentState.aiSettings.findConfigById(id);
     if (config == null || !config.canDelete) {
@@ -1925,6 +2209,9 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     try {
       await database.transaction(() async {
         await database.aiProviderDao.softDelete(id);
+        if (config.pluginId case final pluginId?) {
+          await database.pluginDao.removeProviderConfiguration(pluginId, id);
+        }
         await _setAiSettings(currentState, newAiSettings, publishState: false);
       });
     } catch (error, stackTrace) {
@@ -1935,7 +2222,10 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       );
       rethrow;
     }
-    state = AsyncValue.data(currentState.copyWith(aiSettings: newAiSettings));
+    pluginProviderModels.remove(id);
+    state = AsyncValue.data(
+      state.requireValue.copyWith(aiSettings: newAiSettings),
+    );
   }
 
   // ---- Storage setters ----
@@ -3006,9 +3296,18 @@ double uiTextScale(Ref ref) {
 
 @riverpod
 AiSettings aiSettings(Ref ref) {
+  ref.watch(pluginProviderModelsRevisionProvider);
   final settingsAsync = ref.watch(appSettingsNotifierProvider);
   return settingsAsync.when(
-    data: (settings) => settings.aiSettings,
+    data: (settings) {
+      final parts = settings.language.split('_');
+      return settings.aiSettings.copyWith(
+        modelNameLocale: Locale.fromSubtags(
+          languageCode: parts.first,
+          countryCode: parts.length > 1 ? parts[1] : null,
+        ),
+      );
+    },
     loading: AiSettings.defaults,
     error: (_, _) => AiSettings.defaults(),
   );

@@ -14,6 +14,32 @@ import 'package:reveric/shared/services/production/generate_orchestrator.dart';
 import 'package:reveric/shared/models/video/request.dart';
 
 void main() {
+  test(
+    'disabled plugin instances remain editable without losing model selection',
+    () {
+      final provider = aiProviderBuiltinById('openai')!.copyWith(
+        id: 'plugin-instance',
+        builtin: false,
+        type: 'plugin:missing.media',
+        enabled: false,
+        imageModels: ['workflow'],
+      );
+      final settings = AiSettings(
+        providers: [provider],
+        defaultImageModelId: 'plugin-instance::workflow',
+      );
+      final updated = settings.updateConfig(
+        provider.copyWith(name: 'Renamed', enabled: true),
+      );
+      final instance = updated.findConfigById(provider.id)!;
+      expect(instance.name, 'Renamed');
+      expect(instance.enabled, true);
+      expect(instance.imageModels, ['workflow']);
+      expect(instance.isValid, false);
+      expect(updated.defaultImageModelId, 'plugin-instance::workflow');
+    },
+  );
+
   test('Qwen Token Plan persists independently and uses its own channel', () {
     final provider = aiProviderBuiltinById('openai')!.copyWith(
       id: 'token-plan',
@@ -24,7 +50,10 @@ void main() {
       imageModels: ['qwen-image-3.0-pro'],
     );
     final restored = AiProvider.fromJson(provider.toJson());
-    expect(customAiProviderTypes, contains(AiProviderType.qwen_token_plan));
+    expect(
+      customAiProviderTypes,
+      contains(AiProviderType.qwen_token_plan.name),
+    );
     expect(restored.typeEnum, AiProviderType.qwen_token_plan);
     expect(
       restored.effectiveBaseUrl,
@@ -44,7 +73,7 @@ void main() {
 
   test('MiniMax chat uses the Anthropic-compatible entry of its base URL', () {
     expect(
-      aiProviderTypeConfigs[AiProviderType.minimax]!.supportedModelKinds,
+      aiProviderTypeConfigs[AiProviderType.minimax.name]!.supportedModelKinds,
       containsAll([AiModelKind.chat, AiModelKind.video, AiModelKind.audio]),
     );
     for (final (input, expected) in [
@@ -199,7 +228,7 @@ void main() {
       final provider = AiProvider.fromJson(
         settings.findConfigById(config.id)!.toJson(),
       );
-      expect(customAiProviderTypes, contains(AiProviderType.volcengine));
+      expect(customAiProviderTypes, contains(AiProviderType.volcengine.name));
       expect(provider.hasFixedBaseUrl, isTrue);
       expect(
         provider.effectiveBaseUrl,

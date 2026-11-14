@@ -17,6 +17,7 @@ import 'package:reveric/shared/models/production/media.dart';
 import 'package:reveric/shared/services/production/image_service.dart';
 import 'package:reveric/shared/services/production/audio_service.dart';
 import 'dart:convert';
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/audio/request.dart';
 import 'package:reveric/shared/services/production/audio_generate_orchestrator.dart';
 import 'package:reveric/shared/services/production/voices.dart';
@@ -58,7 +59,7 @@ VideoRequest compileForTest(
   VideoRequest request,
   List<ProductionInput> inputs,
 ) => compileProductionPrompt(
-  provider,
+  aiProviderBuiltinById('openai')!.copyWith(type: provider),
   request,
   inputs.map((input) => ResolvedProductionInput(input, input.refId)).toList(),
 );
@@ -2884,7 +2885,9 @@ void main() {
       await asset('second', type: 'video');
       await service.adopt(source.id, 'first');
       final frozen = compileProductionPrompt(
-        videoProviderType(VideoProtocol.wan_video),
+        aiProviderBuiltinById(
+          'openai',
+        )!.copyWith(type: videoProviderType(VideoProtocol.wan_video)),
         request(prompt),
         [ResolvedProductionInput(input, 'first')],
       );

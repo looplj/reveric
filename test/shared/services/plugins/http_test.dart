@@ -18,6 +18,75 @@ void main() {
   tearDown(() async {
     await server.close(force: true);
   });
+  test(
+    'provider HTTP keeps its proxy and observes remaining method budget',
+    () async {
+      final targets = <String>[];
+      server.listen((req) async {
+        targets.add(req.uri.toString());
+        req.response.write('proxied');
+        await req.response.close();
+      });
+      var budget = const Duration(seconds: 1);
+      final api = PluginHttpApi(
+        direct: false,
+        remainingBudget: () => budget,
+        clientFactory: () =>
+            HttpClient()..findProxy = (_) => 'PROXY 127.0.0.1:${server.port}',
+      );
+      addTearDown(api.cancel);
+      expect(
+        (await api.fetch({'url': 'http://provider.invalid/model'}))['body'],
+        'proxied',
+      );
+      expect(targets.single, 'http://provider.invalid/model');
+      budget = Duration.zero;
+      await expectLater(
+        api.fetch({'url': 'http://provider.invalid/model'}),
+        throwsA(
+          isA<PluginHostError>().having((e) => e.code, 'code', 'timeout'),
+        ),
+      );
+      expect(targets, hasLength(1));
+    },
+  );
+  test(
+    'provider cross-origin redirects drop headers even on the same host',
+    () async {
+      final other = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => other.close(force: true));
+      final observed = <String?>[];
+      other.listen((req) async {
+        observed.addAll([
+          req.headers.value('authorization'),
+          req.headers.value('x-private-token'),
+        ]);
+        req.response.write('ok');
+        await req.response.close();
+      });
+      server.listen((req) async {
+        expect(req.headers.value('authorization'), 'Bearer private');
+        req.response.statusCode = 302;
+        req.response.headers.set(
+          'location',
+          'http://127.0.0.1:${other.port}/result',
+        );
+        await req.response.close();
+      });
+      final api = PluginHttpApi(direct: false);
+      addTearDown(api.cancel);
+      final result = await api.fetch({
+        'url': origin,
+        'headers': {
+          'Authorization': 'Bearer private',
+          'X-Private-Token': 'secret',
+        },
+      });
+      expect(result['body'], 'ok');
+      expect(result['url'], 'http://127.0.0.1:${other.port}/result');
+      expect(observed, [null, null]);
+    },
+  );
   for (final query in ['hello', '庆余年 小说 猫腻', '中文 café 😀']) {
     test('request body uses UTF-8 bytes: $query', () async {
       final received = <List<int>>[];

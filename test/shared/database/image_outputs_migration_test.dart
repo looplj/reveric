@@ -62,7 +62,7 @@ void main() {
               .data
               .values
               .single,
-          6,
+          AppDatabase.currentSchemaVersion,
         );
         final column =
             (await db.customSelect('PRAGMA table_info(generation_tasks)').get())

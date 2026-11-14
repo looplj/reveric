@@ -37,7 +37,7 @@ void main() {
   );
 
   test('METASO exposes its video catalog and keeps native limits separate', () {
-    expect(customAiProviderTypes, contains(AiProviderType.metaso));
+    expect(customAiProviderTypes, contains(AiProviderType.metaso.name));
     expect(provider.isValid, isTrue);
     expect(provider.supportedModelKinds, {AiModelKind.video});
     expect(provider.effectiveBaseUrl, 'https://metaso.cn/api/minimax');
@@ -196,7 +196,7 @@ void main() {
       );
       final channel = lookupVideoChannelModel('metaso', model)!;
       expect(channel.requiresAudio, false);
-      expect(channel.protocolOptions.supportsProviderAssets, false);
+      expect(channel.capabilities.supportsCertifiedAssets, false);
       expect(channel.resolutions.contains('4k'), model == 'seedance-2.0');
       expect(channel.durations, isNot(contains(16)));
       transport.close();
@@ -309,8 +309,8 @@ void main() {
         ordinary.maxDurationByResolution,
       );
       expect(
-        priority.protocolOptions.framesRequireAdaptiveRatio,
-        ordinary.protocolOptions.framesRequireAdaptiveRatio,
+        priority.capabilities.framesRequireAdaptiveRatio,
+        ordinary.capabilities.framesRequireAdaptiveRatio,
       );
       expect(priority.highlights, contains(VideoModelHighlight.priority));
       expect(

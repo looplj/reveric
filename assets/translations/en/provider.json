@@ -119,6 +119,8 @@
   "provider.type_picker_title": "Add provider",
   "provider.type_presets": "Preset platforms",
   "provider.type_protocols": "API formats",
+  "provider.type_plugins": "Plugins",
+  "provider.type_plugins_empty": "Enable a provider plugin in Settings → Plugins to add it here.",
   "provider.kind_chat": "Chat",
   "provider.kind_image": "Image",
   "provider.kind_video": "Video",
@@ -127,7 +129,6 @@
   "provider.type_note_minimax": "Official MiniMax or MiniMax-compatible APIs (e.g. H3)",
   "provider.type_note_doubao": "Ark-compatible video APIs (e.g. Seedance)",
   "provider.draft_badge": "Unsaved",
-  "provider.draft_type_hint": "The type cannot be changed after saving.",
   "provider.new_title": "New provider",
   "provider.type_openai_compatible": "OpenAI Compatible",
   "provider.audio_models_label": "Audio models",
@@ -137,5 +138,12 @@
   "provider.asset_access_key_label": "Access Key ID",
   "provider.asset_secret_key_label": "Secret Access Key",
   "provider.description_purefox": "Access models through the PureFox gateway using its OpenAI-compatible API.",
-  "provider.description_purefox_media": "PureFox media gateway for image and video generation (OpenAI Images compatible)."
+  "provider.description_purefox_media": "PureFox media gateway for image and video generation (OpenAI Images compatible).",
+  "provider.plugin_unavailable": "The provider plugin is disabled or unavailable. You can still edit the name and enable or disable this instance.",
+  "provider.plugin_secret_clear_hint": "Clearing this required credential disables this provider instance.",
+  "provider.plugin_check_connection": "Check connection",
+  "provider.plugin_models_invalid": "Invalid model declaration: {details}",
+  "provider.plugin_models_refresh_needed": "Get models again to restore their capabilities.",
+  "provider.plugin_model_unavailable": "Unavailable",
+  "provider.fetch_models_empty": "No models returned."
 }

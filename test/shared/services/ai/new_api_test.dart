@@ -38,12 +38,12 @@ http.Response _json(Object value) => http.Response(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('OOKiAPI is available only by manual creation without a showcase', () {
-    expect(customAiProviderTypes, contains(AiProviderType.ooki));
+    expect(customAiProviderTypes, contains(AiProviderType.ooki.name));
     expect(aiProviderBuiltinById('ooki'), isNull);
     expect(providerShowcases, isNot(contains('ooki')));
   });
   test('Infistar is manually added with a sponsor showcase', () {
-    expect(customAiProviderTypes, contains(AiProviderType.infistar));
+    expect(customAiProviderTypes, contains(AiProviderType.infistar.name));
     expect(aiProviderBuiltinById('infistar'), isNull);
     expect(providerShowcases, contains('infistar'));
   });
@@ -107,7 +107,7 @@ void _testProvider(String type, String baseUrl) {
                 AiModelKind.video,
               },
       );
-      expect(customAiProviderTypes, contains(AiProviderType.api88));
+      expect(customAiProviderTypes, contains(AiProviderType.api88.name));
       expect(
         AiProviderType.values.map((type) => type.name),
         isNot(contains('new_api')),

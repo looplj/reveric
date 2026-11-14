@@ -218,7 +218,7 @@ final class AppSettingsNotifierProvider
 }
 
 String _$appSettingsNotifierHash() =>
-    r'ebc452f6d65a673239c76bb8e4f47327c27c630f';
+    r'05bdad9a851206433f0bcf640aa5df7fe14f06ef';
 
 abstract class _$AppSettingsNotifier extends $AsyncNotifier<AppSettings> {
   FutureOr<AppSettings> build();
@@ -530,7 +530,7 @@ final class AiSettingsProvider
   }
 }
 
-String _$aiSettingsHash() => r'47d7e74f99d0107d10e296e9a54e830b62e43715';
+String _$aiSettingsHash() => r'7ce9e24526c76ecc7009a831c5523c450f421b35';
 
 @ProviderFor(availableAiModels)
 final availableAiModelsProvider = AvailableAiModelsProvider._();

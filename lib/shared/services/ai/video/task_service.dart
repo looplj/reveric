@@ -32,7 +32,8 @@ import '../../../logger/app_logger.dart';
 import '../../../localization/locale_keys.dart';
 import '../../../models/ai_provider.dart';
 import '../../../models/provider_asset.dart';
-import '../../../models/video/channels.dart';
+import '../../../models/video/config.dart';
+import '../../../models/provider_model.dart';
 import '../../../models/video/request.dart';
 import '../../../models/video/task_result.dart';
 import '../../../utils/short_entity_id.dart';
@@ -258,13 +259,16 @@ class VideoTaskService {
         !provider.videoModels.contains(request.modelId)) {
       throw const VideoException(VideoErrorCode.configuration_required);
     }
+    final modelSpec = resolveVideoModel(provider, request.modelId);
+    if (provider.isPluginProvider && modelSpec == null) {
+      throw const VideoException(
+        VideoErrorCode.configuration_required,
+        field: 'model',
+      );
+    }
     if (draft &&
-        (request.resolution != videoDraftResolution ||
-            lookupVideoChannelModel(
-                  provider.type,
-                  request.modelId,
-                )?.protocolOptions.supportsDraft !=
-                true)) {
+        (request.resolution != modelSpec?.capabilities.draft?.resolution ||
+            modelSpec?.capabilities.draft == null)) {
       throw const VideoException(
         VideoErrorCode.invalid_request,
         field: 'draft',
@@ -299,7 +303,12 @@ class VideoTaskService {
         modelId: request.modelId,
         status: GenerationTaskStatus.prepared,
         draft: Value(draft),
-        requestJson: VideoGenerationRequest(request, inputs: inputs),
+        requestJson: VideoGenerationRequest(
+          request,
+          inputs: inputs,
+          capabilities: modelSpec?.capabilities,
+          requestDefaults: modelSpec?.rawDefaults,
+        ),
       ),
     );
     return id;
@@ -349,8 +358,14 @@ class VideoTaskService {
             status: GenerationTaskStatus.prepared,
             draftTaskId: Value(source.id),
             requestJson: VideoGenerationRequest(
-              source.videoRequest.withResolution(videoDraftFinalResolution),
+              source.videoRequest.withResolution(
+                source.draftCapabilities!.completionResolution,
+              ),
               inputs: source.videoInputs,
+              capabilities:
+                  (source.requestJson as VideoGenerationRequest).capabilities,
+              requestDefaults: (source.requestJson as VideoGenerationRequest)
+                  .requestDefaults,
             ),
           ),
         );
@@ -467,6 +482,13 @@ class VideoTaskService {
         return;
       }
       final provider = await _provider(task);
+      if (provider.isPluginProvider &&
+          resolveVideoModel(provider, task.modelId) == null) {
+        throw const VideoException(
+          VideoErrorCode.configuration_required,
+          field: 'model',
+        );
+      }
       final prepared = await _prepare(task, provider);
       final transport = providerTransport(provider);
       _clients.add(transport);
@@ -555,7 +577,7 @@ class VideoTaskService {
   }) async {
     final provider = await database.aiProviderDao.getById(providerId);
     final providerAssets =
-        provider != null && _supportsProviderAssets(provider.type, modelId);
+        provider != null && _supportsProviderAssets(provider, modelId);
     for (final assetId in assetIds) {
       if (await _certifiedAsset(assetId, providerId, providerAssets) == null) {
         return true;
@@ -564,12 +586,12 @@ class VideoTaskService {
     return false;
   }
 
-  // 同一渠道下只有 Seedance 模型认 `asset://`，其他模型仍上传文件。
-  bool _supportsProviderAssets(String providerType, String modelId) =>
-      lookupVideoChannelModel(
-        providerType,
+  // 是否引用已认证素材由当前实例模型的声明决定。
+  bool _supportsProviderAssets(AiProvider provider, String modelId) =>
+      resolveVideoModel(
+        provider,
         modelId,
-      )?.protocolOptions.supportsProviderAssets ==
+      )?.capabilities.supportsCertifiedAssets ==
       true;
 
   /// 已认证进渠道素材库、可直接引用素材库 id 的记录；否则返回 null。
@@ -596,10 +618,10 @@ class VideoTaskService {
     if (task.draftTaskId != null) {
       return prepared;
     }
-    final providerAssets = _supportsProviderAssets(
-      task.providerType,
-      task.modelId,
-    );
+    final snapshot = task.requestJson as VideoGenerationRequest;
+    final providerAssets =
+        snapshot.capabilities?.supportsCertifiedAssets ??
+        _supportsProviderAssets(provider, task.modelId);
     final local = <VideoReference>[];
     final files = <File>[];
     for (final input in task.videoInputs) {
@@ -629,7 +651,16 @@ class VideoTaskService {
         ),
       );
     }
-    VideoCapabilities(provider.type).validateLocal(task.videoRequest, local);
+    VideoCapabilities.forProvider(
+      provider,
+      capabilities: snapshot.capabilities,
+      defaults: snapshot.requestDefaults == null
+          ? VideoRequestDefaults(
+              audio: ConfigValue(task.videoRequest.audio),
+              promptExtend: ConfigValue(task.videoRequest.promptExtend),
+            )
+          : VideoRequestDefaults.fromJson(snapshot.requestDefaults!),
+    ).validateLocal(task.videoRequest, local);
 
     final certifiedReferences = <String, String>{};
     final uploads = <(VideoInput, File, VideoMediaInfo)>[];
@@ -1260,7 +1291,7 @@ class VideoTaskService {
     if (provider == null ||
         !provider.enabled ||
         provider.type != task.providerType ||
-        !provider.hasApiKey) {
+        !provider.hasCredentialConfiguration) {
       throw const VideoException(VideoErrorCode.configuration_required);
     }
     return provider;

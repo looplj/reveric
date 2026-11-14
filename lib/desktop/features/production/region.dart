@@ -12,6 +12,7 @@
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/file-access.md
+import '../../../shared/models/provider_model.dart';
 import 'dart:async';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'dart:io';
@@ -41,7 +42,6 @@ import '../../../shared/services/storyboard/edit_orchestrator.dart';
 import '../../../shared/providers/storyboard.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/models/video/request.dart';
-import '../../../shared/models/video/channels.dart';
 import '../../../shared/models/production/image_request.dart';
 import '../../../shared/models/audio/channels.dart';
 import '../../../shared/services/production/audio_generate_orchestrator.dart';
@@ -883,11 +883,13 @@ class ProductionCanvasRegion extends HookConsumerWidget {
           : null;
       final supportsMiddleFrames =
           !productionUsesFrames(request.mode) ||
-          (lookupVideoChannelModel(
-                    videoProvider?.type ?? '',
-                    shot.modelId,
-                  )?.capabilities.maxMiddleFrames ??
-                  0) >
+          (videoProvider == null
+                  ? 0
+                  : resolveVideoModel(
+                          videoProvider,
+                          shot.modelId,
+                        )?.capabilities.maxMiddleFrames ??
+                        0) >
               0;
       final roles =
           (target.type == canvasNodeTypeImage

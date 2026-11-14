@@ -373,10 +373,7 @@ class CoverComplexitySection extends ConsumerWidget {
     if (selection == null) {
       return const SizedBox.shrink();
     }
-    final levels = imageComplexityLevels(
-      selection.config.type,
-      selection.model,
-    );
+    final levels = imageComplexityLevels(selection.config, selection.model);
     if (levels.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -385,7 +382,7 @@ class CoverComplexitySection extends ConsumerWidget {
       coverStudioControllerProvider(novelId).notifier,
     );
     final selected = imageComplexityFor(
-      selection.config.type,
+      selection.config,
       selection.model,
       state.complexityId,
     );

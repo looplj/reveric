@@ -37,8 +37,8 @@ class ArkVideoClient extends VideoClient {
         lookupVideoChannelModel(
           providerType,
           request.modelId,
-        )?.protocolOptions.supportsDraft ==
-        true;
+        )?.capabilities.draft !=
+        null;
     if (!supportsDraft || (draft && draftId != null)) {
       throw const VideoException(
         VideoErrorCode.invalid_request,

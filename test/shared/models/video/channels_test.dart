@@ -40,6 +40,58 @@ const approvedOpenRouterModels = {
 };
 
 void main() {
+  test('capability snapshots round trip every built-in channel', () {
+    for (final channels in videoChannelModels.values) {
+      for (final channel in channels.values) {
+        final encoded = channel.capabilities.toJson();
+        expect(
+          VideoModelCapabilities.fromJson(encoded).toJson(),
+          encoded,
+          reason: channel.catalogId,
+        );
+        final defaults = channel.requestDefaults.toJson();
+        expect(VideoRequestDefaults.fromJson(defaults).toJson(), defaults);
+      }
+    }
+    final draft = const VideoModelCapabilities(
+      draft: ConfigValue(
+        VideoDraftCapabilities(
+          resolution: '360p',
+          completionResolution: '720p',
+          ttlHours: 12,
+        ),
+      ),
+    );
+    expect(draft.merge(const VideoModelCapabilities()).draft!.ttlHours, 12);
+    expect(
+      draft.merge(const VideoModelCapabilities(draft: ConfigValue(null))).draft,
+      isNull,
+    );
+  });
+
+  test('channel behavioral overrides replace modes and duration limits', () {
+    const base = VideoModelCapabilities(
+      modes: [VideoMode.text, VideoMode.reference],
+      maxDurationByResolution: {'1080p': 10, '720p': 15},
+      framesRequireAdaptiveRatio: true,
+      supportsCertifiedAssets: true,
+    );
+    final resolved = base.merge(
+      const VideoModelCapabilities(
+        modes: [VideoMode.first_frame],
+        maxDurationByResolution: {'1080p': 5},
+        framesRequireAdaptiveRatio: false,
+        supportsCertifiedAssets: false,
+      ),
+    );
+    expect(resolved.modes, [VideoMode.first_frame]);
+    expect(resolved.maxDurationByResolution, {'1080p': 5});
+    expect(resolved.framesRequireAdaptiveRatio, false);
+    expect(resolved.supportsCertifiedAssets, false);
+    expect(base.modes, [VideoMode.text, VideoMode.reference]);
+    expect(base.maxDurationByResolution, {'1080p': 10, '720p': 15});
+  });
+
   test(
     'Token Plan lists split HappyHorse models with mode-specific limits',
     () {

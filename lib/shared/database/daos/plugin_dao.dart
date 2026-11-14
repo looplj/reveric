@@ -185,6 +185,26 @@ class PluginDao extends DatabaseAccessor<AppDatabase> with _$PluginDaoMixin {
           ),
         );
       });
+
+  /// 删除实例时仅清除该实例的配置、凭据与 Host 模型缓存。
+  Future<void> removeProviderConfiguration(
+    String pluginId,
+    String providerId,
+  ) => _write(pluginId, 'plugin_storage/plugin_secrets', 'DELETE', () async {
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(providerId)) {
+      throw const FormatException('Invalid provider identity');
+    }
+    final prefix = 'provider.$providerId.';
+    await transaction(() async {
+      for (final table in ['plugin_storage', 'plugin_secrets']) {
+        await customStatement(
+          'DELETE FROM $table WHERE plugin_id = ? AND substr(key, 1, ?) = ?',
+          [pluginId, prefix.length, prefix],
+        );
+      }
+    });
+  });
+
   Future<void> setPluginData(
     String pluginId,
     String key,

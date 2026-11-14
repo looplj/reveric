@@ -48,6 +48,19 @@ typedef PluginActionRunner =
       PluginConfigSubmission submission,
     );
 
+/// 由外层新建流程读取当前表单快照；不保存数据或持有凭据副本。
+class PluginConfigDraftController {
+  PluginConfigSubmission Function()? _read;
+
+  PluginConfigSubmission read() {
+    final read = _read;
+    if (read == null) {
+      throw StateError('Plugin configuration form is not ready');
+    }
+    return read();
+  }
+}
+
 /// 操作栏下方的结果行，显示最近一次保存或操作的结果。
 class _Status {
   const _Status(this.text, {required this.ok, this.action, this.inputs});
@@ -81,11 +94,15 @@ class PluginConfigForm extends HookWidget {
     required this.onSave,
     this.actions = const [],
     this.onAction,
+    this.actionSuccessText,
+    this.draftController,
     this.modelOptions = const [],
     this.dirty,
+    this.requiredSecretClearHint,
   });
 
   final List<PluginSettingField> fields;
+  final String? requiredSecretClearHint;
 
   /// 已保存的普通配置。
   final Map<String, Object?> values;
@@ -97,6 +114,10 @@ class PluginConfigForm extends HookWidget {
   /// 设置页操作；[onAction] 为 null 时不显示操作按钮。
   final List<PluginAction> actions;
   final PluginActionRunner? onAction;
+  final PluginConfigDraftController? draftController;
+
+  /// 成功后显示的补充结果；沿用表单的输入过期与生命周期检查。
+  final String? Function(String action)? actionSuccessText;
 
   /// `model` 字段可选的聊天模型。
   final List<PluginConfigModelOption> modelOptions;
@@ -108,12 +129,17 @@ class PluginConfigForm extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strings = _strings(context);
+    final strings = _strings(
+      context,
+      requiredSecretClearHint: requiredSecretClearHint,
+    );
     final locale = Localizations.localeOf(context);
     final onSaveRef = useRef(onSave);
     onSaveRef.value = onSave;
     final onActionRef = useRef(onAction);
     onActionRef.value = onAction;
+    final successTextRef = useRef(actionSuccessText);
+    successTextRef.value = actionSuccessText;
     final actions = _actions;
     // 可选模型变化时重建表单；同一列表内容的新实例不重建，避免丢失输入。
     final modelSignature = [
@@ -145,6 +171,7 @@ class PluginConfigForm extends HookWidget {
           locale: locale,
           actions: actions,
           modelOptions: modelOptions,
+          showSave: draftController == null,
         ),
         onAction: (event) => switch (event.name) {
           clearSecretEvent => _clearSecret(session, event, strings, status),
@@ -163,6 +190,7 @@ class PluginConfigForm extends HookWidget {
             status: status,
             locale: locale,
             onAction: onActionRef.value,
+            successText: successTextRef.value,
           ),
           _ => Future.value(const <A2uiDataUpdate>[]),
         },
@@ -174,7 +202,31 @@ class PluginConfigForm extends HookWidget {
         ).submission,
       );
       return session;
-    }, [fields, actions, locale, modelSignature]);
+    }, [fields, actions, locale, modelSignature, draftController]);
+    useEffect(() {
+      final controller = draftController;
+      if (controller == null) {
+        return null;
+      }
+      PluginConfigSubmission read() {
+        final result = readPluginConfigSubmission(
+          fields: fields,
+          data: session.dataSnapshot(),
+        );
+        if (result.issues.isNotEmpty) {
+          status.value = _Status(strings.saveFailed, ok: false);
+          throw const FormatException('Invalid plugin configuration');
+        }
+        return result.submission;
+      }
+
+      controller._read = read;
+      return () {
+        if (identical(controller._read, read)) {
+          controller._read = null;
+        }
+      };
+    }, [session, draftController]);
     // 页面数据每次变化后在 Dart 侧重算字段规则与操作可用性，写入 /valid、/actionReady
     // 供 checks 引用，并清除输入已变化的操作结果；写入会再触发一次，结果不变即停止。
     useEffect(() {
@@ -283,6 +335,7 @@ class PluginConfigForm extends HookWidget {
     required ValueNotifier<_Status?> status,
     required Locale locale,
     required PluginActionRunner? onAction,
+    required String? Function(String action)? successText,
   }) async {
     final name = event.context['action'];
     final action = _actions.firstWhereOrNull((item) => item.name == name);
@@ -322,7 +375,9 @@ class PluginConfigForm extends HookWidget {
     status.value = _Status(
       strings.actionResult(
         action.title.resolve(locale),
-        pluginActionResultText(result, strings),
+        result.ok
+            ? successText?.call(name) ?? pluginActionResultText(result, strings)
+            : pluginActionResultText(result, strings),
       ),
       ok: result.ok,
       action: name,
@@ -452,7 +507,10 @@ class _StatusLine extends StatelessWidget {
 
 /// 在 build 顶层取好全部文案；带参数的文案先取成模板，生成消息时再填值，
 /// 避免在 hook 初始化阶段读取 InheritedWidget。
-PluginConfigStrings _strings(BuildContext context) {
+PluginConfigStrings _strings(
+  BuildContext context, {
+  String? requiredSecretClearHint,
+}) {
   final maxLengthTemplate = context.t(
     LocaleKeys.formMaxLength,
     namedArgs: {'length': '{length}'},
@@ -497,9 +555,9 @@ PluginConfigStrings _strings(BuildContext context) {
     required: context.t(LocaleKeys.formRequired),
     secretSavedHint: context.t(LocaleKeys.pluginConfigSecretSavedHint),
     secretClearHint: context.t(LocaleKeys.pluginConfigSecretClearHint),
-    requiredSecretClearHint: context.t(
-      LocaleKeys.pluginConfigRequiredSecretClearHint,
-    ),
+    requiredSecretClearHint:
+        requiredSecretClearHint ??
+        context.t(LocaleKeys.pluginConfigRequiredSecretClearHint),
     invalidInteger: context.t(LocaleKeys.formInvalidInteger),
     invalidNumber: context.t(LocaleKeys.formInvalidNumber),
     maxLength: (length) => maxLengthTemplate.replaceAll('{length}', '$length'),

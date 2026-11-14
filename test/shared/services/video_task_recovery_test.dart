@@ -41,6 +41,7 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/provider_asset.dart';
 import 'package:reveric/shared/models/video/request.dart';
+import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/models/video/task_result.dart';
 import 'package:reveric/shared/services/ai/video/task_service.dart';
 import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
@@ -820,6 +821,10 @@ void main() {
                     ),
                   ],
                 ),
+                capabilities: lookupVideoChannelModel(
+                  provider.type,
+                  draftRequest.modelId,
+                )!.capabilities,
                 inputs: const [
                   VideoInput(
                     role: VideoInputRole.reference_image,

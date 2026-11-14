@@ -12,22 +12,9 @@ import 'catalog.dart';
 import 'request.dart';
 
 class VideoProtocolOptions {
-  const VideoProtocolOptions({
-    this.requiredMode,
-    this.framesRequireAdaptiveRatio = false,
-    this.supportsOmniReferenceTaskType = false,
-    this.supportsDraft = false,
-    this.supportsProviderAssets = false,
-  });
+  const VideoProtocolOptions({this.supportsOmniReferenceTaskType = false});
 
-  /// 分模式型号只接受该生成方式；空值沿用通用能力校验。
-  final VideoMode? requiredMode;
-  final bool framesRequireAdaptiveRatio;
   final bool supportsOmniReferenceTaskType;
-  final bool supportsDraft;
-
-  /// 参考素材可用 `asset://` 引用渠道私域素材库中已认证的素材（Seedance）。
-  final bool supportsProviderAssets;
 }
 
 /// AtlasCloud 的不同生成端点使用不同字段，不能统一套用 Seedance 请求。
@@ -37,8 +24,6 @@ class AtlasCloudVideoOptions extends VideoProtocolOptions {
     this.frames,
     this.firstLastFrames,
     this.reference,
-    super.framesRequireAdaptiveRatio,
-    super.supportsProviderAssets,
   });
   final AtlasCloudVideoRoute text;
   final AtlasCloudVideoRoute? frames;
@@ -114,7 +99,6 @@ class VideoChannelModel {
     this._capabilities = const VideoModelCapabilities(),
     this._requestDefaults = const VideoRequestDefaults(),
     this.protocolOptions = const VideoProtocolOptions(),
-    this.maxDurationByResolution = const {},
     this.highlights = const [],
     this.notices = const [],
   });
@@ -132,7 +116,8 @@ class VideoChannelModel {
   Set<String> get resolutions => capabilities.resolutions;
   Set<String> get ratios => capabilities.ratios;
   Set<int> get durations => capabilities.durations;
-  final Map<String, int> maxDurationByResolution;
+  Map<String, int> get maxDurationByResolution =>
+      capabilities.maxDurationByResolution;
   Set<int> durationsForResolution(String resolution) {
     final maximum = maxDurationByResolution[resolution];
     return maximum == null
@@ -156,16 +141,16 @@ class VideoChannelModel {
 const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
   VideoProtocol.new_api_video: {
     'doubao-seedance-2-5-260628': VideoChannelModel(
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
       catalogId: 'doubao-seedance-2-5-260628',
       protocolOptions: VideoProtocolOptions(
-        framesRequireAdaptiveRatio: true,
         supportsOmniReferenceTaskType: true,
       ),
     ),
     'seedance-2.5官方版': VideoChannelModel(
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
       catalogId: 'doubao-seedance-2-5-260628',
       protocolOptions: VideoProtocolOptions(
-        framesRequireAdaptiveRatio: true,
         supportsOmniReferenceTaskType: true,
       ),
     ),
@@ -212,6 +197,14 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
     'bytedance/seedance-2.5': VideoChannelModel(
       catalogId: 'doubao-seedance-2-5-260628',
       capabilities: VideoModelCapabilities(
+        draft: ConfigValue(
+          VideoDraftCapabilities(
+            resolution: '480p',
+            completionResolution: '1080p',
+            ttlHours: 168,
+          ),
+        ),
+        supportsCertifiedAssets: true,
         supportsAdaptiveTextRatio: true,
         references: {
           VideoMediaKind.image: VideoReferenceLimits(exclusiveMaxSize: true),
@@ -224,13 +217,12 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       ),
       protocolOptions: VideoProtocolOptions(
         supportsOmniReferenceTaskType: true,
-        supportsDraft: true,
-        supportsProviderAssets: true,
       ),
     ),
     'bytedance/seedance-2.0': VideoChannelModel(
       catalogId: 'doubao-seedance-2-0-260128',
       capabilities: VideoModelCapabilities(
+        supportsCertifiedAssets: true,
         resolutions: {'480p', '720p', '1080p'},
         references: {
           VideoMediaKind.video: VideoReferenceLimits(
@@ -240,7 +232,6 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
           ),
         },
       ),
-      protocolOptions: VideoProtocolOptions(supportsProviderAssets: true),
     ),
 
     // Official endpoint schemas: https://www.atlascloud.ai/docs/openapi-index
@@ -292,7 +283,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame},
         maxReferences: 9,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -402,7 +393,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {5, 10, 15},
         frameRoles: {},
         maxReferences: 0,
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -449,7 +444,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 6,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -532,7 +527,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         // dart format on
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 20,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: true,
         supportsAudioOnlyReference: false,
         references: {
@@ -642,7 +637,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         // dart format on
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 20,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: true,
         supportsAudioOnlyReference: false,
         references: {
@@ -811,12 +806,13 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
     'bytedance/seedance-2.0-fast': VideoChannelModel(
       catalogId: 'seedance-2.0-fast',
       capabilities: VideoModelCapabilities(
+        supportsCertifiedAssets: true,
         resolutions: {'480p', '720p', '720p-SR', '1080p-SR', '1440p-SR'},
         ratios: {'16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'},
         durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 15,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: true,
         supportsAudioOnlyReference: false,
         references: {
@@ -847,7 +843,6 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         promptExtend: ConfigValue(null),
       ),
       protocolOptions: AtlasCloudVideoOptions(
-        supportsProviderAssets: true,
         text: AtlasCloudVideoRoute(
           modelId: 'bytedance/seedance-2.0-fast/text-to-video',
           resolutions: {'480p', '720p', '720p-SR', '1080p-SR', '1440p-SR'},
@@ -903,12 +898,13 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
     'bytedance/seedance-2.0-mini': VideoChannelModel(
       catalogId: 'doubao-seedance-2-0-mini-260615',
       capabilities: VideoModelCapabilities(
+        supportsCertifiedAssets: true,
         resolutions: {'480p', '720p', '720p-SR', '1080p-SR', '1440p-SR'},
         ratios: {'16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'},
         durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 15,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: true,
         supportsAudioOnlyReference: false,
         references: {
@@ -939,7 +935,6 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         promptExtend: ConfigValue(null),
       ),
       protocolOptions: AtlasCloudVideoOptions(
-        supportsProviderAssets: true,
         text: AtlasCloudVideoRoute(
           modelId: 'bytedance/seedance-2.0-mini/text-to-video',
           resolutions: {'480p', '720p', '720p-SR', '1080p-SR', '1440p-SR'},
@@ -1042,7 +1037,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {4, 6, 8},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 2,
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1096,7 +1095,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {4, 6, 8},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 2,
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1161,7 +1164,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {4, 6, 8},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 3,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1261,7 +1264,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 2,
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1312,7 +1319,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 2,
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1388,7 +1399,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {5, 10},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 2,
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1451,13 +1466,13 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       ),
     ),
     'kwaivgi/kling-v4.0': VideoChannelModel(
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
       catalogId: 'kwaivgi-kling-v4.0',
       requestDefaults: VideoRequestDefaults(
         audio: ConfigValue(null),
         promptExtend: ConfigValue(null),
       ),
       protocolOptions: AtlasCloudVideoOptions(
-        framesRequireAdaptiveRatio: true,
         text: AtlasCloudVideoRoute(
           modelId: 'kwaivgi/kling-v4.0/text-to-video',
           resolutions: {'720p', '1080p', '1080p-esr', '2k-esr', '4k-esr'},
@@ -1594,7 +1609,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 12,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1719,7 +1734,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 12,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -1824,7 +1839,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         maxReferences: 12,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -2028,7 +2043,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame},
         maxReferences: 7,
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
         supportsAdaptiveTextRatio: false,
         supportsAudioOnlyReference: false,
         references: {
@@ -2125,45 +2140,53 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
   },
   VideoProtocol.ark_video: {
     'doubao-seedance-2-5-260628': VideoChannelModel(
+      capabilities: VideoModelCapabilities(
+        draft: ConfigValue(
+          VideoDraftCapabilities(
+            resolution: '480p',
+            completionResolution: '1080p',
+            ttlHours: 168,
+          ),
+        ),
+        framesRequireAdaptiveRatio: true,
+        supportsCertifiedAssets: true,
+      ),
       catalogId: 'doubao-seedance-2-5-260628',
       protocolOptions: VideoProtocolOptions(
-        framesRequireAdaptiveRatio: true,
         supportsOmniReferenceTaskType: true,
-        supportsDraft: true,
-        supportsProviderAssets: true,
       ),
     ),
     'doubao-seedance-2-0-260128': VideoChannelModel(
+      capabilities: VideoModelCapabilities(supportsCertifiedAssets: true),
       catalogId: 'doubao-seedance-2-0-260128',
-      protocolOptions: VideoProtocolOptions(supportsProviderAssets: true),
     ),
     'doubao-seedance-2-0-mini-260615': VideoChannelModel(
+      capabilities: VideoModelCapabilities(supportsCertifiedAssets: true),
       catalogId: 'doubao-seedance-2-0-mini-260615',
-      protocolOptions: VideoProtocolOptions(supportsProviderAssets: true),
     ),
   },
   VideoProtocol.minimax_video_v2: {
     'MiniMax-H3': VideoChannelModel(
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
       catalogId: 'MiniMax-H3',
-      protocolOptions: VideoProtocolOptions(framesRequireAdaptiveRatio: true),
     ),
   },
   VideoProtocol.wan_video: {
     'wan3.0-video': VideoChannelModel(
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
       catalogId: 'wan3.0-video',
       requestDefaults: VideoRequestDefaults(
         audio: ConfigValue(true),
         promptExtend: ConfigValue(true),
       ),
-      protocolOptions: VideoProtocolOptions(framesRequireAdaptiveRatio: true),
     ),
     'wan3.0-video-prime': VideoChannelModel(
+      capabilities: VideoModelCapabilities(framesRequireAdaptiveRatio: true),
       catalogId: 'wan3.0-video-prime',
       requestDefaults: VideoRequestDefaults(
         audio: ConfigValue(true),
         promptExtend: ConfigValue(true),
       ),
-      protocolOptions: VideoProtocolOptions(framesRequireAdaptiveRatio: true),
     ),
   },
   VideoProtocol.agnes_video: {
@@ -2184,7 +2207,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         // dart format on
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
     ),
     'bytedance/seedance-2.0': VideoChannelModel(
@@ -2195,14 +2218,14 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
     ),
     'bytedance/seedance-2.0-fast': VideoChannelModel(
       catalogId: 'seedance-2.0-fast',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2214,14 +2237,14 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
     ),
     'google/veo-3.1': VideoChannelModel(
       catalogId: 'veo-3.1',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2229,7 +2252,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'veo-3.1-fast',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2237,7 +2264,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'veo-3.1-lite',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2245,14 +2276,22 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'grok-imagine-video-1.5',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
     ),
     'x-ai/grok-imagine-video-1.5-lite': VideoChannelModel(
       catalogId: 'grok-imagine-video-1.5-lite',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
     ),
     'alibaba/wan-3.0': VideoChannelModel(
@@ -2265,7 +2304,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         // dart format on
         frameRoles: {VideoInputRole.first_frame},
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2279,7 +2318,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         // dart format on
         frameRoles: {VideoInputRole.first_frame},
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2287,7 +2330,7 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'wan-2.7',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2295,7 +2338,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'wan-2.6',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2303,7 +2350,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'kling-v3.0-pro',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2311,7 +2362,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'kling-v3.0-std',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2319,7 +2374,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'kling-video-o1',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2331,7 +2390,11 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         durations: {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2339,28 +2402,44 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'hailuo-3-max',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
     ),
     'minimax/hailuo-2.3': VideoChannelModel(
       catalogId: 'hailuo-2.3',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
     ),
     'runway/gen-4.5': VideoChannelModel(
       catalogId: 'gen-4.5',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
     ),
     'black-forest-labs/flux-3-video': VideoChannelModel(
       catalogId: 'flux-3-video',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
       requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
     ),
@@ -2368,20 +2447,26 @@ const videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
       catalogId: 'heygen-video-1',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: false,
+        modes: [
+          VideoMode.text,
+          VideoMode.first_frame,
+          VideoMode.first_last_frame,
+        ],
       ),
     ),
     'alibaba/happyhorse-1.1': VideoChannelModel(
       catalogId: 'happyhorse-1.1',
       capabilities: VideoModelCapabilities(
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
-        allowsReferenceMode: true,
+        modes: VideoMode.values,
       ),
     ),
   },
 };
 
 const _metasoH3Capabilities = VideoModelCapabilities(
+  maxDurationByResolution: {'2K': 15},
+  framesRequireAdaptiveRatio: true,
   maxPromptCharacters: ConfigValue(10000),
   resolutions: {'480p', '768P', '1080p', '2K'},
   // dart format off
@@ -2398,6 +2483,7 @@ final _providerVideoModels = <String, Map<String, VideoChannelModel>>{
     'happyhorse-1.1-t2v': VideoChannelModel(
       catalogId: 'happyhorse-1.1',
       capabilities: VideoModelCapabilities(
+        modes: [VideoMode.text],
         resolutions: {'480P', '720P', '1080P'},
         ratios: {
           '16:9',
@@ -2412,20 +2498,21 @@ final _providerVideoModels = <String, Map<String, VideoChannelModel>>{
         },
         frameRoles: {},
         maxReferences: 0,
-        allowsReferenceMode: false,
+
         supportsAudioOnlyReference: false,
         references: {VideoMediaKind.image: null},
       ),
-      protocolOptions: VideoProtocolOptions(requiredMode: VideoMode.text),
     ),
     'happyhorse-1.1-i2v': VideoChannelModel(
       catalogId: 'happyhorse-1.1',
       capabilities: VideoModelCapabilities(
+        modes: [VideoMode.first_frame],
+        framesRequireAdaptiveRatio: true,
         resolutions: {'480P', '720P', '1080P'},
         ratios: {'adaptive'},
         frameRoles: {VideoInputRole.first_frame},
         maxReferences: 1,
-        allowsReferenceMode: false,
+
         supportsAudioOnlyReference: false,
         references: {
           VideoMediaKind.image: VideoReferenceLimits(
@@ -2438,14 +2525,11 @@ final _providerVideoModels = <String, Map<String, VideoChannelModel>>{
           ),
         },
       ),
-      protocolOptions: VideoProtocolOptions(
-        requiredMode: VideoMode.first_frame,
-        framesRequireAdaptiveRatio: true,
-      ),
     ),
     'happyhorse-1.1-r2v': VideoChannelModel(
       catalogId: 'happyhorse-1.1',
       capabilities: VideoModelCapabilities(
+        modes: [VideoMode.reference],
         resolutions: {'480P', '720P', '1080P'},
         ratios: {
           '16:9',
@@ -2460,7 +2544,7 @@ final _providerVideoModels = <String, Map<String, VideoChannelModel>>{
         },
         frameRoles: {},
         maxReferences: 9,
-        allowsReferenceMode: true,
+
         supportsAudioOnlyReference: false,
         references: {
           VideoMediaKind.image: VideoReferenceLimits(
@@ -2471,22 +2555,17 @@ final _providerVideoModels = <String, Map<String, VideoChannelModel>>{
           ),
         },
       ),
-      protocolOptions: VideoProtocolOptions(requiredMode: VideoMode.reference),
     ),
   },
   'metaso': {
     'MiniMax-H3': VideoChannelModel(
       catalogId: 'MiniMax-H3',
       capabilities: _metasoH3Capabilities,
-      maxDurationByResolution: {'2K': 15},
-      protocolOptions: VideoProtocolOptions(framesRequireAdaptiveRatio: true),
       highlights: [VideoModelHighlight.max_duration],
     ),
     'MiniMax-H3-priority': VideoChannelModel(
       catalogId: 'MiniMax-H3',
       capabilities: _metasoH3Capabilities,
-      maxDurationByResolution: {'2K': 15},
-      protocolOptions: VideoProtocolOptions(framesRequireAdaptiveRatio: true),
       highlights: [
         VideoModelHighlight.max_duration,
         VideoModelHighlight.priority,
@@ -2559,6 +2638,6 @@ VideoChannelModel? lookupVideoChannelModel(
 const _newApiSingleFrame = VideoModelCapabilities(
   frameRoles: {VideoInputRole.first_frame},
   maxReferences: 1,
-  allowsReferenceMode: false,
+  modes: [VideoMode.text, VideoMode.first_frame, VideoMode.first_last_frame],
   references: {VideoMediaKind.image: VideoReferenceLimits(maxCount: 1)},
 );

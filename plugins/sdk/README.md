@@ -143,6 +143,26 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 
 未声明或用户未授权的权限，调用时会以 `permission_denied` 失败。
 
+### provider.settings.actions
+
+供应商实例可以使用与 `settings.actions` 相同的按钮声明：
+
+```json
+"provider": {
+  "name": "Example",
+  "settings": {
+    "fields": { "apiKey": { "type": "secret", "title": "API Key", "required": true } },
+    "actions": { "balance": { "title": "查询余额", "requires": ["apiKey"] } }
+  }
+}
+```
+
+在 `setup.provider.register({ listModels, image, actions: { balance: async (context) => ({ ok: true, text: { "zh-CN": "余额：100", "en": "Balance: 100" } }) } })` 中注册对应 handler。每个声明必须有且只有一个处理函数，不能注册未声明的 action；与插件全局 settings action 分开。
+
+操作使用 `ProviderContext`：`provider.id` 是当前实例，`settings.get` / `secrets.get` 读取该实例配置与表单未保存草稿，不会保存草稿。只校验 `requires` 列出的字段；空列表可用于无需密钥的操作。必须启用插件；新建草稿和已保存但关闭的供应商实例都可执行，执行操作不自动保存实例或表单配置。使用实例代理，20 秒超时，无文件或媒体生成 API。
+
+返回 `ProviderActionResult`：`ok` 必填；`code` 使用现有设置操作错误映射；`message` 仅供诊断日志；`text` 是可选的成功提示，支持 `PluginText` 多语言，失败时不会展示。修改依赖字段后，表单自动清除旧结果。`checkConnection` 保持原有独立入口。
+
 ### settings
 
 ```json

@@ -554,6 +554,8 @@ abstract final class LocaleKeys {
       'screenplay.production.draftCompletionPending';
   static const productionDraftPendingHint =
       'screenplay.production.draftPendingHint';
+  static const productionDraftSnapshotMissing =
+      'screenplay.production.draftSnapshotMissing';
   static const productionDraftExpired = 'screenplay.production.draftExpired';
   static const productionDraftExpiredHint =
       'screenplay.production.draftExpiredHint';
@@ -599,6 +601,7 @@ abstract final class LocaleKeys {
       'screenplay.production.middleFrameNumber';
   static const productionGenerateMiddleFramesUnsupported =
       'screenplay.production.generateMiddleFramesUnsupported';
+  static const productionTextVideo = 'screenplay.production.textVideo';
   static const productionFirstFrame = 'screenplay.production.firstFrame';
   static const productionLastFrame = 'screenplay.production.lastFrame';
   static const productionFirstFrameReference =
@@ -3616,6 +3619,17 @@ abstract final class LocaleKeys {
       'provider.video_notice_priority_billing';
   static const providerTitle = 'provider.title';
   static const providerSummary = 'provider.summary';
+  static const providerPluginModelsInvalid = 'provider.plugin_models_invalid';
+  static const providerPluginModelsRefreshNeeded =
+      'provider.plugin_models_refresh_needed';
+  static const providerPluginModelUnavailable =
+      'provider.plugin_model_unavailable';
+  static const providerFetchModelsEmpty = 'provider.fetch_models_empty';
+  static const providerPluginUnavailable = 'provider.plugin_unavailable';
+  static const providerPluginSecretClearHint =
+      'provider.plugin_secret_clear_hint';
+  static const providerPluginCheckConnection =
+      'provider.plugin_check_connection';
   static const providerNameLabel = 'provider.name_label';
   static const providerNameHint = 'provider.name_hint';
   static const providerTypeLabel = 'provider.type_label';
@@ -3680,6 +3694,8 @@ abstract final class LocaleKeys {
   static const providerTypePickerTitle = 'provider.type_picker_title';
   static const providerTypePresets = 'provider.type_presets';
   static const providerTypeProtocols = 'provider.type_protocols';
+  static const providerTypePlugins = 'provider.type_plugins';
+  static const providerTypePluginsEmpty = 'provider.type_plugins_empty';
   static const providerKindChat = 'provider.kind_chat';
   static const providerKindImage = 'provider.kind_image';
   static const providerKindVideo = 'provider.kind_video';
@@ -3689,7 +3705,6 @@ abstract final class LocaleKeys {
   static const providerTypeNoteMinimax = 'provider.type_note_minimax';
   static const providerTypeNoteDoubao = 'provider.type_note_doubao';
   static const providerDraftBadge = 'provider.draft_badge';
-  static const providerDraftTypeHint = 'provider.draft_type_hint';
   static const providerNewTitle = 'provider.new_title';
   static const providerTypeOpenaiCompatible = 'provider.type_openai_compatible';
   static const providerAudioModelsLabel = 'provider.audio_models_label';

@@ -22,7 +22,8 @@ import 'package:reveric/desktop/features/production/support.dart';
 import 'package:reveric/desktop/features/production/composer.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/video/capabilities.dart';
-import 'package:reveric/shared/models/video/channels.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/provider_model.dart';
 import 'package:reveric/shared/models/video/task_result.dart';
 import 'package:reveric/shared/services/production/generate_orchestrator.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
@@ -92,7 +93,10 @@ void main() {
         expect(error.field, 'references');
         expect(
           productionReferenceErrorKey(
-            channel: lookupVideoChannelModel('api88', model)!,
+            channel: resolveVideoModel(
+              aiProviderBuiltinById('openai')!.copyWith(type: 'api88'),
+              model,
+            )!,
             mode: mode,
             roles: roles,
           ),

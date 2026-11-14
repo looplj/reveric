@@ -142,7 +142,9 @@ class _CompleteDraftDialog extends HookWidget {
           row(context.t(LocaleKeys.storyboardRatio), request.ratio),
           row(
             context.t(LocaleKeys.storyboardResolution),
-            productionResolutionLabel(videoDraftFinalResolution),
+            productionResolutionLabel(
+              task.draftCapabilities!.completionResolution,
+            ),
           ),
           if (changed == true) ...[
             const SizedBox(height: RevericSpacing.sm),
@@ -320,7 +322,7 @@ class ProductionDraftCompletion extends HookConsumerWidget {
   }
 }
 
-/// 节点工具条：采用的是样片时显示「样片 · 480P」，并就地提供「生成成片」。
+/// 节点工具条：标记当前采用的样片，并就地提供「生成成片」。
 class ProductionDraftBadge extends HookWidget {
   const ProductionDraftBadge({
     super.key,
@@ -356,9 +358,14 @@ class ProductionDraftBadge extends HookWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          RevericBadge(
-            label: context.t(LocaleKeys.productionDraftLabel),
-            color: colors.warningText,
+          Tooltip(
+            message: draft.task.draftCapabilities == null
+                ? context.t(LocaleKeys.productionDraftSnapshotMissing)
+                : context.t(LocaleKeys.productionDraftLabel),
+            child: RevericBadge(
+              label: context.t(LocaleKeys.productionDraftLabel),
+              color: colors.warningText,
+            ),
           ),
           if (!completed && draft.task.supportsDraftCompletion)
             ProductionDraftCompletion(

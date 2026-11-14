@@ -11,6 +11,7 @@
 //   assets/translations/zh-CN/provider.json
 
 import 'dart:io';
+import 'dart:ui' show Locale;
 
 import 'package:easy_localization/easy_localization.dart' show tr;
 import 'package:http/io_client.dart';
@@ -22,6 +23,8 @@ import '../localization/locale_keys.dart';
 import '../services/ai/codex/credentials.dart';
 import '../services/proxy_client.dart';
 import 'models_catalog.dart';
+import 'plugin/text.dart';
+import 'plugin/provider_registry.dart';
 import 'audio/channels.dart';
 import 'image/channels.dart';
 import 'video/request.dart';
@@ -83,6 +86,8 @@ enum UploadProtocol {
 
 class AiProviderTypeConfig {
   final String displayName;
+  final PluginText? localizedName;
+  final Set<AiModelKind> providerModelKinds;
   final bool fixedBaseUrl;
   final bool usesNewApi;
   final ModelIdSource modelIdSource;
@@ -96,6 +101,8 @@ class AiProviderTypeConfig {
 
   const AiProviderTypeConfig({
     required this.displayName,
+    this.localizedName,
+    this.providerModelKinds = const {},
     required this.modelIdSource,
     this._textModelKinds = const {},
     this.imageProtocol,
@@ -108,6 +115,7 @@ class AiProviderTypeConfig {
 
   Set<AiModelKind> get supportedModelKinds => {
     ..._textModelKinds,
+    ...providerModelKinds,
     if (imageProtocol != null) AiModelKind.image,
     if (videoProtocol != null) AiModelKind.video,
     if (audioProtocol != null) AiModelKind.audio,
@@ -116,15 +124,15 @@ class AiProviderTypeConfig {
 
 const Set<AiModelKind> _chatOnlyKinds = {AiModelKind.chat};
 
-const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
-  AiProviderType.moss: AiProviderTypeConfig(
+final Map<String, AiProviderTypeConfig> aiProviderTypeConfigs = {
+  'moss': AiProviderTypeConfig(
     displayName: 'MOSS',
     modelIdSource: ModelIdSource.registered,
     imageProtocol: ImageProtocol.moss_image,
     audioProtocol: AudioProtocol.moss_audio,
     fixedBaseUrl: true,
   ),
-  AiProviderType.atlascloud: AiProviderTypeConfig(
+  'atlascloud': AiProviderTypeConfig(
     displayName: 'AtlasCloud',
     uploadProtocol: UploadProtocol.atlascloud_media,
     modelIdSource: ModelIdSource.registered,
@@ -134,26 +142,26 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     audioProtocol: AudioProtocol.atlascloud_audio,
     fixedBaseUrl: true,
   ),
-  AiProviderType.openai: AiProviderTypeConfig(
+  'openai': AiProviderTypeConfig(
     displayName: 'OpenAI',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.openai_images,
   ),
-  AiProviderType.codex: AiProviderTypeConfig(
+  'codex': AiProviderTypeConfig(
     displayName: 'Codex',
     modelIdSource: ModelIdSource.registered,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.codex_image,
     fixedBaseUrl: true,
   ),
-  AiProviderType.openai_compatible: AiProviderTypeConfig(
+  'openai_compatible': AiProviderTypeConfig(
     displayName: 'OpenAI Compatible',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.openai_images,
   ),
-  AiProviderType.api88: AiProviderTypeConfig(
+  'api88': AiProviderTypeConfig(
     displayName: '88API',
     uploadProtocol: UploadProtocol.api88_media,
     modelIdSource: ModelIdSource.open,
@@ -164,21 +172,21 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     fixedBaseUrl: true,
     usesNewApi: true,
   ),
-  AiProviderType.apikey: AiProviderTypeConfig(
+  'apikey': AiProviderTypeConfig(
     displayName: 'APIKEY.FAN',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     fixedBaseUrl: true,
     usesNewApi: true,
   ),
-  AiProviderType.infistar: AiProviderTypeConfig(
+  'infistar': AiProviderTypeConfig(
     displayName: '无限星河',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     fixedBaseUrl: true,
     usesNewApi: true,
   ),
-  AiProviderType.ooki: AiProviderTypeConfig(
+  'ooki': AiProviderTypeConfig(
     displayName: 'OOKiAPI',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
@@ -188,7 +196,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     fixedBaseUrl: true,
     usesNewApi: true,
   ),
-  AiProviderType.openrouter: AiProviderTypeConfig(
+  'openrouter': AiProviderTypeConfig(
     displayName: 'OpenRouter',
     modelIdSource: ModelIdSource.registered,
     textModelKinds: _chatOnlyKinds,
@@ -197,18 +205,18 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     audioProtocol: AudioProtocol.openrouter_speech,
     fixedBaseUrl: true,
   ),
-  AiProviderType.xai: AiProviderTypeConfig(
+  'xai': AiProviderTypeConfig(
     displayName: 'xAI',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.openai_images,
   ),
-  AiProviderType.anthropic: AiProviderTypeConfig(
+  'anthropic': AiProviderTypeConfig(
     displayName: 'Anthropic',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
   ),
-  AiProviderType.qwen: AiProviderTypeConfig(
+  'qwen': AiProviderTypeConfig(
     displayName: 'Qwen',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
@@ -216,7 +224,7 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     videoProtocol: VideoProtocol.wan_video,
     audioProtocol: AudioProtocol.qwen_tts,
   ),
-  AiProviderType.qwen_token_plan: AiProviderTypeConfig(
+  'qwen_token_plan': AiProviderTypeConfig(
     displayName: 'Qwen Token Plan',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
@@ -225,35 +233,35 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     audioProtocol: AudioProtocol.qwen_tts,
     fixedBaseUrl: true,
   ),
-  AiProviderType.gemini: AiProviderTypeConfig(
+  'gemini': AiProviderTypeConfig(
     displayName: 'Gemini',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.gemini_image,
   ),
-  AiProviderType.deepseek: AiProviderTypeConfig(
+  'deepseek': AiProviderTypeConfig(
     displayName: 'DeepSeek',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
   ),
-  AiProviderType.moonshot: AiProviderTypeConfig(
+  'moonshot': AiProviderTypeConfig(
     displayName: 'Moonshot',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
   ),
-  AiProviderType.zhipu: AiProviderTypeConfig(
+  'zhipu': AiProviderTypeConfig(
     displayName: 'Zhipu',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
   ),
-  AiProviderType.doubao: AiProviderTypeConfig(
+  'doubao': AiProviderTypeConfig(
     displayName: 'Doubao',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     imageProtocol: ImageProtocol.ark_image,
     videoProtocol: VideoProtocol.ark_video,
   ),
-  AiProviderType.volcengine: AiProviderTypeConfig(
+  'volcengine': AiProviderTypeConfig(
     displayName: 'Volcengine',
     modelIdSource: ModelIdSource.registered,
     textModelKinds: _chatOnlyKinds,
@@ -262,14 +270,14 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     audioProtocol: AudioProtocol.seed_audio,
     fixedBaseUrl: true,
   ),
-  AiProviderType.metaso: AiProviderTypeConfig(
+  'metaso': AiProviderTypeConfig(
     displayName: 'METASO',
     uploadProtocol: UploadProtocol.minimax_files,
     modelIdSource: ModelIdSource.registered,
     videoProtocol: VideoProtocol.minimax_video_v2,
     fixedBaseUrl: true,
   ),
-  AiProviderType.minimax: AiProviderTypeConfig(
+  'minimax': AiProviderTypeConfig(
     displayName: 'MiniMax',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
@@ -277,20 +285,20 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
     videoProtocol: VideoProtocol.minimax_video_v2,
     audioProtocol: AudioProtocol.minimax_music,
   ),
-  AiProviderType.agnes: AiProviderTypeConfig(
+  'agnes': AiProviderTypeConfig(
     displayName: 'Agnes',
     modelIdSource: ModelIdSource.open,
     imageProtocol: ImageProtocol.agnes_image,
     videoProtocol: VideoProtocol.agnes_video,
     fixedBaseUrl: true,
   ),
-  AiProviderType.purefox: AiProviderTypeConfig(
+  'purefox': AiProviderTypeConfig(
     displayName: 'PureFox',
     modelIdSource: ModelIdSource.open,
     textModelKinds: _chatOnlyKinds,
     fixedBaseUrl: true,
   ),
-  AiProviderType.purefox_media: AiProviderTypeConfig(
+  'purefox_media': AiProviderTypeConfig(
     uploadProtocol: UploadProtocol.purefox_uploads,
     displayName: 'PureFox Media',
     modelIdSource: ModelIdSource.registered,
@@ -300,18 +308,15 @@ const Map<AiProviderType, AiProviderTypeConfig> aiProviderTypeConfigs = {
   ),
 };
 
-/// 持久化的 provider 类型名对应的配置；已移除的类型返回 null。
+/// Persisted type identity is shared by built-ins and plugin instances.
 AiProviderTypeConfig? aiProviderTypeConfigFor(String type) =>
-    aiProviderTypeConfigs[AiProviderType.values.asNameMap()[type]];
-
-final Map<AiProviderType, String> aiProviderTypeDisplayNames = {
+    aiProviderTypeConfigs[type];
+Map<String, String> get aiProviderTypeDisplayNames => {
   for (final entry in aiProviderTypeConfigs.entries)
     entry.key: entry.value.displayName,
 };
-
-final List<AiProviderType> customAiProviderTypes = List.unmodifiable(
-  AiProviderType.values,
-);
+List<String> get customAiProviderTypes =>
+    List.unmodifiable(aiProviderTypeConfigs.keys);
 
 String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
   AiProviderType.qwen_token_plan =>
@@ -726,8 +731,7 @@ AiProvider? aiProviderBuiltinById(String id) {
 // ==================== Extension 方法 ====================
 
 extension AiProviderX on AiProvider {
-  bool get isTypeSupported =>
-      AiProviderType.values.asNameMap().containsKey(type);
+  bool get isTypeSupported => aiProviderTypeConfigs.containsKey(type);
 
   AiProviderType get typeEnum =>
       AiProviderType.values.asNameMap()[type] ??
@@ -753,7 +757,12 @@ extension AiProviderX on AiProvider {
       ? ReasoningEffort.values.byName(reasoningEffort!)
       : null;
 
-  AiProviderTypeConfig get typeConfig => aiProviderTypeConfigs[typeEnum]!;
+  AiProviderTypeConfig get typeConfig =>
+      aiProviderTypeConfigs[type] ??
+      (throw UnsupportedError('Unsupported AI provider type: $type'));
+
+  bool get isPluginProvider => type.startsWith('plugin:');
+  String? get pluginId => isPluginProvider ? type.substring(7) : null;
 
   String get displayName => name;
 
@@ -768,11 +777,12 @@ extension AiProviderX on AiProvider {
 
   /// 本机认证在每次请求前读取；配置校验只检查平台与必填设置。
   bool get hasCredentialConfiguration =>
-      isCodex ? CodexCredentials.supportedPlatform : hasApiKey;
+      isPluginProvider ||
+      (isCodex ? CodexCredentials.supportedPlatform : hasApiKey);
 
   bool get hasApiKey => apiKey.trim().isNotEmpty;
 
-  bool get hasBaseUrl => effectiveBaseUrl.trim().isNotEmpty;
+  bool get hasBaseUrl => isPluginProvider || effectiveBaseUrl.trim().isNotEmpty;
 
   bool get hasModels =>
       availableModels.isNotEmpty ||
@@ -793,15 +803,17 @@ extension AiProviderX on AiProvider {
     return null;
   }
 
-  String get effectiveBaseUrl => hasFixedBaseUrl
+  String get effectiveBaseUrl => isPluginProvider
+      ? baseUrl
+      : hasFixedBaseUrl
       ? fixedBaseUrl
-      : typeEnum == AiProviderType.qwen
+      : type == AiProviderType.qwen.name
       ? qwenBaseUrl(baseUrl)
-      : typeEnum == AiProviderType.minimax && baseUrl.trim().isEmpty
+      : type == AiProviderType.minimax.name && baseUrl.trim().isEmpty
       ? 'https://api.minimax.cn'
       : baseUrl;
 
-  bool get hasFixedBaseUrl => typeConfig.fixedBaseUrl;
+  bool get hasFixedBaseUrl => !isPluginProvider && typeConfig.fixedBaseUrl;
 
   String get fixedBaseUrl => aiProviderFixedBaseUrl(typeEnum);
 
@@ -810,7 +822,8 @@ extension AiProviderX on AiProvider {
   List<String> get availableModels =>
       supportsModelKind(AiModelKind.chat) ? _normalizeModels(models) : const [];
 
-  Set<AiModelKind> get supportedModelKinds => typeConfig.supportedModelKinds;
+  Set<AiModelKind> get supportedModelKinds =>
+      aiProviderTypeConfigFor(type)?.supportedModelKinds ?? const {};
 
   bool supportsModelKind(AiModelKind kind) =>
       supportedModelKinds.contains(kind);
@@ -998,6 +1011,9 @@ class AiSettings {
   final String? defaultPlannerModelId;
   final String? defaultWriterModelId;
 
+  /// 插件模型名的显示语言，仅运行时使用，不持久化。
+  final Locale? modelNameLocale;
+
   const AiSettings({
     this.providers = const [],
     this.defaultChatModelId,
@@ -1005,6 +1021,7 @@ class AiSettings {
     this.defaultImageModelId,
     this.defaultPlannerModelId,
     this.defaultWriterModelId,
+    this.modelNameLocale,
   });
 
   factory AiSettings.defaults() {
@@ -1051,8 +1068,10 @@ class AiSettings {
     Object? defaultImageModelId = _sentinel,
     Object? defaultPlannerModelId = _sentinel,
     Object? defaultWriterModelId = _sentinel,
+    Locale? modelNameLocale,
   }) {
     return AiSettings(
+      modelNameLocale: modelNameLocale ?? this.modelNameLocale,
       providers: providers ?? this.providers,
       defaultChatModelId: defaultChatModelId == _sentinel
           ? this.defaultChatModelId
@@ -1073,7 +1092,7 @@ class AiSettings {
   }
 
   AiSettings updateConfig(AiProvider provider) {
-    if (!provider.isTypeSupported) {
+    if (!provider.isTypeSupported && !provider.isPluginProvider) {
       throw UnsupportedError('Unsupported AI provider type: ${provider.type}');
     }
     final previous = findConfigById(provider.id);
@@ -1157,14 +1176,23 @@ class AiSettings {
       }
       if (!config.isValid) continue;
       for (final model in config.modelsForKind(kind)) {
-        final efforts = normalizeReasoningEfforts(
-          lookupCatalogReasoningEfforts(model),
-        );
+        final pluginModel = config.isPluginProvider
+            ? pluginProviderModels.find(config, kind, model)
+            : null;
+        if (config.isPluginProvider && pluginModel == null) {
+          continue;
+        }
+        final efforts = config.isPluginProvider
+            ? null
+            : normalizeReasoningEfforts(lookupCatalogReasoningEfforts(model));
         options.add(
           AiModelOption(
             providerId: config.id,
             providerDisplayName: config.displayName,
             model: model,
+            modelDisplayName: pluginModel?.name?.resolve(
+              modelNameLocale ?? const Locale('zh', 'CN'),
+            ),
             kind: kind,
             isDefault: '${config.id}::$model' == selectedDefaultId,
             reasoningEfforts: efforts,

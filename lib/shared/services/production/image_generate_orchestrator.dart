@@ -7,6 +7,7 @@
 // 遵循的 Rules:
 //   .agents/rules/service-naming.md
 //   .agents/rules/ai-calling.md
+import '../../models/provider_model.dart';
 import '../../database/novel_content_database.dart';
 import '../../models/generation/task.dart';
 import '../../models/ai_provider.dart';
@@ -126,6 +127,9 @@ class ProductionImageGenerateOrchestrator {
         size: capabilities.size(clip.ratio, clip.resolution),
         complexity: preset.complexity,
         references: references,
+        capabilities: capabilities.effectiveCapabilities,
+        requestDefaults:
+            resolveImageModel(provider, clip.modelId!)?.rawDefaults ?? {},
       ),
     );
   }

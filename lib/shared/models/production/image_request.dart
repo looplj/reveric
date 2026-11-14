@@ -5,6 +5,7 @@
 //   lib/shared/services/ai/image.dart
 import '../ai_provider.dart';
 import '../image/channels.dart';
+import '../provider_model.dart';
 import 'view_presets.dart';
 
 class ProductionImageDraft {
@@ -58,6 +59,8 @@ class ProductionImageRequest {
     required this.resolution,
     required this.size,
     this.complexity,
+    this.capabilities,
+    this.requestDefaults,
     List<ProductionImageReference> references = const [],
   }) : references = List.unmodifiable(references);
   final String providerId;
@@ -68,7 +71,25 @@ class ProductionImageRequest {
   final String resolution;
   final String? size;
   final String? complexity;
+  final ImageModelCapabilities? capabilities;
+  final Map<String, dynamic>? requestDefaults;
   final List<ProductionImageReference> references;
+  ProductionImageRequest withModelSnapshot(
+    ImageModelCapabilities? capabilities,
+    Map<String, dynamic>? defaults,
+  ) => ProductionImageRequest(
+    providerId: providerId,
+    modelId: modelId,
+    originalPrompt: originalPrompt,
+    prompt: prompt,
+    ratio: ratio,
+    resolution: resolution,
+    size: size,
+    complexity: complexity,
+    references: references,
+    capabilities: capabilities,
+    requestDefaults: defaults == null ? null : Map.unmodifiable(defaults),
+  );
   Map<String, dynamic> toJson() => {
     'version': 1,
     'provider_id': providerId,
@@ -79,6 +100,8 @@ class ProductionImageRequest {
     'resolution': resolution,
     'size': size,
     if (complexity != null) 'complexity': complexity,
+    if (capabilities != null) 'capabilities': capabilities!.toJson(),
+    'requestDefaults': ?requestDefaults,
     'references': references.map((r) => r.toJson()).toList(),
   };
   factory ProductionImageRequest.fromJson(Map<String, dynamic> json) {
@@ -94,6 +117,12 @@ class ProductionImageRequest {
       resolution: json['resolution'] as String,
       size: json['size'] as String?,
       complexity: json['complexity'] as String?,
+      capabilities: json['capabilities'] == null
+          ? null
+          : ImageModelCapabilities.fromJson(
+              json['capabilities'] as Map<String, dynamic>,
+            ),
+      requestDefaults: json['requestDefaults'] as Map<String, dynamic>?,
       references: (json['references'] as List)
           .map(
             (r) => ProductionImageReference.fromJson(r as Map<String, dynamic>),
@@ -103,24 +132,31 @@ class ProductionImageRequest {
   }
 }
 
-/// 制作场景的图像能力：未登记型号开放常用规格及参考图，由服务端校验。
+/// 制作场景的图像能力：插件只读实例声明，内置未登记型号保留通用规格。
 class ProductionImageCapabilities {
-  const ProductionImageCapabilities(this.provider, this.model);
+  const ProductionImageCapabilities(
+    this.provider,
+    this.model, {
+    ImageModelCapabilities? capabilities,
+  }) : _snapshot = capabilities;
+  final ImageModelCapabilities? _snapshot;
   final AiProvider provider;
   final String model;
   static bool supports(AiProvider provider) =>
-      provider.typeConfig.imageProtocol != null;
+      provider.isTypeSupported && provider.supportsModelKind(AiModelKind.image);
 
-  ImageChannelModel? get _channel =>
-      lookupImageChannelModel(provider.type, model);
-  ImageModelCapabilities get _capabilities =>
-      _channel?.capabilities ??
-      ImageModelCapabilities(
-        ratios: _unlistedImageRatios,
-        resolutions: const {'auto', '1K', '2K', '4K'},
-        sizes: _usesRatioParameters ? const {} : _unlistedImageSizes,
-        unlimitedReferences: true,
-      );
+  ImageModelSpec? get _spec => resolveImageModel(provider, model);
+  ImageModelCapabilities? get _capabilities =>
+      _snapshot ??
+      _spec?.capabilities ??
+      (provider.isPluginProvider
+          ? null
+          : ImageModelCapabilities(
+              ratios: _unlistedImageRatios,
+              resolutions: const {'auto', '1K', '2K', '4K'},
+              sizes: _usesRatioParameters ? const {} : _unlistedImageSizes,
+              unlimitedReferences: true,
+            ));
 
   bool get _usesRatioParameters =>
       provider.typeConfig.imageProtocol == ImageProtocol.openrouter_image ||
@@ -128,23 +164,31 @@ class ProductionImageCapabilities {
       (provider.typeConfig.imageProtocol == ImageProtocol.new_api_images &&
           model.startsWith('gemini-'));
 
-  /// 渠道支持生图即可使用；未登记型号的参数由服务端验证。
-  bool get isSupported => supports(provider);
+  /// 插件声明必须仍可用；内置未登记型号保留服务端参数校验。
+  bool get isSupported =>
+      supports(provider) && (!provider.isPluginProvider || _spec != null);
+  ImageModelCapabilities get effectiveCapabilities =>
+      _capabilities ??
+      (throw const FormatException(
+        'Model declarations are unavailable; get models again',
+      ));
 
   /// 只暴露渠道登记的能力，未登记型号返回 null。
   ImageModelCapabilities? get verifiedCapabilities =>
-      supports(provider) ? _channel?.capabilities : null;
+      supports(provider) ? _spec?.capabilities : null;
 
-  List<String> get ratios => _capabilities.ratios.toList();
-  List<String> get resolutions => _capabilities.resolutions.toList();
+  List<String> get ratios => _capabilities?.ratios.toList() ?? const [];
+  List<String> get resolutions =>
+      _capabilities?.resolutions.toList() ?? const [];
 
   /// null 表示没有本地数量上限，由服务端校验。
-  int? get maxReferences =>
-      _capabilities.unlimitedReferences ? null : _capabilities.maxReferences;
+  int? get maxReferences => _capabilities?.unlimitedReferences == true
+      ? null
+      : (_capabilities?.maxReferences ?? 0);
   bool allowsReferenceCount(int count) =>
-      _capabilities.allowsReferenceCount(count);
+      isSupported && effectiveCapabilities.allowsReferenceCount(count);
   String? size(String ratio, String resolution) =>
-      _capabilities.size(ratio, resolution);
+      effectiveCapabilities.size(ratio, resolution);
 
   void validate({
     required String prompt,
@@ -158,8 +202,11 @@ class ProductionImageCapabilities {
         prompt.trim().isEmpty) {
       throw const FormatException('Unsupported image generation configuration');
     }
-    _capabilities.validateReferences(references);
-    _capabilities.validateSize(size(ratio, resolution), references: references);
+    effectiveCapabilities.validateReferences(references);
+    effectiveCapabilities.validateSize(
+      size(ratio, resolution),
+      references: references,
+    );
   }
 }
 

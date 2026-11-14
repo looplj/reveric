@@ -68,7 +68,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       },
       maxMiddleFrames: 8,
       maxReferences: 15,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -85,7 +85,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 12,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -102,7 +102,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 2,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -119,7 +123,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 9,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -136,7 +140,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 10},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -153,7 +161,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 10},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -170,7 +182,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 10, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -187,7 +203,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 10,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -204,7 +220,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 2,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -222,7 +242,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -240,7 +264,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 2,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -257,7 +285,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 7,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -275,7 +303,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 7,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -293,7 +321,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 7,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {

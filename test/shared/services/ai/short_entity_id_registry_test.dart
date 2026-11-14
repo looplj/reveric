@@ -10,6 +10,14 @@ import 'package:reveric/shared/utils/short_entity_id.dart';
 void main() {
   test('every readable resource identity has a registered business prefix', () {
     const registrations = <String, Set<ShortEntityIdType>>{
+      'production.id': {ShortEntityIdType.canvas_work},
+      'production/settings.id': {ShortEntityIdType.canvas_work},
+      'production/canvas.id': {ShortEntityIdType.canvas},
+      'production/canvas/nodes.id': {ShortEntityIdType.canvasNode},
+      'production/canvas/edges.id': {ShortEntityIdType.canvasEdge},
+      'production/clips.id': {ShortEntityIdType.productionClip},
+      'production/clips.inputs[].id': {ShortEntityIdType.productionInput},
+      'production/clips/generations.id': {ShortEntityIdType.generationTask},
       'chapters.id': {ShortEntityIdType.chapter, ShortEntityIdType.extra},
       'volumes.id': {ShortEntityIdType.volume},
       'characters.id': {ShortEntityIdType.character},
@@ -38,6 +46,7 @@ void main() {
       'works.entries[].id': {
         ShortEntityIdType.novel,
         ShortEntityIdType.screenplay,
+        ShortEntityIdType.canvas_work,
       },
       'screenplay.id': {ShortEntityIdType.screenplay},
       'seasons.id': {ShortEntityIdType.screenplaySeason},

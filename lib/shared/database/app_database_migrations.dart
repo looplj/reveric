@@ -25,6 +25,10 @@ class AppDatabaseMigrations {
 
   final AppDatabase db;
 
+  /// v7: 持久化供应商查询状态；鉴权下载头只在内存中使用，不落库。
+  Future<void> migrateToV7(Migrator m) =>
+      m.addColumn(db.generationTasks, db.generationTasks.providerState);
+
   /// v6: 同次图片任务的有序候选结果。
   Future<void> migrateToV6(Migrator m) =>
       m.addColumn(db.generationTasks, db.generationTasks.imageOutputs);

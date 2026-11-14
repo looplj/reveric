@@ -160,7 +160,7 @@ class _ImageForm extends HookConsumerWidget {
         : ProductionImageCapabilities(provider, model.$2);
     final complexities = provider == null
         ? const <String>[]
-        : imageComplexityLevels(provider.type, model.$2).toList();
+        : imageComplexityLevels(provider, model.$2).toList();
     String? blockedReason;
     if (!providers.hasData) {
       blockedReason = context.t(
@@ -577,7 +577,7 @@ class _ImageForm extends HookConsumerWidget {
                     complexity: provider == null
                         ? null
                         : imageComplexityFor(
-                            provider.type,
+                            provider,
                             model.$2,
                             preset.complexity,
                           ),

@@ -490,7 +490,7 @@ void main() {
       expect(stored.emotion, isEmpty);
       expect(stored.events, isEmpty);
       final node = await contract('scenes');
-      for (final field in ['beat_id', 'location_id', 'interior_exterior']) {
+      for (final field in ['location_id', 'interior_exterior']) {
         expect(resourceInput(node)[field]['nullable'], isTrue);
         final ops = (node['operation_contracts'] as List).cast<Map>();
         expect(
@@ -505,11 +505,7 @@ void main() {
       }
       final cleared = await call('Write', {
         'path': scene['path'],
-        'fields': {
-          'beat_id': null,
-          'location_id': null,
-          'interior_exterior': null,
-        },
+        'fields': {'location_id': null, 'interior_exterior': null},
       });
       expect(cleared['error'], isNull, reason: '$cleared');
     },

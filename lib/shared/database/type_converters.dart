@@ -366,3 +366,56 @@ class ImageTaskOutputsConverter
   @override
   String toSql(ImageTaskOutputs value) => jsonEncode(value.toJson());
 }
+
+/// 任务恢复状态不得用空对象掩盖损坏，也不接受任意对象的 toJson 转换。
+class ProviderStateConverter
+    extends TypeConverter<Map<String, dynamic>, String> {
+  const ProviderStateConverter();
+  void _validate(Object? value, [Set<Object>? ancestors]) {
+    if (value == null ||
+        value is String ||
+        value is bool ||
+        (value is num && value.isFinite)) {
+      return;
+    }
+    if (value is! List && value is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Provider state must contain only JSON values',
+      );
+    }
+    final seen = ancestors ?? Set<Object>.identity();
+    if (!seen.add(value)) {
+      throw const FormatException('Provider state must not contain cycles');
+    }
+    try {
+      final items = value is List
+          ? value
+          : (value as Map<String, dynamic>).values;
+      for (final item in items) {
+        _validate(item, seen);
+      }
+    } finally {
+      seen.remove(value);
+    }
+  }
+
+  @override
+  Map<String, dynamic> fromSql(String column) {
+    final value = jsonDecode(column);
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('Provider state must be a JSON object');
+    }
+    toSql(value);
+    return Map.unmodifiable(value);
+  }
+
+  @override
+  String toSql(Map<String, dynamic> value) {
+    _validate(value);
+    final encoded = jsonEncode(value);
+    if (utf8.encode(encoded).length > 64 * 1024) {
+      throw const FormatException('Provider state exceeds 64 KB');
+    }
+    return encoded;
+  }
+}

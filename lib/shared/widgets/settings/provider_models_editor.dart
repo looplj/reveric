@@ -33,6 +33,9 @@ class ProviderModelsEditor extends HookWidget {
     this.fetchButton,
     this.modelTrailing,
     this.modelNotice,
+    this.labelForModel,
+    this.errorForModel,
+    this.allowManualAdd = true,
   });
 
   final String label;
@@ -40,6 +43,11 @@ class ProviderModelsEditor extends HookWidget {
   final List<String> models;
   final ValueChanged<List<String>> onChanged;
   final Widget? fetchButton;
+  final bool allowManualAdd;
+  final String Function(String model)? labelForModel;
+
+  /// 模型不可用时的说明；正常模型返回 null。
+  final String? Function(String model)? errorForModel;
 
   /// 模型名右侧的附加说明（如卖点徽标）；返回 null 时不占位。
   final Widget? Function(String model)? modelTrailing;
@@ -120,11 +128,22 @@ class ProviderModelsEditor extends HookWidget {
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
-                              model,
+                              labelForModel?.call(model) ?? model,
                               style: typo.ui.copyWith(
                                 color: colors.textPrimary,
                               ),
                             ),
+                            if (errorForModel?.call(model)
+                                case final String error)
+                              Tooltip(
+                                message: error,
+                                child: Text(
+                                  error,
+                                  style: typo.uiSmall.copyWith(
+                                    color: colors.warningText,
+                                  ),
+                                ),
+                              ),
                             ?modelNotice?.call(model),
                             ?modelTrailing?.call(model),
                           ],
@@ -141,13 +160,14 @@ class ProviderModelsEditor extends HookWidget {
                   ),
                 ),
               ],
-              RevericInlineActionInput(
-                controller: inputController,
-                hintText: hint,
-                actionLabel: context.t(LocaleKeys.commonAdd),
-                onActionPressed: addModel,
-                height: inputHeight,
-              ),
+              if (allowManualAdd)
+                RevericInlineActionInput(
+                  controller: inputController,
+                  hintText: hint,
+                  actionLabel: context.t(LocaleKeys.commonAdd),
+                  onActionPressed: addModel,
+                  height: inputHeight,
+                ),
             ],
           ),
         ),

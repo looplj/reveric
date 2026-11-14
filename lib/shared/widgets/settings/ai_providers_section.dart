@@ -39,6 +39,7 @@ import 'leave_guard.dart';
 import 'mobile_provider_list.dart';
 import 'provider_config_panel.dart';
 import 'provider_draft.dart';
+import 'plugins/config_form.dart';
 import 'provider_logo.dart';
 import 'provider_overview.dart';
 import 'provider_type_picker.dart';
@@ -100,6 +101,10 @@ class _DesktopProviders extends HookConsumerWidget {
     final returnTo = useRef<String?>(null);
     final allConfigs = settings.aiSettings.allConfigs;
     final currentDraft = draft.value;
+    final pluginDraft = useMemoized(PluginConfigDraftController.new, [
+      currentDraft?.id,
+      currentDraft?.type,
+    ]);
 
     final effectiveSelectedId =
         currentDraft?.id ??
@@ -118,7 +123,11 @@ class _DesktopProviders extends HookConsumerWidget {
       }
       saving.value = true;
       try {
-        final id = await saveProviderDraft(ref, pending);
+        final id = await saveProviderDraft(
+          ref,
+          pending,
+          pluginDraft: pluginDraft,
+        );
         if (context.mounted) {
           draft.value = null;
           selectedId.value = id;
@@ -201,12 +210,9 @@ class _DesktopProviders extends HookConsumerWidget {
               ? ProviderConfigForm(
                   key: ValueKey(currentDraft.id),
                   config: currentDraft,
+                  pluginDraftController: pluginDraft,
                   onChanged: (config) async => draft.value = config,
-                  onChangeType: (type) => draft.value = retypeProviderDraft(
-                    context,
-                    draft.value!,
-                    type,
-                  ),
+                  isDraft: true,
                   badge: const ProviderDraftBadge(),
                   headerActions: [
                     RevericButton.text(
@@ -330,6 +336,10 @@ class _ProviderDraftRoute extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final draft = useState(initial);
+    final pluginDraft = useMemoized(PluginConfigDraftController.new, [
+      draft.value.id,
+      draft.value.type,
+    ]);
     final saving = useState(false);
 
     Future<void> save() async {
@@ -338,7 +348,7 @@ class _ProviderDraftRoute extends HookConsumerWidget {
       }
       saving.value = true;
       try {
-        await saveProviderDraft(ref, draft.value);
+        await saveProviderDraft(ref, draft.value, pluginDraft: pluginDraft);
         if (context.mounted) {
           Navigator.of(context).pop();
         }
@@ -399,9 +409,9 @@ class _ProviderDraftRoute extends HookConsumerWidget {
         ),
         body: ProviderConfigForm(
           config: draft.value,
+          pluginDraftController: pluginDraft,
           onChanged: (config) async => draft.value = config,
-          onChangeType: (type) =>
-              draft.value = retypeProviderDraft(context, draft.value, type),
+          isDraft: true,
           badge: const ProviderDraftBadge(),
           headerActions: const [],
         ),
@@ -426,7 +436,7 @@ class ProviderList extends HookWidget {
   final List<AiProvider> configs;
   final String? selectedId;
   final ValueChanged<String> onSelect;
-  final ValueChanged<AiProviderType> onAddCustom;
+  final ValueChanged<String> onAddCustom;
 
   /// 未保存的新供应商，固定显示在列表顶部；存在时不能再新建。
   final AiProvider? draft;
@@ -691,18 +701,22 @@ class ProviderStatusDot extends StatelessWidget {
 }
 
 /// Provider 类型展示名；兼容协议名称及有中英文品牌名的渠道走 locale key。
-String localizedProviderTypeName(BuildContext context, AiProviderType type) {
-  if (type == AiProviderType.infistar) {
+String localizedProviderTypeName(BuildContext context, String type) {
+  if (type == 'infistar') {
     return context.t(LocaleKeys.providerTypeInfistar);
   }
-  if (type == AiProviderType.metaso) {
+  if (type == 'metaso') {
     return context.t(LocaleKeys.settingsBuiltinProviderMetaso);
   }
-  if (type == AiProviderType.volcengine) {
+  if (type == 'volcengine') {
     return context.t(LocaleKeys.providerTypeVolcengine);
   }
-  if (type == AiProviderType.openai_compatible) {
+  if (type == 'openai_compatible') {
     return context.t(LocaleKeys.providerTypeOpenaiCompatible);
   }
-  return aiProviderTypeDisplayNames[type] ?? type.name;
+  return aiProviderTypeConfigFor(
+        type,
+      )?.localizedName?.resolve(Localizations.localeOf(context)) ??
+      aiProviderTypeDisplayNames[type] ??
+      type;
 }

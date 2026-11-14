@@ -456,6 +456,57 @@ void main() {
       expect(await db.pluginDao.secretValues('test.web'), ['saved-key']);
     },
   );
+  test(
+    'provider manifest isolates fields and rejects reserved instance keys',
+    () {
+      final base = package().manifest.json;
+      final parsed = PluginManifest.fromJson({
+        ...base,
+        'provider': {
+          'name': {'en': 'Images'},
+          'settings': {
+            'fields': {
+              'endpoint': {
+                'type': 'string',
+                'title': 'Endpoint',
+                'required': true,
+              },
+              'token': {'type': 'secret', 'title': 'Token'},
+            },
+          },
+        },
+      });
+      expect(parsed.settings, isEmpty);
+      expect(parsed.provider!.fields.map((field) => field.key), [
+        'endpoint',
+        'token',
+      ]);
+      for (final declaration in [
+        {
+          'name': 'Images',
+          'settings': {'actions': {}},
+        },
+        {
+          'name': 'Images',
+          'settings': {
+            'fields': {
+              '__models': {'type': 'string', 'title': 'Reserved'},
+            },
+          },
+        },
+        {
+          'settings': {'fields': {}},
+        },
+        'invalid',
+      ]) {
+        expect(
+          () => PluginManifest.fromJson({...base, 'provider': declaration}),
+          throwsFormatException,
+        );
+      }
+    },
+  );
+
   test('manifest parses actions and rejects invalid declarations', () {
     final valid = package().manifest.json;
     final settings = {

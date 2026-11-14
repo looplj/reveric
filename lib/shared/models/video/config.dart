@@ -88,6 +88,69 @@ class VideoReferenceLimits {
     maxPixels: overrides._maxPixels ?? _maxPixels,
     exclusiveMaxSize: overrides._exclusiveMaxSize ?? _exclusiveMaxSize,
   );
+  Map<String, dynamic> toJson() => {
+    'maxCount': maxCount,
+    'mimeTypes': mimeTypes?.toList(),
+    'maxSizeMb': maxSizeMb,
+    'minDimension': minDimension,
+    'maxDimension': maxDimension,
+    'minRatio': minRatio,
+    'maxRatio': maxRatio,
+    'minDurationMs': minDurationMs,
+    'maxDurationMs': maxDurationMs,
+    'maxTotalDurationMs': maxTotalDurationMs,
+    'minTotalDurationMs': minTotalDurationMs,
+    'maxTotalSizeMb': maxTotalSizeMb,
+    'minFrameRate': minFrameRate,
+    'maxFrameRate': maxFrameRate,
+    'minPixels': minPixels,
+    'maxPixels': maxPixels,
+    'exclusiveMaxSize': exclusiveMaxSize,
+  };
+  factory VideoReferenceLimits.fromJson(Map<String, dynamic> json) =>
+      VideoReferenceLimits(
+        maxCount: json['maxCount'] as int?,
+        mimeTypes: ConfigValue(
+          (json['mimeTypes'] as List?)?.cast<String>().toSet(),
+        ),
+        maxSizeMb: ConfigValue(json['maxSizeMb'] as num?),
+        minDimension: ConfigValue(json['minDimension'] as int?),
+        maxDimension: ConfigValue(json['maxDimension'] as int?),
+        minRatio: ConfigValue((json['minRatio'] as num?)?.toDouble()),
+        maxRatio: ConfigValue((json['maxRatio'] as num?)?.toDouble()),
+        minDurationMs: ConfigValue(json['minDurationMs'] as int?),
+        maxDurationMs: ConfigValue(json['maxDurationMs'] as int?),
+        maxTotalDurationMs: ConfigValue(json['maxTotalDurationMs'] as int?),
+        minTotalDurationMs: ConfigValue(json['minTotalDurationMs'] as int?),
+        maxTotalSizeMb: ConfigValue(json['maxTotalSizeMb'] as num?),
+        minFrameRate: ConfigValue((json['minFrameRate'] as num?)?.toDouble()),
+        maxFrameRate: ConfigValue((json['maxFrameRate'] as num?)?.toDouble()),
+        minPixels: ConfigValue(json['minPixels'] as int?),
+        maxPixels: ConfigValue(json['maxPixels'] as int?),
+        exclusiveMaxSize: json['exclusiveMaxSize'] as bool?,
+      );
+}
+
+class VideoDraftCapabilities {
+  const VideoDraftCapabilities({
+    required this.resolution,
+    required this.completionResolution,
+    required this.ttlHours,
+  });
+  final String resolution;
+  final String completionResolution;
+  final int ttlHours;
+  Map<String, dynamic> toJson() => {
+    'resolution': resolution,
+    'completionResolution': completionResolution,
+    'ttlHours': ttlHours,
+  };
+  factory VideoDraftCapabilities.fromJson(Map<String, dynamic> json) =>
+      VideoDraftCapabilities(
+        resolution: json['resolution'] as String,
+        completionResolution: json['completionResolution'] as String,
+        ttlHours: json['ttlHours'] as int,
+      );
 }
 
 class VideoModelCapabilities {
@@ -104,7 +167,11 @@ class VideoModelCapabilities {
     this._supportsAdaptiveTextRatio,
     this._supportsLastFrameOnly,
     this._maxInputOutputDurationMs,
-    this._allowsReferenceMode,
+    this._modes,
+    this._draft,
+    this._maxDurationByResolution,
+    this._framesRequireAdaptiveRatio,
+    this._supportsCertifiedAssets,
   });
 
   final Set<String>? _resolutions;
@@ -138,8 +205,17 @@ class VideoModelCapabilities {
   bool get supportsLastFrameOnly => _supportsLastFrameOnly ?? false;
   final ConfigValue<int>? _maxInputOutputDurationMs;
   int? get maxInputOutputDurationMs => _maxInputOutputDurationMs?.value;
-  final bool? _allowsReferenceMode;
-  bool get allowsReferenceMode => _allowsReferenceMode ?? true;
+  final ConfigValue<VideoDraftCapabilities>? _draft;
+  VideoDraftCapabilities? get draft => _draft?.value;
+  final List<VideoMode>? _modes;
+  List<VideoMode> get modes => _modes ?? VideoMode.values;
+  final Map<String, int>? _maxDurationByResolution;
+  Map<String, int> get maxDurationByResolution =>
+      _maxDurationByResolution ?? const {};
+  final bool? _framesRequireAdaptiveRatio;
+  bool get framesRequireAdaptiveRatio => _framesRequireAdaptiveRatio ?? false;
+  final bool? _supportsCertifiedAssets;
+  bool get supportsCertifiedAssets => _supportsCertifiedAssets ?? false;
 
   VideoModelCapabilities merge(
     VideoModelCapabilities overrides,
@@ -164,8 +240,75 @@ class VideoModelCapabilities {
         overrides._supportsLastFrameOnly ?? _supportsLastFrameOnly,
     maxInputOutputDurationMs:
         overrides._maxInputOutputDurationMs ?? _maxInputOutputDurationMs,
-    allowsReferenceMode: overrides._allowsReferenceMode ?? _allowsReferenceMode,
+    modes: overrides._modes ?? _modes,
+    draft: overrides._draft ?? _draft,
+    maxDurationByResolution:
+        overrides._maxDurationByResolution ?? _maxDurationByResolution,
+    framesRequireAdaptiveRatio:
+        overrides._framesRequireAdaptiveRatio ?? _framesRequireAdaptiveRatio,
+    supportsCertifiedAssets:
+        overrides._supportsCertifiedAssets ?? _supportsCertifiedAssets,
   );
+  Map<String, dynamic> toJson() => {
+    'resolutions': resolutions.toList(),
+    'ratios': ratios.toList(),
+    'durations': durations.toList(),
+    'frameRoles': frameRoles.map((value) => value.name).toList(),
+    'maxMiddleFrames': maxMiddleFrames,
+    'maxPromptCharacters': maxPromptCharacters,
+    'maxReferences': maxReferences,
+    'references': references.map(
+      (key, value) => MapEntry(key.name, value.toJson()),
+    ),
+    'supportsAudioOnlyReference': supportsAudioOnlyReference,
+    'supportsAdaptiveTextRatio': supportsAdaptiveTextRatio,
+    'supportsLastFrameOnly': supportsLastFrameOnly,
+    'maxInputOutputDurationMs': maxInputOutputDurationMs,
+    'draft': draft?.toJson(),
+    'modes': modes.map((value) => value.name).toList(),
+    'maxDurationByResolution': maxDurationByResolution,
+    'framesRequireAdaptiveRatio': framesRequireAdaptiveRatio,
+    'supportsCertifiedAssets': supportsCertifiedAssets,
+  };
+  factory VideoModelCapabilities.fromJson(Map<String, dynamic> json) =>
+      VideoModelCapabilities(
+        resolutions: (json['resolutions'] as List?)?.cast<String>().toSet(),
+        ratios: (json['ratios'] as List?)?.cast<String>().toSet(),
+        durations: (json['durations'] as List?)?.cast<int>().toSet(),
+        frameRoles: (json['frameRoles'] as List?)
+            ?.map((value) => VideoInputRole.values.byName(value as String))
+            .toSet(),
+        maxMiddleFrames: json['maxMiddleFrames'] as int?,
+        maxPromptCharacters: ConfigValue(json['maxPromptCharacters'] as int?),
+        maxReferences: json['maxReferences'] as int?,
+        references: (json['references'] as Map<String, dynamic>?)?.map(
+          (key, value) => MapEntry(
+            VideoMediaKind.values.byName(key),
+            VideoReferenceLimits.fromJson(value as Map<String, dynamic>),
+          ),
+        ),
+        supportsAudioOnlyReference: json['supportsAudioOnlyReference'] as bool?,
+        supportsAdaptiveTextRatio: json['supportsAdaptiveTextRatio'] as bool?,
+        supportsLastFrameOnly: json['supportsLastFrameOnly'] as bool?,
+        maxInputOutputDurationMs: ConfigValue(
+          json['maxInputOutputDurationMs'] as int?,
+        ),
+        draft: ConfigValue(
+          json['draft'] == null
+              ? null
+              : VideoDraftCapabilities.fromJson(
+                  json['draft'] as Map<String, dynamic>,
+                ),
+        ),
+        modes: (json['modes'] as List?)
+            ?.map((value) => VideoMode.values.byName(value as String))
+            .toList(),
+        maxDurationByResolution:
+            (json['maxDurationByResolution'] as Map<String, dynamic>?)
+                ?.cast<String, int>(),
+        framesRequireAdaptiveRatio: json['framesRequireAdaptiveRatio'] as bool?,
+        supportsCertifiedAssets: json['supportsCertifiedAssets'] as bool?,
+      );
 }
 
 class VideoRequestDefaults {
@@ -180,5 +323,14 @@ class VideoRequestDefaults {
       VideoRequestDefaults(
         audio: overrides._audio ?? _audio,
         promptExtend: overrides._promptExtend ?? _promptExtend,
+      );
+  Map<String, dynamic> toJson() => {
+    'audio': audio,
+    'promptExtend': promptExtend,
+  };
+  factory VideoRequestDefaults.fromJson(Map<String, dynamic> json) =>
+      VideoRequestDefaults(
+        audio: ConfigValue(json['audio'] as bool?),
+        promptExtend: ConfigValue(json['promptExtend'] as bool?),
       );
 }

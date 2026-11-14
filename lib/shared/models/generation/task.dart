@@ -7,6 +7,7 @@
 import '../production/image_request.dart';
 import '../audio/request.dart';
 import '../video/request.dart';
+import '../video/config.dart';
 
 enum GenerationKind { image, video, audio }
 
@@ -48,6 +49,12 @@ sealed class GenerationRequest {
       ),
       GenerationKind.video => VideoGenerationRequest(
         VideoRequest.fromJson(request),
+        capabilities: json['capabilities'] == null
+            ? null
+            : VideoModelCapabilities.fromJson(
+                json['capabilities'] as Map<String, dynamic>,
+              ),
+        requestDefaults: json['requestDefaults'] as Map<String, dynamic>?,
         inputs: (json['inputs'] as List)
             .map((value) => VideoInput.fromJson(value as Map<String, dynamic>))
             .toList(),
@@ -72,10 +79,16 @@ final class ImageGenerationRequest extends GenerationRequest {
 }
 
 final class VideoGenerationRequest extends GenerationRequest {
-  VideoGenerationRequest(this.request, {List<VideoInput> inputs = const []})
-    : inputs = List.unmodifiable(inputs);
+  VideoGenerationRequest(
+    this.request, {
+    List<VideoInput> inputs = const [],
+    this.capabilities,
+    this.requestDefaults,
+  }) : inputs = List.unmodifiable(inputs);
   final VideoRequest request;
   final List<VideoInput> inputs;
+  final VideoModelCapabilities? capabilities;
+  final Map<String, dynamic>? requestDefaults;
   @override
   GenerationKind get kind => GenerationKind.video;
   @override
@@ -86,6 +99,8 @@ final class VideoGenerationRequest extends GenerationRequest {
     'kind': kind.name,
     'request': request.toJson(),
     'inputs': inputs.map((input) => input.toJson()).toList(),
+    if (capabilities != null) 'capabilities': capabilities!.toJson(),
+    'requestDefaults': ?requestDefaults,
   };
 }
 

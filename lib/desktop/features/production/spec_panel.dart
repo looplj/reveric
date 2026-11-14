@@ -22,7 +22,6 @@ import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/image/channels.dart';
 import '../../../shared/models/production/settings.dart';
 import '../../../shared/providers/storyboard.dart';
-import '../../../shared/services/ai/video/draft.dart';
 import '../../../shared/theme/theme.dart';
 import 'popover.dart';
 import 'support.dart';
@@ -368,7 +367,7 @@ class ProductionSpecPanel extends StatelessWidget {
 }
 
 /// 节点输入框底栏的「比例 · 分辨率」pill；可选项来自当前模型的能力。
-/// [sample] 不为 null 时可选样片，选中后 pill 写「480P 样片」，和实际提交的一致。
+/// [sample] 不为 null 时可选样片，选中后显示模型声明的样片分辨率。
 class ProductionSpecPill extends StatelessWidget {
   const ProductionSpecPill({
     super.key,
@@ -381,9 +380,10 @@ class ProductionSpecPill extends StatelessWidget {
     this.complexity,
     this.onComplexity,
     this.sample,
+    this.sampleResolution,
     this.audio,
     this.onAudio,
-  });
+  }) : assert(sample == null || sampleResolution != null);
   final List<String> ratios;
   final List<String> resolutions;
   final String ratio;
@@ -395,6 +395,7 @@ class ProductionSpecPill extends StatelessWidget {
   final bool? audio;
   final ValueChanged<bool>? onAudio;
   final ValueNotifier<bool>? sample;
+  final String? sampleResolution;
   @override
   Widget build(BuildContext context) {
     final sample = this.sample;
@@ -422,7 +423,7 @@ class ProductionSpecPill extends StatelessWidget {
           children: [
             Text(
               '${productionRatioLabel(context, ratio)} · '
-              '${sampleOn == true ? context.t(LocaleKeys.productionSampleSpec, namedArgs: {'resolution': productionResolutionLabel(videoDraftResolution)}) : productionResolutionLabel(resolution)}'
+              '${sampleOn == true ? context.t(LocaleKeys.productionSampleSpec, namedArgs: {'resolution': productionResolutionLabel(sampleResolution!)}) : productionResolutionLabel(resolution)}'
               '${complexity == null ? '' : ' · ${productionComplexityLabel(context, complexity!)}'}'
               '${audio == null ? '' : ' · '}',
               style: typo.uiSmall.copyWith(

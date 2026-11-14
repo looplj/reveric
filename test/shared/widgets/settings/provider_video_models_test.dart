@@ -15,6 +15,7 @@ import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/components/reveric_checkbox.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/settings/provider_video_models.dart';
+import 'package:reveric/shared/widgets/settings/provider_models_editor.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 
 void main() {
@@ -191,6 +192,79 @@ void main() {
       expect(find.byTooltip('Up to 30s'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
     });
+  }
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.android,
+  ]) {
+    testWidgets(
+      'shared model editor supports registered models and optional errors on $platform',
+      (tester) async {
+        var models = ['normal-id', 'missing-id'];
+        await tester.pumpWidget(
+          EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData().copyWith(
+                  platform: platform,
+                ),
+                home: RevericTheme(
+                  data: RevericThemeData.reveric,
+                  child: Scaffold(
+                    body: SizedBox(
+                      width: 360,
+                      child: StatefulBuilder(
+                        builder: (context, setState) => ProviderModelsEditor(
+                          label: 'Video Models',
+                          hint: 'Model ID',
+                          models: models,
+                          allowManualAdd: false,
+                          labelForModel: (id) =>
+                              id == 'normal-id' ? 'Normal model' : id,
+                          errorForModel: (id) =>
+                              id == 'missing-id' ? 'Unavailable' : null,
+                          onChanged: (next) => setState(() => models = next),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Normal model'), findsOneWidget);
+        expect(find.text('Unavailable'), findsOneWidget);
+        expect(find.byType(TextField), findsNothing);
+        await tester.tap(find.byTooltip('Delete').last);
+        await tester.pumpAndSettle();
+        expect(models, ['normal-id']);
+        expect(find.text('Unavailable'), findsNothing);
+        await tester.tap(find.byTooltip('Delete'));
+        await tester.pumpAndSettle();
+        expect(models, isEmpty);
+        expect(
+          find.text(
+            'No models yet. Add models to enable default model selection.',
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
   }
   test('MiniMax exposes only explicitly configured chat and video models', () {
     final provider = aiProviderBuiltinById('openai')!.copyWith(

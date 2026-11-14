@@ -20,6 +20,7 @@ class PluginManifest {
     this.database,
     this.pages,
     this.tasks,
+    this.provider,
   );
   final Map<String, dynamic> json;
   final PluginText name;
@@ -29,6 +30,7 @@ class PluginManifest {
   final PluginDatabaseManifest? database;
   final List<PluginView> pages;
   final List<PluginTaskDefinition> tasks;
+  final PluginProviderManifest? provider;
   String get id => json['id'] as String;
   String get version => json['version'] as String;
   String get main => json['main'] as String;
@@ -143,6 +145,9 @@ class PluginManifest {
           ),
         ),
       ),
+      json['provider'] == null
+          ? null
+          : PluginProviderManifest.parse(json['provider']),
     );
   }
 }
@@ -186,6 +191,41 @@ class PluginDatabaseManifest {
     return PluginDatabaseManifest._(
       value['version'] as int,
       List.unmodifiable(migrations),
+    );
+  }
+}
+
+class PluginProviderManifest {
+  const PluginProviderManifest(
+    this.name,
+    this.fields, [
+    this.actions = const [],
+  ]);
+  final PluginText name;
+  final List<PluginSettingField> fields;
+  final List<PluginAction> actions;
+
+  factory PluginProviderManifest.parse(Object? value) {
+    if (value is! Map<String, dynamic> ||
+        value.keys.any((key) => !{'name', 'settings'}.contains(key))) {
+      throw const FormatException('Invalid provider declaration');
+    }
+    final settings = value['settings'];
+    if (settings != null &&
+        (settings is! Map<String, dynamic> ||
+            settings.keys.any((key) => !{'fields', 'actions'}.contains(key)))) {
+      throw const FormatException('Invalid provider settings');
+    }
+    final config = settings as Map<String, dynamic>?;
+    final fields = parsePluginSettingFields(config?['fields']);
+    return PluginProviderManifest(
+      parsePluginText(value['name'], 'provider.name'),
+      List.unmodifiable(fields),
+      List.unmodifiable(
+        parsePluginActions(config?['actions'], {
+          for (final field in fields) field.key,
+        }),
+      ),
     );
   }
 }

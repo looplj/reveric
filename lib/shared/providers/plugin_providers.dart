@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/plugins/ai.dart';
+import '../models/plugin/provider_registry.dart';
 import 'settings_providers.dart';
 import 'usage_query_providers.dart';
 import '../services/plugins/host.dart';
@@ -18,6 +19,7 @@ import 'novel_providers.dart';
 final pluginHostServiceProvider = Provider<PluginHostService>((ref) {
   final host = PluginHostService(
     dao: ref.watch(appDatabaseProvider).pluginDao,
+    onProvidersChanged: () => ref.invalidate(appSettingsProvider),
     ai: PluginAiService(
       settings: () => ref.read(aiSettingsProvider),
       usageService: ref.read(usageServiceProvider),
@@ -52,4 +54,12 @@ final pluginStatusesProvider = StreamProvider<List<PluginStatus>>((ref) async* {
   final host = ref.watch(pluginHostServiceProvider);
   yield host.statuses;
   yield* host.changes;
+});
+
+/// 只订阅声明缓存变化，不创建插件运行时或数据库依赖。
+final pluginProviderModelsRevisionProvider = Provider<int>((ref) {
+  void changed() => ref.invalidateSelf();
+  pluginProviderModels.addListener(changed);
+  ref.onDispose(() => pluginProviderModels.removeListener(changed));
+  return pluginProviderModels.revision;
 });

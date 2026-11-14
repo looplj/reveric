@@ -119,6 +119,8 @@
   "provider.type_picker_title": "添加供应商",
   "provider.type_presets": "预设平台",
   "provider.type_protocols": "通用接口",
+  "provider.type_plugins": "插件",
+  "provider.type_plugins_empty": "在设置 → 插件中启用供应商插件后，可在这里添加。",
   "provider.kind_chat": "对话",
   "provider.kind_image": "图片",
   "provider.kind_video": "视频",
@@ -127,7 +129,6 @@
   "provider.type_note_minimax": "MiniMax 官方或兼容 MiniMax 格式的接口（如 H3）",
   "provider.type_note_doubao": "兼容方舟格式的视频接口（如 Seedance）",
   "provider.draft_badge": "未保存",
-  "provider.draft_type_hint": "保存后类型不可更改。",
   "provider.new_title": "新建提供商",
   "provider.type_openai_compatible": "OpenAI 兼容",
   "provider.audio_models_label": "音频模型",
@@ -137,5 +138,12 @@
   "provider.asset_access_key_label": "Access Key ID",
   "provider.asset_secret_key_label": "Secret Access Key",
   "provider.description_purefox": "通过 PureFox 聚合网关接入多家模型，使用 OpenAI 兼容接口进行对话。",
-  "provider.description_purefox_media": "通过 PureFox 媒体网关生成图片与视频；型号目录按站点 /v1/models 获取。"
+  "provider.description_purefox_media": "通过 PureFox 媒体网关生成图片与视频；型号目录按站点 /v1/models 获取。",
+  "provider.plugin_unavailable": "供应商插件未启用或不可用，仍可编辑名称和切换此实例的启停状态。",
+  "provider.plugin_secret_clear_hint": "清空此必填凭据会停用这个供应商实例。",
+  "provider.plugin_check_connection": "检查连接",
+  "provider.plugin_models_invalid": "模型声明无效：{details}",
+  "provider.plugin_models_refresh_needed": "请重新获取模型以恢复能力声明。",
+  "provider.plugin_model_unavailable": "已下架或不可用",
+  "provider.fetch_models_empty": "未返回模型。"
 }

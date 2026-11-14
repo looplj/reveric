@@ -9,7 +9,9 @@
 //   assets/translations/zh-CN/common.json
 
 import '../../localization/locale_keys.dart';
-import '../ai_provider.dart' show ModelIdSource, aiProviderTypeConfigFor;
+import '../ai_provider.dart'
+    show AiProvider, AiProviderX, ModelIdSource, aiProviderTypeConfigFor;
+import '../provider_model.dart';
 import 'catalog.dart';
 export 'catalog.dart';
 
@@ -886,13 +888,16 @@ ImageChannelModel? lookupImageChannelModel(
 }
 
 ({ImageModelCapabilities capabilities, ImageRequestDefaults defaults})?
-_imageSpec(String providerType, String? modelId) {
-  final channel = lookupImageChannelModel(providerType, modelId);
+_imageSpec(AiProvider provider, String? modelId) {
+  final channel = resolveImageModel(provider, modelId);
   if (channel != null) {
     return (
       capabilities: channel.capabilities,
       defaults: channel.requestDefaults,
     );
+  }
+  if (provider.isPluginProvider) {
+    return null;
   }
   final entry = lookupImageModel(modelId);
   if (entry == null) {
@@ -901,17 +906,16 @@ _imageSpec(String providerType, String? modelId) {
   return (capabilities: entry.capabilities, defaults: entry.requestDefaults);
 }
 
-Set<String> imageComplexityLevels(String providerType, String? modelId) =>
-    _imageSpec(providerType, modelId)?.capabilities.complexityLevels ??
-    const {};
+Set<String> imageComplexityLevels(AiProvider provider, String? modelId) =>
+    _imageSpec(provider, modelId)?.capabilities.complexityLevels ?? const {};
 
 /// 型号没有复杂度档位时返回 null。有档位但没选中、或选中值不在目录里时，用目录默认值。
 String? imageComplexityFor(
-  String providerType,
+  AiProvider provider,
   String? modelId,
   String? selected,
 ) {
-  final spec = _imageSpec(providerType, modelId);
+  final spec = _imageSpec(provider, modelId);
   if (spec == null || spec.capabilities.complexityLevels.isEmpty) {
     return null;
   }

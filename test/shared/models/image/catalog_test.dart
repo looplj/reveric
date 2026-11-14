@@ -11,6 +11,9 @@ import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/services/ai/image/agnes.dart';
 import '../../../helpers/media_provider_types.dart';
 
+AiProvider _provider(String type) =>
+    aiProviderBuiltinById('openai')!.copyWith(type: type);
+
 void main() {
   test(
     'OpenRouter image additions retain channel-specific reference limits',
@@ -368,7 +371,7 @@ void main() {
     videoModels: ['agnes-video-2.5-flash'],
   );
   test('Agnes is a preset image/video provider with its official endpoint', () {
-    expect(customAiProviderTypes, contains(AiProviderType.agnes));
+    expect(customAiProviderTypes, contains(AiProviderType.agnes.name));
     expect(provider.supportedModelKinds, {
       AiModelKind.image,
       AiModelKind.video,
@@ -456,12 +459,18 @@ void main() {
     );
 
     const sunburst = 'gpt-image-2.6-sunburst';
-    expect(imageComplexityFor('openai', sunburst, null), 'high');
-    expect(imageComplexityFor('openai', sunburst, 'low'), 'low');
-    expect(imageComplexityFor('openai', sunburst, 'max'), 'high');
-    expect(imageComplexityFor('openai', 'gpt-image-2', 'high'), isNull);
+    expect(imageComplexityFor(_provider('openai'), sunburst, null), 'high');
+    expect(imageComplexityFor(_provider('openai'), sunburst, 'low'), 'low');
+    expect(imageComplexityFor(_provider('openai'), sunburst, 'max'), 'high');
     expect(
-      imageComplexityLevels('openrouter', 'openai/gpt-image-2.6-sunburst'),
+      imageComplexityFor(_provider('openai'), 'gpt-image-2', 'high'),
+      isNull,
+    );
+    expect(
+      imageComplexityLevels(
+        _provider('openrouter'),
+        'openai/gpt-image-2.6-sunburst',
+      ),
       {'low', 'medium', 'high'},
     );
     const resolutions = {'1K', '2K', '4K'};
@@ -491,19 +500,23 @@ void main() {
       'auto',
     });
     expect(
-      imageComplexityFor('openrouter', 'openai/gpt-image-2.6-flare', null),
+      imageComplexityFor(
+        _provider('openrouter'),
+        'openai/gpt-image-2.6-flare',
+        null,
+      ),
       'high',
     );
     expect(
       imageComplexityLevels(
-        'atlascloud',
+        _provider('atlascloud'),
         'openai/gpt-image-2.6-sunburst/text-to-image',
       ),
       isEmpty,
     );
     expect(
       imageComplexityLevels(
-        'atlascloud',
+        _provider('atlascloud'),
         'openai/gpt-image-2.5-sunburst/text-to-image',
       ),
       isEmpty,

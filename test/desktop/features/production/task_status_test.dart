@@ -116,7 +116,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Sample · 480P'), findsNWidgets(2));
+      expect(find.text('Sample'), findsNWidgets(2));
       expect(find.text('Final in progress'), findsNWidgets(2));
       await (appDb.update(
         appDb.generationTasks,
@@ -128,14 +128,14 @@ void main() {
       );
       await adopt('hd-asset');
       await tester.pumpAndSettle();
-      expect(find.text('Sample · 480P'), findsNothing);
+      expect(find.text('Sample'), findsNothing);
       expect(find.text('Final in progress'), findsNothing);
       await adopt('draft-asset');
       await tester.pumpAndSettle();
-      expect(find.text('Sample · 480P'), findsNWidgets(2));
+      expect(find.text('Sample'), findsNWidgets(2));
       await adopt('imported-asset');
       await tester.pumpAndSettle();
-      expect(find.text('Sample · 480P'), findsNothing);
+      expect(find.text('Sample'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();

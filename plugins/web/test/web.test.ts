@@ -45,6 +45,11 @@ function harness(
     throw new Error("Unexpected registration");
   };
   const setup: PluginSetup = {
+    provider: {
+      register: () => {
+        throw new Error("Unexpected provider registration");
+      },
+    },
     plugin,
     tools: {
       register(tool) {

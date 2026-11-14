@@ -470,6 +470,8 @@ class ProviderAssets extends Table {
 }
 
 class GenerationTasks extends Table {
+  TextColumn get providerState =>
+      text().map(const ProviderStateConverter()).nullable()();
   TextColumn get imageOutputs =>
       text().map(const ImageTaskOutputsConverter()).nullable()();
   TextColumn get kind => textEnum<GenerationKind>()();
@@ -1279,7 +1281,7 @@ class AppDatabase extends _$AppDatabase {
 
   static _CachedAppDatabase? _cachedDatabase;
 
-  static const currentSchemaVersion = 6;
+  static const currentSchemaVersion = 7;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1342,6 +1344,18 @@ class AppDatabase extends _$AppDatabase {
         } catch (error, stackTrace) {
           _log.error(
             '[DB] ALTER generation_tasks ADD image_outputs schema=6',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 7) {
+        try {
+          await migrations.migrateToV7(migrator);
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER generation_tasks ADD provider_state schema=7',
             error: error,
             stackTrace: stackTrace,
           );

@@ -106,6 +106,8 @@ Future<List<PluginConfigSubmission>> _pump(
   Set<String> savedSecrets = const {},
   Object? failWith,
   PluginActionRunner? onAction,
+  PluginConfigDraftController? draftController,
+  String? Function(String action)? actionSuccessText,
   ValueNotifier<bool>? dirty,
 }) async {
   final submissions = <PluginConfigSubmission>[];
@@ -124,6 +126,8 @@ Future<List<PluginConfigSubmission>> _pump(
         },
         actions: _actions,
         onAction: onAction,
+        draftController: draftController,
+        actionSuccessText: actionSuccessText,
         dirty: dirty,
       ),
     ),
@@ -326,6 +330,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Verify key: Succeeded'), findsNothing);
   });
+
+  testWidgets(
+    'successful action details clear on credential edits and failures',
+    (tester) async {
+      var ok = true;
+      await _pump(
+        tester,
+        savedSecrets: {'apiKey'},
+        onAction: (_, _) async => (ok: ok, code: ok ? null : 'unauthorized'),
+        actionSuccessText: (_) => 'Credits remaining: 0',
+      );
+      await tester.ensureVisible(_button('Verify key'));
+      await tester.tap(_button('Verify key'));
+      await tester.pumpAndSettle();
+      expect(find.text('Verify key: Credits remaining: 0'), findsOneWidget);
+      await tester.enterText(_field('API Key'), 'changed-key');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Credits remaining'), findsNothing);
+      ok = false;
+      await tester.ensureVisible(_button('Verify key'));
+      await tester.tap(_button('Verify key'));
+      await tester.pumpAndSettle();
+      expect(find.text('Verify key: Invalid credentials'), findsOneWidget);
+      expect(find.textContaining('Credits remaining'), findsNothing);
+    },
+    timeout: const Timeout(Duration(minutes: 1)),
+  );
+
+  testWidgets('draft form exposes a validated snapshot without saving', (
+    tester,
+  ) async {
+    final draft = PluginConfigDraftController();
+    final saved = await _pump(
+      tester,
+      draftController: draft,
+      onAction: (_, submission) async => (ok: true, code: null),
+    );
+    expect(_button('Save'), findsNothing);
+    expect(() => draft.read(), throwsFormatException);
+    await tester.enterText(_field('API Key'), 'draft-key');
+    await tester.pumpAndSettle();
+    expect(draft.read().secrets, {'apiKey': 'draft-key'});
+    expect(saved, isEmpty);
+    await tester.ensureVisible(_button('Verify key'));
+    await tester.tap(_button('Verify key'));
+    await tester.pumpAndSettle();
+    expect(find.text('Verify key: Succeeded'), findsOneWidget);
+    expect(draft.read().secrets, {'apiKey': 'draft-key'});
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(() => draft.read(), throwsStateError);
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('the result line shows only the latest outcome', (tester) async {
     await _pump(

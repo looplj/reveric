@@ -4,8 +4,16 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:fjs/fjs.dart';
+import 'package:drift/native.dart';
+import 'package:reveric/shared/database/app_database.dart' as db;
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/services/plugins/host.dart';
+import 'package:reveric/shared/services/plugins/registry.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/providers/plugin_providers.dart';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:reveric/shared/models/plugin/manifest.dart';
 import 'package:reveric/shared/services/plugins/runtime.dart';
@@ -39,6 +47,511 @@ void main() {
     addTearDown(value.business.dispose);
     return value;
   }
+
+  final providerManifest = PluginManifest.fromJson({
+    ...manifest.json,
+    'provider': {
+      'name': 'Media',
+      'settings': {
+        'fields': {
+          'token': {'type': 'secret', 'title': 'Token', 'required': true},
+        },
+      },
+    },
+  });
+  String providerCode(String handlers, {String after = ''}) =>
+      "var __revericPlugin = {apply(setup) { setup.provider.register($handlers); $after }};";
+  test(
+    'provider declaration and method registration are checked together',
+    () async {
+      for (final handlers in [
+        '{image: {submit() {}}}',
+        '{listModels() {}}',
+        '{listModels() {}, video: {submit() {}}}',
+        '{listModels() {}, image: {submit() {}}, assets: {submit() {}}}',
+      ]) {
+        final executor = runtime();
+        await expectLater(
+          executor.activate(providerManifest, providerCode(handlers)),
+          throwsA(isA<PluginExecutionError>()),
+        );
+      }
+      final executor = runtime();
+      // Methods from newer SDKs are ignored instead of failing activation.
+      expect(
+        (await runtime().activate(
+          providerManifest,
+          providerCode(
+            '{listModels() {}, image: {submit() {}, cancel() {}}, audio: {submit() {}}}',
+          ),
+        )).single,
+        {
+          'kind': 'provider',
+          'methods': ['image.submit', 'listModels'],
+        },
+      );
+      await expectLater(
+        executor.activate(
+          providerManifest,
+          'var __revericPlugin = {apply() {}};',
+        ),
+        throwsA(isA<PluginExecutionError>()),
+      );
+      await expectLater(
+        executor.activate(
+          manifest,
+          providerCode('{listModels() {}, image: {submit() {}}}'),
+        ),
+        throwsA(isA<PluginExecutionError>()),
+      );
+      await expectLater(
+        executor.activate(
+          providerManifest,
+          providerCode(
+            '{listModels() {}, image: {submit() {}}}',
+            after: 'setup.provider.register({});',
+          ),
+        ),
+        throwsA(isA<PluginExecutionError>()),
+      );
+    },
+  );
+  test(
+    'pure image provider ignores chat and receives a restricted instance context',
+    () async {
+      final executor = runtime();
+      final code = providerCode("""{
+      listModels(context) {
+        if (context.ai || context.sqlite || context.chapters || context.files || context.image) throw new Error('Unexpected context');
+        return [{id:context.provider.id, call:context.callId}];
+      },
+      image: {submit(input, context) {return {input, taskId:context.taskId, bridge:typeof context.image.request};}},
+      chat: {generate() {}}
+    }""");
+      final definitions = await executor.activate(providerManifest, code);
+      expect(definitions.single, {
+        'kind': 'provider',
+        'methods': ['image.submit', 'listModels'],
+      });
+      expect(
+        await executor.runProvider(
+          providerManifest,
+          code,
+          definitions,
+          'listModels',
+          {},
+          'instance-a',
+          'call-a',
+          null,
+          budget: const Duration(seconds: 1),
+        ),
+        [
+          {'id': 'instance-a', 'call': 'call-a'},
+        ],
+      );
+      expect(
+        await executor.runProvider(
+          providerManifest,
+          code,
+          definitions,
+          'image.submit',
+          {'prompt': 'scene'},
+          'instance-b',
+          'call-b',
+          null,
+          generationTaskId: 'task-b',
+          budget: const Duration(seconds: 1),
+        ),
+        {
+          'input': {'prompt': 'scene'},
+          'taskId': 'task-b',
+          'bridge': 'function',
+        },
+      );
+      await expectLater(
+        executor.runProvider(
+          providerManifest,
+          code,
+          [
+            {
+              'kind': 'provider',
+              'methods': ['listModels', 'video.submit', 'video.query'],
+            },
+          ],
+          'listModels',
+          {},
+          'instance-a',
+          'mismatch',
+          null,
+          budget: const Duration(seconds: 1),
+        ),
+        throwsA(
+          isA<PluginExecutionError>().having(
+            (e) => e.code,
+            'code',
+            'plugin_registration_mismatch',
+          ),
+        ),
+      );
+    },
+  );
+  test('provider calls honor the supplied method budget', () async {
+    final executor = runtime();
+    final code = providerCode(
+      '{listModels() {return new Promise(() => {});}, image: {submit() {}}}',
+    );
+    final definitions = await executor.activate(providerManifest, code);
+    await expectLater(
+      executor.runProvider(
+        providerManifest,
+        code,
+        definitions,
+        'listModels',
+        {},
+        'a',
+        'timeout',
+        null,
+        budget: const Duration(milliseconds: 30),
+      ),
+      throwsA(
+        isA<PluginExecutionError>().having(
+          (e) => e.code,
+          'code',
+          'plugin_timeout',
+        ),
+      ),
+    );
+  });
+
+  test('provider action declarations and handlers must match', () async {
+    final declaration = PluginManifest.fromJson({
+      ...providerManifest.json,
+      'provider': {
+        'name': 'Actions',
+        'settings': {
+          'actions': {
+            'query': {'title': 'Query'},
+          },
+        },
+      },
+    });
+    for (final actions in ['', 'actions:{extra(){return {ok:true};}},']) {
+      await expectLater(
+        runtime().activate(
+          declaration,
+          providerCode(
+            '{listModels(){return [];}, $actions image:{submit(){}}}',
+          ),
+        ),
+        throwsA(isA<PluginExecutionError>()),
+      );
+    }
+    expect(
+      () => PluginManifest.fromJson({
+        ...providerManifest.json,
+        'provider': {
+          'name': 'Actions',
+          'settings': {
+            'actions': {
+              'query': {
+                'title': 'Query',
+                'requires': ['missing'],
+              },
+            },
+          },
+        },
+      }),
+      throwsFormatException,
+    );
+  });
+
+  test('Host binds isolated instance credentials and configuration', () async {
+    final database = db.AppDatabase.forTest(NativeDatabase.memory());
+    final declaration = PluginManifest.fromJson({
+      ...manifest.json,
+      'provider': {
+        'name': 'Media',
+        'settings': {
+          'actions': {
+            'inspect': {
+              'title': 'Inspect',
+              'requires': ['token'],
+            },
+            'unconfigured': {'title': 'Without credentials'},
+            'bad': {'title': 'Invalid response'},
+            'fail': {'title': 'Failure'},
+          },
+          'fields': {
+            'project': {'type': 'string', 'title': 'Project', 'required': true},
+            'token': {'type': 'secret', 'title': 'Token', 'required': true},
+          },
+        },
+      },
+    });
+    final pendingRequest = Completer<void>();
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) {
+      if (!pendingRequest.isCompleted) {
+        pendingRequest.complete();
+      }
+    });
+    addTearDown(() => server.close(force: true));
+    final code = providerCode("""{
+      async listModels(context) { return [{id:context.provider.id, project:await context.settings.get('project'), token:await context.secrets.get('token'), other:await context.storage.get('provider.b.token')}]; },
+      async checkConnection(context) { const project = await context.settings.get('project'); if (project === 'wait') await context.http.fetch('http://127.0.0.1:${server.port}/hold'); return {accountLabel:project}; },
+      actions: {
+        async inspect(context) { if (context.files || context.video || context.ai) throw new Error('Unexpected API'); return {ok:true,text:context.provider.id+':'+await context.secrets.get('token')+':'+await context.settings.get('project')}; },
+        unconfigured(context) { return {ok:true,text:context.provider.id}; },
+        bad() { return {ok:'yes'}; },
+        fail() { return {ok:false,code:'unauthorized',message:'diagnostic',text:'must not display'}; }
+      },
+      image: {async submit() { return {status:'succeeded',outputs:[]}; }}
+    }""");
+    final host = PluginHostService(
+      dao: database.pluginDao,
+      registry: PluginRegistry(hostToolNames: {}),
+      packages: () async => [PluginPackage('memory', declaration, code)],
+      platform: 'macos',
+    );
+    addTearDown(() async {
+      await host.dispose();
+      await database.close();
+    });
+    await host.start();
+    await host.setEnabled(declaration.id, true);
+    expect(aiProviderTypeConfigFor('plugin:test.plugin')!.supportedModelKinds, {
+      AiModelKind.image,
+    });
+    final a = aiProviderBuiltinById('openai')!.copyWith(
+      id: 'a',
+      type: 'plugin:test.plugin',
+      enabled: true,
+      apiKey: '',
+      baseUrl: '',
+    );
+    final b = a.copyWith(id: 'b');
+    await database.aiProviderDao.upsert(a);
+    await database.aiProviderDao.upsert(b);
+    await host.saveProviderConfig(
+      a,
+      settings: {'project': 'alpha'},
+      secrets: {'token': 'secret-a'},
+    );
+    await host.saveProviderConfig(
+      b,
+      settings: {'project': 'beta'},
+      secrets: {'token': 'secret-b'},
+    );
+    expect(await host.callProvider(a, 'listModels'), [
+      {'id': 'a', 'project': 'alpha', 'token': 'secret-a', 'other': null},
+    ]);
+    expect(await host.callProvider(b, 'listModels'), [
+      {'id': 'b', 'project': 'beta', 'token': 'secret-b', 'other': null},
+    ]);
+    expect(
+      await host.callProvider(
+        a,
+        'checkConnection',
+        draftSettings: {'project': 'unsaved'},
+      ),
+      {'accountLabel': 'unsaved'},
+    );
+    expect((await host.loadProviderConfig(a)).values['project'], 'alpha');
+    expect(
+      await host.callProvider(
+        a,
+        'actions.inspect',
+        draftSettings: {'project': 'draft'},
+        draftSecrets: {'token': 'draft-key'},
+      ),
+      {'ok': true, 'code': null, 'text': 'a:draft-key:draft'},
+    );
+    expect(await host.callProvider(b, 'actions.inspect'), {
+      'ok': true,
+      'code': null,
+      'text': 'b:secret-b:beta',
+    });
+    expect(await host.callProvider(a, 'actions.inspect'), {
+      'ok': true,
+      'code': null,
+      'text': 'a:secret-a:alpha',
+    });
+    await database.aiProviderDao.upsert(a.copyWith(enabled: false));
+    expect(await host.callProvider(a, 'actions.unconfigured'), {
+      'ok': true,
+      'code': null,
+      'text': 'a',
+    });
+    await database.aiProviderDao.upsert(a);
+    expect(await host.callProvider(a, 'actions.fail'), {
+      'ok': false,
+      'code': 'unauthorized',
+    });
+    await expectLater(
+      host.callProvider(a, 'actions.bad'),
+      throwsA(
+        isA<PluginHostError>().having(
+          (e) => e.code,
+          'code',
+          'invalid_response',
+        ),
+      ),
+    );
+    await expectLater(
+      host.callProvider(a, 'actions.missing'),
+      throwsA(isA<PluginHostError>()),
+    );
+
+    await host.saveProviderConfig(a, settings: {}, secrets: {'token': null});
+    await expectLater(
+      host.callProvider(a, 'actions.inspect'),
+      throwsA(
+        isA<PluginHostError>().having(
+          (e) => e.code,
+          'code',
+          'configuration_required',
+        ),
+      ),
+    );
+    expect(await host.callProvider(a, 'actions.unconfigured'), {
+      'ok': true,
+      'code': null,
+      'text': 'a',
+    });
+
+    await expectLater(
+      host.callProvider(a, 'listModels'),
+      throwsA(
+        isA<PluginHostError>().having(
+          (e) => e.code,
+          'code',
+          'configuration_required',
+        ),
+      ),
+    );
+    expect(
+      (await host.callProvider(b, 'listModels') as List).single['token'],
+      'secret-b',
+    );
+    final cancellation = AgentCancellationController();
+    final waiting = host.callProvider(
+      a,
+      'checkConnection',
+      draftSettings: {'project': 'wait'},
+      draftSecrets: {'token': 'temporary'},
+      cancellation: cancellation.token,
+    );
+    final cancelled = expectLater(
+      waiting,
+      throwsA(
+        isA<PluginExecutionError>().having(
+          (error) => error.code,
+          'code',
+          'user_cancelled',
+        ),
+      ),
+    );
+    await pendingRequest.future;
+    cancellation.cancel();
+    await cancelled;
+    expect(
+      (await host.callProvider(b, 'listModels') as List).single['token'],
+      'secret-b',
+    );
+    final fresh = a.copyWith(id: 'fresh-draft', enabled: false);
+    expect(
+      await host.callProvider(
+        fresh,
+        'actions.inspect',
+        draftSettings: {'project': 'draft-project'},
+        draftSecrets: {'token': 'draft-key'},
+      ),
+      {'ok': true, 'code': null, 'text': 'fresh-draft:draft-key:draft-project'},
+    );
+    expect(await database.aiProviderDao.getById(fresh.id), isNull);
+    expect(
+      await database.pluginDao.getSecret(
+        declaration.id,
+        'provider.${fresh.id}.token',
+      ),
+      isNull,
+    );
+    expect(
+      await database.pluginDao.getStorage(
+        declaration.id,
+        'provider.${fresh.id}.project',
+      ),
+      isNull,
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsDatabaseProvider.overrideWithValue(database),
+        pluginHostServiceProvider.overrideWithValue(host),
+      ],
+    );
+    try {
+      await container.read(appSettingsProvider.future);
+      final notifier = container.read(appSettingsProvider.notifier);
+      await expectLater(
+        notifier.addPluginProvider(
+          fresh,
+          settings: {},
+          secrets: {'token': 'draft-key'},
+        ),
+        throwsFormatException,
+      );
+      expect(await database.aiProviderDao.getById(fresh.id), isNull);
+      expect(
+        await database.pluginDao.getSecret(
+          declaration.id,
+          'provider.${fresh.id}.token',
+        ),
+        isNull,
+      );
+      expect(
+        container
+            .read(appSettingsProvider)
+            .requireValue
+            .aiSettings
+            .findConfigById(fresh.id),
+        isNull,
+      );
+      await notifier.addPluginProvider(
+        fresh,
+        settings: {'project': 'draft-project'},
+        secrets: {'token': 'draft-key'},
+      );
+      expect((await database.aiProviderDao.getById(fresh.id))?.enabled, false);
+      expect(
+        await database.pluginDao.getSecret(
+          declaration.id,
+          'provider.${fresh.id}.token',
+        ),
+        'draft-key',
+      );
+      expect(
+        (await host.loadProviderConfig(fresh)).values['project'],
+        'draft-project',
+      );
+      expect(
+        container
+            .read(appSettingsProvider)
+            .requireValue
+            .aiSettings
+            .findConfigById(fresh.id),
+        isNotNull,
+      );
+    } finally {
+      container.dispose();
+    }
+    await host.setEnabled(declaration.id, false);
+    expect(aiProviderTypeConfigFor('plugin:test.plugin'), isNull);
+    expect((await host.loadProviderConfig(b)).savedSecrets, {'token'});
+    await expectLater(
+      host.callProvider(b, 'listModels'),
+      throwsA(isA<PluginHostError>()),
+    );
+  });
 
   test('malformed native bridge JSON returns a structured error', () async {
     final executor = runtime();

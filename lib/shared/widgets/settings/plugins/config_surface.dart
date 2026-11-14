@@ -360,6 +360,7 @@ List<Map<String, Object?>> buildPluginConfigMessages({
   required Locale locale,
   List<PluginAction> actions = const [],
   List<PluginConfigModelOption> modelOptions = const [],
+  bool showSave = true,
 }) {
   final settings = <String, Object?>{};
   final secrets = <String, Object?>{};
@@ -481,7 +482,7 @@ List<Map<String, Object?>> buildPluginConfigMessages({
       'component': 'Row',
       'align': 'center',
       'children': [
-        'save',
+        if (showSave) 'save',
         for (final action in actions) _actionId(action.name),
       ],
     },

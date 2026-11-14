@@ -10,6 +10,7 @@
 // 遵循的 Rules:
 //   .agents/rules/service-naming.md
 //   .agents/rules/error-handling.md
+import '../../models/provider_model.dart';
 import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import '../../localization/locale_keys.dart';
@@ -173,6 +174,15 @@ class ImageTaskService {
     if (taskId != null) {
       final existing = await database.generationTaskDao.getById(taskId);
       if (existing != null) {
+        if (existing.requestJson case ImageGenerationRequest(
+          request: final persisted,
+        )) {
+          request = request.withModelSnapshot(
+            request.capabilities ?? persisted.capabilities,
+            request.requestDefaults ?? persisted.requestDefaults,
+          );
+        }
+
         if (existing.novelId != novelId ||
             existing.sourceType != sourceType ||
             existing.sourceId != sourceId ||
@@ -191,11 +201,22 @@ class ImageTaskService {
     if (provider == null) {
       throw const StoryboardException('invalid_config');
     }
-    ProductionImageCapabilities(provider, request.modelId).validate(
+    final capabilities = ProductionImageCapabilities(
+      provider,
+      request.modelId,
+      capabilities: request.capabilities,
+    );
+    capabilities.validate(
       prompt: request.prompt,
       ratio: request.ratio,
       resolution: request.resolution,
       references: request.references.length,
+    );
+    request = request.withModelSnapshot(
+      request.capabilities ?? capabilities.effectiveCapabilities,
+      request.requestDefaults ??
+          resolveImageModel(provider, request.modelId)?.rawDefaults ??
+          {},
     );
     _requireActive();
     GenerationTasksCompanion row(String id) => GenerationTasksCompanion.insert(

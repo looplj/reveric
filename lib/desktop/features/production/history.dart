@@ -191,6 +191,8 @@ class ProductionHistory extends HookConsumerWidget {
                                     '${list.length - list.indexOf(completion)}',
                               },
                             )
+                          : task.draftCapabilities == null
+                          ? context.t(LocaleKeys.productionDraftSnapshotMissing)
                           : task.isDraftExpired(DateTime.now())
                           ? context.t(LocaleKeys.productionDraftExpired)
                           : task.draftExpiresAt != null &&

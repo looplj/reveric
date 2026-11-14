@@ -9,6 +9,11 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../database/app_database.dart';
+import '../models/plugin/provider_registry.dart';
 
-AsyncSnapshot<List<AiProvider>> useAiProviders(AppDatabase database) =>
-    useStream(useMemoized(() => database.aiProviderDao.watchAll(), [database]));
+AsyncSnapshot<List<AiProvider>> useAiProviders(AppDatabase database) {
+  useListenable(pluginProviderModels);
+  return useStream(
+    useMemoized(() => database.aiProviderDao.watchAll(), [database]),
+  );
+}

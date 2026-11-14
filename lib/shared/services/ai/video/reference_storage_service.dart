@@ -8,6 +8,7 @@
 //   assets/translations/en/production.json
 //   assets/translations/zh-CN/production.json
 
+import '../../../models/provider_model.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:drift/drift.dart';
@@ -26,7 +27,6 @@ import 'package:crypto/crypto.dart';
 import '../../../localization/locale_keys.dart';
 import '../../../models/production/media.dart';
 import '../../../models/video/request.dart';
-import '../../../models/video/channels.dart';
 import '../../../models/video/task_result.dart';
 
 typedef ReferenceUploadResult = ({String url, DateTime? expiresAt});
@@ -217,10 +217,10 @@ class ReferenceStorageService {
         ? null
         : await database.aiProviderDao.getById(providerId);
     if (provider != null &&
-        lookupVideoChannelModel(
-              provider.type,
+        resolveVideoModel(
+              provider,
               modelId,
-            )?.protocolOptions.supportsProviderAssets ==
+            )?.capabilities.supportsCertifiedAssets ==
             true) {
       final pending = <VideoInput>[];
       for (final input in inputs) {
