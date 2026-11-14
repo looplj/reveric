@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/content_kind.dart';
+import 'package:reveric/shared/models/production/media.dart';
+import 'package:reveric/shared/services/production/editing_output_orchestrator.dart';
 import 'package:reveric/shared/models/editing/document.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
@@ -56,6 +58,60 @@ void main() {
     await db.close();
     await main.close();
   });
+
+  test(
+    'exported video remains playable after temporary render is removed',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'editing-node-output-',
+      );
+      try {
+        final service = ProductionCanvasService(
+          canvas.shots,
+          MediaLibraryService(main, _OutputMedia(), root),
+          'work',
+        );
+        final editing = await service.addEditing(canvasId, title: '剪辑');
+        final source = File('${root.path}/render.mp4')
+          ..writeAsStringSync('rendered video');
+        final output = await EditingOutputOrchestrator().run(
+          service: service,
+          editingId: editing.editingId!,
+          file: source,
+          name: '剪辑成片.mp4',
+        );
+        await source.delete();
+        final asset = await service.requireAsset(
+          output.mediaAssetId!,
+          type: 'video',
+        );
+        expect(output.canvasId, canvasId);
+        expect(output.title, '剪辑成片.mp4');
+        expect(output.x, greaterThan(editing.x));
+        expect(asset.durationMs, 2000);
+        expect(
+          await File(service.library.resolve(asset)).readAsString(),
+          'rendered video',
+        );
+        final edges = await db.canvasDao.getEdgesByCanvas(canvasId);
+        expect(edges.single.sourceNodeId, editing.id);
+        expect(edges.single.targetNodeId, output.id);
+        expect(edges.single.type, canvasEdgeTypeDerivedOutput);
+        await expectLater(
+          EditingOutputOrchestrator().run(
+            service: service,
+            editingId: 'missing',
+            file: source,
+            name: 'invalid.mp4',
+          ),
+          throwsStateError,
+        );
+        expect(await db.canvasDao.getNodesByCanvas(canvasId), hasLength(2));
+      } finally {
+        await root.delete(recursive: true);
+      }
+    },
+  );
 
   test(
     'node and project create atomically, keep identities and use work ratio',
@@ -258,4 +314,20 @@ class _RejectNodeWrite extends QueryInterceptor {
     }
     return executor.runUpdate(statement, args);
   }
+}
+
+class _OutputMedia extends MediaService {
+  _OutputMedia() : super(FfmpegRunner());
+  @override
+  Future<MediaInfo> probe(
+    String path, {
+    MediaCancellation? cancellation,
+  }) async => const MediaInfo(
+    duration: Duration(seconds: 2),
+    hasVideo: true,
+    hasAudio: true,
+    width: 1280,
+    height: 720,
+    formatName: 'mov,mp4',
+  );
 }

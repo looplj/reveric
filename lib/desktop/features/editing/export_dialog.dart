@@ -1,4 +1,4 @@
-// 职责: 导出成片：先选文件名、分辨率与字幕方式，再展示合成进度与取消，校验完成后通过系统保存面板交付成片和 SRT。
+// 职责: 导出成片：先选文件名、分辨率与字幕方式，再展示合成进度与取消，校验完成后交付成片文件或画布视频节点。
 // 关联文件:
 //   lib/shared/services/editing/render_service.dart
 //   lib/desktop/features/production/region.dart
@@ -37,7 +37,7 @@ import 'support.dart';
 
 final _log = AppLogger.forModule('EditingExport');
 
-enum _Phase { form, running, ready, saved }
+enum _Phase { form, running, ready, saved, added }
 
 const _steps = ['verify', 'render', 'assemble', 'validate'];
 
@@ -47,12 +47,14 @@ class EditingExportDialog extends HookWidget {
     required this.renderer,
     required this.document,
     required this.title,
+    this.onExportNode,
   });
   final EditingRenderService renderer;
   final EditingDocument document;
 
   /// 剧集名，用在标题和默认文件名。
   final String title;
+  final Future<void> Function(File file, String name)? onExportNode;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
@@ -112,7 +114,6 @@ class EditingExportDialog extends HookWidget {
       }
     }
 
-    void start() => operation.value = render();
     useEffect(() {
       return () {
         unawaited(() async {
@@ -128,6 +129,13 @@ class EditingExportDialog extends HookWidget {
       failed.value = null;
       final fileName = name.text.trim().isEmpty ? 'film' : name.text.trim();
       try {
+        if (onExportNode != null) {
+          await onExportNode!(output.value!.file, '$fileName.mp4');
+          if (context.mounted) {
+            phase.value = _Phase.added;
+          }
+          return;
+        }
         final location = await getSaveLocation(
           suggestedName: '$fileName.mp4',
           acceptedTypeGroups: [
@@ -180,6 +188,15 @@ class EditingExportDialog extends HookWidget {
           saving.value = false;
         }
       }
+    }
+
+    void start() {
+      operation.value = () async {
+        await render();
+        if (context.mounted && output.value != null && onExportNode != null) {
+          await save();
+        }
+      }();
     }
 
     String? failure() {
@@ -299,10 +316,11 @@ class EditingExportDialog extends HookWidget {
                   value: EditingSubtitles.burn,
                   label: context.t(LocaleKeys.editingSubtitlesBurn),
                 ),
-                RevericSegment(
-                  value: EditingSubtitles.srt,
-                  label: context.t(LocaleKeys.editingSubtitlesSrt),
-                ),
+                if (onExportNode == null)
+                  RevericSegment(
+                    value: EditingSubtitles.srt,
+                    label: context.t(LocaleKeys.editingSubtitlesSrt),
+                  ),
                 RevericSegment(
                   value: EditingSubtitles.none,
                   label: context.t(LocaleKeys.editingSubtitlesNone),
@@ -432,6 +450,13 @@ class EditingExportDialog extends HookWidget {
             color: colors.success,
           ),
       ],
+      _Phase.added => [
+        notice(
+          RevericIcons.check_circle,
+          context.t(LocaleKeys.editingNodeExported),
+          color: colors.success,
+        ),
+      ],
       _Phase.saved => [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -551,7 +576,11 @@ class EditingExportDialog extends HookWidget {
                     const SizedBox(width: RevericSpacing.sm),
                     RevericButton.primary(
                       icon: RevericIcons.download_simple,
-                      label: context.t(LocaleKeys.commonExport),
+                      label: context.t(
+                        onExportNode == null
+                            ? LocaleKeys.commonExport
+                            : LocaleKeys.editingExportNode,
+                      ),
                       onPressed: document.totalFrames == 0 ? null : start,
                     ),
                   ],
@@ -572,9 +601,15 @@ class EditingExportDialog extends HookWidget {
                       const SizedBox(width: RevericSpacing.sm),
                       RevericButton.primary(
                         icon: RevericIcons.download_simple,
-                        label: context.t(LocaleKeys.commonSave),
+                        label: context.t(
+                          onExportNode == null
+                              ? LocaleKeys.commonSave
+                              : LocaleKeys.commonRetry,
+                        ),
                         loading: saving.value,
-                        onPressed: saving.value ? null : save,
+                        onPressed: saving.value
+                            ? null
+                            : () => operation.value = save(),
                       ),
                     ] else ...[
                       const SizedBox(width: RevericSpacing.sm),
@@ -584,7 +619,7 @@ class EditingExportDialog extends HookWidget {
                       ),
                     ],
                   ],
-                  _Phase.saved => [
+                  _Phase.saved || _Phase.added => [
                     RevericButton.primary(
                       label: context.t(LocaleKeys.commonDone),
                       onPressed: () => Navigator.pop(context),
@@ -606,11 +641,16 @@ Future<void> showEditingExport(
   required EditingRenderService renderer,
   required EditingDocument document,
   required String title,
+  Future<void> Function(File file, String name)? onExportNode,
 }) => showRevericDialog<void>(
   context: context,
   barrierDismissible: false,
-  builder: (_) =>
-      EditingExportDialog(renderer: renderer, document: document, title: title),
+  builder: (_) => EditingExportDialog(
+    renderer: renderer,
+    document: document,
+    title: title,
+    onExportNode: onExportNode,
+  ),
 );
 
 /// 弹窗里的一行：图标、标题、说明，右侧放选择控件。

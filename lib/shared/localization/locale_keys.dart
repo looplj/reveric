@@ -1893,6 +1893,8 @@ abstract final class LocaleKeys {
   static const editingExported = 'screenplay.editing.exported';
   static const editingExportedSrt = 'screenplay.editing.exportedSrt';
   static const editingExportTitle = 'screenplay.editing.exportTitle';
+  static const editingExportNode = 'screenplay.editing.exportNode';
+  static const editingNodeExported = 'screenplay.editing.nodeExported';
   static const editingExportByTimeline = 'screenplay.editing.exportByTimeline';
   static const editingExporting = 'screenplay.editing.exporting';
   static const editingCancelExport = 'screenplay.editing.cancelExport';

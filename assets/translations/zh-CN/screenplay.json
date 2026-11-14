@@ -606,6 +606,8 @@
   "screenplay.editing.exported": "已导出 {name}",
   "screenplay.editing.exportedSrt": "字幕另存为 {name}",
   "screenplay.editing.exportTitle": "导出成片 · {episode}",
+  "screenplay.editing.exportNode": "导出为视频节点",
+  "screenplay.editing.nodeExported": "视频节点已添加到画布。",
   "screenplay.editing.exportByTimeline": "按时间线合成",
   "screenplay.editing.exporting": "导出中",
   "screenplay.editing.cancelExport": "取消导出",

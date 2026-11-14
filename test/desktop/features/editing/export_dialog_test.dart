@@ -8,6 +8,7 @@
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 import 'dart:io';
+import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 // Use the platform test interface from file_selector's locked dependency.
 // ignore: depend_on_referenced_packages
@@ -116,63 +117,108 @@ void main() {
     TargetPlatform.linux,
   ]) {
     for (final locale in [const Locale('zh', 'CN'), const Locale('en')]) {
-      testWidgets(
-        '$platform $locale episode filename and close alignment',
-        (tester) async {
-          debugDefaultTargetPlatformOverride = platform;
-          tester.view.physicalSize = const Size(1200, 1000);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.reset);
-          final zh = locale.languageCode == 'zh';
-          await tester.pumpWidget(
-            _wrap(
-              locale,
-              Builder(
-                builder: (context) {
-                  expect(
-                    editingEpisodeExportName(context, 1, '一脚踹飞'),
-                    zh ? '第一集 一脚踹飞' : 'Episode 1 一脚踹飞',
-                  );
-                  expect(
-                    editingEpisodeExportName(context, 21, ''),
-                    zh ? '第二十一集' : 'Episode 21',
-                  );
-                  expect(
-                    editingEpisodeExportName(context, 1, '雨/夜:风'),
-                    zh ? '第一集 雨 夜 风' : 'Episode 1 雨 夜 风',
-                  );
-                  return EditingExportDialog(
-                    renderer: renderer,
-                    document: fixture(),
-                    title: editingEpisodeExportName(context, 1, '一脚踹飞'),
-                  );
-                },
-              ),
+      testWidgets('$platform $locale episode filename and close alignment', (
+        tester,
+      ) async {
+        debugDefaultTargetPlatformOverride = platform;
+        tester.view.physicalSize = const Size(1200, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final zh = locale.languageCode == 'zh';
+        await tester.pumpWidget(
+          _wrap(
+            locale,
+            Builder(
+              builder: (context) {
+                expect(
+                  editingEpisodeExportName(context, 1, '一脚踹飞'),
+                  zh ? '第一集 一脚踹飞' : 'Episode 1 一脚踹飞',
+                );
+                expect(
+                  editingEpisodeExportName(context, 21, ''),
+                  zh ? '第二十一集' : 'Episode 21',
+                );
+                expect(
+                  editingEpisodeExportName(context, 1, '雨/夜:风'),
+                  zh ? '第一集 雨 夜 风' : 'Episode 1 雨 夜 风',
+                );
+                return EditingExportDialog(
+                  renderer: renderer,
+                  document: fixture(),
+                  title: editingEpisodeExportName(context, 1, '一脚踹飞'),
+                );
+              },
             ),
-          );
+          ),
+        );
+        await tester.pumpAndSettle();
+        final close = find.byTooltip(zh ? '关闭' : 'Close');
+        final export = find.widgetWithText(RevericButton, zh ? '导出' : 'Export');
+        for (final width in [1200.0, 650.0, 440.0]) {
+          tester.view.physicalSize = Size(width, 1000);
           await tester.pumpAndSettle();
-          final close = find.byTooltip(zh ? '关闭' : 'Close');
-          final export = find.widgetWithText(
-            RevericButton,
-            zh ? '导出' : 'Export',
+          expect(
+            tester.getRect(close).right,
+            closeTo(tester.getRect(export).right, 1),
           );
-          for (final width in [1200.0, 650.0, 440.0]) {
-            tester.view.physicalSize = Size(width, 1000);
-            await tester.pumpAndSettle();
-            expect(
-              tester.getRect(close).right,
-              closeTo(tester.getRect(export).right, 1),
-            );
-            expect(tester.takeException(), isNull);
-          }
-          await tester.pumpWidget(const SizedBox.shrink());
-          await tester.pumpAndSettle();
-          debugDefaultTargetPlatformOverride = null;
-        },
-        timeout: const Timeout(Duration(seconds: 30)),
-      );
+          expect(tester.takeException(), isNull);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        debugDefaultTargetPlatformOverride = null;
+      }, timeout: const Timeout(Duration(seconds: 30)));
     }
   }
+
+  testWidgets(
+    'node export delivers rendered file directly and retries import without rendering again',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var attempts = 0;
+      final pending = Completer<void>();
+      await tester.pumpWidget(
+        _wrap(
+          const Locale('en'),
+          EditingExportDialog(
+            renderer: renderer,
+            document: fixture(),
+            title: '剪辑成片',
+            onExportNode: (file, name) async {
+              attempts++;
+              expect(file.readAsStringSync(), 'new video');
+              expect(name, '剪辑成片.mp4');
+              if (attempts == 1) {
+                throw StateError('node write failed');
+              }
+              await pending.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Save SRT'), findsNothing);
+      await tester.tap(
+        find.widgetWithText(RevericButton, 'Export as video node'),
+      );
+      await _until(tester, find.widgetWithText(RevericButton, 'Retry'));
+      expect(attempts, 1);
+      expect(panel.suggestedName, isNull);
+      await tester.tap(find.widgetWithText(RevericButton, 'Retry'));
+      await tester.pump();
+      expect(attempts, 2);
+      expect(renderer.output.file.existsSync(), isTrue);
+      pending.complete();
+      await _until(tester, find.text('Video node added to the canvas.'));
+      expect(find.widgetWithText(RevericButton, 'Retry'), findsNothing);
+      expect(panel.suggestedName, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 
   testWidgets(
     'native MP4 overwrite is honored and sidecar overwrite is confirmed separately',

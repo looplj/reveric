@@ -45,7 +45,8 @@ import 'view/panorama_actions.dart';
 import 'inline_media.dart';
 import 'trim_dialog.dart';
 import 'depth_dialog.dart';
-import 'editing_node.dart' show previewProductionEditing;
+import 'editing_node.dart'
+    show previewProductionEditing, exportProductionEditing;
 import '../editing/canvas_shell.dart' show CanvasEditingScope;
 import 'image_history.dart';
 import 'audio_history.dart';
@@ -591,6 +592,20 @@ class ProductionNodeBar extends HookConsumerWidget {
                             : () => productionRun(
                                 context,
                                 () => previewProductionEditing(
+                                  context,
+                                  service,
+                                  node,
+                                ),
+                              ),
+                      ),
+                      button(
+                        RevericIcons.download_simple,
+                        context.t(LocaleKeys.editingExportNode),
+                        node.editingId == null
+                            ? null
+                            : () => productionRun(
+                                context,
+                                () => exportProductionEditing(
                                   context,
                                   service,
                                   node,

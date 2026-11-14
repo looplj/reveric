@@ -606,6 +606,8 @@
   "screenplay.editing.exported": "Exported {name}",
   "screenplay.editing.exportedSrt": "Subtitles saved as {name}",
   "screenplay.editing.exportTitle": "Export film · {episode}",
+  "screenplay.editing.exportNode": "Export as video node",
+  "screenplay.editing.nodeExported": "Video node added to the canvas.",
   "screenplay.editing.exportByTimeline": "Composed from the timeline",
   "screenplay.editing.exporting": "Exporting",
   "screenplay.editing.cancelExport": "Cancel export",

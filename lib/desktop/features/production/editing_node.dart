@@ -1,4 +1,4 @@
-// 职责: 展示剪辑工程的首帧、时长和失效状态，从节点打开所属工程或渲染后弹窗预览。
+// 职责: 展示剪辑工程的首帧、时长和失效状态，从节点打开工程、预览或导出为关联视频节点。
 // 关联文件:
 //   lib/desktop/features/production/node_card.dart
 //   lib/desktop/features/production/node_bar.dart
@@ -33,6 +33,8 @@ import '../../../shared/models/production/media.dart';
 import '../../../shared/theme/theme.dart';
 import '../asset/media_preview.dart';
 import '../editing/canvas_shell.dart';
+import '../editing/export_dialog.dart';
+import '../../../shared/services/production/editing_output_orchestrator.dart';
 import '../editing/support.dart' show editingTimecode;
 import 'support.dart';
 
@@ -161,6 +163,40 @@ class ProductionEditingNode extends HookConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// 从画布工具条直接导出成片节点，不切换到剪辑页。
+Future<void> exportProductionEditing(
+  BuildContext context,
+  ProductionCanvasService service,
+  CanvasNode node,
+) async {
+  final row = await service.requireEditingNode(node.id);
+  if (!context.mounted) {
+    return;
+  }
+  final renderer = EditingRenderService(
+    EditingService(service.db, service.library),
+    FfmpegRunner(),
+  );
+  try {
+    await showEditingExport(
+      context,
+      renderer: renderer,
+      document: row.document,
+      title: row.title,
+      onExportNode: (file, name) async {
+        await EditingOutputOrchestrator().run(
+          service: service,
+          editingId: row.id,
+          file: file,
+          name: name,
+        );
+      },
+    );
+  } finally {
+    await renderer.dispose();
   }
 }
 

@@ -18,6 +18,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/desktop/features/production/node_card.dart';
+import 'package:reveric/desktop/features/production/node_bar.dart';
+import 'package:reveric/desktop/features/editing/export_dialog.dart';
+import 'package:reveric/shared/components/reveric_button.dart';
 import 'package:reveric/desktop/features/production/history_region.dart';
 import 'package:reveric/desktop/features/production/edit_session.dart';
 import 'package:reveric/desktop/features/editing/canvas_shell.dart';
@@ -74,6 +77,90 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
   });
+
+  testWidgets(
+    'editing toolbar opens node export directly without opening the editor',
+    (tester) async {
+      tester.view.physicalSize = const Size(1100, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      final main = app.AppDatabase.forTest(NativeDatabase.memory());
+      await ScreenplayService(db).createCanvasStructure();
+      final service = ProductionCanvasService(
+        StoryboardService(db, contentKind: contentKindCanvas),
+        MediaLibraryService(
+          main,
+          MediaService(FfmpegRunner()),
+          Directory.systemTemp,
+        ),
+        'work',
+      );
+      final canvas = await service.ensureCanvas('');
+      final node = await service.addEditing(canvas.id, title: 'Cut A');
+      var opened = false;
+      try {
+        await tester.pumpWidget(
+          ProviderScope(
+            child: _wrap(
+              CanvasEditingScope(
+                open: (_) async => opened = true,
+                child: Center(
+                  child: ProductionNodeBar(
+                    service: service,
+                    path: db.filePath,
+                    node: node,
+                    clip: null,
+                    segmentLabels: const {},
+                    onPreview: null,
+                    onSource: null,
+                    onToSegments: null,
+                    onCopy: null,
+                    onDelete: () {},
+                    onOpenDirector: (_) {},
+                    onSelectNode: (_) {},
+                    onExport: (_) async {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final export = find.widgetWithText(
+          RevericButton,
+          'Export as video node',
+        );
+        expect(export, findsOneWidget);
+        await tester.tap(export);
+        await tester.pumpAndSettle();
+        expect(find.byType(EditingExportDialog), findsOneWidget);
+        final dialog = tester.widget<EditingExportDialog>(
+          find.byType(EditingExportDialog),
+        );
+        expect(dialog.onExportNode, isNotNull);
+        expect(dialog.title, 'Cut A');
+        expect(opened, isFalse);
+        expect(find.text('Save SRT'), findsNothing);
+        // Empty timelines cannot start rendering, even from the canvas toolbar.
+        final submit = find.descendant(
+          of: find.byType(EditingExportDialog),
+          matching: export,
+        );
+        expect(tester.widget<RevericButton>(submit).onPressed, isNull);
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        expect(find.byType(EditingExportDialog), findsNothing);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await db.close();
+        await main.close();
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 
   testWidgets(
     'editing node opens its project and remains removable when the project disappears',
