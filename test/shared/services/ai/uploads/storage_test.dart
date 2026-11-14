@@ -51,7 +51,7 @@ void main() {
     storage: oss == null
         ? ObjectStorageService(database: db)
         : FakeObjectStorage(db, oss),
-    probe: (_) async => const MediaInfo(
+    probe: (_, {cancellation}) async => const MediaInfo(
       duration: Duration.zero,
       hasAudio: false,
       hasVideo: true,
@@ -206,7 +206,7 @@ void main() {
       final references = ReferenceStorageService(
         database: db,
         storage: ObjectStorageService(database: db),
-        probe: (_) async => const MediaInfo(
+        probe: (_, {cancellation}) async => const MediaInfo(
           duration: Duration.zero,
           hasAudio: false,
           hasVideo: true,

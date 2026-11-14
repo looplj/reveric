@@ -11,6 +11,8 @@ import 'package:reveric/desktop/features/production/image_candidates.dart';
 import '../../desktop/director/harness.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:reveric/shared/models/generation/provider_result.dart';
+import 'package:reveric/shared/services/ai/image/output.dart';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/services/production/grid_orchestrator.dart';
 import 'package:reveric/shared/models/video/request.dart';
@@ -169,18 +171,19 @@ void main() {
       late app.GenerationTask task;
       await tester.runAsync(() async {
         final service = jobs(
-          (_, _, _, _) async => AiImageGenerationResult.group([
-            for (var i = 0; i < 4; i++)
-              AiImageGenerationResult(
-                localFilePath:
-                    (await File('${root.path}/grid-$i.png').writeAsBytes(
-                      img.encodePng(
-                        img.Image(width: 8, height: 8)
-                          ..setPixelRgb(0, 0, i * 60, 20, 30),
-                      ),
-                    )).path,
-              ),
-          ]),
+          (taskId, _, _, _, _, cancellation) async =>
+              AiImageGenerationResult.group([
+                for (var i = 0; i < 4; i++)
+                  AiImageGenerationResult(
+                    localFilePath:
+                        (await File('${root.path}/grid-$i.png').writeAsBytes(
+                          img.encodePng(
+                            img.Image(width: 8, height: 8)
+                              ..setPixelRgb(0, 0, i * 60, 20, 30),
+                          ),
+                        )).path,
+                  ),
+              ]),
         );
         final preview = await ProductionImageGenerateOrchestrator().preview(
           canvas,
@@ -230,9 +233,12 @@ void main() {
       ];
       var generations = 0;
       final service = jobs(
-        (_, _, _, onOutputs) async {
+        (taskId, provider, _, _, onOutputs, cancellation) async {
           generations++;
-          await onOutputs(urls);
+          await onOutputs(
+            ProviderSucceeded(urls.map(ProviderUrlOutput.new).toList()),
+            ImageOutputContext(provider, taskId: taskId),
+          );
           throw AiImageFetchException('download failed', urls: urls);
         },
         fetch: (_, task) async {
@@ -283,10 +289,11 @@ void main() {
         );
       }
       final service = jobs(
-        (_, _, _, _) async => AiImageGenerationResult.group([
-          for (final file in files)
-            AiImageGenerationResult(localFilePath: file.path),
-        ]),
+        (taskId, _, _, _, _, cancellation) async =>
+            AiImageGenerationResult.group([
+              for (final file in files)
+                AiImageGenerationResult(localFilePath: file.path),
+            ]),
       );
       final preview = await ProductionImageGenerateOrchestrator().preview(
         canvas,
@@ -341,7 +348,7 @@ void main() {
         title: '',
         content: 'Changed after preview',
       );
-      final service = jobs((_, request, _, _) async {
+      final service = jobs((taskId, _, request, _, _, cancellation) async {
         expect(request.prompt, prepared.request.prompt);
         expect(request.references, isEmpty);
         return AiImageGenerationResult(localFilePath: output.path);
@@ -400,7 +407,8 @@ void main() {
       await part.parent.create(recursive: true);
       await output.copy(part.path);
       final service = jobs(
-        (_, _, _, _) async => AiImageGenerationResult(localFilePath: part.path),
+        (taskId, _, _, _, _, cancellation) async =>
+            AiImageGenerationResult(localFilePath: part.path),
       );
       try {
         final preview = await ProductionImageGenerateOrchestrator().preview(
@@ -430,7 +438,9 @@ void main() {
     'rejected submission never changes another active task for the same source',
     () async {
       final pending = Completer<AiImageGenerationResult>();
-      final service = jobs((_, _, _, _) => pending.future);
+      final service = jobs(
+        (taskId, _, _, _, _, cancellation) => pending.future,
+      );
       final preview = await ProductionImageGenerateOrchestrator().preview(
         canvas,
         node.id,
@@ -508,7 +518,7 @@ void main() {
         final service = _RecordFailJobs(
           database: appDb,
           images: buildImageLibraryService(appDb),
-          invoke: (_, _, _, _) async =>
+          invoke: (taskId, _, _, _, _, cancellation) async =>
               AiImageGenerationResult(localFilePath: output.path),
 
           beforeCreate: (novelId, type, sourceId) async {
@@ -602,7 +612,7 @@ void main() {
         final service = ImageTaskService(
           database: appDb,
           images: buildImageLibraryService(appDb),
-          invoke: (_, request, _, _) async {
+          invoke: (taskId, _, request, _, _, cancellation) async {
             requests.add(request);
             return AiImageGenerationResult(localFilePath: output.path);
           },
@@ -1006,7 +1016,7 @@ void main() {
 
   test('panel generation returns once the task exists', () async {
     final release = Completer<void>();
-    final service = jobs((_, _, _, _) async {
+    final service = jobs((taskId, _, _, _, _, cancellation) async {
       await release.future;
       throw StateError('released');
     });
@@ -1035,7 +1045,8 @@ void main() {
 
   test('a failed task leaves the complete derived draft for retry', () async {
     final service = jobs(
-      (_, _, _, _) async => throw StateError('fake network failure'),
+      (taskId, _, _, _, _, cancellation) async =>
+          throw StateError('fake network failure'),
     );
     final derived = await ViewDeriveOrchestrator().run(
       service: canvas,
@@ -1143,7 +1154,7 @@ void main() {
           'resolution': '2K',
         });
         final service = jobs(
-          (_, _, _, _) async =>
+          (taskId, _, _, _, _, cancellation) async =>
               AiImageGenerationResult(localFilePath: output.path),
         );
         final preview = await ProductionImageGenerateOrchestrator().preview(
@@ -1217,7 +1228,7 @@ void main() {
         node.id,
       );
       final service = jobs(
-        (_, request, _, _) async =>
+        (taskId, _, request, _, _, cancellation) async =>
             AiImageGenerationResult(localFilePath: output.path),
       );
       final id = await submit(service, preview);
@@ -1233,7 +1244,8 @@ void main() {
       );
       expect(await appDb.select(appDb.assets).get(), hasLength(2));
       final failure = jobs(
-        (_, request, _, _) async => throw StateError('provider failed'),
+        (taskId, _, request, _, _, cancellation) async =>
+            throw StateError('provider failed'),
       );
       final failed = await failure.requireRun(await submit(failure, preview));
       expect(failed.status.name, 'failed');
@@ -1247,7 +1259,7 @@ void main() {
     'new image generation resets dismissal; repeated failure does not',
     () async {
       await canvas.shots.setErrorDismissed(node.clipId!, true);
-      final service = jobs((_, _, _, _) async {
+      final service = jobs((taskId, _, _, _, _, cancellation) async {
         expect(
           (await canvas.shots.getShot(node.clipId!))!.errorDismissed,
           isFalse,
@@ -1310,7 +1322,8 @@ void main() {
           );
       await canvas.shots.setErrorDismissed(node.clipId!, true);
       final service = jobs(
-        (_, _, _, _) async => throw StateError('Must not generate'),
+        (taskId, _, _, _, _, cancellation) async =>
+            throw StateError('Must not generate'),
       );
       await expectLater(
         service.retrySaveOutput('save-failed'),
@@ -1335,7 +1348,7 @@ void main() {
       final downloads = <String>[];
       var downloadFails = true;
       final service = jobs(
-        (_, _, _, _) async {
+        (taskId, _, _, _, _, cancellation) async {
           generations++;
           throw const AiImageFetchException('download failed', url: url);
         },
@@ -1363,7 +1376,9 @@ void main() {
         expect(task.path, isNull);
 
         // 启动恢复不能把待重新下载的任务改成生成失败。
-        final restarted = jobs((_, _, _, _) async => throw StateError('No AI'));
+        final restarted = jobs(
+          (taskId, _, _, _, _, cancellation) async => throw StateError('No AI'),
+        );
         await restarted.recover();
         restarted.dispose();
         task = await service.requireRun(id);
@@ -1405,8 +1420,8 @@ void main() {
       );
       final pending = Completer<AiImageGenerationResult>();
       final submitted = Completer<void>();
-      final service = jobs((_, _, onSubmitted, _) async {
-        await onSubmitted('prediction-1');
+      final service = jobs((taskId, _, _, onSubmitted, _, cancellation) async {
+        await onSubmitted(ProviderSubmitted('prediction-1'));
         submitted.complete();
         return pending.future;
       });
@@ -1416,7 +1431,9 @@ void main() {
       expect(task.providerTaskId, 'prediction-1');
 
       // 模拟进程在轮询中退出：同一行留在 running，重启后可重新获取。
-      final restarted = jobs((_, _, _, _) async => throw StateError('No AI'));
+      final restarted = jobs(
+        (taskId, _, _, _, _, cancellation) async => throw StateError('No AI'),
+      );
       await restarted.recover();
       restarted.dispose();
       final recovered = await service.requireRun(task.id);
@@ -1437,7 +1454,7 @@ void main() {
       var generations = 0;
       final fetched = <app.GenerationTask>[];
       final service = jobs(
-        (_, _, _, _) async {
+        (taskId, _, _, _, _, cancellation) async {
           generations++;
           throw const AiImageFetchException(
             'poll failed',
@@ -1464,7 +1481,9 @@ void main() {
         expect(task.providerTaskId, 'prediction-1');
         expect(task.outputUrl, isNull);
 
-        final restarted = jobs((_, _, _, _) async => throw StateError('No AI'));
+        final restarted = jobs(
+          (taskId, _, _, _, _, cancellation) async => throw StateError('No AI'),
+        );
         await restarted.recover();
         restarted.dispose();
         expect((await service.requireRun(id)).errorCode, 'result_fetch_failed');
@@ -1497,7 +1516,9 @@ void main() {
     'durable cancellation retains a late asset without adopting after restart',
     () async {
       final pending = Completer<AiImageGenerationResult>();
-      final service = jobs((_, _, _, _) => pending.future);
+      final service = jobs(
+        (taskId, _, _, _, _, cancellation) => pending.future,
+      );
       final preview = await ProductionImageGenerateOrchestrator().preview(
         canvas,
         node.id,
@@ -1524,7 +1545,7 @@ void main() {
     'a stable image request ID does not invoke twice and rejects a different request',
     () async {
       var calls = 0;
-      final service = jobs((_, _, _, _) async {
+      final service = jobs((taskId, _, _, _, _, cancellation) async {
         calls++;
         return AiImageGenerationResult(localFilePath: output.path);
       });
@@ -1558,7 +1579,9 @@ void main() {
 
   test('cancelled late result never replaces adopted asset', () async {
     final pending = Completer<AiImageGenerationResult>();
-    final service = jobs((_, request, _, _) => pending.future);
+    final service = jobs(
+      (taskId, _, request, _, _, cancellation) => pending.future,
+    );
     final preview = await ProductionImageGenerateOrchestrator().preview(
       canvas,
       node.id,
@@ -1578,7 +1601,9 @@ void main() {
 
   test('a deleted node stays deleted when its result arrives', () async {
     final pending = Completer<AiImageGenerationResult>();
-    final service = jobs((_, request, _, _) => pending.future);
+    final service = jobs(
+      (taskId, _, request, _, _, cancellation) => pending.future,
+    );
     final future = submit(
       service,
       await ProductionImageGenerateOrchestrator().preview(canvas, node.id),
@@ -1637,7 +1662,8 @@ void main() {
             ),
           );
       final service = jobs(
-        (_, _, _, _) async => throw StateError('Recovery must never generate'),
+        (taskId, _, _, _, _, cancellation) async =>
+            throw StateError('Recovery must never generate'),
       );
       await service.recover();
       expect(
@@ -1695,7 +1721,7 @@ void main() {
         canvas.requireAcyclic(node.id, source.id, node.canvasId),
         throwsA(isA<StoryboardException>()),
       );
-      final service = jobs((_, request, _, _) async {
+      final service = jobs((taskId, _, request, _, _, cancellation) async {
         expect(request.references.single.assetId, oldAsset);
         return AiImageGenerationResult(localFilePath: output.path);
       });
@@ -1758,7 +1784,10 @@ void main() {
             );
       }
       expect(
-        (await jobs((_, _, _, _) async => throw StateError('not called'))
+        (await jobs(
+                  (taskId, _, _, _, _, cancellation) async =>
+                      throw StateError('not called'),
+                )
                 .watchSource(
                   novelId: 'work',
                   sourceType: 'production_clip',
@@ -1778,7 +1807,7 @@ void main() {
       final service = ImageTaskService(
         database: appDb,
         images: buildImageLibraryService(appDb),
-        invoke: (_, _, _, _) async =>
+        invoke: (taskId, _, _, _, _, cancellation) async =>
             AiImageGenerationResult(localFilePath: output.path),
 
         beforeCreate: resultService.beforeCreate,
@@ -1832,7 +1861,9 @@ void main() {
     'shutdown waits for in-flight image requests and rejects further submissions',
     () async {
       final pending = Completer<AiImageGenerationResult>();
-      final service = jobs((_, _, _, _) => pending.future);
+      final service = jobs(
+        (taskId, _, _, _, _, cancellation) => pending.future,
+      );
       final preview = await ProductionImageGenerateOrchestrator().preview(
         canvas,
         node.id,
@@ -1852,7 +1883,8 @@ void main() {
       expect(stopped, true);
       expect((await service.requireRun(task.id)).resultAssetId, isNull);
       final restarted = jobs(
-        (_, _, _, _) async => throw StateError('Must not regenerate'),
+        (taskId, _, _, _, _, cancellation) async =>
+            throw StateError('Must not regenerate'),
       );
       await restarted.recover();
       expect((await restarted.requireRun(task.id)).errorCode, 'interrupted');
@@ -1916,7 +1948,7 @@ void main() {
           mediaLibraryServiceProvider.overrideWithValue(canvas.library),
 
           productionImageInvokeProvider.overrideWithValue(
-            (_, _, _, _) => pending.future,
+            (taskId, _, _, _, _, cancellation) => pending.future,
           ),
         ],
       );

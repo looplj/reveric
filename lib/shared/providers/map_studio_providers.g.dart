@@ -111,7 +111,7 @@ final class MapImageEditCallbackProvider
 }
 
 String _$mapImageEditCallbackHash() =>
-    r'6d786d8978ebf5481bd7ba2fd63f7a39617bfae2';
+    r'8c12651ebb150cc3fa06f302ea38b23e97988571';
 
 /// 文生图 callback：地图首次生成（无参考图）时使用。
 
@@ -164,7 +164,7 @@ final class MapImageGenerateCallbackProvider
 }
 
 String _$mapImageGenerateCallbackHash() =>
-    r'1016aa08435c7aeb13ec083d8beae5c478f3cde2';
+    r'2b950c24200951eb568d0aa1ee103092443daa67';
 
 @ProviderFor(mapPlaceNameReader)
 final mapPlaceNameReaderProvider = MapPlaceNameReaderProvider._();

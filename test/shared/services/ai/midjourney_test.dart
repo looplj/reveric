@@ -52,6 +52,9 @@ void main() {
   test(
     '88api sends only model and prompt and retains all four candidates',
     () async {
+      final remoteUrls = [
+        for (var i = 0; i < 4; i++) 'https://images.test/$i.png',
+      ];
       var receipts = 0;
       var calls = 0;
       await http.runWithClient(
@@ -63,9 +66,15 @@ void main() {
               ).generateImage(
                 'city --ar 1:1 --s 250',
                 aspectRatio: '16:9',
-                onOutputs: (output) async {
-                  expect(output, urls);
-                  receipts++;
+                onOutputs: (output, context) async {
+                  final urls = output.outputs
+                      .whereType<ProviderUrlOutput>()
+                      .map((item) => item.url)
+                      .toList();
+                  if (urls.length == 4) {
+                    expect(urls, remoteUrls);
+                    receipts++;
+                  }
                 },
               );
           expect(result.images, hasLength(4));
@@ -78,6 +87,14 @@ void main() {
           await result.disposeTemporary();
         },
         () => MockClient((r) async {
+          if (r.method == 'GET') {
+            final i = remoteUrls.indexOf(r.url.toString());
+            expect(i, greaterThanOrEqualTo(0));
+            return http.Response.bytes(
+              UriData.parse(urls[i]).contentAsBytes(),
+              200,
+            );
+          }
           calls++;
           expect(r.url.path, '/v1/images/generations');
           expect(jsonDecode(r.body), {
@@ -87,7 +104,7 @@ void main() {
           return http.Response(
             jsonEncode({
               'data': [
-                for (final url in urls) {'url': url},
+                for (final url in remoteUrls) {'url': url},
               ],
             }),
             200,
@@ -257,7 +274,7 @@ void main() {
                 aspectRatio: '16:9',
                 resolution: '2K',
                 onSubmitted: (id) async {
-                  expect(id, 'prediction');
+                  expect(id.remoteTaskId, 'prediction');
                   submitted = true;
                 },
               );
@@ -386,9 +403,9 @@ void main() {
     () {
       expect(
         midjourneyBody(
-          const ImageGenerationRequest(
+          const SubmitImageInput(
             prompt: 'city --hd --seed 42 --stylize 100 --quality 4',
-            model: 'youchuan/v8.2/text-to-image',
+            modelId: 'youchuan/v8.2/text-to-image',
           ),
           MidjourneyProtocol.atlascloud,
         ),
@@ -407,9 +424,9 @@ void main() {
   test('quality capabilities differ by channel', () {
     expect(
       () => midjourneyBody(
-        const ImageGenerationRequest(
+        const SubmitImageInput(
           prompt: 'city --q 2',
-          model: 'youchuan/v8.2/text-to-image',
+          modelId: 'youchuan/v8.2/text-to-image',
         ),
         MidjourneyProtocol.atlascloud,
       ),
@@ -417,13 +434,59 @@ void main() {
     );
     expect(
       midjourneyBody(
-        const ImageGenerationRequest(
+        const SubmitImageInput(
           prompt: 'city --q 2',
-          model: 'midjourney-v8.2',
+          modelId: 'midjourney-v8.2',
         ),
         MidjourneyProtocol.images,
       )['prompt'],
       'city --q 2',
     );
   });
+  test(
+    'grid processing failure preserves task ID and retry queries without another submission',
+    () async {
+      var submissions = 0;
+      var queries = 0;
+      await http.runWithClient(
+        () async {
+          final service = AiImageGenerationService(
+            provider('api88'),
+            model: 'mj_imagine',
+          );
+          await expectLater(
+            service.generateImage('city'),
+            throwsA(
+              isA<AiImageFetchException>().having(
+                (error) => error.providerTaskId,
+                'remote task',
+                'job',
+              ),
+            ),
+          );
+          final result = await service.resumeResult('job');
+          expect(result.images, hasLength(4));
+          await result.disposeTemporary();
+        },
+        () => MockClient((request) async {
+          if (request.method == 'POST') {
+            submissions++;
+            return http.Response(jsonEncode({'code': 1, 'result': 'job'}), 200);
+          }
+          queries++;
+          final side = queries == 1 ? 1 : 2;
+          final image = img.encodePng(img.Image(width: side, height: side));
+          return http.Response(
+            jsonEncode({
+              'status': 'SUCCESS',
+              'imageUrl': 'data:image/png;base64,${base64Encode(image)}',
+            }),
+            200,
+          );
+        }),
+      );
+      expect(submissions, 1);
+      expect(queries, 2);
+    },
+  );
 }

@@ -3496,10 +3496,11 @@ typedef AiImageGenerationCallback =
     Future<AiImageGenerationResult> Function(
       String prompt, {
       String? model,
+      ImageInvocationOptions? options,
       String? size,
       // 出图质量。null 表示不写这个参数，交给服务端默认。
       String? quality,
-      // 复杂度。原样传用户的选择，由生图服务按型号校验并补目录默认值。
+      // 复杂度。原样传用户的选择，由 Host 按模型声明校验并补默认值。
       String? complexity,
     });
 typedef AiImageEditCallback =
@@ -3507,12 +3508,14 @@ typedef AiImageEditCallback =
       String prompt, {
       required String imageData,
       String? model,
+      ImageInvocationOptions? options,
     });
 typedef AiMultiImageEditCallback =
     Future<AiImageGenerationResult> Function(
       String prompt, {
       required List<String> imageData,
       String? model,
+      ImageInvocationOptions? options,
       String? size,
       String? quality,
       String? complexity,

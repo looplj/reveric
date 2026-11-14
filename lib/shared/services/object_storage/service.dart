@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:mime/mime.dart';
 
 import '../../database/app_database.dart';
+import '../../agent/agent_tool_dispatcher.dart';
 import '../../logger/app_logger.dart';
 import '../../models/object_storage_config.dart';
 import 's3.dart';
@@ -130,6 +131,7 @@ class ObjectStorageService {
     required String sha256,
     required String mimeType,
     required int fileSize,
+    AgentCancellationToken? cancellation,
   }) async {
     final normalized = config.normalized();
     final extension = extensionFromMime(mimeType);
@@ -139,21 +141,39 @@ class ObjectStorageService {
     );
     final client = _client();
     final s3 = _s3(normalized, client);
+    final unlink = cancellation?.onCancel(client.close);
     try {
-      if (!await s3.exists(key)) {
-        await s3.putFile(
-          key,
-          file,
-          sha256: sha256,
-          contentType: mimeType,
-          length: fileSize,
-        );
+      if (cancellation?.isCancellationRequested == true) {
+        throw StateError('Object storage upload cancelled');
       }
-      return _accessUrl(normalized, s3, key);
+      return await (() async {
+        if (!await s3.exists(key)) {
+          await s3.putFile(
+            key,
+            file,
+            sha256: sha256,
+            contentType: mimeType,
+            length: fileSize,
+          );
+        }
+        if (cancellation?.isCancellationRequested == true) {
+          throw StateError('Object storage upload cancelled');
+        }
+        return _accessUrl(normalized, s3, key);
+      })().timeout(
+        const Duration(minutes: 10),
+        onTimeout: () {
+          client.close();
+          throw TimeoutException(
+            'Reference storage upload exceeded method budget',
+          );
+        },
+      );
     } catch (error, stackTrace) {
       _logFailure('upload key=$key', normalized, error, stackTrace);
       rethrow;
     } finally {
+      unlink?.call();
       client.close();
     }
   }

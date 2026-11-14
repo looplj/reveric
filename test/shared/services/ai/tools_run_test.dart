@@ -14,6 +14,10 @@ import 'package:reveric/shared/models/asset_purpose.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
 import 'package:reveric/shared/providers/async_read.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
+import 'package:reveric/shared/providers/video_tasks.dart';
+import 'package:reveric/shared/models/production/media.dart';
+import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
+import 'package:reveric/shared/services/object_storage/service.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/services/image_library_service.dart';
 import 'package:reveric/shared/models/tool_permission.dart';
@@ -525,8 +529,8 @@ void main() {
                 novelActionsService: NovelActionsService(appDb),
               ),
               imageGenerationCallback:
-                  (prompt, {model, size, quality, complexity}) async {
-                    prompts.add('$size:$prompt');
+                  (prompt, {model, size, quality, complexity, options}) async {
+                    prompts.add('${options?.preferredRatio ?? size}:$prompt');
                     return AiImageGenerationResult(
                       localFilePath: '/tmp/${size ?? 'unknown'}.png',
                     );
@@ -925,8 +929,8 @@ void main() {
         imageEditCallback: edit,
         imageGenerationCallback:
             generate ??
-            (prompt, {model, size, quality, complexity}) async {
-              prompts.add('$size:$prompt');
+            (prompt, {model, size, quality, complexity, options}) async {
+              prompts.add('${options?.preferredRatio ?? size}:$prompt');
               final file = await File('${imageRoot.path}/$size.png').writeAsBytes(
                 base64Decode(
                   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -1011,9 +1015,24 @@ void main() {
           updatedAt: DateTime(2026),
           deletedAt: notDeletedSentinel,
         );
+        await appDb.aiProviderDao.upsert(config);
         final library = buildImageLibraryService(appDb);
         final container = ProviderContainer(
           overrides: [
+            appDatabaseProvider.overrideWithValue(appDb),
+            referenceStorageServiceProvider.overrideWithValue(
+              ReferenceStorageService(
+                database: appDb,
+                storage: ObjectStorageService(database: appDb),
+                probe: (_, {cancellation}) async => const MediaInfo(
+                  duration: Duration.zero,
+                  hasAudio: false,
+                  hasVideo: true,
+                  width: 1,
+                  height: 1,
+                ),
+              ),
+            ),
             imageGenerationConfigProvider.overrideWithValue(config),
             resolvedAiModelOptionForKindProvider(
               kind: AiModelKind.image,
@@ -1032,7 +1051,7 @@ void main() {
         // 没有页面订阅或全局作品上下文，调用期间才持有生图依赖。
         await useSubjectImageHost(
           approval: false,
-          generate: (prompt, {model, size, quality, complexity}) =>
+          generate: (prompt, {model, size, quality, complexity, options}) =>
               container.withProvider(
                 imageGenerationCallbackProvider('work'),
                 (callback) => callback!(
@@ -1040,12 +1059,20 @@ void main() {
                   model: model,
                   size: size,
                   quality: quality,
+                  complexity: complexity,
+                  options: options,
                 ),
               ),
-          edit: (prompt, {required imageData, model}) => container.withProvider(
-            imageEditCallbackProvider('work'),
-            (callback) => callback!(prompt, imageData: imageData, model: model),
-          ),
+          edit: (prompt, {required imageData, model, options}) =>
+              container.withProvider(
+                imageEditCallbackProvider('work'),
+                (callback) => callback!(
+                  prompt,
+                  imageData: imageData,
+                  model: model,
+                  options: options,
+                ),
+              ),
         );
         final first = await runSubjectImage('character', 'generate-avatar', {
           'character': 'c_1',
@@ -1193,7 +1220,7 @@ void main() {
         );
         expect(photos['updated'], isTrue, reason: '$photos');
         expect(await appDb.select(appDb.assets).get(), hasLength(1));
-        expect(prompts, ['1024x1024:stern mage', '864x1536:full body']);
+        expect(prompts, ['1:1:stern mage', '9:16:full body']);
       },
     );
 
@@ -1210,7 +1237,7 @@ void main() {
       expect(photo['local_path'], startsWith('images/'));
       expect(photo['item_id'], 'item_1');
       expect(photo['_metadata'], containsPair('item_id', 'item_1'));
-      expect(prompts, ['864x1536:ancient sword']);
+      expect(prompts, ['9:16:ancient sword']);
     });
 
     for (final (command, subcommand, subject) in [
@@ -1225,7 +1252,7 @@ void main() {
           late AssetRow reference;
           await useSubjectImageHost(
             approval: false,
-            edit: (prompt, {required imageData, model}) async {
+            edit: (prompt, {required imageData, model, options}) async {
               edited.add(imageData);
               return AiImageGenerationResult(
                 localFilePath: imageData,
@@ -1315,7 +1342,7 @@ void main() {
       var edits = 0;
       final broker = await useSubjectImageHost(
         approval: true,
-        edit: (prompt, {required imageData, model}) async {
+        edit: (prompt, {required imageData, model, options}) async {
           edits++;
           throw StateError(
             'Deleted reference must not reach the image service',
@@ -1622,8 +1649,8 @@ void main() {
             'location': 'world_1',
             'prompt': 'A complete illustrated world map',
             'style': 'atlas',
-            'resolution': '4k',
-            'quality': 'high',
+            'resolution': 'workflow-large',
+            'quality': 'studio',
             'include_locations': false,
             'reference_current_image': true,
           },
@@ -1638,8 +1665,8 @@ void main() {
       expect(draft.worldId, 'world_1');
       expect(draft.prompt, 'A complete illustrated world map');
       expect(draft.styleId, 'atlas');
-      expect(draft.resolutionId, '4k');
-      expect(draft.qualityId, 'high');
+      expect(draft.resolutionId, 'workflow-large');
+      expect(draft.qualityId, 'studio');
       expect(draft.includeLocations, isFalse);
       expect(draft.referenceCurrentImage, isTrue);
       expect(prompts, isEmpty);
@@ -1658,6 +1685,20 @@ void main() {
         expect(help['output'], contains('written in Chinese'));
         expect(help['output'], contains('must not include the visual style'));
         expect(help['output'], contains('custom_style'));
+        expect(
+          help['output'],
+          contains('a value supported by the selected image model'),
+        );
+        expect(help['output'], isNot(contains('1k | 2k | 4k')));
+        for (final command in ['character', 'item']) {
+          final subjectHelp = await toolManager.executeTool(
+            name: 'Run',
+            input: {'command': 'help', 'subcommand': command},
+            callId: 'help-$command',
+          );
+          expect(subjectHelp['output'], contains('preferring'));
+          expect(subjectHelp['output'], contains('when supported'));
+        }
       },
     );
 

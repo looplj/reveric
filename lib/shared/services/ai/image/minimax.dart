@@ -4,7 +4,6 @@
 //   lib/shared/models/image/channels.dart
 //   lib/shared/models/ai_provider.dart
 import '../../../models/ai_provider.dart';
-import '../image.dart';
 import 'client.dart';
 
 /// 服务端最长等待 600 秒，短于该值的客户端会在服务端仍计费时断开。
@@ -14,18 +13,19 @@ class MinimaxImageClient extends ImageClient {
   MinimaxImageClient(super.config);
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
-    final channel = validatedChannel(request);
-    final editing = request.images.isNotEmpty;
-    final defaults = channel?.requestDefaults;
+    validatedChannel(request);
+    final editing = request.references.isNotEmpty;
+    final defaults = request.nativeDefaults;
     final body = <String, dynamic>{
       'model': request.model,
       'prompt': request.prompt,
       'n': 1,
-      'response_format': defaults?.responseFormat ?? 'b64_json',
-      'output_format': defaults?.outputFormat ?? 'png',
+      'response_format': defaults.responseFormat ?? 'b64_json',
+      'output_format': defaults.outputFormat ?? 'png',
     };
     final size = request.size;
     final pixel =
@@ -45,8 +45,8 @@ class MinimaxImageClient extends ImageClient {
     }
     if (editing) {
       body['images'] = [
-        for (final input in request.images)
-          await imageInputAsUrlOrDataUri(input),
+        for (final input in request.references)
+          await imageInputAsUrlOrDataUri(input, outputs),
       ];
     }
     final data = await postImageJson(
@@ -54,7 +54,11 @@ class MinimaxImageClient extends ImageClient {
       body,
       timeout: _minimaxImageTimeout,
     );
-    return parseImageResponse(data, emptyMessage: '图片生成服务未返回图片，请稍后重试。');
+    return parseImageResponse(
+      data,
+      outputs,
+      emptyMessage: '图片生成服务未返回图片，请稍后重试。',
+    );
   }
 
   Uri _uri(String action) {

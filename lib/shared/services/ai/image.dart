@@ -1,19 +1,37 @@
-// 职责: 定义图片生成的错误分类与结果，并按 provider 的图片协议分发到对应客户端。
+// 职责: 按 Provider 分发图片提交与查询，在 Host 调度轮询、输出处理及兼容业务结果。
 // 关联文件:
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/models/image/channels.dart
 //   lib/shared/services/ai/image/client.dart
 //   lib/shared/services/ai/codex/image_client.dart
+//   lib/shared/services/ai/image/output.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/ai.json
+//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:easy_localization/easy_localization.dart';
+import '../../localization/locale_keys.dart';
+import '../../models/video/task_result.dart' show VideoException;
 import 'package:http/http.dart' as http;
 
 import '../../models/ai_provider.dart';
+import '../../agent/agent_tool_dispatcher.dart';
+import '../../models/provider_model.dart';
+import '../../models/production/image_request.dart'
+    show ProductionImageReference;
+import 'video/reference_storage_service.dart';
 import '../../utils/storage_paths.dart';
 import '../../models/image/channels.dart';
+import '../../models/image/choices.dart';
 import 'codex/image_client.dart';
 import 'image/agnes.dart';
+import 'image/plugin.dart';
+import '../plugins/host.dart';
+import '../plugins/runtime.dart' show PluginExecutionError, PluginHostError;
 import 'image/minimax.dart';
 import 'image/moss.dart';
 import 'image/ark.dart';
@@ -27,6 +45,61 @@ import 'image/openrouter.dart';
 import 'image/purefox.dart';
 import 'new_api.dart';
 import 'image/qwen.dart';
+
+/// Direct entries pass complete model parameters without creating a resumable task.
+class ImageInvocationOptions {
+  const ImageInvocationOptions({
+    this.aspectRatio,
+    this.preferredRatio,
+    this.resolution,
+    this.capabilities,
+    this.defaults,
+    this.references,
+    this.cancellation,
+  });
+  final String? aspectRatio, resolution;
+
+  /// Internal UI preference; explicit aspectRatio/size always remain strict.
+  final String? preferredRatio;
+  final ImageModelCapabilities? capabilities;
+  final Map<String, dynamic>? defaults;
+  final List<ProductionImageReference>? references;
+  final AgentCancellationToken? cancellation;
+  bool get frozen => capabilities != null && defaults != null;
+  ImageInvocationOptions withReferences(
+    List<ProductionImageReference> values,
+  ) => ImageInvocationOptions(
+    aspectRatio: aspectRatio,
+    preferredRatio: preferredRatio,
+    resolution: resolution,
+    capabilities: capabilities,
+    defaults: defaults,
+    references: values,
+    cancellation: cancellation,
+  );
+}
+
+/// Resolve the same saved instance immediately before a new direct request.
+Future<AiImageGenerationService> resolveDirectImageService(
+  AiProvider selected,
+  String model, {
+  required PluginHostService host,
+  required ReferenceStorageService references,
+}) async {
+  final current = await references.database.aiProviderDao.getById(selected.id);
+  if (current == null || !current.enabled || current.type != selected.type) {
+    throw AiImageGenerationException(
+      tr(LocaleKeys.aiConfigureImageModel),
+      debugMessage: 'Image provider instance is unavailable',
+    );
+  }
+  return AiImageGenerationService(
+    current,
+    model: model,
+    pluginHost: host,
+    referenceStorage: references,
+  );
+}
 
 /// 出图失败的分类。封面工作台按它决定那一格显示哪句「下一步怎么办」，
 /// 所以分类逻辑只能有这一份，不要在调用方重写关键字匹配。
@@ -112,11 +185,43 @@ class AiImageGenerationException implements Exception {
   String toString() => userMessage;
 }
 
-/// 上游返回候选图地址后、下载前回报整组 URL；调用方落库后才开始下载。
-typedef ImageOutputsReceived = Future<void> Function(List<String> urls);
+/// Preserves submission certainty through the facade and task persistence.
+class AiImageSubmissionException extends AiImageGenerationException {
+  const AiImageSubmissionException(
+    super.userMessage, {
+    required this.failureCode,
+    super.debugMessage,
+    super.code,
+  });
+  final String failureCode;
+  bool get requiresReconciliation => failureCode == 'invalid_outputs';
+}
 
-/// 异步任务协议受理后回报上游任务 ID；调用方落库后才开始轮询。
-typedef ImageSubmitted = Future<void> Function(String providerTaskId);
+AiImageSubmissionException invalidImageOutputs([Object? detail]) =>
+    AiImageSubmissionException(
+      tr(LocaleKeys.aiImageInvalidOutputs),
+      failureCode: 'invalid_outputs',
+      debugMessage: detail?.toString(),
+    );
+
+class AiImageTerminalException extends AiImageGenerationException {
+  const AiImageTerminalException(
+    super.userMessage, {
+    required this.status,
+    this.failureCode,
+    super.debugMessage,
+    super.code,
+  });
+  final String status;
+  final String? failureCode;
+}
+
+/// 回报完整候选回执及逐项落盘进度；调用方持久化后才处理下一候选。
+typedef ImageOutputsReceived =
+    Future<void> Function(ProviderSucceeded result, ImageOutputContext context);
+
+/// 回报任务 ID 与完整查询状态；调用方原子落库后才继续查询。
+typedef ImageSubmitted = Future<void> Function(ProviderSubmitted result);
 
 /// 上游已受理，但结果没取回本地：有 [url] 时重新下载，
 /// 否则凭 [providerTaskId] 继续查询上游任务。
@@ -126,12 +231,16 @@ class AiImageFetchException extends AiImageGenerationException {
     this.url,
     this.providerTaskId,
     this.urls = const [],
+    this.providerOutputs = const [],
+    this.providerState,
     super.debugMessage,
   });
 
   final String? url;
   final String? providerTaskId;
   final List<String> urls;
+  final List<ProviderOutput> providerOutputs;
+  final Map<String, dynamic>? providerState;
 }
 
 class AiImageGenerationResult {
@@ -146,6 +255,7 @@ class AiImageGenerationResult {
       revisedPrompt: first.revisedPrompt,
       mimeSubtype: first.mimeSubtype,
       assetId: first.assetId,
+      outputHandle: first.outputHandle,
       additionalImages: List.unmodifiable(images.skip(1)),
     );
   }
@@ -157,6 +267,7 @@ class AiImageGenerationResult {
 
   /// 图片入库后取得的资产 ID；尚未入库的客户端结果为空。
   final String? assetId;
+  final String? outputHandle;
 
   /// MIME subtype detected from the actual image bytes (e.g. 'png', 'jpeg').
   /// Used to build correct data-URI prefixes instead of hardcoding 'png'.
@@ -168,6 +279,7 @@ class AiImageGenerationResult {
     this.revisedPrompt,
     this.localFilePath,
     this.assetId,
+    this.outputHandle,
     this.mimeSubtype = 'png',
     this.additionalImages = const [],
   });
@@ -190,6 +302,13 @@ class AiImageGenerationResult {
     if (await file.exists()) {
       await file.delete();
     }
+    final handle = outputHandle;
+    if (handle != null && RegExp(r'^[a-f0-9-]{36}$').hasMatch(handle)) {
+      final record = File('${root.path}/file_workspaces/$handle.json');
+      if (await record.exists()) {
+        await record.delete();
+      }
+    }
   }
 
   bool get hasImage =>
@@ -211,13 +330,27 @@ class AiImageGenerationService {
     this._config, {
     required this._model,
     this._codexImageClientFactory,
+    this.pluginHost,
+    this.referenceStorage,
   });
 
+  final PluginHostService? pluginHost;
+  final ReferenceStorageService? referenceStorage;
   final AiProvider _config;
   final String _model;
   final CodexImageClient Function()? _codexImageClientFactory;
 
   ImageClient? _client([String? model]) {
+    if (_config.pluginId != null) {
+      final host = pluginHost;
+      if (host == null) {
+        throw const ProviderFailure(
+          code: 'configuration_required',
+          message: 'Plugin Host is required for image generation',
+        );
+      }
+      return PluginImageClient(_config, host);
+    }
     final options = lookupImageChannelModel(
       _config.type,
       model ?? _model,
@@ -253,6 +386,7 @@ class AiImageGenerationService {
     String? complexity,
     String? aspectRatio,
     String? resolution,
+    ImageInvocationOptions? options,
     ImageSubmitted? onSubmitted,
     ImageOutputsReceived? onOutputs,
   }) => _run(() async {
@@ -260,18 +394,37 @@ class AiImageGenerationService {
         _client(model) ??
         (throw AiImageGenerationException('${_config.displayName} 当前不支持生图。'));
     final resolvedModel = model ?? _model;
-    return client.generate(
-      ImageGenerationRequest(
+    final preference = options?.preferredRatio;
+    final choices = preference == null
+        ? null
+        : ImageModelChoices(_config, resolvedModel);
+    final selectedRatio =
+        options?.aspectRatio ??
+        aspectRatio ??
+        choices?.defaultRatio(preference!);
+    final selectedResolution =
+        options?.resolution ?? resolution ?? choices?.defaultResolution('1K');
+    final selectedSize =
+        size ?? choices?.size(selectedRatio!, selectedResolution!);
+    return _execute(
+      client,
+      SubmitImageInput(
         prompt: prompt,
-        model: resolvedModel,
-        size: size,
+        modelId: resolvedModel,
+        size: selectedSize,
         quality: quality,
-        complexity: imageComplexityFor(_config, resolvedModel, complexity),
-        aspectRatio: aspectRatio,
-        resolution: resolution,
-        onSubmitted: onSubmitted,
-        onOutputs: onOutputs,
+        complexity:
+            complexity ?? imageComplexityFor(_config, resolvedModel, null),
+        aspectRatio: selectedRatio,
+        resolution: selectedResolution,
+        defaults: options?.defaults ?? const {},
       ),
+      onSubmitted: onSubmitted,
+      onOutputs: onOutputs,
+      frozen: options?.frozen ?? false,
+      capabilities: options?.capabilities,
+      referenceIdentities: options?.references,
+      cancellation: options?.cancellation,
     );
   });
 
@@ -284,6 +437,7 @@ class AiImageGenerationService {
     String? complexity,
     String? aspectRatio,
     String? resolution,
+    ImageInvocationOptions? options,
   }) {
     return editImages(
       prompt,
@@ -294,6 +448,7 @@ class AiImageGenerationService {
       complexity: complexity,
       aspectRatio: aspectRatio,
       resolution: resolution,
+      options: options,
     );
   }
 
@@ -303,24 +458,31 @@ class AiImageGenerationService {
       final client =
           _client() ??
           (throw AiImageGenerationException('${_config.displayName} 当前不支持生图。'));
-      return client.resumeResult(providerTaskId);
+      return _execute(
+        client,
+        SubmitImageInput(prompt: '', modelId: _model),
+        resume: ProviderQueryInput(providerTaskId),
+      );
     },
   );
 
-  /// 整组重新下载上游已生成的候选图 URL，不重新出图。
+  /// 重试已知下载引用，不重新提交生成。
   Future<AiImageGenerationResult> downloadResults(List<String> urls) =>
       _run(() async {
-        final client = _client()!;
-        return client.downloadResults(urls);
+        final outputs = ImageOutputContext(_config);
+        try {
+          return await outputs.materialize(
+            await outputs.nativeImages([
+              for (final url in urls) {'url': url},
+            ]),
+          );
+        } finally {
+          outputs.cancel();
+        }
       });
 
-  /// 重新下载上游已生成的图片 URL，不重新出图。
-  Future<AiImageGenerationResult> downloadResult(String url) => _run(() async {
-    final client =
-        _client() ??
-        (throw AiImageGenerationException('${_config.displayName} 当前不支持生图。'));
-    return client.downloadResult(url);
-  });
+  Future<AiImageGenerationResult> downloadResult(String url) =>
+      downloadResults([url]);
 
   /// OpenAI Images API 多参考图编辑契约。
   Future<AiImageGenerationResult> editImages(
@@ -332,6 +494,7 @@ class AiImageGenerationService {
     String? complexity,
     String? aspectRatio,
     String? resolution,
+    ImageInvocationOptions? options,
     ImageSubmitted? onSubmitted,
     ImageOutputsReceived? onOutputs,
   }) => _run(() async {
@@ -343,21 +506,495 @@ class AiImageGenerationService {
       throw AiImageGenerationException('${_config.displayName} 当前不支持图片编辑。');
     }
     final resolvedModel = model ?? _model;
-    return client.generate(
-      ImageGenerationRequest(
+    final preference = options?.preferredRatio;
+    final choices = preference == null
+        ? null
+        : ImageModelChoices(_config, resolvedModel);
+    final selectedRatio =
+        options?.aspectRatio ??
+        aspectRatio ??
+        choices?.defaultRatio(preference!);
+    final selectedResolution =
+        options?.resolution ?? resolution ?? choices?.defaultResolution('1K');
+    final selectedSize =
+        size ?? choices?.size(selectedRatio!, selectedResolution!);
+    return _execute(
+      client,
+      SubmitImageInput(
         prompt: prompt,
-        model: resolvedModel,
-        size: size,
+        modelId: resolvedModel,
+        size: selectedSize,
         quality: quality,
-        complexity: imageComplexityFor(_config, resolvedModel, complexity),
-        aspectRatio: aspectRatio,
-        resolution: resolution,
-        images: imageData,
-        onSubmitted: onSubmitted,
-        onOutputs: onOutputs,
+        complexity:
+            complexity ?? imageComplexityFor(_config, resolvedModel, null),
+        aspectRatio: selectedRatio,
+        resolution: selectedResolution,
+        defaults: options?.defaults ?? const {},
       ),
+      rawImages: imageData,
+      onSubmitted: onSubmitted,
+      onOutputs: onOutputs,
+      frozen: options?.frozen ?? false,
+      capabilities: options?.capabilities,
+      referenceIdentities: options?.references,
+      cancellation: options?.cancellation,
     );
   });
+
+  Future<AiImageGenerationResult> generatePrepared(
+    SubmitImageInput input, {
+    required ImageOutputContext context,
+    required ImageModelCapabilities capabilities,
+    ImageSubmitted? onSubmitted,
+    ImageOutputsReceived? onOutputs,
+    AgentCancellationToken? cancellation,
+  }) => _run(() async {
+    final client = _client(input.modelId);
+    if (client == null) {
+      throw const ProviderFailure(
+        code: 'configuration_required',
+        message: 'Image provider is unavailable',
+      );
+    }
+    return _execute(
+      client,
+      input,
+      context: context,
+      frozen: true,
+      capabilities: capabilities,
+      onSubmitted: onSubmitted,
+      onOutputs: onOutputs,
+      cancellation: cancellation,
+    );
+  });
+
+  Future<AiImageGenerationResult> downloadPrepared(
+    ProviderSucceeded result, {
+    required ImageOutputContext context,
+    ImageOutputsReceived? onOutputs,
+    AgentCancellationToken? cancellation,
+  }) => _run(() async {
+    final unlink = cancellation?.onCancel(context.cancel);
+    try {
+      if (cancellation?.isCancellationRequested == true) {
+        throw const ProviderFailure(
+          code: 'cancelled',
+          message: 'Image wait cancelled',
+        );
+      }
+      await context.confirm(result);
+      await onOutputs?.call(result, context);
+      final current = result.outputs.toList();
+      return await context.materialize(
+        result,
+        onCandidate: (index, file) async {
+          current[index] = file;
+          await context.confirm(ProviderSucceeded(current));
+          await onOutputs?.call(ProviderSucceeded(current), context);
+        },
+      );
+    } finally {
+      unlink?.call();
+    }
+  });
+
+  Future<AiImageGenerationResult> queryPrepared(
+    ProviderQueryInput input, {
+    required ImageOutputContext context,
+    ImageSubmitted? onSubmitted,
+    ImageOutputsReceived? onOutputs,
+    AgentCancellationToken? cancellation,
+  }) => _run(() async {
+    final client = _client();
+    if (client == null) {
+      throw const ProviderFailure(
+        code: 'configuration_required',
+        message: 'Image provider is unavailable',
+      );
+    }
+    return _execute(
+      client,
+      SubmitImageInput(prompt: '', modelId: _model),
+      context: context,
+      frozen: true,
+      resume: input,
+      singleQuery: true,
+      onSubmitted: onSubmitted,
+      onOutputs: onOutputs,
+      cancellation: cancellation,
+    );
+  });
+
+  Future<AiImageGenerationResult> _execute(
+    ImageClient client,
+    SubmitImageInput request, {
+    ImageSubmitted? onSubmitted,
+    ImageOutputsReceived? onOutputs,
+    ProviderQueryInput? resume,
+    List<String> rawImages = const [],
+    ImageOutputContext? context,
+    bool frozen = false,
+    bool singleQuery = false,
+    ImageModelCapabilities? capabilities,
+    List<ProductionImageReference>? referenceIdentities,
+    AgentCancellationToken? cancellation,
+  }) async {
+    final declaration = frozen
+        ? null
+        : resolveImageModel(_config, request.model);
+    final defaults = frozen
+        ? request.nativeDefaults
+        : declaration?.requestDefaults;
+    final outputs = context ?? ImageOutputContext(_config);
+    String? remoteId = resume?.remoteTaskId;
+    Map<String, dynamic>? state = resume?.state;
+    final stopped = Completer<void>();
+    final unlink = cancellation?.onCancel(() {
+      client.cancel();
+      outputs.cancel();
+      if (!stopped.isCompleted) {
+        stopped.complete();
+      }
+    });
+    void checkCancellation() {
+      if (cancellation?.isCancellationRequested == true) {
+        throw AiImageFetchException(
+          tr(LocaleKeys.aiImageCandidatesFetchFailed),
+          providerTaskId: remoteId,
+          providerState: state,
+          debugMessage:
+              'Local image wait cancelled; remote outcome is unchanged',
+        );
+      }
+    }
+
+    try {
+      checkCancellation();
+      final count = rawImages.isEmpty
+          ? request.references.length
+          : rawImages.length;
+      final effectiveCapabilities = capabilities ?? declaration?.capabilities;
+      if (effectiveCapabilities != null) {
+        if (request.complexity != null &&
+            !effectiveCapabilities.complexityLevels.contains(
+              request.complexity,
+            )) {
+          throw invalidImageParameter();
+        }
+        if (request.quality != null &&
+            (effectiveCapabilities.qualityLevels.isNotEmpty
+                ? !effectiveCapabilities.qualityLevels.contains(request.quality)
+                : _config.isPluginProvider &&
+                      request.quality != defaults?.quality)) {
+          throw invalidImageParameter();
+        }
+        final providerValidatesRatio =
+            client is PurefoxImageClient &&
+            effectiveCapabilities.ratios.length == 1 &&
+            effectiveCapabilities.ratios.contains('auto');
+        if ((request.aspectRatio != null &&
+                !providerValidatesRatio &&
+                !effectiveCapabilities.ratios.contains(request.aspectRatio)) ||
+            (request.resolution != null &&
+                !effectiveCapabilities.resolutions.contains(
+                  request.resolution,
+                ))) {
+          throw invalidImageParameter();
+        }
+        try {
+          effectiveCapabilities.validateReferences(count);
+        } on FormatException {
+          throw invalidImageParameter();
+        }
+        try {
+          effectiveCapabilities.validateSize(
+            request.size ?? defaults?.size,
+            references: count,
+          );
+        } on FormatException {
+          throw AiImageGenerationException(
+            imageErrorMessage(AiImageErrorCode.size),
+            code: AiImageErrorCode.size,
+          );
+        }
+      }
+      List<PreparedImageReference> references = request.references;
+      if (rawImages.isNotEmpty) {
+        final transport =
+            effectiveCapabilities?.referenceTransport ??
+            ImageReferenceTransport.file;
+        if (transport != ImageReferenceTransport.file &&
+            referenceStorage == null) {
+          throw const ProviderFailure(
+            code: 'configuration_required',
+            message: 'Reference storage is required for this image transport',
+          );
+        }
+        if (transport == ImageReferenceTransport.uploaded &&
+            (_config.pluginId != null
+                ? pluginHost?.providerHasMethod(
+                        _config.pluginId!,
+                        'uploadReference',
+                      ) !=
+                      true
+                : _config.typeConfig.uploadProtocol == null)) {
+          throw AiImageGenerationException(
+            tr(LocaleKeys.aiImageReferenceUploadUnavailable),
+          );
+        }
+        final files = await outputs.importReferenceFiles(
+          rawImages,
+          identities: referenceIdentities,
+        );
+        final storage = referenceStorage;
+        if (storage != null) {
+          references = (await storage.prepareImages(
+            files,
+            provider: _config,
+            transport: transport,
+            files: outputs.inputScope,
+            taskId: outputs.inputScope.taskId,
+            cancellation: cancellation,
+          )).map(PreparedImageReference.fromJson).toList();
+        } else {
+          references = [];
+          for (final (identity, file, mime) in files) {
+            final info = await outputs.inputScope.register(
+              file,
+              name: file.uri.pathSegments.last,
+              mimeType: mime,
+            );
+            references.add(
+              PreparedImageReference(
+                assetId: identity.assetId,
+                clipId: identity.clipId,
+                inputId: identity.inputId,
+                mimeType: mime,
+                source: ImageFileReference(info['handle'] as String),
+              ),
+            );
+          }
+        }
+      }
+      final normalized = SubmitImageInput(
+        prompt: request.prompt,
+        modelId: request.modelId,
+        size: request.size ?? defaults?.size,
+        quality: request.quality ?? defaults?.quality,
+        complexity: request.complexity ?? defaults?.complexity,
+        aspectRatio: request.aspectRatio,
+        resolution: request.resolution,
+        references: references,
+        defaults: frozen
+            ? request.defaults
+            : declaration?.rawDefaults ?? const {},
+      );
+      if (_config.pluginId == null) {
+        outputs.claimInputs();
+      }
+      ProviderSucceeded? completed;
+      if (resume == null) {
+        checkCancellation();
+        late final ProviderSubmitResult submission;
+        try {
+          submission = await client
+              .submit(normalized, outputs)
+              .timeout(const Duration(minutes: 5));
+        } on AiImageGenerationException {
+          rethrow;
+        } catch (error) {
+          final code = switch (error) {
+            ProviderFailure() => error.code,
+            PluginHostError() => error.code,
+            PluginExecutionError() => error.code,
+            _ => null,
+          };
+          if (const {
+            'configuration_required',
+            'invalid_request',
+            'authentication',
+            'rate_limited',
+            'unavailable',
+          }.contains(code)) {
+            throw AiImageGenerationException(
+              tr(LocaleKeys.aiImageGenerationFailed),
+              debugMessage: '$error',
+            );
+          }
+          throw AiImageSubmissionException(
+            tr(
+              code == 'rejected'
+                  ? LocaleKeys.aiImageGenerationFailed
+                  : LocaleKeys.aiImageSubmissionUnknown,
+            ),
+            failureCode: code == 'rejected' ? 'rejected' : 'submission_unknown',
+            debugMessage: '$error',
+          );
+        }
+        switch (submission) {
+          case ProviderSubmitted():
+            remoteId = submission.remoteTaskId;
+            state = submission.state;
+            try {
+              await onSubmitted?.call(submission);
+            } catch (error) {
+              throw AiImageFetchException(
+                tr(LocaleKeys.aiImageCandidatesFetchFailed),
+                providerTaskId: remoteId,
+                providerState: state,
+                debugMessage: '$error',
+              );
+            }
+          case ProviderSucceeded():
+            completed = submission;
+        }
+      }
+      checkCancellation();
+      final elapsed = Stopwatch()..start();
+      while (completed == null) {
+        checkCancellation();
+        if (elapsed.elapsed >= const Duration(minutes: 10)) {
+          throw AiImageFetchException(
+            tr(LocaleKeys.aiImageCandidatesFetchFailed),
+            providerTaskId: remoteId,
+            providerState: state,
+            debugMessage: 'Image polling exceeded ten minutes',
+          );
+        }
+        final ProviderQueryResult queried;
+        try {
+          final remaining = const Duration(minutes: 10) - elapsed.elapsed;
+          queried = await client
+              .query(ProviderQueryInput(remoteId!, state: state), outputs)
+              .timeout(
+                remaining < const Duration(seconds: 30)
+                    ? remaining
+                    : const Duration(seconds: 30),
+              );
+        } catch (error) {
+          throw AiImageFetchException(
+            tr(LocaleKeys.aiImageCandidatesFetchFailed),
+            providerTaskId: remoteId,
+            providerState: state,
+            debugMessage: '$error',
+          );
+        }
+        switch (queried) {
+          case ProviderSucceeded():
+            completed = queried;
+          case ProviderPending():
+            if (queried.state != null) {
+              state = queried.state;
+              await onSubmitted?.call(
+                ProviderSubmitted(remoteId, state: state),
+              );
+            }
+            checkCancellation();
+            if (singleQuery) {
+              throw AiImageFetchException(
+                tr(LocaleKeys.aiImageCandidatesFetchFailed),
+                providerTaskId: remoteId,
+                providerState: state,
+                debugMessage: 'Image task is still running',
+              );
+            }
+            final remaining = const Duration(minutes: 10) - elapsed.elapsed;
+            if (remaining > Duration.zero) {
+              final nextPoll = Completer<void>();
+              final timer = Timer(
+                remaining < const Duration(seconds: 2)
+                    ? remaining
+                    : const Duration(seconds: 2),
+                nextPoll.complete,
+              );
+              try {
+                await Future.any([nextPoll.future, stopped.future]);
+              } finally {
+                timer.cancel();
+              }
+            }
+          case ProviderFailed(:final error):
+            throw AiImageTerminalException(
+              error.message,
+              status: 'failed',
+              failureCode: error.code,
+              debugMessage: error.detail,
+              code: AiImageErrorCode.values
+                  .where((value) => value.name == error.code)
+                  .firstOrNull,
+            );
+          case ProviderStopped():
+            throw AiImageTerminalException(
+              tr(LocaleKeys.aiImageCandidatesFetchFailed),
+              status: queried.cancelled ? 'cancelled' : 'expired',
+            );
+          case ProviderUnknown():
+            throw AiImageFetchException(
+              tr(LocaleKeys.aiImageCandidatesFetchFailed),
+              providerTaskId: remoteId,
+              providerState: state,
+              debugMessage: queried.reason,
+            );
+        }
+      }
+      if (cancellation?.isCancellationRequested == true &&
+          !outputs.hasGrid(completed)) {
+        await outputs.confirm(completed);
+        await onOutputs?.call(completed, outputs);
+      }
+      checkCancellation();
+      var confirmed = completed;
+      try {
+        confirmed = await outputs.mergePreserved(
+          await outputs.expand(confirmed),
+        );
+        await outputs.confirm(confirmed);
+        await onOutputs?.call(confirmed, outputs);
+        final current = confirmed.outputs.toList();
+        return await outputs.materialize(
+          confirmed,
+          onCandidate: (index, file) async {
+            current[index] = file;
+            await outputs.confirm(ProviderSucceeded(current));
+            await onOutputs?.call(ProviderSucceeded(current), outputs);
+          },
+        );
+      } on AiImageFetchException catch (error) {
+        throw AiImageFetchException(
+          error.userMessage,
+          providerTaskId: remoteId,
+          providerState: state,
+          url: error.url,
+          urls: error.urls,
+          providerOutputs: outputs.hasGrid(confirmed)
+              ? const []
+              : confirmed.outputs,
+          debugMessage: error.debugMessage,
+        );
+      } catch (error) {
+        throw AiImageFetchException(
+          tr(LocaleKeys.aiImageCandidatesFetchFailed),
+          providerOutputs: outputs.hasGrid(confirmed)
+              ? const []
+              : confirmed.outputs,
+          urls: outputs.hasGrid(confirmed)
+              ? const []
+              : confirmed.outputs
+                    .whereType<ProviderUrlOutput>()
+                    .map((output) => output.url)
+                    .toList(),
+          providerTaskId: remoteId,
+          providerState: state,
+          debugMessage: '$error',
+        );
+      }
+    } finally {
+      unlink?.call();
+      client.cancel();
+      outputs.cancel();
+      await outputs.disposeInputs();
+    }
+  }
 
   Future<AiImageGenerationResult> _run(
     Future<AiImageGenerationResult> Function() action,
@@ -370,6 +1007,12 @@ class AiImageGenerationService {
     } catch (error, stackTrace) {
       _logGenerationError(error, stackTrace);
       throw switch (error) {
+        VideoException(:final messageKey, :final detail)
+            when messageKey != null =>
+          AiImageGenerationException(
+            tr(messageKey),
+            debugMessage: detail ?? error.toString(),
+          ),
         DioException() => imageExceptionFromDio(error, providerId: _config.id),
         UnsupportedError() => AiImageGenerationException(
           error.message ?? '当前模型不支持生图。',

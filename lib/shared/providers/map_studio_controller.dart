@@ -142,6 +142,7 @@ class MapStudioController extends _$MapStudioController {
   }) {
     return GenerateMapOrchestrator(
       database: _database,
+      imageChoices: ref.read(mapImageChoicesProvider),
       imageGenerateCallback: ref.read(mapImageGenerateCallbackProvider),
       imageEditCallback: ref.read(mapImageEditCallbackProvider),
       placeNameReader: ref.read(mapPlaceNameReaderProvider),

@@ -374,6 +374,13 @@ void main() {
     (
       'image',
       'action_required',
+      'local_wait_cancelled',
+      'Waiting stopped',
+      'Fetch again',
+    ),
+    (
+      'image',
+      'action_required',
       'result_save_failed',
       'Could not save result',
       'Save again',

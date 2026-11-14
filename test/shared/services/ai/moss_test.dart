@@ -230,8 +230,8 @@ void main() {
             );
           }),
         );
-        expect(calls, 1);
-        expect(downloads, 1);
+        expect(calls, 2);
+        expect(downloads, 0);
       },
     );
   }

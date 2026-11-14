@@ -106,7 +106,7 @@ void main() {
         ReferenceStorageService references() => ReferenceStorageService(
           database: db,
           storage: ObjectStorageService(database: db),
-          probe: (_) async => media,
+          probe: (_, {cancellation}) async => media,
           uploadClient: (_) => MockClient((r) async {
             uploads++;
             final row = (await db.providerAssetDao.find(

@@ -7,6 +7,8 @@
 //   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -37,6 +39,10 @@ final _log = AppLogger.forModule('Production');
       'download_failed' => (
         error: LocaleKeys.productionImageDownloadFailed,
         action: LocaleKeys.productionRetryDownload,
+      ),
+      'local_wait_cancelled' => (
+        error: LocaleKeys.productionImageWaitCancelled,
+        action: LocaleKeys.productionRetryFetch,
       ),
       'result_fetch_failed' => (
         error: LocaleKeys.productionImageFetchFailed,

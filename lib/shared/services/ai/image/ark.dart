@@ -10,22 +10,22 @@ import 'package:easy_localization/easy_localization.dart';
 import '../../../models/ai_provider.dart';
 import '../../../localization/locale_keys.dart';
 import '../../../models/image/channels.dart';
-import '../image.dart';
 import 'client.dart';
 
 class ArkImageClient extends ImageClient {
   ArkImageClient(super.config);
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request);
-    final defaults = channel?.requestDefaults;
+    final defaults = request.nativeDefaults;
     final options = channel?.protocolOptions as ArkImageOptions?;
     final references = <String>[];
-    for (final image in request.images) {
-      references.add(await imageInputAsUrlOrDataUri(image));
+    for (final image in request.references) {
+      references.add(await imageInputAsUrlOrDataUri(image, outputs));
     }
     final data = await postImageJson(
       Uri.parse(
@@ -34,19 +34,20 @@ class ArkImageClient extends ImageClient {
       {
         'model': request.model,
         'prompt': request.prompt,
-        'size': ?(request.size ?? defaults?.size),
-        'response_format': ?defaults?.responseFormat,
-        'output_format': ?defaults?.outputFormat,
-        'watermark': ?defaults?.watermark,
+        'size': ?(request.size ?? defaults.size),
+        'response_format': ?defaults.responseFormat,
+        'output_format': ?defaults.outputFormat,
+        'watermark': ?defaults.watermark,
         if (references.isNotEmpty) 'image': references,
         if (options?.requiresSequentialDisabled ?? false)
           'sequential_image_generation': 'disabled',
-        if (defaults?.promptOptimization != null)
-          'optimize_prompt_options': {'mode': defaults!.promptOptimization},
+        if (defaults.promptOptimization != null)
+          'optimize_prompt_options': {'mode': defaults.promptOptimization},
       },
     );
     return parseImageResponse(
       data,
+      outputs,
       emptyMessage: tr(LocaleKeys.aiImageNoResult),
     );
   }

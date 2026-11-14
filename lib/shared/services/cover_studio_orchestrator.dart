@@ -60,6 +60,7 @@ class CoverStudioOrchestrator {
     String? size,
     String? quality,
     String? complexity,
+    ImageInvocationOptions? options,
     String? paramsJson,
     List<String> references = const [],
     void Function(int completedCount)? onProgress,
@@ -112,6 +113,7 @@ class CoverStudioOrchestrator {
         size: size,
         quality: quality,
         complexity: complexity,
+        options: options,
         references: references,
       );
       if (outcome.path == null) {
@@ -174,6 +176,7 @@ class CoverStudioOrchestrator {
     String? size,
     String? quality,
     String? complexity,
+    ImageInvocationOptions? options,
     List<String> references = const [],
   }) async {
     final slots = await database.imageAssetDao.getSlots(batchId);
@@ -198,6 +201,7 @@ class CoverStudioOrchestrator {
       size: size,
       quality: quality,
       complexity: complexity,
+      options: options,
       references: references,
       previousAssetId: previousAssetId,
     );
@@ -225,6 +229,7 @@ class CoverStudioOrchestrator {
     required String? size,
     required String? quality,
     required String? complexity,
+    required ImageInvocationOptions? options,
     required List<String> references,
     String? previousAssetId,
   }) async {
@@ -235,6 +240,7 @@ class CoverStudioOrchestrator {
         model: model,
         quality: quality,
         complexity: complexity,
+        options: options,
       );
       final asset = await imageLibrary.importGenerated(
         result,

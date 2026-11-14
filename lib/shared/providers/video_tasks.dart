@@ -27,6 +27,7 @@ import '../services/ai/video/reference_storage_service.dart';
 import '../services/ai/video/task_service.dart';
 import 'novel_providers.dart';
 import 'object_storage.dart';
+import 'plugin_providers.dart';
 
 final _log = AppLogger.forModule('VideoTasks');
 
@@ -38,6 +39,7 @@ final referenceStorageServiceProvider = Provider<ReferenceStorageService>((
     probe: ref.watch(mediaServiceProvider).probe,
     database: ref.watch(appDatabaseProvider),
     storage: storage,
+    pluginHost: ref.watch(pluginHostServiceProvider),
   );
   ref.onDispose(service.dispose);
   return service;

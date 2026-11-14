@@ -43,6 +43,8 @@ import '../../../shared/models/novel_workspace.dart';
 import '../../../shared/models/queued_chat_message.dart';
 import '../../../shared/providers/map_agent_providers.dart';
 import '../../../shared/providers/map_studio_controller.dart';
+import '../../../shared/providers/map_studio_providers.dart'
+    show mapImageChoicesProvider;
 import '../../../shared/providers/maps_providers.dart';
 import '../../../shared/services/map_image_store.dart';
 import '../../../shared/theme/theme.dart';
@@ -234,6 +236,7 @@ class _OwnerStudio extends HookConsumerWidget {
     );
 
     final form = useMapGenerateForm(
+      choices: ref.watch(mapImageChoicesProvider),
       locations: locations,
       rootId: owner.id,
       mapType: map?.type ?? mapTypeForOwner(owner),

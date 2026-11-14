@@ -1233,20 +1233,12 @@ mixin _AiToolManagerRunMixin
         '[error] map custom style requires option "custom_style"\n$usage',
       );
     }
-    final resolutionId = _validatedMapOption(
-      options,
-      name: 'resolution',
-      supported: mapDesignResolutionIds,
-      defaultValue: mapDesignDefaultResolutionId,
-      usage: usage,
-    );
-    final qualityId = _validatedMapOption(
-      options,
-      name: 'quality',
-      supported: mapDesignQualityIds,
-      defaultValue: mapDesignDefaultQualityId,
-      usage: usage,
-    );
+    final resolutionId = options.containsKey('resolution')
+        ? _requiredOption(options, 'resolution', usage: usage)
+        : mapDesignDefaultResolutionId;
+    final qualityId = options.containsKey('quality')
+        ? _requiredOption(options, 'quality', usage: usage)
+        : mapDesignDefaultQualityId;
     final includeLocations = _strictOptionalBool(
       options,
       name: 'include_locations',
@@ -1834,7 +1826,7 @@ mixin _AiToolManagerRunMixin
         targetPath: target,
         targetLabel: subjectName,
         summary: {
-          'size': avatar ? _avatarImageSize : _photoImageSize,
+          'preferred_ratio': avatar ? '1:1' : '9:16',
           'prompt': prompt,
           if (source != null) 'asset_id': assetId,
         },
@@ -2152,8 +2144,8 @@ prompt must be a complete map-content prompt written in Chinese; it replaces the
 Submit the visual style separately with style; Cartographer appends the current selection when generating.
 style: parchment | inkmap | engraving | realistic | woodcut | watercolor | atlas | custom (default: parchment)
 custom_style is required when style=custom and contains the free-form visual style.
-resolution: 1k | 2k | 4k (default: 2k)
-quality: low | medium | high (default: medium)
+resolution: a value supported by the selected image model (default: 2k; legacy k spelling is accepted)
+quality: a value supported by the selected image model (default: medium)
 include_locations (boolean, default: true): false only drops ordinary location candidates; territories still apply, and names already written in prompt stay.
 reference_current_image (boolean, default: false): true attaches the current map image so its layout is kept; state the changes and what must stay in prompt.
 No other options are accepted; Cartographer chooses any parent-map reference itself.''';
@@ -2175,7 +2167,7 @@ String _characterHelpText() {
   command=character subcommand=generate-avatar options={character, prompt, asset_id?}
   command=character subcommand=generate-photo options={character, prompt, asset_id?}
 
-generate-avatar creates a 1:1 avatar; generate-photo creates a 9:16 portrait photo or illustration.
+generate-avatar creates an avatar, preferring 1:1 when supported by the selected model; generate-photo creates a portrait photo or illustration, preferring 9:16 when supported.
 character is the character id copied from Read; never invent ids.
 Read the character profile before writing prompt, and keep its appearance anchors (hair, outfit, signature accessories) across images.
 To reference the character avatar, pass its avatar_asset_id as asset_id.
@@ -2186,7 +2178,7 @@ String _itemHelpText() {
   return '''Item commands:
   command=item subcommand=generate-photo options={item, prompt, asset_id?}
 
-generate-photo creates a 9:16 portrait photo or illustration of the item.
+generate-photo creates a portrait photo or illustration of the item, preferring 9:16 when supported by the selected model.
 item is the item id copied from Read; never invent ids. Read the item before writing prompt.
 asset_id is an optional reference image asset ID belonging to this work.''';
 }

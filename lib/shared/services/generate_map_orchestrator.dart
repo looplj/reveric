@@ -3,6 +3,9 @@
 //   lib/shared/models/map_studio_models.dart
 //   lib/shared/services/map_prompt_builder.dart
 //   lib/shared/services/map_place_name_reader.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/ai.json
+//   assets/translations/zh-CN/ai.json
 // 遵循的 Rules:
 //   .agents/rules/service-naming.md
 //   .agents/rules/ai-calling.md
@@ -11,8 +14,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:easy_localization/easy_localization.dart';
+import '../localization/locale_keys.dart';
 
 import '../models/map_place_recognition.dart';
+import '../models/image/choices.dart';
 
 import '../database/novel_content_database.dart';
 import '../logger/app_logger.dart';
@@ -107,6 +113,8 @@ class MapGenerationRequest {
     required this.styleId,
     this.customStyleWord,
     required this.resolutionId,
+    this.ratioId,
+    this.complexity,
     this.customPrompt,
     required this.includeLocations,
     this.quality = mapDefaultQualityId,
@@ -117,11 +125,11 @@ class MapGenerationRequest {
   final String? styleId;
   final String? customStyleWord;
   final String resolutionId;
+  final String? ratioId;
+  final String? complexity;
 
-  /// 出图质量档位 id，见 [mapQualities]。
+  /// 当前模型声明的质量值；空字符串表示未指定。
   final String quality;
-
-  String get qualityApiValue => mapQualityOf(quality).apiValue;
 
   /// 制图师面板的可编辑地图内容。为空时由管线按疆域/地点清单自行拼装；
   /// 当前画风在调用图片模型前统一追加，不写回编辑框。
@@ -139,14 +147,13 @@ class MapGenerationRequest {
 
   String? get styleWord =>
       mapStyleWordOf(styleId: styleId, customStyleWord: customStyleWord);
-
-  MapResolutionOption get resolution => mapResolutionOf(resolutionId);
 }
 
 /// 地图生成管线编排。短生命周期对象：参数注入数据库与 AI 依赖，一次生成一个实例。
 class GenerateMapOrchestrator {
   GenerateMapOrchestrator({
     required this.database,
+    this.imageChoices,
     required this.imageGenerateCallback,
     required this.imageEditCallback,
     required this.placeNameReader,
@@ -156,6 +163,7 @@ class GenerateMapOrchestrator {
   });
 
   final NovelContentDatabase database;
+  final ImageModelChoices? imageChoices;
 
   /// null 表示 Reveric 图片模型不可用。首次画图走文生图。
   final AiImageGenerationCallback? imageGenerateCallback;
@@ -215,7 +223,7 @@ class GenerateMapOrchestrator {
     }
     onProgress(
       MapGenerationStage.image,
-      '生成 ${request.resolution.id.toUpperCase()} 地图，地名直接写进画面',
+      '生成 ${request.resolutionId} 地图，地名直接写进画面',
     );
     final userPrompt = request.customPrompt?.trim() ?? '';
     final basePrompt = userPrompt.isNotEmpty
@@ -231,19 +239,51 @@ class GenerateMapOrchestrator {
       prompt: basePrompt,
       styleWord: request.styleWord,
     );
+    final choices = imageChoices;
+    if (choices == null) {
+      throw MapGenerationException(tr(LocaleKeys.aiImageParametersUnavailable));
+    }
+    final ratio = request.ratioId ?? choices.defaultRatio('16:9');
+    final resolution = choices.resolution(request.resolutionId);
+    final quality = request.quality.isEmpty
+        ? choices.defaults.quality
+        : request.quality;
+    final complexity = request.complexity ?? choices.defaults.complexity;
+    try {
+      choices.validate(
+        ratio: ratio,
+        resolution: resolution,
+        references: referenceImages.length,
+        quality: quality,
+        complexity: complexity,
+      );
+    } on FormatException {
+      throw MapGenerationException(tr(LocaleKeys.aiImageParametersUnavailable));
+    }
+    final options = ImageInvocationOptions(
+      aspectRatio: ratio,
+      resolution: resolution,
+      capabilities: choices.capabilities,
+      defaults: choices.rawDefaults,
+    );
+    final size = choices.size(ratio, resolution);
     final imageResult = useEdit
         ? await imageEditCallback!(
             imagePrompt,
             imageData: [
               for (final bytes in referenceImages) base64Encode(bytes),
             ],
-            size: mapImageSize(request.resolution),
-            quality: request.qualityApiValue,
+            size: size,
+            quality: quality,
+            complexity: complexity,
+            options: options,
           )
         : await imageGenerateCallback!(
             imagePrompt,
-            size: mapImageSize(request.resolution),
-            quality: request.qualityApiValue,
+            size: size,
+            quality: quality,
+            complexity: complexity,
+            options: options,
           );
     final imageBytes = await _bytesOf(imageResult);
     final imageDims = await _decodeDimensions(imageBytes);

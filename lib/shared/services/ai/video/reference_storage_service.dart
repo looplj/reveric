@@ -9,7 +9,17 @@
 //   assets/translations/zh-CN/production.json
 
 import '../../../models/provider_model.dart';
+import '../../../agent/agent_tool_dispatcher.dart';
+import '../../../models/image/config.dart';
+import '../../../models/production/image_request.dart';
+import '../../plugins/host.dart';
+import '../../plugins/files.dart';
+import '../../plugins/runtime.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 import 'dart:io';
+import 'dart:async';
+import '../../production/ffmpeg_runner.dart';
 import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:http/http.dart' as http;
@@ -46,18 +56,23 @@ class ReferenceStorageService {
     required this.database,
     required this.storage,
     this.uploadClient,
+    this.pluginHost,
   });
+  final PluginHostService? pluginHost;
+  final _cancellations = <AgentCancellationController>{};
   final AppDatabase database;
   final ObjectStorageService storage;
   final http.Client Function(AiProvider)? uploadClient;
   final _clients = <http.Client>{};
   final _uploads = <String, Future<ReferenceUploadResult>>{};
-  final _uploadContexts = <String, String>{};
   bool _disposed = false;
   Future<void>? _startup;
 
   void dispose() {
     _disposed = true;
+    for (final cancellation in _cancellations) {
+      cancellation.cancel();
+    }
     for (final client in _clients) {
       client.close();
     }
@@ -77,24 +92,37 @@ class ReferenceStorageService {
     }
   })();
 
-  static String _contextHash(AiProvider provider, String mime) => sha256
-      .convert(
-        utf8.encode(
-          jsonEncode([
-            provider.typeConfig.uploadProtocol?.name,
-            provider.effectiveBaseUrl.replaceFirst(RegExp(r'/+$'), ''),
-            sha256.convert(utf8.encode(provider.effectiveApiKey)).toString(),
-            mime,
-          ]),
-        ),
-      )
-      .toString();
+  Future<String> _contextHash(AiProvider provider, String mime) async {
+    if (provider.pluginId != null) {
+      final host = pluginHost;
+      if (host == null) {
+        throw PluginHostError(
+          'configuration_required',
+          'Plugin Host is required for reference upload',
+        );
+      }
+      return host.providerUploadContext(provider, mime);
+    }
+    return sha256
+        .convert(
+          utf8.encode(
+            jsonEncode([
+              provider.typeConfig.uploadProtocol?.name,
+              provider.effectiveBaseUrl.replaceFirst(RegExp(r'/+$'), ''),
+              sha256.convert(utf8.encode(provider.effectiveApiKey)).toString(),
+              mime,
+            ]),
+          ),
+        )
+        .toString();
+  }
 
   Future<ReferenceUploadResult?> cached(
     AiProvider provider,
     VideoInput input,
   ) async {
-    if (provider.typeConfig.uploadProtocol == null) {
+    if (provider.pluginId == null &&
+        provider.typeConfig.uploadProtocol == null) {
       return null;
     }
     final row = await database.providerAssetDao.find(
@@ -104,7 +132,7 @@ class ReferenceStorageService {
     );
     if (row == null ||
         row.status != ProviderAssetStatus.active ||
-        row.contextHash != _contextHash(provider, input.mimeType) ||
+        row.contextHash != await _contextHash(provider, input.mimeType) ||
         (row.remoteUrl == null && row.remoteId == null)) {
       return null;
     }
@@ -134,6 +162,7 @@ class ReferenceStorageService {
     final result = (url: url, expiresAt: row.expiresAt);
     _validateResult(
       result,
+      allowOpaque: provider.pluginId != null,
       allowPurefoxKey:
           provider.typeConfig.uploadProtocol == UploadProtocol.purefox_uploads,
     );
@@ -165,7 +194,9 @@ class ReferenceStorageService {
     return result;
   }
 
-  Future<({String key, ReferenceUploader upload})?> _storageTarget() async {
+  Future<({String key, ReferenceUploader upload})?> _storageTarget({
+    AgentCancellationToken? cancellation,
+  }) async {
     final ObjectStorageConfig config;
     try {
       config = await storage.load();
@@ -201,6 +232,7 @@ class ReferenceStorageService {
               sha256: sha256,
               mimeType: mimeType,
               fileSize: fileSize,
+              cancellation: cancellation,
             );
             return (url: result.url.toString(), expiresAt: result.expiresAt);
           },
@@ -303,45 +335,187 @@ class ReferenceStorageService {
     return result;
   }
 
+  /// 图片严格按模型声明准备参考；不会在上传失败后改走其他传输。
+  Future<List<Map<String, dynamic>>> prepareImages(
+    List<(ProductionImageReference, File, String)> inputs, {
+    required AiProvider provider,
+    required ImageReferenceTransport transport,
+    required PluginFileScope files,
+    required String taskId,
+    AgentCancellationToken? cancellation,
+  }) async {
+    if (files.providerId != provider.id ||
+        files.taskId != taskId ||
+        (provider.pluginId != null && files.pluginId != provider.pluginId)) {
+      throw PluginHostError(
+        'permission_denied',
+        'Image reference scope belongs to another task',
+      );
+    }
+    if (inputs.isEmpty) {
+      return [];
+    }
+    final target = transport == ImageReferenceTransport.url
+        ? await _storageTarget(cancellation: cancellation)
+        : null;
+    if (transport == ImageReferenceTransport.url && target == null) {
+      throw _storageRequired();
+    }
+    // Validate the whole group before the first external upload.
+    for (final (_, file, mime) in inputs) {
+      if (!mime.startsWith('image/') ||
+          !await file.exists() ||
+          await file.length() < 1) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'reference_image',
+        );
+      }
+      final info = await _probeInfo(file, cancellation: cancellation);
+      if ((info.width ?? 0) < 1 || (info.height ?? 0) < 1) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'reference_image',
+        );
+      }
+      if (transport == ImageReferenceTransport.uploaded) {
+        _validateUpload(provider, mime, await file.length());
+        await _contextHash(provider, mime);
+      }
+    }
+    final result = <Map<String, dynamic>>[];
+    for (final (reference, file, mime) in inputs) {
+      if (_disposed || cancellation?.isCancellationRequested == true) {
+        throw PluginHostError(
+          'cancelled',
+          'Image reference preparation cancelled',
+        );
+      }
+      final Map<String, dynamic> source;
+      switch (transport) {
+        case ImageReferenceTransport.file:
+          final info = await files.register(
+            file,
+            name: p.basename(file.path),
+            mimeType: mime,
+          );
+          source = {'kind': 'file', 'handle': info['handle']};
+        case ImageReferenceTransport.url:
+          final uploaded = await target!.upload(
+            file: file,
+            sha256: (await sha256.bind(file.openRead()).first).toString(),
+            mimeType: mime,
+            fileSize: await file.length(),
+          );
+          _validateResult(uploaded);
+          source = {'kind': 'url', 'url': uploaded.url};
+        case ImageReferenceTransport.uploaded:
+          final uploaded = await _channelUpload(
+            provider,
+            VideoInput(
+              role: VideoInputRole.reference_image,
+              assetId: reference.assetId,
+              mimeType: mime,
+            ),
+            file,
+            taskId: taskId,
+            cancellation: cancellation,
+          );
+          source = {
+            'kind': 'uploaded',
+            'ref': uploaded.url,
+            if (uploaded.expiresAt != null)
+              'expiresAt': uploaded.expiresAt!.toUtc().toIso8601String(),
+          };
+      }
+      result.add({
+        'assetId': reference.assetId,
+        if (reference.clipId != null) 'clipId': reference.clipId,
+        if (reference.inputId != null) 'inputId': reference.inputId,
+        'mimeType': mime,
+        'source': source,
+      });
+    }
+    return result;
+  }
+
   Future<ReferenceUploadResult> _channelUpload(
     AiProvider provider,
     VideoInput input,
-    File file,
-  ) async {
+    File file, {
+    String? taskId,
+    AgentCancellationToken? cancellation,
+  }) async {
     await resume();
     final key = jsonEncode([input.assetId, provider.id]);
-    // Serialize configuration changes for the same row; always recheck the saved context.
-    final context = _contextHash(provider, input.mimeType);
+    void checkCancelled() {
+      if (_disposed || cancellation?.isCancellationRequested == true) {
+        throw PluginHostError('cancelled', 'Reference upload cancelled');
+      }
+    }
+
+    checkCancelled();
+    // Only completed uploads are shared. Each invocation owns its transport/token.
     while (_uploads.containsKey(key)) {
-      if (_uploadContexts[key] == context) {
-        return _uploads[key]!;
-      }
+      final cancelled = Completer<void>();
+      final unlink = cancellation?.onCancel(() {
+        if (!cancelled.isCompleted) {
+          cancelled.complete();
+        }
+      });
       try {
-        await _uploads[key];
+        await Future.any<void>([
+          _uploads[key]!.then<void>((_) {}),
+          cancelled.future.then<void>((_) => checkCancelled()),
+        ]);
       } on Object catch (error) {
-        _log.warning(
-          'previous upload failed before configuration change: ${error.runtimeType}',
-        );
+        checkCancelled();
+        _log.warning('previous upload failed: ${error.runtimeType}');
+      } finally {
+        unlink?.call();
       }
+      checkCancelled();
       final hit = await cached(provider, input);
+      checkCancelled();
       if (hit != null) {
         return hit;
       }
     }
-    final pending = _performUpload(provider, input, file);
+    checkCancelled();
+    final pending = () async {
+      final context = await _contextHash(provider, input.mimeType);
+      checkCancelled();
+      return _performUpload(
+        provider,
+        input,
+        file,
+        context: context,
+        taskId: taskId ?? const Uuid().v4(),
+        cancellation: cancellation,
+      );
+    }();
     _uploads[key] = pending;
-    _uploadContexts[key] = context;
     try {
-      return await pending;
+      final result = await pending;
+      checkCancelled();
+      return result;
     } finally {
       if (identical(_uploads[key], pending)) {
         _uploads.remove(key);
-        _uploadContexts.remove(key);
       }
     }
   }
 
   static void _validateUpload(AiProvider provider, String mimeType, int size) {
+    if (provider.pluginId != null) {
+      if (size < 1) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'file_size',
+        );
+      }
+      return;
+    }
     switch (provider.typeConfig.uploadProtocol) {
       case UploadProtocol.atlascloud_media:
         AtlasCloudUploadOrchestrator.validate(provider, mimeType, size);
@@ -359,8 +533,11 @@ class ReferenceStorageService {
   Future<ReferenceUploadResult> _performUpload(
     AiProvider provider,
     VideoInput input,
-    File file,
-  ) async {
+    File file, {
+    required String context,
+    required String taskId,
+    AgentCancellationToken? cancellation,
+  }) async {
     final hit = await cached(provider, input);
     if (hit != null) {
       return hit;
@@ -376,28 +553,25 @@ class ReferenceStorageService {
       input.assetId,
       provider.id,
       kind: ProviderAssetKind.upload,
-      contextHash: _contextHash(provider, input.mimeType),
+      contextHash: context,
     );
-    final client =
-        uploadClient?.call(provider) ??
-        provider.createProxyClient() ??
-        http.Client();
-    _clients.add(client);
     try {
-      final run = switch (protocol!) {
-        UploadProtocol.atlascloud_media => AtlasCloudUploadOrchestrator().run,
-        UploadProtocol.purefox_uploads => PurefoxUploadOrchestrator().run,
-        UploadProtocol.api88_media => Api88UploadOrchestrator().run,
-        UploadProtocol.minimax_files => MinimaxUploadOrchestrator().run,
-      };
-      final result = await run(
-        provider: provider,
+      final uploader = _providerUploader(provider, taskId, cancellation);
+      final result = await uploader(
         file: file,
+        sha256: (await sha256.bind(file.openRead()).first).toString(),
         mimeType: input.mimeType,
-        client: client,
+        fileSize: size,
       );
+      if (context != await _contextHash(provider, input.mimeType)) {
+        throw PluginHostError(
+          'configuration_required',
+          'Provider configuration changed during upload',
+        );
+      }
       _validateResult(
         result,
+        allowOpaque: provider.pluginId != null,
         allowPurefoxKey:
             provider.typeConfig.uploadProtocol ==
             UploadProtocol.purefox_uploads,
@@ -406,15 +580,19 @@ class ReferenceStorageService {
         row.id,
         ProviderAssetsCompanion(
           remoteId: Value(
-            protocol == UploadProtocol.purefox_uploads
+            provider.pluginId != null
+                ? null
+                : protocol == UploadProtocol.purefox_uploads
                 ? result.url
                 : result.url.startsWith('mm_file://')
                 ? result.url.substring('mm_file://'.length)
                 : null,
           ),
           remoteUrl: Value(
-            protocol == UploadProtocol.purefox_uploads ||
-                    result.url.startsWith('mm_file://')
+            provider.pluginId != null
+                ? result.url
+                : protocol == UploadProtocol.purefox_uploads ||
+                      result.url.startsWith('mm_file://')
                 ? null
                 : result.url,
           ),
@@ -439,13 +617,111 @@ class ReferenceStorageService {
         ),
       );
       rethrow;
-    } finally {
-      _clients.remove(client);
-      client.close();
     }
   }
 
-  final Future<MediaInfo> Function(String path) probe;
+  ReferenceUploader _providerUploader(
+    AiProvider provider,
+    String taskId,
+    AgentCancellationToken? cancellation,
+  ) =>
+      ({
+        required file,
+        required sha256,
+        required mimeType,
+        required fileSize,
+      }) async {
+        if (provider.pluginId != null) {
+          final host = pluginHost;
+          if (host == null) {
+            throw PluginHostError(
+              'configuration_required',
+              'Plugin Host is required for reference upload',
+            );
+          }
+          final controller = AgentCancellationController();
+          final unlink = cancellation?.onCancel(controller.cancel);
+          _cancellations.add(controller);
+          final scope = PluginFileScope(
+            pluginId: provider.pluginId!,
+            providerId: provider.id,
+            taskId: taskId,
+          );
+          try {
+            final info = await scope.register(
+              file,
+              name: p.basename(file.path),
+              mimeType: mimeType,
+            );
+            final value = await host.callProvider(
+              provider,
+              'uploadReference',
+              input: {'file': info},
+              taskId: taskId,
+              files: scope,
+              cancellation: controller.token,
+            );
+            if (value is! Map ||
+                value['ref'] is! String ||
+                (value['ref'] as String).trim().isEmpty ||
+                (value['expiresAt'] != null && value['expiresAt'] is! String)) {
+              throw PluginHostError(
+                'invalid_response',
+                'Invalid upload reference result',
+              );
+            }
+            final expires = value['expiresAt'] == null
+                ? null
+                : DateTime.tryParse(value['expiresAt'] as String);
+            if (value['expiresAt'] != null &&
+                (expires == null || !expires.isUtc)) {
+              throw PluginHostError(
+                'invalid_response',
+                'Upload expiration must be UTC ISO 8601',
+              );
+            }
+            return (url: value['ref'] as String, expiresAt: expires);
+          } finally {
+            scope.revoke();
+            unlink?.call();
+            _cancellations.remove(controller);
+          }
+        }
+        final client =
+            uploadClient?.call(provider) ??
+            provider.createProxyClient() ??
+            http.Client();
+        _clients.add(client);
+        final unlink = cancellation?.onCancel(client.close);
+        try {
+          final run = switch (provider.typeConfig.uploadProtocol) {
+            UploadProtocol.atlascloud_media =>
+              AtlasCloudUploadOrchestrator().run,
+            UploadProtocol.purefox_uploads => PurefoxUploadOrchestrator().run,
+            UploadProtocol.api88_media => Api88UploadOrchestrator().run,
+            UploadProtocol.minimax_files => MinimaxUploadOrchestrator().run,
+            null => throw const VideoException(
+              VideoErrorCode.configuration_required,
+            ),
+          };
+          return await run(
+            provider: provider,
+            file: file,
+            mimeType: mimeType,
+            client: client,
+          );
+        } finally {
+          unlink?.call();
+          _clients.remove(client);
+          client.close();
+        }
+      };
+
+  final Future<MediaInfo> Function(
+    String path, {
+    MediaCancellation? cancellation,
+  })
+  probe;
 
   final _preparing = <String, Future<ReferenceUploadResult>>{};
 
@@ -536,8 +812,33 @@ class ReferenceStorageService {
     );
   }
 
-  Future<VideoMediaInfo> _probeInfo(File file) async {
-    final info = await probe(file.path);
+  Future<VideoMediaInfo> _probeInfo(
+    File file, {
+    AgentCancellationToken? cancellation,
+  }) async {
+    if (cancellation?.isCancellationRequested == true) {
+      throw PluginHostError('cancelled', 'Reference preparation cancelled');
+    }
+    final mediaCancellation = MediaCancellation();
+    Future<void> cancelProbe() async {
+      try {
+        await mediaCancellation.cancel();
+      } catch (error, stack) {
+        _log.error(
+          'Reference probe cancellation failed',
+          error: error,
+          stackTrace: stack,
+        );
+      }
+    }
+
+    final unlink = cancellation?.onCancel(() => unawaited(cancelProbe()));
+    final MediaInfo info;
+    try {
+      info = await probe(file.path, cancellation: mediaCancellation);
+    } finally {
+      unlink?.call();
+    }
     return VideoMediaInfo(
       width: info.width,
       height: info.height,
@@ -557,8 +858,10 @@ class ReferenceStorageService {
   static void _validateResult(
     ReferenceUploadResult result, {
     bool allowPurefoxKey = false,
+    bool allowOpaque = false,
   }) {
     final fileReference =
+        (allowOpaque && result.url.trim().isNotEmpty) ||
         (allowPurefoxKey && isPurefoxUploadKey(result.url)) ||
         (result.url.startsWith('mm_file://') &&
             result.url.length > 'mm_file://'.length);

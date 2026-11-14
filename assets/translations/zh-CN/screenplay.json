@@ -1,4 +1,5 @@
 {
+  "screenplay.production.task.local_wait_cancelled": "已停止等待",
   "screenplay.production.imageCandidates": "{count} 张候选",
   "screenplay.production.imageCandidate": "候选图 {n}",
   "screenplay.production_speech_instructions_required": "请先填写声音描述，再生成语音。",

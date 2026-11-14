@@ -7,11 +7,9 @@
 //   assets/translations/zh-CN/ai.json
 import 'dart:convert';
 
-import 'package:easy_localization/easy_localization.dart';
 
 import '../../../agent/client/gemini_client.dart' show geminiModelEndpoint;
 import '../../../models/ai_provider.dart';
-import '../../../localization/locale_keys.dart';
 import '../image.dart';
 import 'client.dart';
 
@@ -21,8 +19,9 @@ class GeminiImageClient extends ImageClient {
   final bool useGateway;
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     validatedChannel(request);
     final url = geminiModelEndpoint(
@@ -35,8 +34,8 @@ class GeminiImageClient extends ImageClient {
     final partsInput = <Map<String, dynamic>>[
       {'text': request.prompt},
     ];
-    for (final image in request.images) {
-      final data = UriData.parse(await imageInputAsDataUri(image));
+    for (final image in request.references) {
+      final data = UriData.parse(await imageInputAsDataUri(image, outputs));
       partsInput.add({
         'inlineData': {
           'mimeType': data.mimeType,
@@ -61,40 +60,27 @@ class GeminiImageClient extends ImageClient {
     }, headers: useGateway ? null : {'x-goog-api-key': requireApiKey()});
     final candidates = data['candidates'] as List?;
     if (candidates == null || candidates.isEmpty) {
-      throw AiImageGenerationException(tr(LocaleKeys.aiImageNoResult));
+      throw invalidImageOutputs('Gemini response contains no image');
     }
     final parts =
         (candidates[0] as Map<String, dynamic>)['content']?['parts'] as List? ??
         [];
 
     String? base64Data;
-    String? mimeType;
     for (final part in parts) {
       if (part is Map && part['inlineData'] is Map) {
         final inlineData = part['inlineData'] as Map;
         base64Data = inlineData['data'] as String?;
-        mimeType = inlineData['mimeType'] as String?;
         break;
       }
     }
 
     if (base64Data == null) {
-      throw AiImageGenerationException(tr(LocaleKeys.aiImageNoResult));
+      throw invalidImageOutputs('Gemini response contains no image');
     }
 
-    final localPath = await saveImageBase64(base64Data);
-    return AiImageGenerationResult(
-      imageBase64: base64Data,
-      localFilePath: localPath,
-      mimeSubtype: _mimeSubtypeFromType(mimeType),
-    );
-  }
-
-  String _mimeSubtypeFromType(String? mimeType) {
-    if (mimeType == null) return 'png';
-    if (mimeType.contains('jpeg') || mimeType.contains('jpg')) return 'jpeg';
-    if (mimeType.contains('webp')) return 'webp';
-    if (mimeType.contains('gif')) return 'gif';
-    return 'png';
+    return outputs.nativeImages([
+      {'b64_json': base64Data},
+    ]);
   }
 }

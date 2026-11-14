@@ -9,15 +9,15 @@ import 'package:easy_localization/easy_localization.dart';
 
 import '../../../models/ai_provider.dart';
 import '../../../localization/locale_keys.dart';
-import '../image.dart';
 import 'client.dart';
 
 class OpenRouterImageClient extends ImageClient {
   OpenRouterImageClient(super.config);
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request);
     final aspectRatio = request.aspectRatio;
@@ -30,13 +30,13 @@ class OpenRouterImageClient extends ImageClient {
       throw invalidImageParameter();
     }
     final references = <Map<String, dynamic>>[];
-    for (final input in request.images) {
+    for (final input in request.references) {
       references.add({
         'type': 'image_url',
-        'image_url': {'url': await imageInputAsUrlOrDataUri(input)},
+        'image_url': {'url': await imageInputAsUrlOrDataUri(input, outputs)},
       });
     }
-    final defaults = channel?.requestDefaults;
+    final defaults = request.nativeDefaults;
     final size = request.size;
     final data = await postImageJson(
       Uri.parse('${config.effectiveBaseUrl}/images'),
@@ -44,13 +44,13 @@ class OpenRouterImageClient extends ImageClient {
         'model': request.model,
         'prompt': request.prompt,
         'n': 1,
-        'output_format': ?defaults?.outputFormat,
+        'output_format': ?defaults.outputFormat,
         if (size != null && size != 'auto') 'size': size,
         if (aspectRatio != null && aspectRatio != 'auto')
           'aspect_ratio': aspectRatio,
         if (resolution != null && resolution != 'auto')
           'resolution': resolution,
-        'quality': ?(request.quality ?? defaults?.quality),
+        'quality': ?(request.quality ?? defaults.quality),
         if (request.complexity case final String complexity)
           'provider': {
             'options': {
@@ -62,6 +62,7 @@ class OpenRouterImageClient extends ImageClient {
     );
     return parseImageResponse(
       data,
+      outputs,
       emptyMessage: tr(LocaleKeys.aiImageNoResult),
     );
   }

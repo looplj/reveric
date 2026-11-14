@@ -6,6 +6,8 @@
 //   .agents/rules/testing.md
 
 import 'dart:io';
+import 'dart:async';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -192,6 +194,52 @@ void main() {
     );
     expect(await storage.test(config), ObjectStorageFailure.connection_failed);
   });
+  test(
+    'cancelling a reference upload closes its active S3 transport',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final entered = Completer<void>();
+      final methods = <String>[];
+      server.listen((request) async {
+        methods.add(request.method);
+        if (request.method == 'HEAD') {
+          request.response.statusCode = 404;
+          await request.response.close();
+          return;
+        }
+        expect(
+          await request.fold<List<int>>(
+            [],
+            (value, chunk) => value..addAll(chunk),
+          ),
+          [1, 2, 3],
+        );
+        entered.complete();
+      });
+      final cancellation = AgentCancellationController();
+      final storage = ObjectStorageService(database: database);
+      final pending = storage.upload(
+        ObjectStorageConfig(
+          endpoint: 'http://127.0.0.1:${server.port}',
+          bucket: 'media',
+          accessKeyId: 'synthetic',
+          secretAccessKey: 'synthetic',
+          pathStyle: true,
+        ),
+        file: file,
+        sha256: hash,
+        mimeType: 'image/png',
+        fileSize: 3,
+        cancellation: cancellation.token,
+      );
+      final failed = expectLater(pending, throwsA(anything));
+      await entered.future.timeout(const Duration(seconds: 5));
+      cancellation.cancel();
+      await failed.timeout(const Duration(seconds: 2));
+      expect(methods, ['HEAD', 'PUT']);
+    },
+  );
 }
 
 extension on ObjectStorageConfig {

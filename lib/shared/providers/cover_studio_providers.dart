@@ -17,8 +17,12 @@
 import 'dart:convert';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show Provider;
+import 'package:easy_localization/easy_localization.dart';
 
 import '../database/app_database.dart';
+import '../models/production/image_request.dart' show ProductionImageReference;
+import '../models/image/choices.dart';
 import '../localization/locale_keys.dart';
 import '../services/ai/image.dart';
 import '../services/ai/tools.dart' show AiImageGenerationCallback;
@@ -28,6 +32,13 @@ import 'ai_providers.dart';
 import 'novel_providers.dart';
 
 part 'cover_studio_providers.g.dart';
+
+final coverImageChoicesProvider = Provider<ImageModelChoices?>((ref) {
+  final selection = ref.watch(coverStudioImageModelSelectionProvider);
+  return selection == null
+      ? null
+      : ImageModelChoices(selection.config, selection.model);
+});
 
 /// 配置图片模型后可进入封面工作台。
 @riverpod
@@ -250,7 +261,75 @@ class CoverStudioController extends _$CoverStudioController {
   var _promptRestoreSeq = 0;
 
   @override
-  CoverStudioState build(String novelId) => const CoverStudioState();
+  CoverStudioState build(String novelId) {
+    ref.listen(coverImageChoicesProvider, (_, next) {
+      if (next == null || state.busy) {
+        return;
+      }
+      state = state.copyWith(
+        ratioId: next.defaultRatio(state.ratioId),
+        resolutionId: next.defaultResolution(state.resolutionId),
+        qualityId: next.defaultQuality(state.qualityId) ?? '',
+        complexityId: next.complexities.contains(state.complexityId)
+            ? state.complexityId
+            : next.defaults.complexity ?? next.complexities.firstOrNull,
+        clearComplexityId: next.complexities.isEmpty,
+      );
+    });
+    final choices = ref.read(coverImageChoicesProvider);
+    return choices == null
+        ? const CoverStudioState()
+        : CoverStudioState(
+            ratioId: choices.defaultRatio('3:4'),
+            resolutionId: choices.defaultResolution('2K'),
+            qualityId: choices.defaultQuality(coverDefaultQualityId) ?? '',
+            complexityId:
+                choices.defaults.complexity ?? choices.complexities.firstOrNull,
+          );
+  }
+
+  int? get referenceLimit =>
+      ref.read(coverImageChoicesProvider)?.referenceLimit ??
+      (ref.read(coverImageChoicesProvider) == null
+          ? coverReferenceLimit
+          : null);
+
+  ({
+    String? size,
+    String? quality,
+    String? complexity,
+    ImageInvocationOptions options,
+  })
+  _imageParameters() {
+    final choices = ref.read(coverImageChoicesProvider);
+    if (choices == null) {
+      throw const FormatException('Model declarations are unavailable');
+    }
+    final ratio = choices.ratio(state.ratioId);
+    final resolution = choices.resolution(state.resolutionId);
+    final quality = state.qualityId.isEmpty
+        ? choices.defaults.quality
+        : state.qualityId;
+    final complexity = state.complexityId ?? choices.defaults.complexity;
+    choices.validate(
+      ratio: ratio,
+      resolution: resolution,
+      references: state.references.length,
+      quality: quality,
+      complexity: complexity,
+    );
+    return (
+      size: choices.size(ratio, resolution),
+      quality: quality,
+      complexity: complexity,
+      options: ImageInvocationOptions(
+        aspectRatio: ratio,
+        resolution: resolution,
+        capabilities: choices.capabilities,
+        defaults: choices.rawDefaults,
+      ),
+    );
+  }
 
   // ---- 设计器参数 -------------------------------------------------------
 
@@ -344,7 +423,18 @@ class CoverStudioController extends _$CoverStudioController {
     if (state.busy) {
       return;
     }
-    state = CoverStudioState(draftSeq: state.draftSeq + 1);
+    final choices = ref.read(coverImageChoicesProvider);
+    state = CoverStudioState(
+      draftSeq: state.draftSeq + 1,
+      ratioId: choices?.defaultRatio('3:4') ?? coverDefaultRatioId,
+      resolutionId:
+          choices?.defaultResolution('2K') ?? coverDefaultResolutionId,
+      qualityId: choices == null
+          ? coverDefaultQualityId
+          : choices.defaultQuality(coverDefaultQualityId) ?? '',
+      complexityId:
+          choices?.defaults.complexity ?? choices?.complexities.firstOrNull,
+    );
   }
 
   /// 删掉一条生成记录。只软删批次本身：出的图留在图片库里，已设为封面或正被当
@@ -430,13 +520,13 @@ class CoverStudioController extends _$CoverStudioController {
       value is String && value.isNotEmpty ? value : null;
 
   static String _resolvedRatioId(Object? value) =>
-      coverRatioOf(value is String ? value : '').id;
+      value is String && value.isNotEmpty ? value : coverDefaultRatioId;
 
   static String _resolvedResolutionId(Object? value) =>
-      coverResolutionOf(value is String ? value : '').id;
+      value is String && value.isNotEmpty ? value : coverDefaultResolutionId;
 
   static String _resolvedQualityId(Object? value) =>
-      coverQualityOf(value is String ? value : '').id;
+      value is String && value.isNotEmpty ? value : coverDefaultQualityId;
 
   void selectOrdinal(int ordinal) =>
       state = state.copyWith(selectedOrdinal: ordinal);
@@ -448,12 +538,12 @@ class CoverStudioController extends _$CoverStudioController {
       state = state.copyWith(pickingReference: false);
       return;
     }
-    if (state.references.length >= coverReferenceLimit) {
+    if (referenceLimit != null && state.references.length >= referenceLimit!) {
       state = state.copyWith(
         pickingReference: false,
         toast: _toast(
           LocaleKeys.editorCoverReferenceLimitAlert,
-          args: {'limit': '$coverReferenceLimit'},
+          args: {'limit': '${referenceLimit ?? coverReferenceLimit}'},
         ),
       );
       return;
@@ -469,7 +559,7 @@ class CoverStudioController extends _$CoverStudioController {
     state = state.copyWith(
       toast: _toast(
         LocaleKeys.editorCoverReferenceLimitAlert,
-        args: {'limit': '$coverReferenceLimit'},
+        args: {'limit': '${referenceLimit ?? coverReferenceLimit}'},
       ),
     );
   }
@@ -493,7 +583,11 @@ class CoverStudioController extends _$CoverStudioController {
     final next = [
       assetId,
       ...state.references.where((item) => item != assetId),
-    ].take(coverReferenceLimit).toList(growable: false);
+    ];
+    if (referenceLimit != null && next.length > referenceLimit!) {
+      notifyReferenceLimit();
+      return;
+    }
     state = state.copyWith(
       references: next,
       toast: _toast(LocaleKeys.editorCoverToastSeedFrom),
@@ -532,11 +626,23 @@ class CoverStudioController extends _$CoverStudioController {
     }
 
     final references = state.references;
-    final size = coverImageSize(
-      coverRatioOf(state.ratioId),
-      coverResolutionOf(state.resolutionId),
-    );
-    final quality = coverQualityOf(state.qualityId).apiValue;
+    late final ({
+      String? size,
+      String? quality,
+      String? complexity,
+      ImageInvocationOptions options,
+    })
+    params;
+    try {
+      params = _imageParameters();
+    } on FormatException {
+      state = state.copyWith(
+        error: const CoverStudioError.localized(
+          LocaleKeys.aiImageParametersUnavailable,
+        ),
+      );
+      return;
+    }
     final finalized = finalizePrompt(prompt);
 
     state = state.copyWith(
@@ -560,15 +666,16 @@ class CoverStudioController extends _$CoverStudioController {
         prompt: finalized,
         requestedCount: state.batchCount,
         model: selection.model,
-        size: size,
-        quality: quality,
-        complexity: state.complexityId,
+        size: params.size,
+        quality: params.quality,
+        complexity: params.complexity,
+        options: params.options,
         paramsJson: jsonEncode({
           'ratio': state.ratioId,
           'resolution': state.resolutionId,
           'quality': state.qualityId,
           'complexity': ?state.complexityId,
-          'size': size,
+          'size': params.size,
           'references': references
               .map((assetId) => {'asset_id': assetId})
               .toList(),
@@ -611,7 +718,7 @@ class CoverStudioController extends _$CoverStudioController {
     );
   }
 
-  /// 单张重出：沿用这一批的参数与参考图，只重跑这一格。
+  /// 单张重出：保留该批提示词，使用当前参数与参考图重跑这一格。
   Future<void> rework({required String batchId, required int ordinal}) async {
     if (state.busy) {
       return;
@@ -636,6 +743,23 @@ class CoverStudioController extends _$CoverStudioController {
       return;
     }
 
+    late final ({
+      String? size,
+      String? quality,
+      String? complexity,
+      ImageInvocationOptions options,
+    })
+    params;
+    try {
+      params = _imageParameters();
+    } on FormatException {
+      state = state.copyWith(
+        error: const CoverStudioError.localized(
+          LocaleKeys.aiImageParametersUnavailable,
+        ),
+      );
+      return;
+    }
     state = state.copyWith(reworkingOrdinal: ordinal, clearError: true);
     try {
       final result = await CoverStudioOrchestrator().regenerateSlot(
@@ -649,12 +773,10 @@ class CoverStudioController extends _$CoverStudioController {
         // 悄悄换掉方案的取向，作者只是想再抽一次。
         prompt: batch.prompt,
         model: selection.model,
-        size: coverImageSize(
-          coverRatioOf(state.ratioId),
-          coverResolutionOf(state.resolutionId),
-        ),
-        quality: coverQualityOf(state.qualityId).apiValue,
-        complexity: state.complexityId,
+        size: params.size,
+        quality: params.quality,
+        complexity: params.complexity,
+        options: params.options,
         references: state.references,
       );
       if (!ref.mounted) {
@@ -706,25 +828,24 @@ class CoverStudioController extends _$CoverStudioController {
     }
     final library = ref.read(imageLibraryServiceProvider);
     final database = ref.read(appDatabaseProvider);
-    return (prompt, {model, size, quality, complexity}) async {
+    return (prompt, {model, size, quality, complexity, options}) async {
       final paths = <String>[];
       for (final assetId in references) {
         final asset = await database.imageAssetDao.getAsset(assetId);
         final path = library.resolve(asset?.path);
-        if (path != null) paths.add(path);
-      }
-      if (paths.isEmpty) {
-        return generation(
-          prompt,
-          model: model,
-          size: size,
-          quality: quality,
-          complexity: complexity,
-        );
+        if (path == null) {
+          throw AiImageGenerationException(
+            tr(LocaleKeys.editorCoverMissingImage),
+          );
+        }
+        paths.add(path);
       }
       return multiEdit(
         prompt,
         imageData: paths,
+        options: (options ?? const ImageInvocationOptions()).withReferences([
+          for (final id in references) ProductionImageReference(assetId: id),
+        ]),
         model: model,
         size: size,
         quality: quality,

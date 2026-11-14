@@ -6,6 +6,10 @@
 //   lib/shared/models/production/image_request.dart
 //   lib/shared/services/production/generate_orchestrator.dart
 import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reveric/shared/models/image/choices.dart';
+import 'package:reveric/shared/providers/cover_studio_providers.dart';
+import 'package:reveric/shared/providers/ai_providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:ui' show Locale;
 import 'package:reveric/shared/models/ai_provider.dart';
@@ -118,6 +122,64 @@ void main() {
       );
     }
   });
+  test(
+    'image UI choices preserve declarations and reject explicit unsupported values',
+    () {
+      final choices = ImageModelChoices(provider, 'gpt-image-2');
+      expect(choices.defaultRatio('3:4'), '7:5');
+      expect(choices.defaultResolution('2K'), 'custom');
+      expect(choices.complexities, ['fine']);
+      expect(choices.qualities, ['draft', 'best']);
+      expect(choices.referenceLimit, 1);
+      expect(choices.rawDefaults['workflow'], {'node': 'image'});
+      expect(choices.size('7:5', 'custom'), '1400x1000');
+      expect(() => choices.size('3:4', 'custom'), throwsFormatException);
+      expect(
+        () =>
+            choices.validate(ratio: '7:5', resolution: 'custom', references: 2),
+        throwsFormatException,
+      );
+      expect(
+        () => choices.validate(
+          ratio: '7:5',
+          resolution: 'custom',
+          references: 0,
+          complexity: 'medium',
+        ),
+        throwsFormatException,
+      );
+    },
+  );
+  test(
+    'cover controller initializes and resets from the selected declaration',
+    () {
+      final container = ProviderContainer(
+        overrides: [
+          coverStudioImageModelSelectionProvider.overrideWithValue(
+            CoverStudioImageModelSelection(
+              config: provider,
+              model: 'gpt-image-2',
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(
+        coverStudioControllerProvider('novel').notifier,
+      );
+      final state = container.read(coverStudioControllerProvider('novel'));
+      expect(state.ratioId, '7:5');
+      expect(state.resolutionId, 'custom');
+      expect(state.complexityId, 'fine');
+      expect(state.qualityId, 'draft');
+      controller.addReference('first');
+      controller.addReference('second');
+      expect(
+        container.read(coverStudioControllerProvider('novel')).references,
+        ['first'],
+      );
+    },
+  );
   test(
     'image selection uses only instance declarations and custom dimensions',
     () {

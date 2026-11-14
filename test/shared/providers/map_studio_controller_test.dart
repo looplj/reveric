@@ -5,6 +5,9 @@
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 import 'dart:io';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/plugin/provider.dart';
+import 'package:reveric/shared/models/plugin/provider_registry.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 
 import 'package:drift/native.dart';
@@ -45,26 +48,69 @@ void main() {
       final library = buildImageLibraryService(appDatabase);
       var imageCalls = 0;
       final reader = _PlaceReader();
+      final imageProvider = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(id: 'map-plugin', type: 'plugin:map.test');
+      pluginProviderModels.replace(
+        imageProvider,
+        parsePluginProviderModels([
+          {
+            'kind': 'image',
+            'id': 'map',
+            'capabilities': {
+              'ratios': ['7:5'],
+              'resolutions': ['custom'],
+              'sizes': {
+                'custom': {'7:5': '1400x1000'},
+              },
+              'minReferences': 0,
+              'maxReferences': 1,
+              'unlimitedReferences': false,
+              'referenceTransport': 'file',
+              'complexityLevels': ['fine'],
+            },
+            'requestDefaults': {
+              'quality': 'studio',
+              'complexity': 'fine',
+              'workflow': {'node': 'map'},
+            },
+          },
+        ]),
+      );
+      addTearDown(() => pluginProviderModels.remove(imageProvider.id));
+      Future<AiImageGenerationResult> imageCallback(
+        String prompt, {
+        String? model,
+        String? size,
+        String? quality,
+        String? complexity,
+        ImageInvocationOptions? options,
+        List<String>? imageData,
+      }) async {
+        expect(size, '1400x1000');
+        expect(quality, 'studio');
+        expect(complexity, 'fine');
+        expect(options?.aspectRatio, '7:5');
+        expect(options?.resolution, 'custom');
+        expect(options?.defaults?['workflow'], {'node': 'map'});
+        expect(imageData?.length, imageCalls == 0 ? isNull : 1);
+        imageCalls++;
+        return const AiImageGenerationResult(
+          imageBase64:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        );
+      }
+
       final container = ProviderContainer(
         overrides: [
           novelContentDatabaseProvider('test-map').overrideWithValue(database),
           imageLibraryServiceProvider.overrideWithValue(library),
-          mapStudioImageModelSelectionProvider.overrideWithValue(null),
+          mapStudioImageModelSelectionProvider.overrideWithValue(
+            MapStudioImageModelSelection(config: imageProvider, model: 'map'),
+          ),
           mapPlaceNameReaderProvider.overrideWithValue(reader),
-          mapImageEditCallbackProvider.overrideWithValue(null),
-          mapImageGenerateCallbackProvider.overrideWithValue((
-            prompt, {
-            model,
-            size,
-            quality,
-            complexity,
-          }) async {
-            imageCalls++;
-            return const AiImageGenerationResult(
-              imageBase64:
-                  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-            );
-          }),
+          mapImageEditCallbackProvider.overrideWithValue(imageCallback),
+          mapImageGenerateCallbackProvider.overrideWithValue(imageCallback),
         ],
       );
       addTearDown(() async {
@@ -93,10 +139,13 @@ void main() {
       final subscription = container.listen(provider, (_, _) {});
       addTearDown(subscription.close);
       final controller = container.read(provider.notifier);
-      Future<void> generate() => controller.generate(
-        const MapGenerationRequest(
+      Future<void> generate({bool edit = false}) => controller.generate(
+        MapGenerationRequest(
+          referenceCurrentImage: edit,
           styleId: 'parchment',
-          resolutionId: '1k',
+          resolutionId: 'custom',
+          ratioId: '7:5',
+          quality: 'studio',
           includeLocations: true,
         ),
         novelId: 'novel-test',
@@ -126,7 +175,7 @@ void main() {
       expect(first.hasImage, isTrue);
       expect(first.version, 1);
 
-      await generate();
+      await generate(edit: true);
       final second = MapStudioSettings.fromMap(
         (await maps.getMapById(mapId))!.settings,
       );

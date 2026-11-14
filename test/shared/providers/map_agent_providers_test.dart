@@ -67,7 +67,7 @@ void main() {
     );
   });
 
-  test('rejects a draft outside the static Cartographer contract', () {
+  test('rejects an empty image parameter in a draft', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -79,13 +79,34 @@ void main() {
             draft: const MapDesignDraft(
               worldId: 'world_1',
               prompt: 'Map',
-              resolutionId: '8k',
+              resolutionId: '',
             ),
           ),
       throwsArgumentError,
     );
   });
 
+  test(
+    'preserves arbitrary declared image parameters until generation validation',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      const draft = MapDesignDraft(
+        worldId: 'world',
+        prompt: 'Map',
+        resolutionId: 'workflow-large',
+        qualityId: 'studio',
+      );
+      container
+          .read(mapDesignDraftsProvider.notifier)
+          .submit(databasePath: '/novel.sqlite', draft: draft);
+      final saved = container.read(
+        mapDesignDraftProvider(databasePath: '/novel.sqlite', worldId: 'world'),
+      )!;
+      expect(saved.resolutionId, 'workflow-large');
+      expect(saved.qualityId, 'studio');
+    },
+  );
   test('custom draft style requires a non-empty description', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);

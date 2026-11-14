@@ -13,6 +13,12 @@
 import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/image/choices.dart';
+import 'package:reveric/shared/models/plugin/provider.dart';
+import 'package:reveric/shared/models/plugin/provider_registry.dart';
+import 'package:reveric/shared/widgets/cover_studio/chips.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -43,7 +49,10 @@ void main() {
 
   late AppDatabase database;
 
-  setUp(() => database = AppDatabase.forTest(NativeDatabase.memory()));
+  setUp(() {
+    rootBundle.clear();
+    database = AppDatabase.forTest(NativeDatabase.memory());
+  });
   tearDown(() => database.close());
 
   // 同一文件里第二个 testWidgets 重新包一层 EasyLocalization 会拿到空子树，
@@ -53,8 +62,36 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(332, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
+    final provider = aiProviderBuiltinById(
+      'openai',
+    )!.copyWith(id: 'cover-ui', type: 'plugin:test.cover');
+    pluginProviderModels.replace(
+      provider,
+      parsePluginProviderModels([
+        {
+          'kind': 'image',
+          'id': 'cover',
+          'capabilities': {
+            'ratios': ['7:5'],
+            'resolutions': ['custom'],
+            'complexityLevels': ['fine'],
+            'maxReferences': 0,
+            'minReferences': 0,
+            'unlimitedReferences': false,
+            'referenceTransport': 'file',
+          },
+          'requestDefaults': {'quality': 'studio', 'complexity': 'fine'},
+        },
+      ]),
+    );
+    addTearDown(() => pluginProviderModels.remove(provider.id));
+    final choices = ImageModelChoices(provider, 'cover');
     await tester.pumpWidget(
-      _wrap(database: database, child: const _DesignerHarness()),
+      _wrap(
+        database: database,
+        choices: choices,
+        child: const _DesignerHarness(),
+      ),
     );
     await tester.pump();
 
@@ -70,6 +107,14 @@ void main() {
     expect(find.text('No cover'), findsOneWidget);
 
     // 书名与署名不再单列输入框，改提示词是唯一入口。
+    for (final label in ['7:5', 'custom', 'studio', 'fine']) {
+      final chip = tester.widget<CoverChip>(
+        find.widgetWithText(CoverChip, label),
+      );
+      expect(chip.onTap, isNull);
+      expect(chip.selected, isTrue);
+    }
+    expect(find.text('2K'), findsNothing);
     expect(find.text('Title'), findsNothing);
     expect(find.text('Pen name'), findsNothing);
     expect(find.widgetWithText(TextField, '柳三变'), findsNothing);
@@ -230,10 +275,15 @@ final _novel = Novel(
   deletedAt: notDeletedSentinel,
 );
 
-Widget _wrap({required AppDatabase database, required Widget child}) {
+Widget _wrap({
+  ImageModelChoices? choices,
+  required AppDatabase database,
+  required Widget child,
+}) {
   return ProviderScope(
     overrides: [
       appDatabaseProvider.overrideWithValue(database),
+      if (choices != null) coverImageChoicesProvider.overrideWithValue(choices),
       // 门禁会 watch Reveric 封面模型；测试不接 settings DB，固定为无配置。
       coverStudioImageModelSelectionProvider.overrideWithValue(null),
       appBackgroundActiveProvider.overrideWithValue(false),

@@ -45,6 +45,8 @@ import 'canvas_providers.dart';
 import 'maps_providers.dart';
 import 'novel_providers.dart';
 import 'settings_providers.dart';
+import 'plugin_providers.dart';
+import 'video_tasks.dart';
 import 'spawn_agent_run_providers.dart';
 
 export '../models/ai_chat_session_id.dart' show isTemporaryAiChatSessionId;
@@ -2439,21 +2441,27 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
   }
   final defaultModel = preferredOption.model;
   final imageLibrary = ref.watch(imageLibraryServiceProvider);
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
   }) async {
     // 生图工具只作用于作品内的角色和物品，结果按作品入库。
-    final service = AiImageGenerationService(
+    final service = await resolveDirectImageService(
       config,
-      model: model ?? defaultModel,
+      model ?? defaultModel,
+      host: host,
+      references: references,
     );
     final result = await service.generateImage(
       prompt,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -2480,19 +2488,26 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
 AiImageGenerationCallback? coverImageGenerationCallback(Ref ref) {
   final selection = ref.watch(coverStudioImageModelSelectionProvider);
   if (selection == null) return null;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
-  }) {
-    return AiImageGenerationService(
+  }) async {
+    final service = await resolveDirectImageService(
       selection.config,
-      model: model ?? selection.model,
-    ).generateImage(
+      model ?? selection.model,
+      host: host,
+      references: references,
+    );
+    return service.generateImage(
       prompt,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -2504,21 +2519,28 @@ AiImageGenerationCallback? coverImageGenerationCallback(Ref ref) {
 AiMultiImageEditCallback? coverImageMultiEditCallback(Ref ref) {
   final selection = ref.watch(coverStudioImageModelSelectionProvider);
   if (selection == null) return null;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     required List<String> imageData,
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
-  }) {
-    return AiImageGenerationService(
+  }) async {
+    final service = await resolveDirectImageService(
       selection.config,
-      model: model ?? selection.model,
-    ).editImages(
+      model ?? selection.model,
+      host: host,
+      references: references,
+    );
+    return service.editImages(
       prompt,
       imageData: imageData,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -2545,16 +2567,26 @@ AiImageEditCallback? imageEditCallback(Ref ref, String workId) {
   }
   final defaultModel = preferredOption.model;
   final imageLibrary = ref.watch(imageLibraryServiceProvider);
-  return (String prompt, {required String imageData, String? model}) async {
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
+  return (
+    String prompt, {
+    required String imageData,
+    String? model,
+    ImageInvocationOptions? options,
+  }) async {
     // 生图工具只作用于作品内的角色和物品，结果按作品入库。
-    final service = AiImageGenerationService(
+    final service = await resolveDirectImageService(
       config,
-      model: model ?? defaultModel,
+      model ?? defaultModel,
+      host: host,
+      references: references,
     );
     final result = await service.editImage(
       prompt,
       imageData: imageData,
       model: model,
+      options: options,
     );
     final asset = await imageLibrary.importGenerated(
       result,
@@ -2589,22 +2621,28 @@ AiMultiImageEditCallback? imageMultiEditCallback(Ref ref) {
     return null;
   }
   final defaultModel = preferredOption.model;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     required List<String> imageData,
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
   }) async {
-    final service = AiImageGenerationService(
+    final service = await resolveDirectImageService(
       config,
-      model: model ?? defaultModel,
+      model ?? defaultModel,
+      host: host,
+      references: references,
     );
     final result = await service.editImages(
       prompt,
       imageData: imageData,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,

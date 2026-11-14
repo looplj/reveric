@@ -8,7 +8,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import '../../../models/ai_provider.dart';
 import '../../../localization/locale_keys.dart';
-import '../image.dart';
 import 'client.dart';
 
 class MossImageClient extends ImageClient {
@@ -18,18 +17,19 @@ class MossImageClient extends ImageClient {
   bool get supportsEdit => false;
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
-    final channel = validatedChannel(request);
-    final size = request.size ?? channel?.requestDefaults.size ?? '1024x1024';
+    validatedChannel(request);
+    final size = request.size ?? request.nativeDefaults.size ?? '1024x1024';
     final dimensions = RegExp(r'^(\d+)x(\d+)$').firstMatch(size);
     if (dimensions == null) {
       throw invalidImageParameter();
     }
     final width = int.parse(dimensions[1]!);
     final height = int.parse(dimensions[2]!);
-    if (request.images.isNotEmpty ||
+    if (request.references.isNotEmpty ||
         request.prompt.trim().isEmpty ||
         request.prompt.runes.length > 4000 ||
         width < 256 ||
@@ -54,6 +54,7 @@ class MossImageClient extends ImageClient {
     );
     return parseImageResponse(
       data,
+      outputs,
       emptyMessage: tr(LocaleKeys.aiImageNoResult),
     );
   }

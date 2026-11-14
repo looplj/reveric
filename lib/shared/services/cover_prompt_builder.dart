@@ -196,11 +196,19 @@ CoverPaletteOption coverPaletteOf(String id) => coverPalettes.firstWhere(
 CoverCompositionOption coverCompositionOf(String id) => coverCompositions
     .firstWhere((item) => item.id == id, orElse: () => coverCompositions.first);
 
-CoverRatioOption coverRatioOf(String id) => coverRatios.firstWhere(
-  (item) => item.id == id,
-  orElse: () =>
-      coverRatios.firstWhere((item) => item.id == coverDefaultRatioId),
-);
+CoverRatioOption coverRatioOf(String id) {
+  final match = RegExp(r'^([1-9][0-9]*)[:_]([1-9][0-9]*)$').firstMatch(id);
+  if (match != null) {
+    return CoverRatioOption(
+      id: id,
+      hint: id.replaceAll('_', ':'),
+      w: int.parse(match[1]!),
+      h: int.parse(match[2]!),
+    );
+  }
+  // 自动或非数字比例仅在尚无成图的预览中使用封面画框。
+  return coverRatios.first;
+}
 
 CoverResolutionOption coverResolutionOf(String id) =>
     coverResolutions.firstWhere(

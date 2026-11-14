@@ -4,6 +4,11 @@
 //   lib/shared/services/ai/video/reference_storage_service.dart
 //   lib/shared/services/ai/video/task_service.dart
 import 'dart:io';
+import 'dart:async';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
+import 'package:reveric/shared/models/image/config.dart';
+import 'package:reveric/shared/models/production/image_request.dart';
+import 'package:reveric/shared/services/plugins/files.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,6 +59,80 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  for (final cancelFirst in [true, false]) {
+    test(
+      'native queued upload isolates cancellation first=$cancelFirst',
+      () async {
+        final entered = Completer<void>();
+        final release = Completer<void>();
+        var uploads = 0;
+        final storage = ReferenceStorageService(
+          database: db,
+          storage: FakeObjectStorage(db, null),
+          probe: (_, {cancellation}) async => media,
+          uploadClient: (_) => _CancelableUploadClient((request) async {
+            if (request.method == 'HEAD') {
+              return http.Response('', 200);
+            }
+            uploads++;
+            if (uploads == 1) {
+              entered.complete();
+              await release.future;
+            }
+            return http.Response(
+              '{"data":{"download_url":"https://media.example/a"}}',
+              200,
+            );
+          }),
+        );
+        addTearDown(storage.dispose);
+        final first = AgentCancellationController();
+        final second = AgentCancellationController();
+        final submitted = <String>[];
+        Future<void> generate(String id, AgentCancellationToken token) async {
+          await storage.prepareImages(
+            [
+              (
+                const ProductionImageReference(assetId: 'shared'),
+                file,
+                'image/png',
+              ),
+            ],
+            provider: provider,
+            transport: ImageReferenceTransport.uploaded,
+            files: PluginFileScope(
+              pluginId: 'native',
+              providerId: provider.id,
+              taskId: id,
+            ),
+            taskId: id,
+            cancellation: token,
+          );
+          submitted.add(id);
+        }
+
+        final one = generate(
+          'first',
+          first.token,
+        ).then<Object?>((_) => null, onError: (Object e) => e);
+        await entered.future;
+        final two = generate(
+          'second',
+          second.token,
+        ).then<Object?>((_) => null, onError: (Object e) => e);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        (cancelFirst ? first : second).cancel();
+        expect(
+          await (cancelFirst ? one : two).timeout(const Duration(seconds: 1)),
+          isNotNull,
+        );
+        release.complete();
+        expect(await (cancelFirst ? two : one), isNull);
+        expect(submitted, [cancelFirst ? 'second' : 'first']);
+        expect(uploads, cancelFirst ? 2 : 1);
+      },
+    );
+  }
   for (final (body, expected) in <(String, String?)>[
     (
       '{"code":200,"data":{"download_url":"https://media.example/a"}}',
@@ -110,7 +189,7 @@ void main() {
         ReferenceStorageService references() => ReferenceStorageService(
           database: db,
           storage: ObjectStorageService(database: db),
-          probe: (_) async => media,
+          probe: (_, {cancellation}) async => media,
           uploadClient: (_) => MockClient((r) async {
             if (r.method == 'HEAD') {
               expect(r.headers['Authorization'], isNull);
@@ -228,7 +307,7 @@ void main() {
       final storage = ReferenceStorageService(
         database: db,
         storage: ObjectStorageService(database: db),
-        probe: (_) async => media,
+        probe: (_, {cancellation}) async => media,
         uploadClient: (_) => MockClient((request) async {
           if (request.method == 'HEAD') {
             expect(request.headers['Authorization'], isNull);
@@ -265,7 +344,7 @@ void main() {
     () async {
       final storage = ReferenceStorageService(
         database: db,
-        probe: (_) async => media,
+        probe: (_, {cancellation}) async => media,
         storage: FakeObjectStorage(
           db,
           ({
@@ -292,4 +371,21 @@ void main() {
       );
     },
   );
+}
+
+class _CancelableUploadClient extends http.BaseClient {
+  _CancelableUploadClient(Future<http.Response> Function(http.Request) handler)
+    : inner = MockClient(handler);
+  final http.Client inner;
+  final cancelled = Completer<http.StreamedResponse>();
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      Future.any([inner.send(request), cancelled.future]);
+  @override
+  void close() {
+    if (!cancelled.isCompleted) {
+      cancelled.completeError(http.ClientException('cancelled'));
+    }
+    inner.close();
+  }
 }

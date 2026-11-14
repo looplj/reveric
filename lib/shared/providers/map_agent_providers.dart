@@ -33,8 +33,8 @@ class MapDesignDrafts extends _$MapDesignDrafts {
         (draft.styleId == mapCustomStyleId &&
             (draft.customStyleWord == null ||
                 draft.customStyleWord!.trim().isEmpty)) ||
-        !mapDesignResolutionIds.contains(draft.resolutionId) ||
-        !mapDesignQualityIds.contains(draft.qualityId)) {
+        draft.resolutionId.trim().isEmpty ||
+        draft.qualityId.trim().isEmpty) {
       throw ArgumentError('Invalid map design draft');
     }
     final key = MapDesignDraftKey(

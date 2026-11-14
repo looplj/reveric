@@ -315,12 +315,12 @@ void main() {
     });
   });
 
-  test('image rejects unsupported ratio before network', () async {
+  test('image rejects unsupported resolution before network', () async {
     await _registerCatalog();
     await http.runWithClient(() async {
       final service = AiImageGenerationService(_media(), model: _imageId);
       await expectLater(
-        service.generateImage('a cat', aspectRatio: '1:1', resolution: '2K'),
+        service.generateImage('a cat', aspectRatio: '1:1', resolution: '8K'),
         throwsA(isA<AiImageGenerationException>()),
       );
     }, () => MockClient((_) => throw StateError('must not send')));

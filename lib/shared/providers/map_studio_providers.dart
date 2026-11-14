@@ -7,6 +7,8 @@
 //   .agents/rules/state-management.md
 //   .agents/rules/ai-calling.md
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show Provider;
+import '../models/image/choices.dart';
 
 import '../models/ai_provider.dart';
 import '../services/ai/image.dart';
@@ -14,11 +16,20 @@ import '../services/ai/tools.dart'
     show AiImageGenerationCallback, AiMultiImageEditCallback;
 
 import 'settings_providers.dart';
+import 'plugin_providers.dart';
+import 'video_tasks.dart';
 import '../services/map_place_name_reader.dart' show MapPlaceNameReader;
 
 export 'map_studio_controller.dart' show mapStudioControllerProvider;
 
 part 'map_studio_providers.g.dart';
+
+final mapImageChoicesProvider = Provider<ImageModelChoices?>((ref) {
+  final selection = ref.watch(mapStudioImageModelSelectionProvider);
+  return selection == null
+      ? null
+      : ImageModelChoices(selection.config, selection.model);
+});
 
 class MapStudioImageModelSelection {
   const MapStudioImageModelSelection({
@@ -52,21 +63,28 @@ MapStudioImageModelSelection? mapStudioImageModelSelection(Ref ref) {
 AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
   final selection = ref.watch(mapStudioImageModelSelectionProvider);
   if (selection == null) return null;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     required List<String> imageData,
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
-  }) {
-    return AiImageGenerationService(
+  }) async {
+    final service = await resolveDirectImageService(
       selection.config,
-      model: model ?? selection.model,
-    ).editImages(
+      model ?? selection.model,
+      host: host,
+      references: references,
+    );
+    return service.editImages(
       prompt,
       imageData: imageData,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -79,19 +97,26 @@ AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
 AiImageGenerationCallback? mapImageGenerateCallback(Ref ref) {
   final selection = ref.watch(mapStudioImageModelSelectionProvider);
   if (selection == null) return null;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
-  }) {
-    return AiImageGenerationService(
+  }) async {
+    final service = await resolveDirectImageService(
       selection.config,
-      model: model ?? selection.model,
-    ).generateImage(
+      model ?? selection.model,
+      host: host,
+      references: references,
+    );
+    return service.generateImage(
       prompt,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,

@@ -8,6 +8,7 @@
 //   .agents/rules/service-naming.md
 //   .agents/rules/ai-calling.md
 import '../../models/provider_model.dart';
+import '../../agent/agent_tool_dispatcher.dart';
 import '../../database/novel_content_database.dart';
 import '../../models/generation/task.dart';
 import '../../models/ai_provider.dart';
@@ -36,15 +37,21 @@ class ProductionImagePreview {
 
 typedef ProductionImageInvoke =
     Future<AiImageGenerationResult> Function(
+      String taskId,
       AiProvider provider,
       ProductionImageRequest request,
       ImageSubmitted onSubmitted,
       ImageOutputsReceived onOutputs,
+      AgentCancellationToken cancellation,
     );
 
 class ProductionImageGenerateOrchestrator {
   bool cancelled = false;
-  void cancel() => cancelled = true;
+  final _cancellation = AgentCancellationController();
+  void cancel() {
+    cancelled = true;
+    _cancellation.cancel();
+  }
 
   Future<ProductionImagePreview> preview(
     ProductionCanvasService service,
@@ -147,10 +154,12 @@ class ProductionImageGenerateOrchestrator {
         return;
       }
       final result = await jobs.invoke(
+        id,
         provider,
         request,
-        (providerTaskId) => jobs.recordSubmission(id, providerTaskId),
-        (urls) => jobs.recordRemoteOutputs(id, urls),
+        (submission) => jobs.recordSubmission(id, submission),
+        (outputs, context) => jobs.recordRemoteOutputs(id, outputs, context),
+        _cancellation.token,
       );
       try {
         if (cancelled) {

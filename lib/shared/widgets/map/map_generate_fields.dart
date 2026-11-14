@@ -11,6 +11,10 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/map_editor.json
 //   assets/translations/zh-CN/map_editor.json
+//   assets/translations/en/editor.json
+//   assets/translations/zh-CN/editor.json
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/design-system.md
@@ -69,6 +73,12 @@ class MapGenerateFields extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     useListenable(form.listenable);
+    final referenceCount =
+        (form.effectiveReferenceCurrentImage ? 1 : 0) +
+        (form.effectiveReferenceParent ? 1 : 0);
+    final referenceLimit = form.choices?.referenceLimit;
+    final canAddReference =
+        referenceLimit == null || referenceCount < referenceLimit;
     final agentDraft = ref.watch(
       mapDesignDraftProvider(databasePath: databasePath, worldId: rootId),
     );
@@ -147,7 +157,11 @@ class MapGenerateFields extends HookConsumerWidget {
             note: context.t(LocaleKeys.mapEditorStudioSourceCurrentImageNote),
             value: form.effectiveReferenceCurrentImage,
             touchTarget: touchTargets,
-            onChanged: (value) => form.referenceCurrentImage.value = value,
+            onChanged:
+                busy ||
+                    (!form.effectiveReferenceCurrentImage && !canAddReference)
+                ? null
+                : (value) => form.referenceCurrentImage.value = value,
           ),
         ],
         if (form.parentMap != null) ...[
@@ -160,7 +174,10 @@ class MapGenerateFields extends HookConsumerWidget {
                 .replaceFirst('{name}', form.parentMapName ?? ''),
             value: form.effectiveReferenceParent,
             touchTarget: touchTargets,
-            onChanged: (value) => form.referenceParentImage.value = value,
+            onChanged:
+                busy || (!form.effectiveReferenceParent && !canAddReference)
+                ? null
+                : (value) => form.referenceParentImage.value = value,
           ),
         ],
         const SizedBox(height: RevericSpacing.lg),
@@ -217,38 +234,49 @@ class MapGenerateFields extends HookConsumerWidget {
             },
           ),
         ],
-        const SizedBox(height: RevericSpacing.lg),
-        sectionLabel(LocaleKeys.mapEditorStudioResolution),
-        const SizedBox(height: RevericSpacing.sm),
-        Wrap(
-          spacing: RevericSpacing.sm,
-          runSpacing: RevericSpacing.sm,
-          children: [
-            for (final option in mapResolutions)
-              _Chip(
-                label: option.id.toUpperCase(),
-                selected: form.resolutionId.value == option.id,
-                touchTarget: touchTargets,
-                onTap: () => form.resolutionId.value = option.id,
-              ),
+        for (final field in [
+          (
+            LocaleKeys.editorCoverRatio,
+            form.choices?.ratios ?? <String>[],
+            form.ratioId,
+          ),
+          (
+            LocaleKeys.mapEditorStudioResolution,
+            form.choices?.resolutions ?? <String>[],
+            form.resolutionId,
+          ),
+          (
+            LocaleKeys.mapEditorStudioQuality,
+            form.choices?.qualities ?? <String>[],
+            form.qualityId,
+          ),
+          (
+            LocaleKeys.commonComplexity,
+            form.choices?.complexities ?? <String>[],
+            form.complexityId,
+          ),
+        ]) ...[
+          if (field.$2.isNotEmpty) ...[
+            const SizedBox(height: RevericSpacing.lg),
+            sectionLabel(field.$1),
+            const SizedBox(height: RevericSpacing.sm),
+            Wrap(
+              spacing: RevericSpacing.sm,
+              runSpacing: RevericSpacing.sm,
+              children: [
+                for (final option in field.$2)
+                  _Chip(
+                    label: option,
+                    selected: field.$3.value == option,
+                    touchTarget: touchTargets,
+                    onTap: busy || field.$2.length == 1
+                        ? null
+                        : () => field.$3.value = option,
+                  ),
+              ],
+            ),
           ],
-        ),
-        const SizedBox(height: RevericSpacing.lg),
-        sectionLabel(LocaleKeys.mapEditorStudioQuality),
-        const SizedBox(height: RevericSpacing.sm),
-        Wrap(
-          spacing: RevericSpacing.sm,
-          runSpacing: RevericSpacing.sm,
-          children: [
-            for (final option in mapQualities)
-              _Chip(
-                label: context.t(_qualityLabelKey(option.id)),
-                selected: form.qualityId.value == option.id,
-                touchTarget: touchTargets,
-                onTap: () => form.qualityId.value = option.id,
-              ),
-          ],
-        ),
+        ],
         const SizedBox(height: RevericSpacing.lg),
         Row(
           key: const ValueKey('map_prompt_header'),
@@ -338,14 +366,14 @@ class _SourceToggle extends StatelessWidget {
   final String? note;
   final bool value;
   final bool touchTarget;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     return GestureDetector(
-      onTap: () => onChanged(!value),
+      onTap: onChanged == null ? null : () => onChanged!(!value),
       behavior: HitTestBehavior.opaque,
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -404,7 +432,7 @@ class _Chip extends StatelessWidget {
   final String label;
   final bool selected;
   final bool touchTarget;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -435,13 +463,6 @@ class _Chip extends StatelessWidget {
     );
   }
 }
-
-/// 质量档位的界面文案 key。
-String _qualityLabelKey(String id) => switch (id) {
-  'low' => LocaleKeys.mapEditorQualityLow,
-  'high' => LocaleKeys.mapEditorQualityHigh,
-  _ => LocaleKeys.mapEditorQualityMedium,
-};
 
 String _styleLabelKey(String id) => switch (id) {
   'inkmap' => LocaleKeys.mapEditorStudioStyleInkmap,

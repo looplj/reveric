@@ -521,6 +521,7 @@ class ChatTurnRunner {
   Future<AiImageGenerationResult> _generateImage(
     String prompt, {
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
@@ -533,6 +534,7 @@ class ChatTurnRunner {
     return callback(
       prompt,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -543,13 +545,19 @@ class ChatTurnRunner {
     String prompt, {
     required String imageData,
     String? model,
+    ImageInvocationOptions? options,
   }) => container.withProvider(imageEditCallbackProvider(novel.id), (
     callback,
   ) async {
     if (callback == null) {
       throw AiImageGenerationException(tr(LocaleKeys.aiNoImageModelConfigured));
     }
-    return callback(prompt, imageData: imageData, model: model);
+    return callback(
+      prompt,
+      imageData: imageData,
+      model: model,
+      options: options,
+    );
   });
 
   Future<AskUserResult> _askUser(

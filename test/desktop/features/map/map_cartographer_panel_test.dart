@@ -143,7 +143,7 @@ void main() {
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
-      startsWith('绘制一张地图，横版。'),
+      startsWith('绘制一张地图。'),
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
@@ -164,7 +164,7 @@ void main() {
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
-      startsWith('绘制一张地图，横版。'),
+      startsWith('绘制一张地图。'),
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
@@ -210,6 +210,10 @@ void main() {
     await tester.enterText(promptEditor, '用户修改后的地图要求');
     await tester.drag(cartographerScrollable, const Offset(0, 1000));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('map_studio_style_inkmap')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('map_studio_style_inkmap')).hitTestable(),
     );
@@ -225,6 +229,10 @@ void main() {
     );
 
     await tester.drag(cartographerScrollable, const Offset(0, 1000));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('map_studio_style_custom')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('map_studio_style_custom')).hitTestable(),

@@ -117,7 +117,8 @@ void main() {
       references: ReferenceStorageService(
         database: db,
         storage: ObjectStorageService(database: db),
-        probe: (_) => throw StateError('no references expected'),
+        probe: (_, {cancellation}) =>
+            throw StateError('no references expected'),
         uploadClient: (_) => MockClient((r) async {
           uploads.add(r);
           return http.Response('', 401);

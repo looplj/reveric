@@ -17,7 +17,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/providers/cover_studio_providers.dart';
-import '../../../shared/services/cover_prompt_builder.dart';
 import '../../../shared/theme/theme.dart';
 
 class MobileCoverCanvasActions extends ConsumerWidget {
@@ -106,9 +105,11 @@ class _MetaBar extends ConsumerWidget {
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
-    final resolutionLabel = coverResolutionOf(
-      state.resolutionId,
-    ).id.toUpperCase();
+    final resolutionLabel =
+        ref.watch(coverImageChoicesProvider)?.resolution(state.resolutionId) ??
+        (RegExp(r'^[124]k$').hasMatch(state.resolutionId)
+            ? state.resolutionId.toUpperCase()
+            : state.resolutionId);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,

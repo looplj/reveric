@@ -65,7 +65,7 @@ void main() {
     );
 
     expect(request.style, isNull);
-    expect(editablePrompt, '绘制一张地图，横版。');
+    expect(editablePrompt, '绘制一张地图。');
     expect(editablePrompt, isNot(contains('手绘羊皮纸')));
     expect(editablePrompt, isNot(contains('奇幻')));
     expect(submittedPrompt, '用户修改后的地图要求\n风格：手绘羊皮纸');

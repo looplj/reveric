@@ -535,6 +535,9 @@ class ProductionToolHost {
           return;
         }
         final decision = await results.requestCancellation(task.id);
+        if (task.kind == app.GenerationKind.image) {
+          await images.cancel(task.id);
+        }
         final current = (await database.generationTaskDao.getById(task.id))!;
         if (!decision.accepted && !current.status.isTerminal) {
           return;
@@ -566,6 +569,9 @@ class ProductionToolHost {
       operation.report(taskId: id);
       if (operation.cancellation.isCancellationRequested) {
         await results.requestCancellation(id);
+        if (frozen is ProductionImagePreview) {
+          await images.cancel(id);
+        }
       }
     }
 

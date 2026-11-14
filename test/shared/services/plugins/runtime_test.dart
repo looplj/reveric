@@ -2,12 +2,16 @@
 // 关联文件:
 //   lib/shared/services/plugins/runtime.dart
 import 'dart:async';
+import 'dart:convert';
+import 'package:image/image.dart' as img;
+import 'package:reveric/shared/services/plugins/media_files.dart';
 import 'dart:io';
 import 'package:fjs/fjs.dart';
 import 'package:drift/native.dart';
 import 'package:reveric/shared/database/app_database.dart' as db;
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
+import 'package:reveric/shared/services/plugins/files.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -552,6 +556,122 @@ void main() {
       throwsA(isA<PluginHostError>()),
     );
   });
+
+  test(
+    'Host uploads scoped file through real provider and revokes on return',
+    () async {
+      final database = db.AppDatabase.forTest(NativeDatabase.memory());
+      final directory = await Directory.systemTemp.createTemp(
+        'provider-upload-test-',
+      );
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final received = <int>[];
+      final png = img.encodePng(img.Image(width: 2, height: 3));
+      server.listen((request) async {
+        if (request.uri.path == '/generate') {
+          await request.drain<void>();
+          request.response.write(jsonEncode({'image': base64Encode(png)}));
+          await request.response.close();
+          return;
+        }
+        received.addAll(
+          await request.fold<List<int>>([], (a, b) => a..addAll(b)),
+        );
+        request.response.write('remote-reference');
+        await request.response.close();
+      });
+      final declaration = PluginManifest.fromJson({
+        ...manifest.json,
+        'provider': {'name': 'Upload'},
+      });
+      final code = providerCode("""{
+      async listModels() {return [];},
+      async uploadReference(input, context) {
+        const result = await context.files.upload(input.file.handle, {kind:'raw', method:'PUT', url:'http://127.0.0.1:${server.port}/file'});
+        return {ref:result.body};
+      },
+      image: {async submit(input, context) { const result = await context.image.request('http://127.0.0.1:${server.port}/generate', {method:'POST',body:{kind:'json',value:{}},response:{kind:'json',images:[{pointer:'/image',encoding:'base64'}]}}); return {status:'succeeded',outputs:[result.body.image]};}}
+    }""");
+      final host = PluginHostService(
+        dao: database.pluginDao,
+        registry: PluginRegistry(hostToolNames: {}),
+        packages: () async => [PluginPackage('memory', declaration, code)],
+        platform: 'macos',
+      );
+      addTearDown(() async {
+        await host.dispose();
+        await database.close();
+        await server.close(force: true);
+        await directory.delete(recursive: true);
+      });
+      await host.start();
+      await host.setEnabled(declaration.id, true);
+      final provider = aiProviderBuiltinById('openai')!.copyWith(
+        id: 'upload-instance',
+        type: 'plugin:test.plugin',
+        enabled: true,
+        apiKey: '',
+        baseUrl: '',
+      );
+      await database.aiProviderDao.upsert(provider);
+      final scope = PluginFileScope(
+        pluginId: declaration.id,
+        providerId: provider.id,
+        taskId: 'upload-task',
+      );
+      final info = await scope.register(
+        await File('${directory.path}/image').writeAsBytes([1, 2, 3, 4]),
+        name: 'image.png',
+        mimeType: 'image/png',
+      );
+      expect(
+        await host.callProvider(
+          provider,
+          'uploadReference',
+          input: {'file': info},
+          taskId: 'upload-task',
+          files: scope,
+        ),
+        {'ref': 'remote-reference'},
+      );
+      expect(received, [1, 2, 3, 4]);
+      expect(
+        () => scope.resolve(info['handle']),
+        throwsA(isA<PluginHostError>()),
+      );
+      await expectLater(
+        host.callProvider(
+          provider,
+          'uploadReference',
+          input: {'file': info},
+          taskId: 'upload-task',
+        ),
+        throwsA(isA<PluginExecutionError>()),
+      );
+      expect(received, [1, 2, 3, 4]);
+      final imageScope = PluginFileScope(
+        pluginId: declaration.id,
+        providerId: provider.id,
+        taskId: 'image-task',
+      );
+      final mediaFiles = PluginMediaFiles(
+        directory: Directory('${directory.path}/outputs'),
+        scope: imageScope,
+      );
+      final generated =
+          await host.callProvider(
+                provider,
+                'image.submit',
+                taskId: 'image-task',
+                files: imageScope,
+                mediaFiles: mediaFiles,
+              )
+              as Map;
+      final output = (generated['outputs'] as List).single as Map;
+      expect(output['kind'], 'file');
+      expect(await mediaFiles.output(output['handle']).readAsBytes(), png);
+    },
+  );
 
   test('malformed native bridge JSON returns a structured error', () async {
     final executor = runtime();

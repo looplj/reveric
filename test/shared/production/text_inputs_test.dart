@@ -480,7 +480,7 @@ void main() {
                 references: ReferenceStorageService(
                   database: main,
                   storage: ObjectStorageService(database: main),
-                  probe: (_) =>
+                  probe: (_, {cancellation}) =>
                       throw StateError('Text cannot require reference probing'),
                 ),
                 probeResult: (_) =>

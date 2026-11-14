@@ -27,6 +27,9 @@ import 'package:crypto/crypto.dart';
 import '../proxy_client.dart';
 import 'data.dart';
 import 'http.dart';
+import 'files.dart';
+import 'media.dart';
+import 'media_files.dart';
 import 'registry.dart';
 import 'runtime.dart';
 import 'sqlite.dart';
@@ -2005,6 +2008,30 @@ class PluginHostService {
   PluginManifest? providerManifest(String pluginId) =>
       _packages[pluginId]?.manifest;
 
+  Future<String> providerUploadContext(
+    AiProvider provider,
+    String mimeType,
+  ) async {
+    await start();
+    final pluginId = provider.pluginId;
+    if (pluginId == null ||
+        _statuses[pluginId]?.state != 'available' ||
+        _statuses[pluginId]?.enabled != true ||
+        !providerHasMethod(pluginId, 'uploadReference')) {
+      throw PluginHostError(
+        'configuration_required',
+        'Provider reference upload is unavailable',
+      );
+    }
+    return sha256
+        .convert(
+          utf8.encode(
+            jsonEncode([await _providerConfigurationHash(provider), mimeType]),
+          ),
+        )
+        .toString();
+  }
+
   Future<PluginConfig> loadProviderConfig(AiProvider provider) async {
     final snapshot = await readPluginProviderConfiguration(
       dao,
@@ -2041,6 +2068,8 @@ class PluginHostService {
     Map<String, Object?> draftSettings = const {},
     Map<String, String?> draftSecrets = const {},
     String? taskId,
+    PluginFileScope? files,
+    PluginMediaFiles? mediaFiles,
     AgentCancellationToken? cancellation,
   }) async {
     await start();
@@ -2095,29 +2124,59 @@ class PluginHostService {
     }
     final business = query ? _providerQueryBusiness : PluginBusinessRuntime();
     final watch = Stopwatch()..start();
+    HttpClient createClient() {
+      final client = HttpClient();
+      if (provider.hasProxy) {
+        configureHttpClientProxy(
+          client,
+          Uri.parse(provider.proxyUrl),
+          username: provider.proxyUsername,
+          password: provider.proxyPassword,
+        );
+      } else {
+        client.findProxy = (_) => 'DIRECT';
+      }
+      return client;
+    }
+
     final http = PluginHttpApi(
       direct: false,
       remainingBudget: () => budget - watch.elapsed,
-      clientFactory: () {
-        final client = HttpClient();
-        if (provider.hasProxy) {
-          configureHttpClientProxy(
-            client,
-            Uri.parse(provider.proxyUrl),
-            username: provider.proxyUsername,
-            password: provider.proxyPassword,
-          );
-        } else {
-          client.findProxy = (_) => 'DIRECT';
-        }
-        return client;
-      },
+      clientFactory: createClient,
     );
+    final fileApi = files == null
+        ? null
+        : PluginFilesApi(
+            scope: files,
+            clientFactory: createClient,
+            remainingBudget: () => budget - watch.elapsed,
+          );
+    final mediaApi = files == null || mediaFiles == null
+        ? null
+        : PluginMediaApi(
+            scope: files,
+            outputs: mediaFiles,
+            clientFactory: createClient,
+            remainingBudget: () => budget - watch.elapsed,
+          );
+    void cancelApis() {
+      mediaApi?.cancel();
+      http.cancel();
+      fileApi?.cancel();
+    }
+
     final callCancellation = AgentCancellationController();
     _providerCalls.add(callCancellation);
     final unlink = cancellation?.onCancel(callCancellation.cancel);
-    final unlinkHttp = callCancellation.token.onCancel(http.cancel);
+    final unlinkHttp = callCancellation.token.onCancel(cancelApis);
     try {
+      if (mediaFiles != null && !identical(mediaFiles.scope, files)) {
+        throw PluginHostError(
+          'permission_denied',
+          'Media outputs belong to another invocation',
+        );
+      }
+      files?.claim(pluginId: pluginId, providerId: provider.id, taskId: taskId);
       if (_disposed ||
           _statuses[pluginId]?.state != 'available' ||
           _statuses[pluginId]?.enabled != true) {
@@ -2194,8 +2253,18 @@ class PluginHostService {
       );
       final runtime = PluginRuntime(
         business: business,
-        onStop: http.cancel,
+        onStop: cancelApis,
         hostCall: (name, args) async {
+          if (name == 'image.request' &&
+              {'image.submit', 'image.query'}.contains(method) &&
+              mediaApi != null) {
+            return mediaApi.request(args);
+          }
+          if (name == 'files.upload' &&
+              {'uploadReference', 'assets.submit'}.contains(method) &&
+              fileApi != null) {
+            return fileApi.upload(args);
+          }
           if (name == 'settings.get' || name == 'secrets.get') {
             final key = args['key'];
             final values = name == 'settings.get'
@@ -2273,7 +2342,7 @@ class PluginHostService {
       unlink?.call();
       unlinkHttp();
       _providerCalls.remove(callCancellation);
-      http.cancel();
+      cancelApis();
       try {
         if (!query) {
           await business.dispose();

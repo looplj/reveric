@@ -450,6 +450,7 @@ abstract final class LocaleKeys {
   static const productionList = 'screenplay.production.list';
   static const productionImageInterrupted =
       'screenplay.production.imageInterrupted';
+  static const productionImageWaitCancelled = 'production.image_wait_cancelled';
   static const productionImageDownloadFailed =
       'screenplay.production.imageDownloadFailed';
   static const productionImageFetchFailed =
@@ -1296,6 +1297,14 @@ abstract final class LocaleKeys {
   static const aiImageGenerating = 'ai.image_generating';
   static const aiImageCandidatesFetchFailed =
       'ai.image_candidates_fetch_failed';
+  static const aiImageStagedUnconfirmed = 'ai.image_staged_unconfirmed';
+  static const aiImageSubmissionUnknown = 'ai.image_submission_unknown';
+  static const aiImageInvalidOutputs = 'ai.image_invalid_outputs';
+  static const aiImageParametersUnavailable = 'ai.image_parameters_unavailable';
+  static const aiImageReferenceUploadUnavailable =
+      'ai.image_reference_upload_unavailable';
+  static const aiImageReferenceUnrefreshable =
+      'ai.image_reference_unrefreshable';
   static const aiImageGenerationFailed = 'ai.image_generation_failed';
   static const aiCodexImageAuthFailed = 'ai.codex_image_auth_failed';
   static const aiCodexImageNeedsChatModel = 'ai.codex_image_needs_chat_model';

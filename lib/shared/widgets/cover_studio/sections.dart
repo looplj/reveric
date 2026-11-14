@@ -23,8 +23,6 @@ import '../../../third/form/flutter_hook_form.dart';
 import '../../database/app_database.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
-import '../../models/image/channels.dart';
-import '../../providers/ai_providers.dart';
 import '../../providers/cover_providers.dart';
 import '../../providers/cover_studio_providers.dart';
 import '../../services/cover_prompt_builder.dart';
@@ -338,6 +336,11 @@ class CoverQualitySection extends ConsumerWidget {
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
+    final choices = ref.watch(coverImageChoicesProvider);
+    final qualities = choices?.qualities ?? const <String>[];
+    if (qualities.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -349,11 +352,13 @@ class CoverQualitySection extends ConsumerWidget {
           spacing: 6,
           runSpacing: 6,
           children: [
-            for (final quality in coverQualities)
+            for (final quality in qualities)
               CoverChip(
-                label: context.t(coverQualityLabelKey(quality.id)),
-                selected: state.qualityId == quality.id,
-                onTap: () => controller.setQuality(quality.id),
+                label: quality,
+                selected: state.qualityId == quality,
+                onTap: qualities.length == 1 || state.busy
+                    ? null
+                    : () => controller.setQuality(quality),
               ),
           ],
         ),
@@ -369,11 +374,8 @@ class CoverComplexitySection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selection = ref.watch(coverStudioImageModelSelectionProvider);
-    if (selection == null) {
-      return const SizedBox.shrink();
-    }
-    final levels = imageComplexityLevels(selection.config, selection.model);
+    final choices = ref.watch(coverImageChoicesProvider);
+    final levels = choices?.complexities ?? const <String>[];
     if (levels.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -381,11 +383,7 @@ class CoverComplexitySection extends ConsumerWidget {
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
-    final selected = imageComplexityFor(
-      selection.config,
-      selection.model,
-      state.complexityId,
-    );
+    final selected = state.complexityId ?? choices?.defaults.complexity;
     return Padding(
       padding: const EdgeInsets.only(bottom: RevericSpacing.x3l),
       child: Column(
@@ -401,12 +399,11 @@ class CoverComplexitySection extends ConsumerWidget {
             children: [
               for (final level in levels)
                 CoverChip(
-                  label: switch (imageComplexityLabelKey(level)) {
-                    final key? => context.t(key),
-                    _ => level,
-                  },
+                  label: level,
                   selected: selected == level,
-                  onTap: () => controller.setComplexity(level),
+                  onTap: levels.length == 1 || state.busy
+                      ? null
+                      : () => controller.setComplexity(level),
                 ),
             ],
           ),
@@ -423,6 +420,8 @@ class CoverResolutionSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final choices = ref.watch(coverImageChoicesProvider);
+    final resolutions = choices?.resolutions ?? const <String>[];
     final state = ref.watch(coverStudioControllerProvider(novelId));
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
@@ -438,11 +437,13 @@ class CoverResolutionSection extends ConsumerWidget {
           spacing: 6,
           runSpacing: 6,
           children: [
-            for (final resolution in coverResolutions)
+            for (final resolution in resolutions)
               CoverChip(
-                label: resolution.id.toUpperCase(),
-                selected: state.resolutionId == resolution.id,
-                onTap: () => controller.setResolution(resolution.id),
+                label: resolution,
+                selected: choices?.resolution(state.resolutionId) == resolution,
+                onTap: resolutions.length == 1 || state.busy
+                    ? null
+                    : () => controller.setResolution(resolution),
               ),
           ],
         ),
@@ -451,21 +452,18 @@ class CoverResolutionSection extends ConsumerWidget {
   }
 }
 
-/// 比例用小方块示意形状，比只写「3:4」好认。
+/// 原样展示模型声明的比例，包括自动或供应商自定义值。
 class CoverRatioSection extends ConsumerWidget {
   const CoverRatioSection({super.key, required this.novelId});
-
   final String novelId;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
+    final choices = ref.watch(coverImageChoicesProvider);
+    final ratios = choices?.ratios ?? const <String>[];
     final state = ref.watch(coverStudioControllerProvider(novelId));
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -474,82 +472,20 @@ class CoverRatioSection extends ConsumerWidget {
           label: context.t(LocaleKeys.editorCoverRatio),
         ),
         Wrap(
-          spacing: 6,
-          runSpacing: 6,
+          spacing: RevericSpacing.xs,
+          runSpacing: RevericSpacing.xs,
           children: [
-            for (final ratio in coverRatios)
-              _RatioTile(
-                ratio: ratio,
-                selected: state.ratioId == ratio.id,
-                onTap: () => controller.setRatio(ratio.id),
-                colors: colors,
-                typo: typo,
+            for (final ratio in ratios)
+              CoverChip(
+                label: ratio,
+                selected: choices?.ratio(state.ratioId) == ratio,
+                onTap: ratios.length == 1 || state.busy
+                    ? null
+                    : () => controller.setRatio(ratio),
               ),
           ],
         ),
       ],
-    );
-  }
-}
-
-class _RatioTile extends StatelessWidget {
-  const _RatioTile({
-    required this.ratio,
-    required this.selected,
-    required this.onTap,
-    required this.colors,
-    required this.typo,
-  });
-
-  final CoverRatioOption ratio;
-  final bool selected;
-  final VoidCallback onTap;
-  final RevericColors colors;
-  final RevericTypography typo;
-
-  @override
-  Widget build(BuildContext context) {
-    final foreground = selected ? colors.accent : colors.textSecondary;
-    // 形状缩略图统一塞进 22×22 的方格里，长边顶满。
-    final landscape = ratio.w >= ratio.h;
-    final width = landscape ? 22.0 : 22.0 * ratio.w / ratio.h;
-    final height = landscape ? 22.0 * ratio.h / ratio.w : 22.0;
-
-    return Material(
-      color: selected ? colors.accent.withValues(alpha: 0.14) : colors.surface,
-      borderRadius: BorderRadius.circular(RevericRadius.small),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(RevericRadius.small),
-        child: Container(
-          width: 64,
-          padding: const EdgeInsets.symmetric(vertical: RevericSpacing.xs),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(RevericRadius.small),
-            border: Border.all(color: selected ? colors.accent : colors.border),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: 24,
-                child: Center(
-                  child: Container(
-                    width: width,
-                    height: height,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: foreground, width: 1.2),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(ratio.hint, style: typo.uiTiny.copyWith(color: foreground)),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

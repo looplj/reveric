@@ -160,7 +160,8 @@ void main() {
       references: ReferenceStorageService(
         database: appDb,
         storage: ObjectStorageService(database: appDb),
-        probe: (_) => throw StateError('No reference upload expected'),
+        probe: (_, {cancellation}) =>
+            throw StateError('No reference upload expected'),
       ),
       providerTransport: (_) => MockClient((request) async {
         if (request.method == 'POST') {

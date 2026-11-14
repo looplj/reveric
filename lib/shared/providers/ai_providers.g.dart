@@ -780,7 +780,7 @@ final class ImageGenerationCallbackProvider
 }
 
 String _$imageGenerationCallbackHash() =>
-    r'd2300970900ec69658a2b5d07c3486eb1ff2e992';
+    r'c9b06fceba346516116fdd9e1c9e0a6f6d015a18';
 
 final class ImageGenerationCallbackFamily extends $Family
     with $FunctionalFamilyOverride<AiImageGenerationCallback?, String> {
@@ -847,7 +847,7 @@ final class CoverImageGenerationCallbackProvider
 }
 
 String _$coverImageGenerationCallbackHash() =>
-    r'c2c66c5565e66d9cc8f53ab047a28cb891bc06d6';
+    r'1347f36202789e99f51669941103289da9e0b6fc';
 
 @ProviderFor(coverImageMultiEditCallback)
 final coverImageMultiEditCallbackProvider =
@@ -896,7 +896,7 @@ final class CoverImageMultiEditCallbackProvider
 }
 
 String _$coverImageMultiEditCallbackHash() =>
-    r'10d052dbfdb7b69cbce7c55a9b4e8a82e8a92b6b';
+    r'2c01ebc1f59bf178ae72a7557b9f6b7486c91562';
 
 @ProviderFor(imageEditCallback)
 final imageEditCallbackProvider = ImageEditCallbackFamily._();
@@ -961,7 +961,7 @@ final class ImageEditCallbackProvider
   }
 }
 
-String _$imageEditCallbackHash() => r'9c21ee708dfe8a402c0eab7a1e497fa598885f58';
+String _$imageEditCallbackHash() => r'8ed88b2b58545b366d9c1d9059cc05df212e5afd';
 
 final class ImageEditCallbackFamily extends $Family
     with $FunctionalFamilyOverride<AiImageEditCallback?, String> {
@@ -1027,7 +1027,7 @@ final class ImageMultiEditCallbackProvider
 }
 
 String _$imageMultiEditCallbackHash() =>
-    r'c85d75d637f8d642a9bb8bab246275e2f15c4779';
+    r'9b40269beacfa1da5ea6b9f7fa1daa3a19aa4b53';
 
 @ProviderFor(isImageGenerationConfigured)
 final isImageGenerationConfiguredProvider =
