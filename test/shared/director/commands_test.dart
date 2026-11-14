@@ -21,6 +21,17 @@ void main() {
     ),
   );
   tearDown(() => h.dispose());
+  test('adding more than six actors supports undo and redo', () {
+    h.replace(DirectorDocument.blank('Crowd'));
+    for (var i = 0; i < 12; i++) {
+      h.addObject('actor.male.v1', 'Actor $i');
+    }
+    expect(h.document.objects, hasLength(12));
+    h.undo();
+    expect(h.document.objects, hasLength(11));
+    h.redo();
+    expect(h.document.objects, hasLength(12));
+  });
   test(
     'target keys retain references at held frames but sample blended points',
     () {

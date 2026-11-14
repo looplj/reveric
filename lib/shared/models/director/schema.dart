@@ -334,7 +334,6 @@ Json directorSchema() {
     },
     'limits': {
       'bytes': DirectorDocument.maxBytes,
-      'actors': DirectorDocument.maxActors,
       'props': DirectorDocument.maxProps,
       'cameras': DirectorDocument.maxCameras,
       'tracks': DirectorDocument.maxTracks,

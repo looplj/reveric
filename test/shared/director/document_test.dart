@@ -240,17 +240,33 @@ void main() {
       }
     },
   );
-  test('actor capacity and dangling track fail', () {
+  test('300 actors round trip and remain in sampled frames', () {
+    final d = DirectorDocument.parse(text);
+    final crowd = d.mutate((j) {
+      for (var i = 4; i < 302; i++) {
+        final o = cloneJson(j['objects'][0]);
+        o['id'] = '20000000-0000-4000-8000-${i.toString().padLeft(12, '0')}';
+        j['objects'].add(o);
+      }
+    });
+    final reopened = DirectorDocument.parse(crowd.encode());
+    expect(reopened.toJson(), crowd.toJson());
+    expect(reopened.objects.where((o) => o['kind'] == 'actor'), hasLength(300));
+    expect(sampleDocument(reopened, 0).objects, hasLength(301));
+  });
+  test('prop capacity and dangling track still fail', () {
     final d = DirectorDocument.parse(text);
     expect(
       () => d.mutate((j) {
-        for (var i = 3; i < 9; i++) {
-          final o = cloneJson(j['objects'][0]);
+        for (var i = 4; i < 24; i++) {
+          final o = cloneJson(j['objects'][2]);
           o['id'] = '20000000-0000-4000-8000-${i.toString().padLeft(12, '0')}';
           j['objects'].add(o);
         }
       }),
-      throwsA(isA<DocumentError>()),
+      throwsA(
+        isA<DocumentError>().having((e) => e.reason, 'reason', 'capacity'),
+      ),
     );
     final entry = DirectorDocument.parse(
       File('test/fixtures/director/motion.director.json').readAsStringSync(),
