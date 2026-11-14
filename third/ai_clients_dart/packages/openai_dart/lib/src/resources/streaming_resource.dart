@@ -1,4 +1,5 @@
-import 'dart:async' show StreamController, StreamSubscription, unawaited;
+import 'dart:async'
+    show Completer, StreamController, StreamSubscription, unawaited;
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -72,6 +73,8 @@ mixin StreamingResource on ResourceBase {
       final dedicatedClient = streamClientFactory?.call() ?? http.Client();
       var aborted = false;
       var clientClosed = false;
+      final abortedResponse = Completer<http.StreamedResponse?>();
+      void Function()? stopBody;
 
       void closeClientOnce() {
         if (!clientClosed) {
@@ -80,39 +83,57 @@ mixin StreamingResource on ResourceBase {
         }
       }
 
+      void cancelSubscription(StreamSubscription<List<int>> subscription) {
+        // 清理可能依赖失去响应的 transport，不能挡住调用方退出。
+        unawaited(
+          subscription.cancel().catchError((Object error, StackTrace stack) {
+            Logger(
+              'StreamingResource',
+            ).warning('Stream cleanup failed', error, stack);
+          }),
+        );
+      }
+
+      void abort() {
+        aborted = true;
+        closeClientOnce();
+        stopBody?.call();
+        if (!abortedResponse.isCompleted) {
+          abortedResponse.complete(null);
+        }
+      }
+
       unawaited(
-        abortTrigger.then(
-          (_) {
-            aborted = true;
-            closeClientOnce();
-          },
-          onError: (_) {
-            // Treat any abort trigger error as an abort signal
-            aborted = true;
-            closeClientOnce();
-          },
-        ),
+        abortTrigger.then((_) => abort(), onError: (Object _) => abort()),
       );
 
       try {
-        final response = await dedicatedClient.send(request);
+        // close() 不保证挂起的 send() 马上完成。取消必须独立解除等待；
+        // Future.any 同时接住迟到的错误，迟到的响应则立即取消订阅。
+        final response = await Future.any<http.StreamedResponse?>([
+          dedicatedClient.send(request).then((response) {
+            if (aborted) {
+              cancelSubscription(
+                response.stream.listen((_) {}, onError: (Object _) {}),
+              );
+              return null;
+            }
+            return response;
+          }),
+          abortedResponse.future,
+        ]);
+        if (response == null) {
+          return http.StreamedResponse(
+            const Stream<List<int>>.empty(),
+            200,
+            request: request,
+          );
+        }
 
-        // Use StreamController to ensure client cleanup on ALL termination
-        // paths:
-        // - Normal completion (onDone)
-        // - Errors (onError)
-        // - Early subscription cancellation (onCancel)
-        //
-        // StreamTransformer.fromHandlers does NOT handle subscription
-        // cancellation, which would leak the client.
-        //
-        // IMPORTANT: We capture the subscription and cancel it in onCancel.
-        // Without this, the underlying subscription continues pushing data
-        // into the controller even when there are no listeners, causing a
-        // resource leak.
         final controller = StreamController<List<int>>();
         late final StreamSubscription<List<int>> subscription;
         var controllerClosed = false;
+        var subscriptionCancelled = false;
 
         void closeController() {
           if (!controllerClosed) {
@@ -121,36 +142,40 @@ mixin StreamingResource on ResourceBase {
           }
         }
 
+        void stop() {
+          stopBody = null;
+          closeClientOnce();
+          if (!subscriptionCancelled) {
+            subscriptionCancelled = true;
+            cancelSubscription(subscription);
+          }
+          closeController();
+        }
+
         subscription = response.stream.listen(
           (data) {
-            // 消费方取消订阅后 controller 已关闭：直接丢弃残留数据，
-            // 否则向已关闭 controller 加事件会抛 StateError 变成 unhandled。
-            if (!controllerClosed) {
+            if (!controllerClosed && !aborted) {
               controller.add(data);
             }
           },
-          onError: (Object e, StackTrace st) {
-            closeClientOnce();
-            // 主动 abort 关闭连接也会使响应体报错；与 send 阶段保持相同的
-            // 取消语义。未取消的网络错误仍交给调用方重试/上报。
+          onError: (Object error, StackTrace stack) {
             if (!aborted && !controllerClosed) {
-              controller.addError(e, st);
+              controller.addError(error, stack);
             }
-            unawaited(subscription.cancel());
-            closeController();
+            stop();
           },
           onDone: () {
+            stopBody = null;
             closeClientOnce();
             closeController();
           },
           cancelOnError: false,
         );
-
-        controller.onCancel = () async {
-          closeClientOnce();
-          await subscription.cancel();
-          closeController();
-        };
+        controller.onCancel = stop;
+        stopBody = stop;
+        if (aborted) {
+          stop();
+        }
 
         return http.StreamedResponse(
           controller.stream,
