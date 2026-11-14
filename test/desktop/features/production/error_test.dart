@@ -1,4 +1,4 @@
-// 职责: 验证视频参考校验提示、音视频 HTTP 失败的中英文提示及预期错误日志。
+// 职责: 验证草稿保存与音视频生成错误按实际原因给出本地化处理建议。
 // 关联文件:
 //   lib/desktop/features/production/composer.dart
 //   lib/desktop/features/production/support.dart
@@ -10,6 +10,11 @@
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
 
+import 'package:sqlite3/sqlite3.dart';
+import 'package:reveric/shared/models/audio/exception.dart';
+import 'package:reveric/shared/services/storyboard/service.dart';
+import 'package:reveric/shared/services/working_overlay.dart';
+import 'package:reveric/shared/models/storyboard/prompt.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
@@ -34,6 +39,171 @@ import 'package:reveric/shared/services/ai/video/agnes.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('draft save failures identify the cause without exposing diagnostics', () {
+    final cases = <(Object, String)>[
+      (
+        const StoryboardException('audio_reference_format'),
+        LocaleKeys.productionDraftSaveAudioFormat,
+      ),
+      (
+        const AudioException('audio_reference_format'),
+        LocaleKeys.productionDraftSaveAudioFormat,
+      ),
+      (
+        const AudioException('invalid_config'),
+        LocaleKeys.productionDraftSaveAudioModel,
+      ),
+      (
+        const AudioException('audio_reference_count'),
+        LocaleKeys.productionDraftSaveAudioCount,
+      ),
+      (
+        const AudioException('audio_reference_mixed'),
+        LocaleKeys.productionAudioReferenceMixed,
+      ),
+      for (final (field, key) in [
+        ('model', LocaleKeys.productionDraftSaveModel),
+        ('ratio', LocaleKeys.productionDraftSaveRatio),
+        ('resolution', LocaleKeys.productionDraftSaveResolution),
+        ('duration', LocaleKeys.productionDraftSaveDuration),
+        ('reference_mode', LocaleKeys.productionDraftSaveMode),
+      ])
+        (StoryboardException.field('invalid_config', field), key),
+      (
+        const StoryboardException('invalid_config'),
+        LocaleKeys.productionDraftSaveConfig,
+      ),
+      (
+        const StoryboardException('source_missing'),
+        LocaleKeys.productionDraftSaveSource,
+      ),
+      (
+        const StoryboardException('invalid_asset'),
+        LocaleKeys.productionDraftSaveAsset,
+      ),
+      (
+        const StoryboardException('invalid_reference'),
+        LocaleKeys.productionDraftSaveReference,
+      ),
+      (
+        const StoryboardException.field('invalid_config', 'duplicate'),
+        LocaleKeys.productionDraftSaveDuplicate,
+      ),
+      (
+        const StoryboardException.field('invalid_reference', 'cycle'),
+        LocaleKeys.productionDraftSaveCycle,
+      ),
+      (
+        const StoryboardException.field('invalid_reference', 'image_only'),
+        LocaleKeys.productionDraftSaveImageOnly,
+      ),
+      (
+        const FormatException('Duplicate production input'),
+        LocaleKeys.productionDraftSaveDuplicate,
+      ),
+      (
+        const FormatException('Voice requires a character image input'),
+        LocaleKeys.productionDraftSaveVoice,
+      ),
+      (
+        const FileSystemException('private-marker', '/private/file.png'),
+        LocaleKeys.productionDraftSaveFile,
+      ),
+      (
+        const WorkingOverlayConflictException(
+          resourcePath: 'private-marker',
+          resourceId: 'private-id',
+        ),
+        LocaleKeys.productionDraftSaveConflict,
+      ),
+      for (final (code, key) in [
+        (SqlError.SQLITE_FULL, LocaleKeys.productionDraftSaveStorageFull),
+        (SqlError.SQLITE_BUSY, LocaleKeys.productionDraftSaveStorageBusy),
+        (SqlError.SQLITE_LOCKED, LocaleKeys.productionDraftSaveStorageBusy),
+        (
+          SqlExtendedError.SQLITE_BUSY_SNAPSHOT,
+          LocaleKeys.productionDraftSaveStorageBusy,
+        ),
+        (
+          SqlError.SQLITE_READONLY,
+          LocaleKeys.productionDraftSaveStorageReadOnly,
+        ),
+        (SqlError.SQLITE_IOERR, LocaleKeys.productionDraftSaveStorage),
+        (SqlError.SQLITE_CONSTRAINT, LocaleKeys.productionDraftSaveStorage),
+      ])
+        (
+          SqliteException(
+            extendedResultCode: code,
+            message: 'private-marker',
+            causingStatement: 'private-sql',
+          ),
+          key,
+        ),
+      (StateError('private-marker'), LocaleKeys.productionDraftSaveUnknown),
+      (
+        const FormatException('unrelated private-marker'),
+        LocaleKeys.productionDraftSaveUnknown,
+      ),
+    ];
+    for (final (error, expected) in cases) {
+      expect(
+        productionDraftSaveErrorKey(error),
+        expected,
+        reason: error.runtimeType.toString(),
+      );
+    }
+    for (final locale in ['en', 'zh-CN']) {
+      final strings =
+          jsonDecode(
+                File(
+                  'assets/translations/$locale/screenplay.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      for (final (_, key) in cases) {
+        final message = strings[key] as String;
+        expect(message, isNotEmpty);
+        expect(message, isNot(contains('private-marker')));
+        expect(message, isNot(contains('private-sql')));
+        expect(message, isNot(strings[LocaleKeys.productionInvalid]));
+      }
+      // A storage failure must never ask the user to change generation settings.
+      final full = strings[LocaleKeys.productionDraftSaveStorageFull] as String;
+      expect(full, contains(locale == 'en' ? 'Free up space' : '释放'));
+      final model = strings[LocaleKeys.productionDraftSaveModel] as String;
+      expect(
+        model,
+        contains(locale == 'en' ? 'Select a model again' : '重新选择模型'),
+      );
+    }
+  });
+
+  test(
+    'only malformed prompt references receive the reference-tag repair hint',
+    () {
+      expect(StoryboardPrompt.parse('').source, isEmpty);
+      for (final source in [
+        '<ref broken>',
+        '<ref input_id="one" input_id="two" label="name" />',
+        '<ref label="name" />',
+      ]) {
+        try {
+          StoryboardPrompt.parse(source);
+          fail('Expected malformed reference to fail');
+        } on FormatException catch (error) {
+          expect(
+            productionDraftSaveErrorKey(error),
+            LocaleKeys.productionDraftSavePrompt,
+          );
+        }
+      }
+      expect(
+        productionDraftSaveErrorKey(const FormatException('unrelated')),
+        LocaleKeys.productionDraftSaveUnknown,
+      );
+    },
+  );
+
   for (final (model, mode, inputRoles, expected) in [
     (
       'veo-3.1',

@@ -1587,7 +1587,7 @@ class ProductionCanvasService {
     while (pending.isNotEmpty) {
       final current = pending.removeLast();
       if (current == sourceId) {
-        throw const StoryboardException('invalid_reference');
+        throw const StoryboardException.field('invalid_reference', 'cycle');
       }
       if (!visited.add(current)) {
         continue;
@@ -1785,15 +1785,17 @@ class ProductionCanvasService {
     required List<ProductionInput> inputs,
     required ShotEditOrigin origin,
   }) async {
-    if (!node.isGenerationNode ||
-        inputs.map((e) => e.id).toSet().length != inputs.length) {
+    if (!node.isGenerationNode) {
       throw const StoryboardException('invalid_config');
+    }
+    if (inputs.map((e) => e.id).toSet().length != inputs.length) {
+      throw const StoryboardException.field('invalid_config', 'duplicate');
     }
     if (node.type == canvasNodeTypeImage &&
         inputs.any(
           (i) => !i.isPrompt && i.role != VideoInputRole.reference_image,
         )) {
-      throw const StoryboardException('invalid_reference');
+      throw const StoryboardException.field('invalid_reference', 'image_only');
     }
     if (node.type == canvasNodeTypeAudio) {
       if (inputs.any(
@@ -1813,7 +1815,7 @@ class ProductionCanvasService {
             ? null
             : await library.database.aiProviderDao.getById(providerId);
         if (provider == null) {
-          throw const StoryboardException('invalid_config');
+          throw const StoryboardException.field('invalid_config', 'model');
         }
         AudioCapabilities.forProvider(model, provider).validateSelection(
           inputs.where((i) => !i.isPrompt).map((i) => i.role.kind.name),

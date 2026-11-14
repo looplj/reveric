@@ -181,7 +181,7 @@ class _ComposerForm extends HookConsumerWidget {
     useEffect(() => prompt.dispose, [prompt]);
     final inputs = useState(initial.inputs);
     final busy = useState(false);
-    final error = useState<String?>(null);
+    final error = useState<Object?>(null);
     final saved = useRef('');
     // 型号能力由启动时的远端登记决定；完成后重建，让型号下拉拿到最新的能力表。
     ref.watch(purefoxMediaModelsProvider);
@@ -300,7 +300,7 @@ class _ComposerForm extends HookConsumerWidget {
       } catch (e, st) {
         _log.error('Composer autosave failed', error: e, stackTrace: st);
         if (context.mounted) {
-          error.value = context.t(LocaleKeys.productionInvalid);
+          error.value = e;
         }
         return false;
       }
@@ -991,7 +991,7 @@ class _ComposerForm extends HookConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: RevericSpacing.xs),
                     child: Text(
-                      error.value!,
+                      context.t(productionDraftSaveErrorKey(error.value!)),
                       style: typo.uiTiny.copyWith(color: colors.error),
                     ),
                   ),

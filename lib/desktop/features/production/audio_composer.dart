@@ -217,7 +217,7 @@ class _AudioForm extends HookConsumerWidget {
     final saved = useRef('');
     final pending = useRef<Timer?>(null);
     final writing = useRef<Future<bool>?>(null);
-    final error = useState(false);
+    final error = useState<Object?>(null);
     final overlay = ref.watch(workingOverlayServiceProvider(path));
     String value(ShotField key) => form.getValue<String>(key) ?? '';
     String signature() =>
@@ -262,7 +262,7 @@ class _AudioForm extends HookConsumerWidget {
         saved.value = version;
         external.sync((await service.shots.getShot(node.clipId!))!);
         if (context.mounted) {
-          error.value = false;
+          error.value = null;
         }
         return true;
       } catch (failure, stack) {
@@ -272,7 +272,7 @@ class _AudioForm extends HookConsumerWidget {
           stackTrace: stack,
         );
         if (context.mounted) {
-          error.value = true;
+          error.value = failure;
         }
         return false;
       }
@@ -594,11 +594,11 @@ class _AudioForm extends HookConsumerWidget {
                   ),
                   style: typo.uiTiny.copyWith(color: colors.textMuted),
                 ),
-              if (error.value)
+              if (error.value != null)
                 Padding(
                   padding: const EdgeInsets.only(top: RevericSpacing.xs),
                   child: Text(
-                    context.t(LocaleKeys.productionInvalid),
+                    context.t(productionDraftSaveErrorKey(error.value!)),
                     style: typo.uiTiny.copyWith(color: colors.error),
                   ),
                 ),

@@ -22,15 +22,19 @@ import '../../utils/short_entity_id.dart';
 import '../../utils/short_entity_id_allocator.dart';
 
 class StoryboardException implements Exception {
-  const StoryboardException(this.code, [this.detail]);
+  const StoryboardException(this.code, [this.detail]) : field = null;
+  const StoryboardException.field(this.code, this.field) : detail = null;
   final String code;
+
+  /// 校验失败的字段或引用条件，供界面映射可操作的提示。
+  final String? field;
 
   /// 给 Agent 的具体原因；界面按 [code] 映射文案，不展示它。
   final String? detail;
 
   @override
   String toString() => detail == null
-      ? 'StoryboardException($code)'
+      ? 'StoryboardException($code${field == null ? '' : ', field=$field'})'
       : 'StoryboardException($code): $detail';
 }
 
@@ -662,22 +666,30 @@ class StoryboardService {
     final model = values['model_id'] as String?;
     // 用户只选全参考 / 首尾帧；文生视频、首帧由提交时按输入换算。
     if (!{
-          VideoMode.reference.name,
-          VideoMode.first_last_frame.name,
-        }.contains(mode) ||
-        (duration != null && duration <= 0) ||
-        (provider == null) != (model == null) ||
+      VideoMode.reference.name,
+      VideoMode.first_last_frame.name,
+    }.contains(mode)) {
+      throw const StoryboardException.field('invalid_config', 'reference_mode');
+    }
+    if (duration != null && duration <= 0) {
+      throw const StoryboardException.field('invalid_config', 'duration');
+    }
+    if ((provider == null) != (model == null) ||
         (provider != null &&
-            (provider.trim().isEmpty || model!.trim().isEmpty)) ||
-        (order != null && order < 0) ||
-        (values['resolution'] as String).trim().isEmpty) {
+            (provider.trim().isEmpty || model!.trim().isEmpty))) {
+      throw const StoryboardException.field('invalid_config', 'model');
+    }
+    if (order != null && order < 0) {
       throw const StoryboardException('invalid_config');
+    }
+    if ((values['resolution'] as String).trim().isEmpty) {
+      throw const StoryboardException.field('invalid_config', 'resolution');
     }
     final ratio = values['ratio'] as String;
     if (!RegExp(r'^\d+:\d+$').hasMatch(ratio) &&
         ratio != 'adaptive' &&
         !(kind == 'image' && ratio == 'auto')) {
-      throw const StoryboardException('invalid_config');
+      throw const StoryboardException.field('invalid_config', 'ratio');
     }
     final companion = ProductionClipsCompanion.insert(
       id: id,

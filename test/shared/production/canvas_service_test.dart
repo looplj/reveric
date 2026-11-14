@@ -165,6 +165,53 @@ void main() {
     await root.delete(recursive: true);
   });
   test(
+    'draft save identifies invalid fields and accepts empty image prompts',
+    () async {
+      final canvas = await service.ensureCanvas(episode);
+      final image = await service.addImage(canvas.id);
+      await service.saveImage(
+        nodeId: image.id,
+        overlay: overlay,
+        inputs: [],
+        draft: const ProductionImageDraft(
+          prompt: '',
+          modelId: '',
+          ratio: 'auto',
+          resolution: '1K',
+        ),
+      );
+      expect((await service.shots.getShot(image.clipId!))!.prompt, isEmpty);
+      final video = await service.ensureShotNode(shot.id);
+      for (final (values, field) in <(Map<String, dynamic>, String)>[
+        ({'provider_id': 'provider', 'model_id': ''}, 'model'),
+        ({'provider_id': null, 'model_id': 'model'}, 'model'),
+        ({'ratio': 'not-a-ratio'}, 'ratio'),
+        ({'resolution': ''}, 'resolution'),
+        ({'duration_ms': 0}, 'duration'),
+        ({'reference_mode': 'invalid'}, 'reference_mode'),
+      ]) {
+        await expectLater(
+          service.saveDraft(
+            nodeId: video.id,
+            values: {...service.shots.snapshot(shot), ...values},
+            inputs: [],
+            overlay: overlay,
+          ),
+          throwsA(
+            isA<StoryboardException>()
+                .having((e) => e.code, 'code', 'invalid_config')
+                .having((e) => e.field, 'field', field),
+          ),
+        );
+        expect(
+          service.shots.snapshot((await service.shots.getShot(shot.id))!),
+          service.shots.snapshot(shot),
+        );
+      }
+    },
+  );
+
+  test(
     'video audio choice survives save, copy and request compilation',
     () async {
       await appDb

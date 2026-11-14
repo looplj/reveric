@@ -587,6 +587,52 @@ abstract final class LocaleKeys {
   static const productionUpload = 'screenplay.production.upload';
   static const productionPrompt = 'screenplay.production.prompt';
   static const productionInvalid = 'screenplay.production.invalid';
+  static const productionDraftSaveUnknown =
+      'screenplay.production.draftSaveUnknown';
+  static const productionDraftSaveConfig =
+      'screenplay.production.draftSaveConfig';
+  static const productionDraftSaveModel =
+      'screenplay.production.draftSaveModel';
+  static const productionDraftSaveRatio =
+      'screenplay.production.draftSaveRatio';
+  static const productionDraftSaveResolution =
+      'screenplay.production.draftSaveResolution';
+  static const productionDraftSaveDuration =
+      'screenplay.production.draftSaveDuration';
+  static const productionDraftSaveMode = 'screenplay.production.draftSaveMode';
+  static const productionDraftSaveReference =
+      'screenplay.production.draftSaveReference';
+  static const productionDraftSaveDuplicate =
+      'screenplay.production.draftSaveDuplicate';
+  static const productionDraftSaveCycle =
+      'screenplay.production.draftSaveCycle';
+  static const productionDraftSaveImageOnly =
+      'screenplay.production.draftSaveImageOnly';
+  static const productionDraftSavePrompt =
+      'screenplay.production.draftSavePrompt';
+  static const productionDraftSaveVoice =
+      'screenplay.production.draftSaveVoice';
+  static const productionDraftSaveSource =
+      'screenplay.production.draftSaveSource';
+  static const productionDraftSaveAsset =
+      'screenplay.production.draftSaveAsset';
+  static const productionDraftSaveFile = 'screenplay.production.draftSaveFile';
+  static const productionDraftSaveConflict =
+      'screenplay.production.draftSaveConflict';
+  static const productionDraftSaveStorageFull =
+      'screenplay.production.draftSaveStorageFull';
+  static const productionDraftSaveStorageBusy =
+      'screenplay.production.draftSaveStorageBusy';
+  static const productionDraftSaveStorageReadOnly =
+      'screenplay.production.draftSaveStorageReadOnly';
+  static const productionDraftSaveStorage =
+      'screenplay.production.draftSaveStorage';
+  static const productionDraftSaveAudioFormat =
+      'screenplay.production.draftSaveAudioFormat';
+  static const productionDraftSaveAudioCount =
+      'screenplay.production.draftSaveAudioCount';
+  static const productionDraftSaveAudioModel =
+      'screenplay.production.draftSaveAudioModel';
   static const productionFailed = 'screenplay.production.failed';
   static const productionExport = 'screenplay.production.export';
   static const productionExportResult = 'screenplay.production.exportResult';
