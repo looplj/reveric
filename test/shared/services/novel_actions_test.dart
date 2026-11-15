@@ -74,7 +74,7 @@ void main() {
           expect(work.contentKind, contentKindCanvas);
           final content = NovelContentDatabase(work.contentDatabasePath!);
           expect(await content.select(content.screenplays).get(), hasLength(1));
-          expect((await content.screenplayDao.getRoot())!.styleId, isNotNull);
+          expect((await content.screenplayDao.getRoot())!.styleId, isNull);
           final canvases = await content.select(content.canvases).get();
           expect(canvases, hasLength(1));
           expect(canvases.single.kind, canvasKindProduction);
@@ -442,7 +442,7 @@ void main() {
         addTearDown(contentDb.close);
         final root = await contentDb.screenplayDao.getRoot();
         expect(root, isNotNull);
-        expect(root!.styleId, 'preset:premium-costume-drama');
+        expect(root!.styleId, isNull);
         final seasons = await contentDb.screenplayDao.getSeasons(root.id);
         expect(seasons, hasLength(1));
         expect(seasons.single.seasonNumber, 1);
@@ -464,50 +464,43 @@ void main() {
     );
 
     test(
-      'screenplay creation persists one style and metadata edits preserve user choice',
+      'screenplay creation leaves production style unset and metadata edits keep that choice',
       () async {
-        await _configureTemporaryStorage('screenplay_default_style');
+        await _configureTemporaryStorage('screenplay_style');
         final service = NovelActionsService(appDb);
-        for (final entry in [
-          (category: '都市', tags: <String>[], expected: 'cn-urban-realism'),
-          (category: '都市', tags: ['武侠'], expected: 'eastern-wuxia-poetic'),
-          (category: '都市', tags: ['武侠', '3D'], expected: 'semi-real-cg'),
-          (category: '未知分类', tags: ['穿越'], expected: 'premium-costume-drama'),
-        ]) {
-          final id = await service.createNovel(
-            title: 'Style ${entry.expected}',
-            description: '',
-            contentKind: contentKindScreenplay,
-            category: entry.category,
-            tags: entry.tags,
+        final id = await service.createNovel(
+          title: 'Style unset',
+          description: '',
+          contentKind: contentKindScreenplay,
+          category: '都市',
+          tags: ['武侠', '3D'],
+        );
+        final novel = (await appDb.novelDao.get(id))!;
+        final db = NovelContentDatabase(novel.contentDatabasePath!);
+        try {
+          final root = (await db.screenplayDao.getRoot())!;
+          expect(root.styleId, isNull);
+          await (db.update(
+            db.screenplays,
+          )..where((row) => row.id.equals(root.id))).write(
+            const ScreenplaysCompanion(styleId: Value('preset:pixel-art')),
           );
-          final novel = (await appDb.novelDao.get(id))!;
-          final db = NovelContentDatabase(novel.contentDatabasePath!);
-          try {
-            final root = (await db.screenplayDao.getRoot())!;
-            expect(root.styleId, 'preset:${entry.expected}');
-            await (db.update(
-              db.screenplays,
-            )..where((row) => row.id.equals(root.id))).write(
-              const ScreenplaysCompanion(styleId: Value('preset:pixel-art')),
-            );
-            await service.updateNovelMetadata(
-              novelId: id,
-              category: '宫斗',
-              tags: ['水墨'],
-            );
-            expect(
-              (await db.screenplayDao.getRoot())!.styleId,
-              'preset:pixel-art',
-            );
-            await (db.update(db.screenplays)
-                  ..where((row) => row.id.equals(root.id)))
-                .write(const ScreenplaysCompanion(styleId: Value(null)));
-            await service.updateNovelMetadata(novelId: id, tags: ['3D']);
-            expect((await db.screenplayDao.getRoot())!.styleId, isNull);
-          } finally {
-            await db.close();
-          }
+          await service.updateNovelMetadata(
+            novelId: id,
+            category: '宫斗',
+            tags: ['水墨'],
+          );
+          expect(
+            (await db.screenplayDao.getRoot())!.styleId,
+            'preset:pixel-art',
+          );
+          await (db.update(db.screenplays)
+                ..where((row) => row.id.equals(root.id)))
+              .write(const ScreenplaysCompanion(styleId: Value(null)));
+          await service.updateNovelMetadata(novelId: id, tags: ['3D']);
+          expect((await db.screenplayDao.getRoot())!.styleId, isNull);
+        } finally {
+          await db.close();
         }
       },
     );

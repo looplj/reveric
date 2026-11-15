@@ -141,10 +141,7 @@ void main() {
     expect(documents, hasLength(4));
     expect(documents.map((row) => row.title).toSet(), hasLength(4));
 
-    expect(
-      (await contentDatabase.screenplayDao.getRoot())!.styleId,
-      'preset:cn-suspense-cold',
-    );
+    expect((await contentDatabase.screenplayDao.getRoot())!.styleId, isNull);
     final episode = (await contentDatabase.screenplayDao.getEpisodes(
       (await contentDatabase.screenplayDao.getSeasons(
         (await contentDatabase.screenplayDao.getRoot())!.id,

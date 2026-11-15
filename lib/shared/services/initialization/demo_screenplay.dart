@@ -16,7 +16,6 @@ import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
 import '../../models/content_kind.dart';
 import '../../models/novel_type.dart';
-import '../../models/production/default_style.dart';
 import '../../models/screenplay_element.dart';
 import '../novel_content.dart';
 import '../screenplay_service.dart';
@@ -103,10 +102,6 @@ Future<void> _seedDemoContent(
   final screenplayService = ScreenplayService(database, idBuilder: idBuilder);
   final structure = await screenplayService.createInitialStructure(
     plannedEpisodeCount: demoScreenplayEpisodes.length,
-    style: initialProductionStyle(
-      category: demoScreenplayCategory,
-      tags: demoScreenplayTags,
-    ),
   );
   await screenplayService.updateSeason(
     seasonId: structure.seasonId,
