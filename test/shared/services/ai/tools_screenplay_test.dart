@@ -22,6 +22,8 @@ import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   late _ScreenplayReadProbeDatabase database;
   late AppDatabase appDatabase;
@@ -101,8 +103,9 @@ void main() {
     final decoded = jsonDecode(jsonEncode(result)) as Map<String, dynamic>;
     expect(decoded['details'], [characterId]);
     expect(
-      (await database.screenplayDao.getSceneCharacters(sceneId))
-          .map((row) => row.characterId),
+      (await database.screenplayDao.getSceneCharacters(
+        sceneId,
+      )).map((row) => row.characterId),
       [characterId],
     );
   });
@@ -138,10 +141,7 @@ void main() {
         );
         expect(result['error'], isNotNull, reason: '$result');
       }
-      final schema = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/beats'},
-      );
+      final schema = resourceContractTreeForTesting('/_schema/beats');
       expect(schema['error'], isNotNull);
       final changed = await tools.executeTool(
         name: 'Write',
@@ -1378,10 +1378,7 @@ void main() {
       pathSchemaFieldNotes(kind: contentKindScreenplay),
       isNot(contains('character_deleted')),
     );
-    final schema = await tools.executeTool(
-      name: 'Read',
-      input: {'path': '/_schema/scenes'},
-    );
+    final schema = resourceContractTreeForTesting('/_schema/scenes');
     expect(schema.toString(), isNot(contains('character_deleted')));
   });
 
@@ -2699,10 +2696,7 @@ void main() {
       expect(createdEpisode.title, '陨落的天才');
       expect(createdEpisode.episodeNumber, 2);
       expect(createdEpisode.outline, isEmpty);
-      final contract = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/episodes'},
-      );
+      final contract = resourceContractTreeForTesting('/_schema/episodes');
       expect(contract['fields']['episode_number']['create'], isFalse);
       expect(contract['fields']['outline']['create'], isFalse);
       await service.createEpisode(seasonId: initial.seasonId);

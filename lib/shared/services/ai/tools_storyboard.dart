@@ -70,10 +70,27 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
             }
           }
         }
-        return _applyListingFilters({
-          'type': 'listing',
-          'entries': [for (final row in rows) data(row)],
-        }, parsed.queryParameters);
+        final filtered = _applyListingFilters(
+          {
+            'type': 'listing',
+            'entries': [for (final row in rows) data(row)],
+          },
+          {
+            for (final entry in parsed.queryParameters.entries)
+              if (entry.key != 'view') entry.key: entry.value,
+          },
+        );
+        if (parsed.queryParameters['view'] != 'summary') {
+          return filtered;
+        }
+        return {
+          ...filtered,
+          'entries': [
+            for (final entry
+                in (filtered['entries'] as List).cast<Map<String, dynamic>>())
+              Map<String, dynamic>.from(entry)..remove('prompt'),
+          ],
+        };
       }
       final origin = operation.tool == _ResourceTool.read
           ? const ShotEditOrigin.manual()

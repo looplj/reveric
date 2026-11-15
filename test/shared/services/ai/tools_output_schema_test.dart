@@ -19,6 +19,8 @@ import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   late NovelContentDatabase db;
   late AppDatabase appDb;
@@ -256,7 +258,7 @@ void main() {
         });
         paths.add(created['path'] as String);
       }
-      final contract = await call('Read', {'path': '/_schema/chapters'});
+      final contract = resourceContractTreeForTesting('/_schema/chapters');
       final operation = (contract['operation_contracts'] as List)
           .cast<Map>()
           .singleWhere(
@@ -320,7 +322,7 @@ void main() {
       final read = await call('Read', {'path': path});
       expect(read['value'], containsPair('mode', null));
       expect(read, isNot(contains('mode')));
-      final contract = await call('Read', {'path': '/_schema/canvas'});
+      final contract = resourceContractTreeForTesting('/_schema/canvas');
       final operation = (contract['operation_contracts'] as List)
           .cast<Map>()
           .singleWhere((op) => op['tool'] == 'Read' && op['field'] == 'layout');
@@ -483,9 +485,7 @@ void main() {
         ].map((entry) => entry['character_id']),
         characters,
       );
-      final sceneContract = await call('Read', {
-        'path': '/_schema/scenes',
-      }, manager: script);
+      final sceneContract = resourceContractTreeForTesting('/_schema/scenes');
       final castOperation = (sceneContract['operation_contracts'] as List)
           .cast<Map>()
           .singleWhere((op) => op['tool'] == 'Read' && op['field'] == 'cast');
@@ -514,7 +514,7 @@ void main() {
     'read schemas require identities and distinguish documents from folders',
     () async {
       Future<Map> schemaFor(String collection, String target) async {
-        final contract = await call('Read', {'path': '/_schema/$collection'});
+        final contract = resourceContractTreeForTesting('/_schema/$collection');
         return (contract['operation_contracts'] as List)
                 .cast<Map>()
                 .singleWhere(
@@ -594,7 +594,7 @@ void main() {
       },
     });
     final result = await call('GraphSearch', {'type': 'character', 'id': 'a'});
-    final contract = await call('Read', {'path': '/_schema/relations'});
+    final contract = resourceContractTreeForTesting('/_schema/relations');
     final listing = (contract['operation_contracts'] as List)
         .cast<Map>()
         .singleWhere((op) => op['tool'] == 'Read' && op['target'] == 'listing');
@@ -625,7 +625,7 @@ void main() {
           ],
         },
       });
-      final contract = await call('Read', {'path': '/_schema/outlines'});
+      final contract = resourceContractTreeForTesting('/_schema/outlines');
       final operations = (contract['operation_contracts'] as List).cast<Map>();
       final listingSchema =
           operations.singleWhere(
@@ -658,7 +658,7 @@ void main() {
         'fields': {'title': '契约章节', 'content': '旧词\n旧词'},
       });
       final path = created['path'] as String;
-      final schema = await call('Read', {'path': '/_schema/chapters'});
+      final schema = resourceContractTreeForTesting('/_schema/chapters');
       final operations = (schema['operation_contracts'] as List).cast<Map>();
       Future<void> read(String path, String target, {String? field}) async {
         final result = await call('Read', {
@@ -754,7 +754,7 @@ void main() {
       'path': 'foreshadowing',
       'fields': {'title': '线索', 'setup': '铺垫'},
     });
-    final contract = await call('Read', {'path': '/_schema/foreshadowing'});
+    final contract = resourceContractTreeForTesting('/_schema/foreshadowing');
     final operations = (contract['operation_contracts'] as List).cast<Map>();
     final listingSchema =
         operations.singleWhere(
@@ -873,9 +873,7 @@ void main() {
       expect(edited.containsKey('all'), isFalse);
       final read = await call('Read', {'path': path}, manager: manager);
       expect(read['value'], '新新');
-      final contract = await call('Read', {
-        'path': '/_schema/episodes',
-      }, manager: manager);
+      final contract = resourceContractTreeForTesting('/_schema/episodes');
       final op = (contract['operation_contracts'] as List)
           .cast<Map>()
           .singleWhere(

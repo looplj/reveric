@@ -16,7 +16,7 @@ description: 维护画布作品的制作资源、节点布局、素材输入和�
 - `production/canvas`：画布及其 `nodes`、`edges`。
 - `production/clips`：制作片段，其 `generations` 保存生成记录。
 
-画布作品暴露 `profile` 和 `production`。`profile` 与小说、剧本相同。其余 shared 组以及小说、剧本集合不开放。人物、场景和道具的外观依据来自用户上传的剧本、素材或文本节点。字段与操作契约按需读取 `/_schema/production`，沿用工具返回的真实路径和 ID。
+画布作品暴露 `profile` 和 `production`。`profile` 与小说、剧本相同。其余 shared 组以及小说、剧本集合不开放。人物、场景和道具的外观依据来自用户上传的剧本、素材或文本节点。字段与操作契约按资源读取，如 `/_schema/production/clips`、`/_schema/production/settings`、`/_schema/production/canvas/nodes`；`/_schema/production` 提供子资源查询入口，沿用工具返回的真实路径和 ID。
 
 画布作品没有 `is_storyboard` 或排序字段，成片顺序由剪辑时间线决定。界面“分镜”指视频节点，“Shot N”指单条节点提示词里的内部镜头；用户说“第 N 个分镜”时结合标题、已读内容和对话定位，无法确定就询问，不用坐标或创建时间猜编号。
 

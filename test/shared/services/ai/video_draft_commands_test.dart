@@ -314,8 +314,9 @@ void main() {
       expect(result['can_complete_draft'], true);
       expect(
         DateTime.parse(result['draft_expires_at'] as String),
-        now.add(const Duration(days: 7)),
+        now.add(const Duration(days: 7)).toUtc(),
       );
+      expect(result['draft_expires_at'], endsWith('Z'));
       final record = await readTask(result['task_id'] as String);
       expect(record['draft'], true, reason: '$record');
       expect(record['can_complete_draft'], true);

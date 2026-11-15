@@ -1,5 +1,7 @@
 # 分镜与媒体节点、输入与生成
 
+定位或选择片段时用 `/clips?view=summary`，可与 scene_id、episode_id 等筛选组合；批量审查提示词用 `view=full`，省略 view 仍返回完整列表。两种视图均支持分页，单条详情行为相同。
+
 界面“分镜”对应已编入场次的图片或视频制作条目；“视频”“图片”“音频”对应制作画布的媒体节点。下文片段与 `/clips` 是同一制作资源的操作名称，不是剪辑时间线中的片段。
 
 ## 定位和配置
@@ -84,7 +86,7 @@
 
 视频先预览再出高清时：
 
-- 先用 `Run providers models` 查询片段所选渠道与型号，要求 `available=true` 且 `capabilities.supports_draft=true`；草稿与高清规格、有效期见 `capabilities.draft`。能力未知或不支持时，不尝试草稿参数。
+- 先用 `Run providers models` 使用 provider_id、kind=video、model_id 精确查询片段所选渠道与型号，要求 `available=true` 且 `capabilities.supports_draft=true`；草稿与高清规格、有效期见 `capabilities.draft`。能力未知或不支持时，不尝试草稿参数。
 - 生成草稿：`generate-video` 的 options 增加布尔 `draft: true`（默认 false）。这是本次生成的选项，不修改片段保存的清晰度；草稿也是付费生成。
 - 草稿转高清：同一命令传 `draft_task_id`，复制当前片段生成记录中的本地 `id`，不能传 `run_id` 或供应商任务 ID。`draft: true` 与 `draft_task_id` 互斥。只接受当前片段已完成且仍可生成高清的草稿，使用原草稿的服务商、提示词、输入、时长和画幅，不使用片段后来修改的配置；高清另行计费。
 
@@ -99,7 +101,7 @@
 
 普通生成和草稿生成使用已保存配置，不在 options 中临时塞入 prompt、模型或输入。每次调用都会发起新的生成尝试；查询已有任务使用返回的 `run_id` 或生成记录，不重复调用生成命令。同一片段有准备、提交或运行中的生成任务时，会拒绝再次生成。
 
-返回后台回执后，用「媒体处理与剪辑」的后台任务附件读取、等待或取消对应 `run_id`。读取该片段的 `generations` 及其返回的记录路径可核对持久生成状态、结果文件与 `result_applied`；生成记录的 ID 不能当作运行 ID。
+返回后台回执后，用「媒体处理与剪辑」的后台任务附件读取、等待或取消对应 `run_id`。片段的 `generations` 列表返回状态、模型、创建时间、结果文件及 `result_applied` 等摘要；核对生成时的提示词和参考输入时，沿列表返回的记录 `path` 读取单条详情中的 `request`，也可读取该路径下的 `/request`。请求快照只在详情中返回；生成记录的 ID 不能当作运行 ID。
 
 需要采用已有结果时，Write 片段的 `adopted_asset_id`，使用 `Run assets list/read` 或生成记录返回的真实 asset id；设为 null 会清除当前采用结果。外部文件先导入成资产，再采用返回的 id。生成完成后仍须核对实际采用状态，不能把任务完成当成已采用；遇到 `action_required` 或 `submission_unknown` 先查记录并说明状态，不重复提交生成命令。
 

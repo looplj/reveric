@@ -16,6 +16,8 @@ import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   late NovelContentDatabase db;
   late AppDatabase app;
@@ -44,8 +46,8 @@ void main() {
   });
   Future<Map<String, dynamic>> call(String name, Map<String, dynamic> input) =>
       tools.executeTool(name: name, input: input);
-  Future<Map<String, dynamic>> contract(String collection) =>
-      call('Read', {'path': '/_schema/$collection'});
+  Map<String, dynamic> contract(String collection) =>
+      resourceContractTreeForTesting('/_schema/$collection');
   Map fieldInput(Map node, String field) =>
       (node['operation_contracts'] as List).cast<Map>().singleWhere(
             (op) =>
@@ -92,7 +94,7 @@ void main() {
           },
         });
         final path = created['path'] as String;
-        final node = await contract('chapters');
+        final node = contract('chapters');
         for (final field in [
           'content',
           'outline',
@@ -130,7 +132,7 @@ void main() {
           'fields': {'title': '章节', 'tension': 7, 'volume_id': volume['id']},
         });
         final path = created['path'] as String;
-        final node = await contract('chapters');
+        final node = contract('chapters');
         for (final field in ['tension', 'volume_id']) {
           expect(node['fields'][field]['nullable'], isTrue);
           expect(
@@ -174,7 +176,7 @@ void main() {
             'fields': {'title': collection, 'content': '原文', 'category': '分类'},
           });
           final path = created['path'] as String;
-          final node = await contract(collection);
+          final node = contract(collection);
           for (final field in ['content', 'category']) {
             expect(
               fieldInput(node, field),
@@ -235,7 +237,7 @@ void main() {
           },
         });
         final path = created['path'] as String;
-        final node = await contract('foreshadowing');
+        final node = contract('foreshadowing');
         for (final field in [
           'setup',
           'payoff',
@@ -467,7 +469,7 @@ void main() {
         ),
       ];
       for (final (collection, path, field, value) in targets) {
-        final node = await contract(collection);
+        final node = contract(collection);
         expect(fieldInput(node, field)['nullable'] == true, value is int);
         final set = await call('Write', {
           'path': '$path/$field',
@@ -489,7 +491,7 @@ void main() {
       final stored = (await db.screenplayDao.getScene(scene['id'] as String))!;
       expect(stored.emotion, isEmpty);
       expect(stored.events, isEmpty);
-      final node = await contract('scenes');
+      final node = contract('scenes');
       for (final field in ['location_id', 'interior_exterior']) {
         expect(resourceInput(node)[field]['nullable'], isTrue);
         final ops = (node['operation_contracts'] as List).cast<Map>();

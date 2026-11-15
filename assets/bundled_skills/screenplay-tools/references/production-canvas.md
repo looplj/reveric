@@ -1,6 +1,6 @@
 # 制作画布
 
-先从 `/episodes` 定位目标集，再用 `/episodes/{episode_id}/production/canvas` 操作该集画布。`/canvas/{name}` 保留给构思画布。制片目录不在默认发现结果中展开，明确路径可以直接读取；需要契约时读取 `/_schema/episodes`。
+先从 `/episodes` 定位目标集，再用 `/episodes/{episode_id}/production/canvas` 操作该集画布。`/canvas/{name}` 保留给构思画布。制片目录不在默认发现结果中展开，明确路径可以直接读取；需要契约时读取 `/_schema/episodes/production/canvas`。
 
 ## 设置与节点
 

@@ -6,10 +6,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/content_kind.dart';
+import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
 import 'package:reveric/shared/services/ai/media/production.dart';
 import 'package:reveric/shared/services/ai/tool_operations.dart';
@@ -26,6 +28,8 @@ import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
+
+import '../../../helpers/resource_contract.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -143,6 +147,180 @@ void main() {
   });
 
   test(
+    'clip summary is opt-in and keeps filtering, paging and full prompts',
+    () async {
+      final prompt = List.filled(3000, 'Saved prompt.').join();
+      for (var i = 0; i < 3; i++) {
+        await call('Create', 'production/clips', {
+          'kind': 'image',
+          'title': 'Target $i',
+          'prompt': prompt,
+        });
+      }
+      await call('Create', 'production/clips', {
+        'kind': 'video',
+        'title': 'Other',
+        'prompt': 'Other prompt',
+      });
+      final full = await call('Read', 'production/clips?kind=image');
+      expect(await call('Read', 'production/clips?kind=image&view=full'), full);
+      final first = await tools.executeTool(
+        name: 'Read',
+        input: {'path': 'production/clips?kind=image&view=summary', 'limit': 2},
+      );
+      expect(first['ok'], true, reason: '$first');
+      expect(first['total'], 3);
+      expect(first['has_more'], true);
+      for (final entry in first['entries'] as List) {
+        expect(entry, isNot(contains('prompt')));
+        expect(entry['kind'], 'image');
+        final detail = await call('Read', entry['path'] as String);
+        expect(detail['prompt'], prompt);
+      }
+      expect(jsonEncode(first).length, lessThan(jsonEncode(full).length ~/ 10));
+      final last = await tools.executeTool(
+        name: 'Read',
+        input: {
+          'path': 'production/clips?kind=image&view=summary',
+          'offset': first['next_offset'],
+          'limit': 2,
+        },
+      );
+      expect(last['has_more'], false);
+      expect(last['entries'], hasLength(1));
+      expect(
+        [
+          ...first['entries'] as List,
+          ...last['entries'] as List,
+        ].map((entry) => entry['id']),
+        (full['entries'] as List).map((entry) => entry['id']),
+      );
+      expect(
+        (await call('Read', 'production/clips?view=unknown'))['error_code'],
+        'invalid_argument',
+      );
+      expect(
+        (await call('Read', 'production/clips?view='))['error_code'],
+        'invalid_argument',
+      );
+    },
+  );
+
+  test(
+    'generation pages omit snapshots while details preserve frozen inputs',
+    () async {
+      final clip = await call('Create', 'production/clips', {
+        'kind': 'image',
+        'title': 'History',
+        'prompt': 'Current prompt',
+      });
+      final clipId = clip['id'] as String;
+      final historyPath = 'production/clips/$clipId/generations';
+      final frozen = ImageGenerationRequest(
+        ProductionImageRequest(
+          providerId: 'provider',
+          modelId: 'model',
+          originalPrompt: 'Saved prompt',
+          prompt: List.filled(6000, 'Frozen input.').join(),
+          ratio: '1:1',
+          resolution: '1k',
+          size: null,
+          references: [
+            const ProductionImageReference(
+              assetId: 'saved-asset',
+              inputId: 'reference',
+            ),
+          ],
+        ),
+      );
+      final createdAt = DateTime(2026, 11, 15, 20);
+      for (var i = 0; i < 3; i++) {
+        await app
+            .into(app.generationTasks)
+            .insert(
+              GenerationTasksCompanion.insert(
+                id: 'history-$i',
+                createdAt: Value(createdAt),
+                novelId: 'work',
+                sourceType: 'production_clip',
+                sourceId: clipId,
+                providerId: 'provider',
+                providerType: 'openai',
+                modelId: 'model',
+                status: GenerationTaskStatus.completed,
+                kind: GenerationKind.image,
+                requestJson: frozen,
+              ),
+            );
+      }
+      final first = await tools.executeTool(
+        name: 'Read',
+        input: {'path': historyPath, 'limit': 2},
+      );
+      expect(first['ok'], isTrue);
+      expect(first['total'], 3);
+      expect(first['has_more'], isTrue);
+      final entries = (first['entries'] as List).cast<Map>();
+      expect(entries, hasLength(2));
+      for (final entry in entries) {
+        expect(entry, isNot(contains('request')));
+        expect(entry['model_id'], 'model');
+        expect(entry['created_at'], endsWith('Z'));
+        expect(
+          DateTime.parse(entry['created_at'] as String),
+          createdAt.toUtc(),
+        );
+      }
+      expect(jsonEncode(first).length, lessThan(8000));
+      final second = await tools.executeTool(
+        name: 'Read',
+        input: {
+          'path': historyPath,
+          'limit': 2,
+          'offset': first['next_offset'],
+        },
+      );
+      expect(second['has_more'], isFalse);
+      final last = (second['entries'] as List).single as Map;
+      expect({
+        ...entries.map((entry) => entry['id']),
+        last['id'],
+      }, hasLength(3));
+
+      await call('Write', 'production/clips/$clipId', {
+        'prompt': 'Changed afterwards',
+      });
+      final detail = await call('Read', entries.first['path'] as String);
+      expect(detail['id'], entries.first['id']);
+      expect(detail['request'], frozen.toJson());
+      expect(
+        (await call('Read', '${entries.first['path']}/request'))['value'],
+        frozen.toJson(),
+      );
+      final missing = await call('Read', '$historyPath/missing');
+      expect(missing['error_code'], 'not_found');
+      final other = await call('Create', 'production/clips', {
+        'kind': 'image',
+        'title': 'Other',
+      });
+      expect(
+        (await call(
+          'Read',
+          'production/clips/${other['id']}/generations/${entries.first['id']}',
+        ))['error_code'],
+        'not_found',
+      );
+
+      final contract = resourceContractTreeForTesting(
+        '/_schema/production/clips/generations',
+      );
+      expect(contract['fields']['request']['listing'], isFalse);
+      expect(contract['fields']['request']['detail'], isTrue);
+      expect(contract['fields']['request']['read_path'], isTrue);
+    },
+  );
+
+  test(
     'text Remove and remove_types clean only their downstream prompt references',
     () async {
       final path = 'production/canvas';
@@ -236,7 +414,7 @@ void main() {
         pathSchemaFieldNotes(kind: contentKindCanvas),
         isNot(contains('story_state')),
       );
-      final schema = await call('Read', '/_schema/production');
+      final schema = resourceContractTreeForTesting('/_schema/production');
       final encoded = jsonEncode(schema);
       for (final field in [
         'episode_id',

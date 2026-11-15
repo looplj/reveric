@@ -65,9 +65,7 @@ abstract final class PromptFragments {
     if (fieldNotes.isNotEmpty) {
       buffer.writeln();
       buffer.writeln();
-      buffer.writeln(
-        '字段（未标类型为 string；* 为创建必需；readonly 不可传入写操作；nullable 表示可为空）：',
-      );
+      buffer.writeln('字段：');
       buffer.write(fieldNotes);
     }
     return buffer.toString().trim();

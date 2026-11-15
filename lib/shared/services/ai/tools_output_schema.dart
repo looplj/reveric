@@ -1,4 +1,4 @@
-// 职责: 声明内置工具输出结构，并从资源定义生成 Read 按需返回契约。
+// 职责: 声明内置工具输出结构，并从资源定义生成 Read 返回值的验证契约。
 // 关联文件:
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/services/ai/tools_schema.dart
@@ -89,7 +89,7 @@ Map<String, dynamic> _resourceReadObject(
   );
 }
 
-/// 按需公开资源的精确返回字段，避免将全量资源字段常驻在 Read 工具描述中。
+/// 供静态契约验证使用；模型查询只返回紧凑字段表，不展开逐操作的返回 schema。
 Map<String, dynamic> _resourceReadOutputSchema(
   _ResourceDefinition node,
   _ResourceOperation operation,

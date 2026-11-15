@@ -28,6 +28,8 @@ import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   late NovelContentDatabase db;
   late AppDatabase appDb;
@@ -403,7 +405,7 @@ void main() {
           expect(await snapshot(), before);
         }
       }
-      final contract = await read('/_schema/canvas');
+      final contract = resourceContractTreeForTesting('/_schema/canvas');
       final edges = (contract['subresources'] as List).cast<Map>().singleWhere(
         (node) => (node['resource_path'] as String).contains('/edges/'),
       );

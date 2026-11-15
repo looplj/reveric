@@ -2,7 +2,11 @@
 
 FFmpeg 负责素材加工与检查；组织镜头、音轨和字幕来剪辑成片使用 editing。拼接、混音、叠加可以用于制作中间素材，产物需要显式加入或替换到工程中。
 
-先确定输入文件与所需变换。第一次使用或需要核对编码器、滤镜时，调用 `Run ffmpeg capabilities`，结合原生能力和 allowed_filters、allowed_formats、allowed_flags、allowed_value_options、allowed_output_extensions 判断可用能力。usable_filters 是当前引擎已提供且入口允许的滤镜；具体格式还须满足输入解封装器和输出扩展名限制。组件帮助描述原生参数，不代表所有带外部 IO 的参数均已开放。
+先确定输入文件与所需变换。熟悉的抽帧、缩放、裁剪、转码等常规操作按本附件的参数与文件边界直接执行；查看画面优先使用 frames，读取规格使用 probe。首次使用不需要预读 capabilities。
+
+仅在不确定组件参数、需要确认本机支持情况，或实际错误指向编码器／滤镜缺失及参数不支持时查询 capabilities。参数疑问用 component 查询目标组件帮助；需要核对引擎能力或应用允许范围时，在 Codemode 内读取能力清单并筛选，只输出目标组件是否存在、是否允许及相关限制，保留查询失败的错误信息。
+
+usable_filters 是当前引擎已提供且入口允许的滤镜；其他能力结合原生清单与 allowed_filters、allowed_formats、allowed_flags、allowed_value_options、allowed_output_extensions 判断，具体格式还须满足输入解封装器和输出扩展名限制。组件帮助描述原生参数，不代表应用已开放所有参数或外部 IO。
 
 ## 命令参数
 
@@ -10,7 +14,7 @@ FFmpeg 负责素材加工与检查；组织镜头、音轨和字幕来剪辑成�
 
 | subcommand | 必填 options | 可选 options 与行为 |
 |---|---|---|
-| `capabilities` | 无 | options 使用空对象查询能力；可选 component，如 encoder=libx264、filter=loudnorm、demuxer=image2 |
+| `capabilities` | 无 | 按需传 component 查询组件帮助，如 encoder=libx264、filter=loudnorm、demuxer=image2；空 options 返回完整能力清单，筛选后再输出所需信息 |
 | `probe` | `args` | 只检查一个输入文件 |
 | `frames` | `path`、`timestamps_ms` | 返回带时间标注的画面拼图 |
 | `execute` | `args` | 加工显式输入并生成新输出文件 |
@@ -45,7 +49,7 @@ args 是逐项字符串数组，不含 ffmpeg / ffprobe 程序名，不是 shell
 
 ## 素材加工与检测
 
-支持常用的视频降噪、锐化、模糊、抠像、调色、淡入淡出、推拉、调色板，以及音频降噪、响度归一、均衡、压缩、限幅、声道和静音检测。具体滤镜以 capabilities 为准。原生编码器未编译进运行库时会失败，不通过换命令宣称处理成功。
+支持常用的视频降噪、锐化、模糊、抠像、调色、淡入淡出、推拉、调色板，以及音频降噪、响度归一、均衡、压缩、限幅、声道和静音检测。原生编码器未编译进运行库时会失败，不通过换命令宣称处理成功。
 
 编码参数支持流选择符，例如 -c:v:0、-b:a:1、-profile:v、-disposition:a:0、-metadata:s:a:0；支持负向 -map、多音轨、章节映射、色彩元数据及常用 bitstream filter。-x264-params / -x265-params 仅接受已支持的纯处理选项，不允许额外指定日志或统计文件路径。
 
@@ -89,7 +93,7 @@ concat 列表通过 -f concat -i list.txt 输入。绝对路径或不符合 FFmp
 
 两遍编码须分别提交 -pass 1 和 -pass 2，每次调用只执行指定的一遍。使用 -c:v libx264、目标 -b:v，两个调用使用同一个 -passlogfile 作品内相对路径前缀；省略时默认使用作品根下的 ffmpeg2pass。统计文件保留供下一遍读取。每遍只支持一个普通输出或 -f null -；其他编码器的两遍流程不在当前契约内。
 
-硬件能力随平台、编译选项和设备而异。先查 hardware_acceleration 和具体 encoder 帮助，再使用 -hwaccel、-hwaccel_device、-hwaccel_output_format、-init_hw_device、-filter_hw_device 及相应硬件滤镜。设备参数使用设备序号或名称，不传任意文件系统路径；失败时报告实际结果，不静默切换软件编码。
+硬件能力随平台、编译选项和设备而异。选用尚未核实的硬件加速时，核对 hardware_acceleration 和目标编码器是否可用；参数不确定时再查具体 encoder 帮助。支持 -hwaccel、-hwaccel_device、-hwaccel_output_format、-init_hw_device、-filter_hw_device 及相应硬件滤镜。设备参数使用设备序号或名称，不传任意文件系统路径；失败时报告实际结果，不静默切换软件编码。
 
 每次 execute 最多 30 分钟，probe 最多 30 秒。支持后台等待、进度与取消，输出数量上限由运行时监测，超出上限会取消执行并报告应用侧的限制原因，保留已写出的文件和原生退出码、日志。
 
@@ -106,7 +110,7 @@ concat 列表通过 -f concat -i list.txt 输入。绝对路径或不符合 FFmp
 - 输出文件名支持一个 `%d` 或 `%0Nd`（N 为 1..9），如 frame-%03d.jpg；占位符不能放在目录中。格式支持 PNG、JPEG、WebP；省略 -f 时自动使用 image2，显式指定时也必须是 image2。
 - 每个序列输出前必须单独提供 `-frames:v N`；N 为正整数，同次调用的所有序列合计最多 240 张。实际生成数量取决于输入内容和命令参数。
 - `-start_number` 设置该序列起始编号，默认 1，可以从 0 开始；其作用域到紧随其后的输出，不沿用到下一个输出。序列可与普通文件输出混用。
-- `-q:v` 必须是有限数值，具体取值范围和效果由编码器决定；入口不统一限制为 0..31。`-fps_mode` 支持 passthrough、cfr、vfr、auto、drop；drop 已被 FFmpeg 弃用，不建议用于新命令。按条件抽取已有帧可用 select + passthrough，按频率采样可用 fps；拼图可用 tile。先通过 capabilities 确认当前运行库具备相应滤镜。
+- `-q:v` 必须是有限数值，具体取值范围和效果由编码器决定；入口不统一限制为 0..31。`-fps_mode` 支持 passthrough、cfr、vfr、auto、drop；drop 已被 FFmpeg 弃用，不建议用于新命令。按条件抽取已有帧可用 select + passthrough，按频率采样可用 fps；拼图可用 tile。
 - 请求范围内展开后的目标文件名不得重复、覆盖已有文件或指向输入。出现冲突时更换输出名称；不要添加 -y 绕过。
 
 例如每隔 24 帧取一张，从 100 开始编号：

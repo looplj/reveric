@@ -1,6 +1,6 @@
 # 分镜与媒体节点、输入与生成
 
-通过 `production/clips` 读取当前作品的制作片段，可按 `kind` 筛选图片、视频或音频。详情路径由返回的 `path` 定位，字段契约见 `/_schema/production`。
+通过 `production/clips` 读取当前作品的制作片段，可按 `kind` 筛选图片、视频或音频。定位或选择片段时使用 `production/clips?view=summary`，省去提示词正文；批量审查提示词使用 `view=full`。省略 view 保留完整列表，分页参数仍适用。详情路径由返回的 `path` 定位，字段契约见 `/_schema/production/clips`。
 
 Create `production/clips` 时填写本次标题、提示词和已确定的媒体配置，不带 `scene_id` 或 `episode_id`。系统同时放置对应画布节点，后续沿用返回身份，不重复建立内容。节点 ID 与片段 ID 不同，按节点 `ref_type/ref_id` 确认关联。
 

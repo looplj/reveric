@@ -8,7 +8,7 @@
 //   .agents/rules/tools_path.md
 // 注意: 新增资源集合时，只需更新 _resourceDefinitions —— 路径模板与字段表由
 //   pathSchemaFieldNotes() 渲出，hidden 资源由 bundled AgentSkill 按需介绍。
-//   pathSchema 只保留通用寻址、作品边界与契约发现规则。
+//   pathSchema 提供通用寻址、作品边界、契约发现与阅读规则。
 part of 'tools.dart';
 
 Map<String, dynamic> _resourceError(
@@ -126,7 +126,14 @@ ${_buildPathGrammarReference(kind: kind)}
 - 跨作品只读；Create、Write、Edit、Replace、Remove 只能修改当前作品。读取其他作品不改变写入目标；按读取结果中的作品类型选择资源与契约。
 - 已有资源优先使用工具返回的 `path`；引用已有资源的 ID 或定位名称时，从工具结果原样复制，不得自行构造或修改。新建或重命名时填写的新名称不受此限制。
 - 实体自身标识统一为 id（只读），关联字段和查询作用域保留各自名称；允许保留身份的数组整体写入可原样携带已有 id。
-- 契约发现：已有说明足够时直接操作；不确定时用 Read /_schema/{collection} 查询字段与能力，Read /_schema 查询集合索引，Read /_schema/groups/{shared|novel|screenplay|canvas} 查询整组契约。''';
+- 契约发现：已有说明足够时直接操作；不确定时用 Read /_schema/{collection}/{子资源层级} 查询目标字段与能力（如 /_schema/production/clips，无需资源 ID）；省略子资源时查询集合本身。返回的 contract 是字段与操作说明，subresources 提供下级契约路径。Read /_schema 查询集合索引，Read /_schema/groups/{shared|novel|screenplay|canvas} 查询该组根资源契约；子资源契约按需沿 subresources[].path 读取。
+
+资源契约通用规则：
+- 字段：未标类型为 string；* 为创建必需；readonly 不可传入写操作；nullable 可传 null。
+- Read 详情返回可读字段及 path；列表返回 entries 和分页信息。标为可选的字段不保证出现。
+- 字段 Read 返回 value；字段 Write 用 value；字段 Edit 用 old_text、new_text，all 默认为 false。
+- 整体 Create/Write 用 fields，仅提交目标字段；未列默认值的字段不承诺默认值，目标缺失默认报错。
+- 列表分页：total、limit、has_more、next_offset；文本分页另有 total_lines、start_line、end_line。''';
 
 /// 单字段 Write 的旧调用适配；类型由值定义生成。
 
@@ -1219,7 +1226,7 @@ Map<String, dynamic>? _validateTargetRequirements(
         parsed.displayPath,
         ToolErrorCode.invalid_argument,
         'This operation requires ${constraint.whenField}=${constraint.whenValues.join(' or ')}.',
-        hint: 'Read /_schema/${parsed.collection}.',
+        hint: 'Read ${_resourceContractPath(parsed)}.',
       );
     }
   }
@@ -1271,7 +1278,7 @@ Map<String, dynamic> _resourceOperationError(
     return _resourceError(
       parsed.displayPath,
       ToolErrorCode.invalid_argument,
-      'Unsupported resource path. Read /_schema/${parsed.collection}.',
+      'Unsupported resource path. Read ${_resourceContractPath(parsed)}.',
     );
   }
   if (target.schema.isSingleton &&
@@ -2622,8 +2629,9 @@ String _resourceFieldNotes(_ResourceDefinition schema) {
 String _resourceFieldNote(
   _ResourceDefinition schema,
   String field,
-  List<String>? enumValues,
-) {
+  List<String>? enumValues, {
+  bool contract = false,
+}) {
   final spec = schema.fields[field];
   final parameter = schema.operations
       .map((operation) => operation.parameters[field])
@@ -2635,11 +2643,12 @@ String _resourceFieldNote(
     if (schema.readOnlyFields.contains(field)) 'readonly',
     ..._valueFieldNotes(value),
     if (enumValues != null && enumValues.isNotEmpty)
-      '取值 ${enumValues.join(' | ')}',
+      '取值 ${enumValues.toSet().join(' | ')}',
   ];
   final details = [
     if (description.isNotEmpty) description,
     if (value.example != null) '示例 ${jsonEncode(value.example)}',
+    if (contract) ..._contractFieldNotes(schema, field),
   ];
   final star = schema.requiredFields.contains(field) ? '*' : '';
   final marker = markers.isEmpty ? '' : '（${markers.join('，')}）';

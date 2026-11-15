@@ -36,7 +36,7 @@ metadata:
 | 检查、补拍或返修生成结果 | [结果诊断与改写对照](references/troubleshooting.md) → [制片流程](references/production.md) 验收与替换节 | 读帧/音轨/接缝对比用「媒体处理与剪辑」；纯提交故障先按「工具技能」查配置与输入 |
 | 从剧本或创意制作整段短片 | [制片流程](references/production.md) | 按阶段依上述各行按需加载；全流程参考读 [整场制作案例](references/examples/scene-example.md) |
 
-调用 `<skill_resources>` 时 `name` 使用「剧本制片」，先 `reference-list` 再按上表精确路径 `reference-get`。
+调用 `<skill_resources>` 时 `name` 使用「剧本制片」，按上表精确路径直接 `reference-get`；未知附件路径时再 `reference-list`。
 
 ## 写入与交付底线
 

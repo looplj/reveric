@@ -40,8 +40,9 @@ List<String> configuredProviderModels(AiProvider provider, String kind) {
 Map<String, dynamic> providerModelResource(
   AiProvider provider,
   String kind,
-  String model,
-) {
+  String model, {
+  bool includeDetails = true,
+}) {
   final capabilities = switch (kind) {
     'image' => _image(provider, model),
     'video' => _video(provider, model),
@@ -81,8 +82,10 @@ Map<String, dynamic> providerModelResource(
     if (capabilities == null)
       'capabilities_reason':
           'No verified model and adapter capability mapping.',
-    'capabilities': capabilities?['capabilities'],
-    'defaults': capabilities?['defaults'],
+    if (includeDetails) ...{
+      'capabilities': capabilities?['capabilities'],
+      'defaults': capabilities?['defaults'],
+    },
     'availability_scope':
         'local_configuration; remote access and quota are not probed',
   };

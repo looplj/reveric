@@ -90,10 +90,13 @@ void main() {
           isTrue,
         );
         expect(withRefs.contains('<file path='), isFalse);
+        expect(withRefs, contains('正文已给出准确附件路径时直接读取'));
+        expect(withRefs, contains('未知路径时再列目录'));
+        expect(withRefs, isNot(contains('需要附件时先列目录')));
         expect(
           withRefs.contains(
             '{"command":"agent-skills","subcommand":"reference-get",'
-            '"options":{"name":"demo","path":"&lt;returned path&gt;"}}',
+            '"options":{"name":"demo","path":"&lt;exact path&gt;"}}',
           ),
           isTrue,
         );

@@ -19,6 +19,8 @@ import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/storyboard/edit_orchestrator.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../helpers/resource_contract.dart';
+
 void main() {
   late NovelContentDatabase db;
   late AppDatabase app;
@@ -455,20 +457,14 @@ void main() {
   test(
     'clips contract creates both kinds and exposes immutable identity with nullable video fields',
     () async {
-      final schema = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/clips'},
-      );
+      final schema = resourceContractTreeForTesting('/_schema/clips');
       expect(schema['resource_path'], 'clips/{clip_id}');
       final fields = schema['fields'] as Map;
       expect(fields['kind']['create'], isTrue);
       expect(fields['kind']['write'], isFalse);
       expect(fields['episode_id']['create'], isTrue);
       expect(fields['episode_id']['write'], isFalse);
-      final episodeSchema = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/episodes'},
-      );
+      final episodeSchema = resourceContractTreeForTesting('/_schema/episodes');
       expect(
         (episodeSchema['subresources'] as List).map(
           (entry) => entry['resource_path'],
@@ -956,10 +952,7 @@ void main() {
       );
       expect(copied.id, isNot(current.id));
       expect((await service.getShot(first.id))!.sceneId, sceneId);
-      final schema = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/clips'},
-      );
+      final schema = resourceContractTreeForTesting('/_schema/clips');
       expect(schema.toString(), isNot(contains('revision')));
     },
   );

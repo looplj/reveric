@@ -421,6 +421,16 @@ void main() {
         assetBundle: _FileAssetBundle(),
         contentKind: 'canvas',
       );
+      final direct = await handler.run({
+        'action': 'reference-get',
+        'name': '媒体处理与剪辑',
+        'path': 'references/ffmpeg.md',
+      });
+      expect(direct['ok'], true, reason: '$direct');
+      expect(
+        (direct['reference'] as Map)['content'],
+        contains('首次使用不需要预读 capabilities'),
+      );
       for (final name in ['创作向导', '剧本工具使用规范', '故事连续性维护']) {
         final listed = await handler.run({
           'action': 'reference-list',

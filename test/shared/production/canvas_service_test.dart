@@ -54,6 +54,8 @@ import 'package:reveric/shared/services/production/media_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import '../../helpers/media_provider_types.dart';
 
+import '../../helpers/resource_contract.dart';
+
 VideoRequest compileForTest(
   String provider,
   VideoRequest request,
@@ -2109,6 +2111,29 @@ void main() {
         (await run('assets', 'list', {'path': '/other'}))['error_code'],
         'invalid_argument',
       );
+      final allClips = await tools.executeTool(
+        name: 'Read',
+        input: {'path': '/clips?scene_id=$scene'},
+      );
+      final summaryClips = await tools.executeTool(
+        name: 'Read',
+        input: {'path': '/clips?scene_id=$scene&view=summary'},
+      );
+      expect(summaryClips['ok'], true, reason: '$summaryClips');
+      expect(
+        (summaryClips['entries'] as List).map((e) => e['id']),
+        (allClips['entries'] as List).map((e) => e['id']),
+      );
+      for (final entry in summaryClips['entries'] as List) {
+        expect(entry, isNot(contains('prompt')));
+      }
+      expect(
+        await tools.executeTool(
+          name: 'Read',
+          input: {'path': '/clips?scene_id=$scene&view=full'},
+        ),
+        allClips,
+      );
       final generation = await task('history', 'result');
       final history = await tools.executeTool(
         name: 'Read',
@@ -2116,6 +2141,15 @@ void main() {
       );
       expect((history['entries'] as List).single['id'], generation.id);
       expect((history['entries'] as List).single['result_applied'], false);
+      final entry = (history['entries'] as List).single as Map;
+      expect(entry, isNot(contains('request')));
+      final generationDetail = resourceContractTreeForTesting(entry['path'] as String);
+      expect(generationDetail['request'], generation.requestJson.toJson());
+      final snapshot = await tools.executeTool(
+        name: 'Read',
+        input: {'path': '${entry['path']}/request'},
+      );
+      expect(snapshot['value'], generation.requestJson.toJson());
     },
   );
 
@@ -2195,10 +2229,7 @@ void main() {
         const prompt =
             'Use <ref input_id="node-ref" label="Scene" /> and '
             '<ref input_id="asset-ref" label="Person" />.';
-        final schema = await tools.executeTool(
-          name: 'Read',
-          input: {'path': '/_schema/clips'},
-        );
+        final schema = resourceContractTreeForTesting('/_schema/clips');
         expect((schema['fields'] as Map)['inputs']['create'], isTrue);
         for (final kind in ['video', 'image', 'audio']) {
           final created = await create({

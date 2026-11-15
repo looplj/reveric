@@ -4,7 +4,7 @@
 
 ## 应用到作品
 
-通过 Write 保存选择；字段契约见 `/_schema/production`。
+通过 Write 保存选择；作品设置契约见 `/_schema/production/settings`，片段设置见 `/_schema/production/clips`。
 
 | 用户意图 | 字段路径 | 写入值 |
 |---|---|---|

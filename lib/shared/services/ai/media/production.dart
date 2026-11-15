@@ -381,13 +381,13 @@ class ProductionToolHost {
       'draft_task_id': task.draftTaskId,
       if (task.kind == app.GenerationKind.video) ...{
         'draft_expires_at': task.draft
-            ? task.draftExpiresAt?.toIso8601String()
+            ? task.draftExpiresAt?.toUtc().toIso8601String()
             : null,
         'can_complete_draft': draftBlockedReason == null,
         'draft_completion_blocked_reason': draftBlockedReason,
       },
       if (task.status == app.GenerationTaskStatus.cancelled) 'cancelled': true,
-      'cancel_requested_at': task.cancelRequestedAt?.toIso8601String(),
+      'cancel_requested_at': task.cancelRequestedAt?.toUtc().toIso8601String(),
       'result_asset_id': task.resultAssetId,
       'result_file_path': task.path,
       'result_applied': clip?.lastAppliedGenerationTaskId == task.id,

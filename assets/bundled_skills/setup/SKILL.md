@@ -40,7 +40,7 @@ AgentSkill 是应用内全局可复用的 AI 工作流程，不是作品规则�
 
 ### 2. 选择创作模式与按需附件
 
-先选一个且只读一个创作模式附件。若 `<skill_resources>` 存在，必须复制其中精确的 `Run agent-skills reference-list` 命令列出目录，再从返回的实际 path 中选择并用 `reference-get` 读取；禁止臆造路径或预读全部附件。
+先选一个且只读一个创作模式附件。正文已有准确附件路径时直接用 `reference-get` 读取；未知路径时，再用 `<skill_resources>` 中的 `Run agent-skills reference-list` 列目录并从返回的 path 中选择；禁止臆造路径或预读全部附件。
 
 - 当前作品上下文中的 `type` 为 fanfic：读取同人流程附件。
 - 当前作品上下文中的 `type` 为 sequel：读取续作流程附件。

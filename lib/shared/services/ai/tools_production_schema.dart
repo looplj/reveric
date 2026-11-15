@@ -275,7 +275,7 @@ const _productionClipFields = {
   'prompt': _ResourceField(
     search: {_FieldSearch.body},
     value: _ValueSchema(_ValueType.string),
-    read: _FieldRead(listing: true, path: true),
+    read: _FieldRead(listing: true, path: true, requiredInListing: false),
     create: _FieldInputUse(),
     write: _FieldInputUse(field: true),
     edit: _FieldEdit(),
@@ -332,6 +332,14 @@ const _productionClipOperations = [
   _ResourceOperation(
     _ResourceTool.read,
     _ResourceTargetKind.listing,
+    parameters: {
+      'view': _OperationParameter(
+        _ValueSchema(_ValueType.string, enumValues: ['summary', 'full']),
+        defaultValue: 'full',
+        hasDefault: true,
+        query: _FieldQuery(),
+      ),
+    },
     result: _ResourceResult(
       _ResourceResultKind.listing,
       references: ['entries[].path'],
@@ -514,6 +522,14 @@ const _clipGenerationFields = {
     read: _FieldRead(listing: true, path: true),
   ),
   'model_id': _productionId,
+  'created_at': _ResourceField(
+    value: _ValueSchema(_ValueType.string),
+    read: _FieldRead(listing: true, path: true),
+  ),
+  'request': _ResourceField(
+    value: _productionJson,
+    read: _FieldRead(path: true),
+  ),
 };
 const _canvasClipGenerations = _ResourceDefinition(
   segment: 'generations',

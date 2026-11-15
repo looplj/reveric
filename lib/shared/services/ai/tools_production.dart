@@ -177,24 +177,28 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           sourceId: clipId,
         )
         .first;
+    final taskId = parsed.locator('task_id');
     for (final task in tasks) {
+      if (!parsed.isResourceListing && task.id != taskId) {
+        continue;
+      }
       entries.add({
         ...await host.summary(task),
         'path':
             '${_targetContentKind == contentKindCanvas ? 'production/' : ''}clips/$clipId/generations/${task.id}',
         'model_id': task.modelId,
+        'created_at': task.createdAt.toUtc().toIso8601String(),
         'run_id': operationHost?.operations.state.runs
             .where((run) => run.taskId == task.id && !run.terminal)
             .firstOrNull
             ?.runId,
-        'request': task.requestJson.toJson(),
+        if (!parsed.isResourceListing) 'request': task.requestJson.toJson(),
       });
     }
     if (parsed.isResourceListing) {
       return {'type': 'listing', 'entries': entries};
     }
-    final id = parsed.locator('task_id');
-    final entry = entries.where((e) => e['id'] == id).firstOrNull;
+    final entry = entries.firstOrNull;
     if (entry == null) {
       return _resourceError(
         parsed.displayPath,

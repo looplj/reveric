@@ -16,6 +16,8 @@ import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   group('AI result path contract', () {
     late NovelContentDatabase db;
@@ -344,10 +346,7 @@ void main() {
       );
 
       test('$collection exposes stable ids for document references', () async {
-        final schema = await toolManager.executeTool(
-          name: 'Read',
-          input: {'path': '/_schema/canvas'},
-        );
+        final schema = resourceContractTreeForTesting('/_schema/canvas');
         if (ideationCanvasEnabled) {
           final nodes = (schema['subresources'] as List).first as Map;
           final documentTargets =

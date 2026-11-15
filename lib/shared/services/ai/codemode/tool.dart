@@ -45,7 +45,7 @@ const codemodeToolDef = ToolDef(
       '  Edit → edited，match_count\n'
       '  Replace → dry_run=true 时 matched_fields、total_matches；否则 applied_fields、total_replacements、failed?\n'
       '  Remove → removed，missing?\n'
-      '- 资源详情的字段因集合而异，需要时在脚本内 Read /_schema/{collection} 查看 output_schema；'
+      '- 资源详情的字段因集合而异，需要时 Read /_schema/{collection}/{子资源层级}，读取 contract 中的字段与操作说明；未知层级时沿 subresources 返回的 path 查询。'
       '列表条目缺字段时，按条目 path 读取详情。依赖的字段缺失时停止相关操作并报告，不要猜默认值。\n'
       '- text(value) 和 return 添加输出，对象直接传入，合计上限 128 KiB；其余中间结果不进入对话。'
       '捕获或跳过的失败要在输出中列出。',

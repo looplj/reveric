@@ -19,7 +19,7 @@ agent_scopes: [chat]
 | 打开应用设置分区，让用户配置供应商、外观、备份、存储等 | `references/settings.md` |
 | 查询供应商、聊天与媒体模型的真实 ID、能力与默认配置 | `references/providers.md` |
 
-复制 `<skill_resources>` 中的 `reference-list` 调用列出附件，再用 `reference-get` 读取选中文件；`name` 使用「系统管理」，`path` 使用目录返回值。已读取且仍在上下文中的附件无需重读，不预读全部附件。
+正文已有准确附件路径时直接用 `reference-get` 读取选中文件，未知路径时再用 `<skill_resources>` 中的 `reference-list` 列目录；`name` 使用「系统管理」，`path` 使用正文或目录中的准确路径。已读取且仍在上下文中的附件无需重读，不预读全部附件。
 
 小说主题、立意、角色、功法、世界观规则和故事流程属于故事资料，不按 AI 工具配置处理。规则作用于当前小说，AgentSkill 可跨小说复用；载体或作用范围不明确时先确认。
 

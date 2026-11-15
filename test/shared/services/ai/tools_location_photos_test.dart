@@ -22,6 +22,8 @@ import 'package:reveric/shared/services/working_overlay.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late NovelContentDatabase db;
@@ -79,14 +81,8 @@ void main() {
   test(
     'locations and characters expose the same photo Read/Write shapes',
     () async {
-      final location = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/locations'},
-      );
-      final character = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/characters'},
-      );
+      final location = resourceContractTreeForTesting('/_schema/locations');
+      final character = resourceContractTreeForTesting('/_schema/characters');
       final photo = location['fields']['photos'];
       expect(photo['read_path'], isTrue);
       expect(photo['write_path'], isTrue);
