@@ -356,7 +356,11 @@ class AiImageGenerationService {
       model ?? _model,
     )?.protocolOptions;
     if (options is MidjourneyImageOptions) {
-      return MidjourneyImageClient(_config, options.protocol);
+      return MidjourneyImageClient(
+        _config,
+        options.protocol,
+        editModel: options.editModel,
+      );
     }
     return switch (_config.typeConfig.imageProtocol) {
       ImageProtocol.moss_image => MossImageClient(_config),

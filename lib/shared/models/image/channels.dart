@@ -38,8 +38,11 @@ sealed class ImageProtocolOptions {
 enum MidjourneyProtocol { proxy, images, atlascloud }
 
 class MidjourneyImageOptions extends ImageProtocolOptions {
-  const MidjourneyImageOptions(this.protocol);
+  const MidjourneyImageOptions(this.protocol, {this.editModel});
   final MidjourneyProtocol protocol;
+
+  /// 带参考图时改用的模型路由。只在 Atlas 登记。
+  final String? editModel;
 }
 
 class AgnesImageOptions extends ImageProtocolOptions {
@@ -157,9 +160,12 @@ final purefoxMediaImageModels = <String, ImageChannelModel>{};
 const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
   // https://www.atlascloud.ai/docs/openapi-index
   ImageProtocol.atlascloud_image: {
+    // https://static.atlascloud.ai/model/schema/youchuan-v8.2-text-to-image.json
+    // https://static.atlascloud.ai/model/schema/youchuan-v8.2-image-to-image.json
     'youchuan/v8.2/text-to-image': ImageChannelModel(
       catalogId: 'midjourney-v8.2',
       capabilities: ImageModelCapabilities(
+        maxReferences: 1,
         resolutions: {'auto', '2K'},
         ratios: {
           'auto',
@@ -174,7 +180,10 @@ const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
           '9:21',
         },
       ),
-      protocolOptions: MidjourneyImageOptions(MidjourneyProtocol.atlascloud),
+      protocolOptions: MidjourneyImageOptions(
+        MidjourneyProtocol.atlascloud,
+        editModel: 'youchuan/v8.2/image-to-image',
+      ),
     ),
     // https://static.atlascloud.ai/model/schema/openai-gpt-image-2.6-sunburst-text-to-image.json
     'openai/gpt-image-2.6-sunburst/text-to-image': ImageChannelModel(

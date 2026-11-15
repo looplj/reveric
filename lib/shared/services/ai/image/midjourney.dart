@@ -20,10 +20,14 @@ import 'client.dart';
 final _log = AppLogger.forModule('MidjourneyImage');
 
 class MidjourneyImageClient extends ImageClient {
-  MidjourneyImageClient(super.config, this.protocol);
+  MidjourneyImageClient(super.config, this.protocol, {this.editModel});
   final MidjourneyProtocol protocol;
+
+  /// Atlas 带参考图时改用的型号。其他渠道不接收参考图。
+  final String? editModel;
   @override
-  bool get supportsEdit => false;
+  bool get supportsEdit =>
+      protocol == MidjourneyProtocol.atlascloud && editModel != null;
 
   Uri _uri(String path) {
     final base = Uri.parse(config.effectiveBaseUrl);
@@ -38,15 +42,30 @@ class MidjourneyImageClient extends ImageClient {
     ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request)!;
-    if (request.references.isNotEmpty ||
-        request.prompt.trim().isEmpty ||
+    if (request.prompt.trim().isEmpty ||
+        (request.references.isNotEmpty &&
+            protocol != MidjourneyProtocol.atlascloud) ||
+        request.references.length > 1 ||
         (request.aspectRatio != null &&
             !channel.capabilities.ratios.contains(request.aspectRatio)) ||
         (request.resolution != null &&
             !channel.capabilities.resolutions.contains(request.resolution))) {
       throw invalidImageParameter();
     }
-    final body = midjourneyBody(request, protocol);
+    if (request.references.isNotEmpty &&
+        (editModel == null || editModel!.isEmpty)) {
+      throw invalidImageParameter();
+    }
+    final images = [
+      for (final reference in request.references)
+        await imageInputAsUrlOrDataUri(reference, outputs),
+    ];
+    final body = midjourneyBody(
+      request,
+      protocol,
+      images: images,
+      editModel: editModel,
+    );
     if (protocol == MidjourneyProtocol.images) {
       final response = await _send(_uri('v1/images/generations'), body);
       return _imagesResponse(response, outputs);
@@ -228,10 +247,13 @@ class MidjourneyImageClient extends ImageClient {
 }
 
 /// MJ 参数按渠道编码；界面的明确比例覆盖提示词中的同类旗标。
+/// 有参考图时改走 Atlas 的编辑型号，图片放进和其他 Atlas 图片模型相同的 `images`。
 Map<String, dynamic> midjourneyBody(
   SubmitImageInput request,
-  MidjourneyProtocol protocol,
-) {
+  MidjourneyProtocol protocol, {
+  List<String> images = const [],
+  String? editModel,
+}) {
   var prompt = request.prompt.trim();
   final ratio = request.aspectRatio;
   if (ratio != null && ratio != 'auto') {
@@ -243,13 +265,22 @@ Map<String, dynamic> midjourneyBody(
     prompt = '$prompt --q ${request.quality}';
   }
   if (protocol != MidjourneyProtocol.atlascloud) {
+    if (images.isNotEmpty) {
+      throw invalidImageParameter();
+    }
     return {
       if (protocol == MidjourneyProtocol.images) 'model': request.model,
       if (protocol == MidjourneyProtocol.proxy) 'botType': 'MID_JOURNEY',
       'prompt': prompt,
     };
   }
-  final body = <String, dynamic>{'model': request.model};
+  if (images.isNotEmpty && (editModel == null || editModel.isEmpty)) {
+    throw invalidImageParameter();
+  }
+  final body = <String, dynamic>{
+    'model': images.isEmpty ? request.model : editModel,
+    if (images.isNotEmpty) 'images': images,
+  };
   final flags = RegExp(
     r'\s+--(aspect|ar|stylize|s|chaos|c|weird|w|quality|q|seed|hd)(?=\s|$)(?:\s+((?!--)\S+))?',
   );

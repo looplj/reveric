@@ -11,9 +11,11 @@ import 'package:http/testing.dart';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/generation/provider_result.dart';
 import 'package:reveric/shared/services/ai/image.dart';
 import 'package:reveric/shared/services/ai/image/client.dart';
 import 'package:reveric/shared/services/ai/image/midjourney.dart';
+import 'package:reveric/shared/services/ai/image/output.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
 
 void main() {
@@ -417,6 +419,129 @@ void main() {
           'stylize': 100,
           'quality': 4,
         },
+      );
+    },
+  );
+
+  test(
+    'Atlas reference edit uses the shared images field and edit model',
+    () async {
+      final png = img.encodePng(img.Image(width: 1, height: 1));
+      final file = File('${root.path}/ref.png');
+      await file.writeAsBytes(png);
+      final config = provider('atlascloud');
+      final outputs = ImageOutputContext(config);
+      final info = await outputs.inputScope.register(
+        file,
+        name: 'ref.png',
+        mimeType: 'image/png',
+      );
+      outputs.claimInputs();
+      final reference = PreparedImageReference(
+        assetId: 'asset',
+        mimeType: 'image/png',
+        source: ImageFileReference(info['handle'] as String),
+      );
+      final atlas = lookupImageChannelModel(
+        'atlascloud',
+        'youchuan/v8.2/text-to-image',
+      )!;
+      expect(atlas.capabilities.maxReferences, 1);
+      expect(
+        atlas.capabilities.referenceTransport,
+        ImageReferenceTransport.file,
+      );
+      expect(
+        (atlas.protocolOptions as MidjourneyImageOptions).editModel,
+        'youchuan/v8.2/image-to-image',
+      );
+      expect(
+        lookupImageChannelModel(
+          'api88',
+          'mj_imagine',
+        )!.capabilities.maxReferences,
+        0,
+      );
+      expect(
+        lookupImageChannelModel(
+          'api88',
+          'midjourney-v8.2',
+        )!.capabilities.maxReferences,
+        0,
+      );
+
+      await http.runWithClient(
+        () async {
+          final submitted =
+              await MidjourneyImageClient(
+                config,
+                MidjourneyProtocol.atlascloud,
+                editModel: 'youchuan/v8.2/image-to-image',
+              ).submit(
+                SubmitImageInput(
+                  prompt: 'city --s 20 --ar 16:9',
+                  modelId: 'youchuan/v8.2/text-to-image',
+                  aspectRatio: '16:9',
+                  references: [reference],
+                ),
+                outputs,
+              );
+          expect(
+            submitted,
+            isA<ProviderSubmitted>().having(
+              (value) => value.remoteTaskId,
+              'task ID',
+              'prediction',
+            ),
+          );
+          await expectLater(
+            MidjourneyImageClient(
+              config,
+              MidjourneyProtocol.atlascloud,
+              editModel: 'youchuan/v8.2/image-to-image',
+            ).submit(
+              SubmitImageInput(
+                prompt: 'city',
+                modelId: 'youchuan/v8.2/text-to-image',
+                references: [reference, reference],
+              ),
+              outputs,
+            ),
+            throwsA(isA<AiImageGenerationException>()),
+          );
+          await expectLater(
+            MidjourneyImageClient(
+              provider('api88'),
+              MidjourneyProtocol.proxy,
+            ).submit(
+              SubmitImageInput(
+                prompt: 'city',
+                modelId: 'mj_imagine',
+                references: [reference],
+              ),
+              ImageOutputContext(provider('api88')),
+            ),
+            throwsA(isA<AiImageGenerationException>()),
+          );
+        },
+        () => MockClient((r) async {
+          expect(r.method, 'POST');
+          expect(r.url.path, '/api/v1/model/generateImage');
+          expect(jsonDecode(r.body), {
+            'model': 'youchuan/v8.2/image-to-image',
+            'images': ['data:image/png;base64,${base64Encode(png)}'],
+            'prompt': 'city',
+            'stylize': 20,
+            'aspect_ratio': '16:9',
+          });
+          return http.Response(
+            jsonEncode({
+              'code': 200,
+              'data': {'id': 'prediction', 'status': 'processing'},
+            }),
+            200,
+          );
+        }),
       );
     },
   );
