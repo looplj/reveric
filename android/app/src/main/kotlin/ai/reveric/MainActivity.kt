@@ -24,6 +24,33 @@ import java.util.UUID
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "reveric/backup_import")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "pickBackup") {
+                    result.notImplemented()
+                } else if (pendingBackupResult != null) {
+                    result.error("backup_import_busy", "Backup selection or copy is running.", null)
+                } else {
+                    pendingBackupResult = result
+                    try {
+                        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            // Providers may report ZIP files as generic binary data.
+                            // The restore service validates the archive contents after copying.
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                "application/zip",
+                                "application/x-zip-compressed",
+                                "application/octet-stream",
+                            ))
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, BACKUP_IMPORT_REQUEST_CODE)
+                    } catch (error: Exception) {
+                        pendingBackupResult = null
+                        result.error("backup_picker_failed", error.message, null)
+                    }
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ai.reveric.director/storage").setMethodCallHandler { call, result ->
             if (call.method != "availableBytes") { result.notImplemented(); return@setMethodCallHandler }
             try {
@@ -93,10 +120,98 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         when (requestCode) {
+            BACKUP_IMPORT_REQUEST_CODE -> handleBackupImportResult(resultCode, data)
             DIRECTORY_IMPORT_REQUEST_CODE -> handleDirectoryImportResult(resultCode, data)
             DIRECTORY_EXPORT_REQUEST_CODE -> handleDirectoryExportResult(resultCode, data)
             else -> super.onActivityResult(requestCode, resultCode, data)
         }
+    }
+
+    private fun handleBackupImportResult(resultCode: Int, data: Intent?) {
+        val result = pendingBackupResult ?: return
+        if (resultCode != RESULT_OK) {
+            pendingBackupResult = null
+            result.success(null)
+            return
+        }
+        val uri = data?.data
+        if (uri == null) {
+            pendingBackupResult = null
+            result.error("backup_import_failed", "Selected document URI is missing.", null)
+            return
+        }
+        Thread {
+            var target: File? = null
+            try {
+                // Never pass the ZIP bytes through the platform channel. A fixed name
+                // also keeps provider-controlled display names out of filesystem paths.
+                val file = File.createTempFile("reveric_restore_", ".zip", cacheDir)
+                target = file
+                val started = android.os.SystemClock.elapsedRealtime()
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                var reportedBytes: Long? = null
+                var metadataError: String? = null
+                try {
+                    contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst() && !cursor.isNull(0)) reportedBytes = cursor.getLong(0)
+                    }
+                } catch (error: Exception) {
+                    // Provider size metadata is optional; retain its failure in diagnostics.
+                    metadataError = error.javaClass.simpleName
+                }
+                val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(file).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            if (backupImportDestroyed) {
+                                throw java.io.InterruptedIOException("Backup import activity closed.")
+                            }
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            digest.update(buffer, 0, count)
+                            total += count
+                        }
+                        total
+                    }
+                } ?: throw java.io.IOException("Unable to open selected backup.")
+                val sourceSha256 = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                val elapsedMs = android.os.SystemClock.elapsedRealtime() - started
+                val cachedBytes = file.length()
+                val availableBytes = StatFs(cacheDir.path).availableBytes
+                Handler(Looper.getMainLooper()).post {
+                    if (pendingBackupResult === result) {
+                        pendingBackupResult = null
+                        result.success(mapOf(
+                            "path" to file.path, "bytes" to bytes,
+                            "reportedBytes" to reportedBytes, "cachedBytes" to cachedBytes,
+                            "sourceSha256" to sourceSha256, "elapsedMs" to elapsedMs,
+                            "availableBytes" to availableBytes,
+                            "metadataError" to metadataError,
+                        ))
+                    } else {
+                        if (!file.delete()) android.util.Log.w("RevericBackup", "Cache cleanup failed")
+                    }
+                }
+            } catch (error: Exception) {
+                if (target?.delete() == false) android.util.Log.w("RevericBackup", "Partial cache cleanup failed")
+                android.util.Log.e("RevericBackup", "Backup copy failed", error)
+                Handler(Looper.getMainLooper()).post {
+                    if (pendingBackupResult === result) {
+                        pendingBackupResult = null
+                        result.error("backup_import_failed", error.message, null)
+                    }
+                }
+            }
+        }.start()
+    }
+
+    override fun onDestroy() {
+        backupImportDestroyed = true
+        pendingBackupResult?.error("backup_import_closed", "Backup import activity closed.", null)
+        pendingBackupResult = null
+        super.onDestroy()
     }
 
     private fun handleDirectoryImportResult(resultCode: Int, data: Intent?) {
@@ -516,6 +631,7 @@ class MainActivity : FlutterActivity() {
         private const val DIRECTORY_IMPORT_CHANNEL = "reveric/android_directory_import"
         private const val DIRECTORY_IMPORT_REQUEST_CODE = 224
         private const val DIRECTORY_EXPORT_REQUEST_CODE = 225
+        private const val BACKUP_IMPORT_REQUEST_CODE = 226
         private const val MAX_IMPORT_FILES = 4096
         private const val MAX_IMPORT_BYTES = 64L * 1024L * 1024L
         private const val MAX_EXPORT_FILES = 8192
@@ -525,6 +641,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private var pendingDirectoryImportResult: MethodChannel.Result? = null
+    private var pendingBackupResult: MethodChannel.Result? = null
+    @Volatile private var backupImportDestroyed = false
     private var pendingDirectoryExtensions: Set<String>? = null
     private var pendingDirectoryExportResult: MethodChannel.Result? = null
     private var pendingDirectoryExportFiles: List<ExportFile>? = null

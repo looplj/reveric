@@ -869,37 +869,48 @@ class BackupSettingsSection extends HookConsumerWidget {
     _RestoreFeedback feedback,
     ValueNotifier<_PendingRestore?> pendingRestore,
   ) async {
-    XFile? selectedFile;
+    final temporary = defaultTargetPlatform == TargetPlatform.android;
+    String? selectedPath;
+    var retainedForRestore = false;
+    feedback.start();
+    _log.info(
+      'Restore selection started platform=${defaultTargetPlatform.name}',
+    );
     try {
-      selectedFile = await openFile(
-        acceptedTypeGroups: [
-          // iOS 要求 type group 提供 UTI，否则 file_selector 抛 Invalid argument。
-          const XTypeGroup(
-            label: 'archives',
-            extensions: ['zip'],
-            uniformTypeIdentifiers: ['public.zip-archive'],
-          ),
-        ],
-      );
-    } catch (error, stackTrace) {
-      _log.error(
-        'Restore file selection failed',
-        error: error,
-        stackTrace: stackTrace,
-      );
+      if (temporary) {
+        final result = await const MethodChannel(
+          'reveric/backup_import',
+        ).invokeMapMethod<String, Object?>('pickBackup');
+        if (result != null) {
+          selectedPath = result['path'] as String;
+          _log.info(
+            'Restore selection copied bytes=${result['bytes']} '
+            'reportedBytes=${result['reportedBytes']} cachedBytes=${result['cachedBytes']} '
+            'sourceSha256=${result['sourceSha256']} elapsedMs=${result['elapsedMs']} '
+            'availableBytes=${result['availableBytes']} metadataError=${result['metadataError']}',
+          );
+        }
+      } else {
+        final file = await openFile(
+          acceptedTypeGroups: const [
+            XTypeGroup(
+              label: 'archives',
+              extensions: ['zip'],
+              uniformTypeIdentifiers: ['public.zip-archive'],
+            ),
+          ],
+        );
+        selectedPath = file?.path;
+      }
+      if (selectedPath == null) {
+        _log.info('Restore selection cancelled');
+        return;
+      }
       if (!context.mounted) {
         return;
       }
-      feedback.showError(context.t(LocaleKeys.settingsBackupRestoreFailed));
-      return;
-    }
-    if (selectedFile == null || !context.mounted) {
-      return;
-    }
-
-    feedback.start();
-    try {
-      final inspection = await backupService.inspectBackup(selectedFile.path);
+      _log.info('Restore selection ready; inspecting backup');
+      final inspection = await backupService.inspectBackup(selectedPath);
       if (!context.mounted) {
         return;
       }
@@ -911,10 +922,24 @@ class BackupSettingsSection extends HookConsumerWidget {
         return;
       }
       pendingRestore.value = _PendingRestore(
-        filePath: selectedFile.path,
+        filePath: selectedPath,
         preview: preview,
+        temporary: temporary,
       );
+      retainedForRestore = true;
+    } catch (error, stackTrace) {
+      _log.error(
+        'Restore preparation failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        feedback.showError(context.t(LocaleKeys.settingsBackupRestoreFailed));
+      }
     } finally {
+      if (temporary && !retainedForRestore && selectedPath != null) {
+        await _deleteFileIfPresent(selectedPath);
+      }
       if (context.mounted) {
         feedback.stop();
       }
