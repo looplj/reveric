@@ -145,7 +145,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
                   ),
                   sliver: SliverToBoxAdapter(
                     child: GreetingHeader(
-                      // 快速开书只落在小说库；剧本库导入走 AI 改编。
+                      // 快速开书只落在小说库。剧本库导入走 AI 改编，画布库导入画布包。
                       onQuickStart: contentKind == contentKindNovel
                           ? onQuickStart
                           : null,
@@ -157,13 +157,13 @@ class HomeLibraryPanel extends HookConsumerWidget {
                             ? LocaleKeys.libraryCreateScreenplay
                             : LocaleKeys.libraryCreateNovel,
                       ),
-                      onImport: isCanvas
-                          ? null
-                          : isScreenplay
+                      onImport: isScreenplay
                           ? onImportScreenplay
                           : onImportNovel,
                       importLabel: context.t(
-                        isScreenplay
+                        isCanvas
+                            ? LocaleKeys.productionImportCanvas
+                            : isScreenplay
                             ? LocaleKeys.libraryImportScreenplay
                             : LocaleKeys.libraryImportTxt,
                       ),
@@ -243,9 +243,29 @@ class HomeLibraryPanel extends HookConsumerWidget {
                             description: context.t(
                               LocaleKeys.homeCreateCanvasCardSubtitle,
                             ),
-                            action: RevericButton.primary(
-                              label: context.t(LocaleKeys.libraryCreateCanvas),
-                              onPressed: onCreateNovel,
+                            action: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                RevericButton.primary(
+                                  label: context.t(
+                                    LocaleKeys.libraryCreateCanvas,
+                                  ),
+                                  onPressed: onCreateNovel,
+                                ),
+                                const SizedBox(height: RevericSpacing.sm),
+                                OutlinedButton.icon(
+                                  onPressed: onImportNovel,
+                                  icon: const RevericIcon(
+                                    RevericIcons.upload,
+                                    size: 16,
+                                  ),
+                                  label: Text(
+                                    context.t(
+                                      LocaleKeys.productionImportCanvas,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           )
                         : isScreenplay

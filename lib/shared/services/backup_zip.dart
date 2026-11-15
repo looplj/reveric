@@ -1,6 +1,7 @@
 // 职责: 通过磁盘中转压缩数据，以有界文件缓冲创建备份 ZIP。
 // 关联文件:
 //   lib/shared/services/backup_service.dart
+//   lib/shared/services/production/canvas_package.dart
 
 import 'dart:io';
 
@@ -8,19 +9,29 @@ import 'package:archive/archive_io.dart' hide ZLibEncoder;
 import 'package:path/path.dart' as p;
 
 /// 在工作 isolate 中调用；每次只保留一个文件的压缩临时副本。
-Future<void> createBackupZip(Directory source, String zipPath) async {
+///
+/// [onProgress] 按已读的原始字节报告 0 到 1。备份调用可以不传。
+Future<void> createBackupZip(
+  Directory source,
+  String zipPath, {
+  void Function(double progress)? onProgress,
+}) async {
+  final files = <File>[];
+  var total = 0;
+  await for (final entity in source.list(recursive: true, followLinks: false)) {
+    if (entity is! File) {
+      continue;
+    }
+    files.add(entity);
+    total += await entity.length();
+  }
   final scratch = await Directory.systemTemp.createTemp('reveric_zip_');
+  var read = 0;
   try {
     final output = OutputFileStream(zipPath);
     try {
       final encoder = ZipEncoder()..startEncode(output);
-      await for (final entity in source.list(
-        recursive: true,
-        followLinks: false,
-      )) {
-        if (entity is! File) {
-          continue;
-        }
+      for (final entity in files) {
         final compressed = File(p.join(scratch.path, 'entry.deflate'));
         var crc = 0;
         var size = 0;
@@ -31,6 +42,10 @@ Future<void> createBackupZip(Directory source, String zipPath) async {
             .map((chunk) {
               crc = getCrc32(chunk, crc);
               size += chunk.length;
+              read += chunk.length;
+              if (total > 0) {
+                onProgress?.call(read / total);
+              }
               return chunk;
             })
             .transform(ZLibEncoder(raw: true))
@@ -63,6 +78,7 @@ Future<void> createBackupZip(Directory source, String zipPath) async {
   } finally {
     await scratch.delete(recursive: true);
   }
+  onProgress?.call(1);
 }
 
 // 仅向 ZIP 编码器提供预压缩数据，避免再次压缩和累积内存缓冲。

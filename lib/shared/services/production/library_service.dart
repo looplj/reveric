@@ -108,6 +108,7 @@ class MediaLibraryService {
     String? batchId,
     String? prompt,
     String? model,
+    void Function(double progress)? onProgress,
   }) => MediaImportOrchestrator().run(
     database: database,
     root: root,
@@ -122,6 +123,7 @@ class MediaLibraryService {
     batchId: batchId,
     prompt: prompt,
     model: model,
+    onProgress: onProgress,
   );
 
   String resolve(AssetRow asset) {

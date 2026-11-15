@@ -29,6 +29,7 @@ import '../../shared/theme/theme.dart';
 import '../../shared/utils/utf16_safe_text.dart';
 import '../../shared/widgets/novel/library_shelf_labels.dart';
 import '../../shared/widgets/novel/screenplay_kind_mark.dart';
+import '../features/production/package_actions.dart';
 import 'novel_export_dialog.dart';
 import '../../shared/components/dotted_border_box.dart';
 import 'home/novel_home_helpers.dart';
@@ -241,8 +242,12 @@ void _showNovelActionsMenu({
         icon: RevericIcons.download,
         iconColor: colors.textSecondary,
         labelColor: colors.textSecondary,
-        label: context.t(LocaleKeys.libraryExportNovel),
-        onTap: () => showNovelExportDialog(context, novel),
+        label: context.t(
+          isCanvas ? LocaleKeys.commonExport : LocaleKeys.libraryExportNovel,
+        ),
+        onTap: () => isCanvas
+            ? exportCanvasFromShelf(context, novel)
+            : showNovelExportDialog(context, novel),
       ),
       ...collectionWorkMenuItems(context, novel, position: position),
       const RevericMenuDivider(),

@@ -183,6 +183,62 @@ class ProductionGroupService {
     }),
   );
 
+  /// 建普通组并挂上 [memberIds]。成员保持原坐标，顺序写入 sort_order。
+  Future<CanvasNode> createFree(
+    String canvasId, {
+    required Rect frame,
+    required List<String> memberIds,
+    String title = '',
+    Map<String, dynamic>? style,
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'createFree',
+    memberIds,
+    () => write(canvasId, () async {
+      if (!frame.left.isFinite ||
+          !frame.top.isFinite ||
+          !frame.width.isFinite ||
+          !frame.height.isFinite ||
+          frame.width <= 0 ||
+          frame.height <= 0 ||
+          memberIds.toSet().length != memberIds.length) {
+        throw const StoryboardException('invalid_config');
+      }
+      for (final id in memberIds) {
+        await _requireAttachable(id, canvasId);
+      }
+      final id = await insertWithShortEntityId(
+        type: ShortEntityIdType.canvasNode,
+        tableName: 'canvas_nodes',
+        idExists: db.canvasDao.nodeIdExists,
+        insert: (id) => db
+            .into(db.canvasNodes)
+            .insert(
+              CanvasNodesCompanion.insert(
+                id: id,
+                canvasId: canvasId,
+                type: const Value(canvasNodeTypeGroup),
+                title: Value(title),
+                x: Value(frame.left),
+                y: Value(frame.top),
+                width: Value(frame.width),
+                height: Value(frame.height),
+                style: Value(const FreeGroupLayout().writeTo(style)),
+              ),
+            ),
+      );
+      for (var i = 0; i < memberIds.length; i++) {
+        await db.canvasDao.updateActiveNodeFields(
+          memberIds[i],
+          CanvasNodesCompanion(parentId: Value(id), sortOrder: Value(i)),
+        );
+      }
+      return (await db.canvasDao.getNodeById(id))!;
+    }),
+  );
+
   /// 在分镜组的空格位 [slot] 挂上 [memberId]。
   Future<void> attachToSlot(
     String groupId,

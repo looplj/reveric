@@ -6320,6 +6320,20 @@ abstract final class LocaleKeys {
   static const productionUploadScriptHint = 'production.upload_script_hint';
   static const productionWritePromptHint = 'production.write_prompt_hint';
   static const productionImportMediaHint = 'production.import_media_hint';
+  static const productionImportCanvas = 'production.import_canvas';
+  static const productionExportCanvasEmpty = 'production.export_canvas_empty';
+  static const productionExportCanvasSaved = 'production.export_canvas_saved';
+  static const productionExportCanvasFailed = 'production.export_canvas_failed';
+  static const productionExportCanvasMissingMedia =
+      'production.export_canvas_missing_media';
+  static const productionImportCanvasFailed = 'production.import_canvas_failed';
+  static const productionImportCanvasInvalid =
+      'production.import_canvas_invalid';
+  static const productionImportCanvasCreated =
+      'production.import_canvas_created';
+  static const productionImportCanvasStyles = 'production.import_canvas_styles';
+  static const productionCanvasPackageCanvasOnly =
+      'production.canvas_package_canvas_only';
   static const productionCanvasDesktopOnly = 'production.canvas_desktop_only';
   static const libraryContentKindCanvas = 'library.content_kind_canvas';
   static const libraryCreateCanvas = 'library.create_canvas';
