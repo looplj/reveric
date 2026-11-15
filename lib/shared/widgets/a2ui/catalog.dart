@@ -14,8 +14,10 @@ import '../../logger/app_logger.dart';
 import 'component.dart';
 import 'components/button.dart';
 import 'components/choice_picker.dart';
+import 'components/combo_field.dart';
 import 'components/container.dart';
 import 'components/display.dart';
+import 'components/field_frame.dart';
 import 'components/layout.dart';
 import 'components/text_field.dart';
 import 'components/toggle.dart';
@@ -115,6 +117,79 @@ final _customComponents = <A2uiComponent>[
     }),
   ),
   A2uiComponent(
+    name: 'FieldGroup',
+    builder: buildFieldGroup,
+    schema: Schema.fromMap({
+      'type': 'object',
+      'description':
+          'Wraps a form field with helper description text placed tightly '
+          'below it.',
+      'properties': {
+        'component': {'const': 'FieldGroup'},
+        'child': {
+          r'$ref': r'common_types.json#/$defs/Child',
+          'description': 'The ID of the wrapped field component.',
+        },
+        'description': {
+          ..._dynamicString,
+          'description': 'Helper description shown below the field.',
+        },
+        'weight': _weight,
+      },
+      'required': ['component', 'child'],
+    }),
+  ),
+  A2uiComponent(
+    name: 'ComboField',
+    builder: buildComboField,
+    schema: Schema.fromMap({
+      'type': 'object',
+      'description':
+          'An editable text field with a menu of suggested values. The text '
+          'itself is the value, including text that is not one of the '
+          'suggestions. Use ChoicePicker when the value must be one of the '
+          'options.',
+      'allOf': [
+        _checkable,
+        {
+          'type': 'object',
+          'properties': {
+            'component': {'const': 'ComboField'},
+            'label': {
+              ..._dynamicString,
+              'description': 'The text shown above the field.',
+            },
+            'value': {
+              ..._dynamicString,
+              'description': 'The current text. This is the saved value.',
+            },
+            'placeholder': {
+              ..._dynamicString,
+              'description': 'Text shown when the field is empty.',
+            },
+            'options': {
+              'type': 'array',
+              'description':
+                  'Suggested values. Selecting one writes its value into the '
+                  'field. label is the menu title; value is what gets saved.',
+              'minItems': 1,
+              'items': {
+                'type': 'object',
+                'properties': {
+                  'value': {'type': 'string'},
+                  'label': {'type': 'string'},
+                },
+                'required': ['value', 'label'],
+              },
+            },
+            'weight': _weight,
+          },
+          'required': ['component', 'label', 'value', 'options'],
+        },
+      ],
+    }),
+  ),
+  A2uiComponent(
     name: 'Switch',
     builder: buildSwitch,
     schema: Schema.fromMap({
@@ -153,9 +228,9 @@ A2uiCatalog _buildCatalog() {
     title: 'Reveric UI',
     instructions:
         'Build the UI from the components below. Layout: Column, Row, List, '
-        'Card, Gap, Divider. Display: Text, Markdown, Icon, Loading. Input: '
-        'TextField, ChoicePicker, CheckBox, Switch, Button. A Button child '
-        'must be a Text, or an Icon for an icon-only button.',
+        'Card, Gap, Divider, FieldGroup. Display: Text, Markdown, Icon, Loading. '
+        'Input: TextField, ComboField, ChoicePicker, CheckBox, Switch, Button. '
+        'A Button child must be a Text, or an Icon for an icon-only button.',
     components: [
       for (final MapEntry(key: name, value: builder) in _basicBuilders.entries)
         A2uiComponent(

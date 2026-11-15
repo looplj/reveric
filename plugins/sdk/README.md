@@ -190,8 +190,9 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 ```
 
 - 字段名匹配 `^[A-Za-z][A-Za-z0-9_]*$`。
-- `type` 可选：`string`、`text`（多行）、`integer`、`number`、`boolean`、`select`（配 `options: [{ value, label }]`）、`secret`、`model`。
-- 其他可选属性：`description`、`required`、`default`、`maxLength`（文本类）、`min` / `max`（数字类）。
+- `type` 可选：`string`、`text`（多行）、`integer`、`number`、`boolean`、`select`（配 `options: [{ value, label }]`）、`combo`、`secret`、`model`。
+- `combo` 也要配非空 `options`。保存值是字符串：从菜单选中时写入选项的 `value`，用户也可以输入清单外的文本。`label` 只显示在菜单里。`default` 必须是非空字符串，不必来自 `options`。`maxLength` 与 `string` 相同。
+- 其他可选属性：`description`、`required`、`default`、`maxLength`（文本类，含 `combo`）、`min` / `max`（数字类）。
 - `secret` 用 `context.secrets.get(key)` 读取，其他字段用 `context.settings.get(key)` 读取。
 - `model` 字段的值是 `{ providerId, model }`，可以直接传给 `ai.generateText`；未设置时为 `null`，此时会使用用户的默认聊天模型。
 - `actions` 是设置页上的按钮，比如"验证 API Key"。`requires` 列出执行前必须已填写的字段。

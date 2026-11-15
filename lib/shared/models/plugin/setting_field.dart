@@ -13,6 +13,9 @@ enum PluginSettingType {
   number,
   boolean,
   select,
+
+  /// 可编辑的建议列表。保存值为字符串；`options` 是建议，用户可以输入清单外的文本。
+  combo,
   secret,
 
   /// 从用户已配置的聊天模型中选择；值为 `{providerId, model}`，未设置时跟随默认聊天模型。
@@ -78,7 +81,7 @@ class PluginSettingField {
   final num? min;
   final num? max;
 
-  /// `select` 的选项。
+  /// `select` 与 `combo` 的选项。`combo` 的选项是建议，不限制可保存的文本。
   final List<PluginSettingOption> options;
 
   bool get isSecret => type == PluginSettingType.secret;
@@ -138,7 +141,9 @@ PluginSettingField _parseField(Object? key, Object? json) {
   final numeric =
       type == PluginSettingType.integer || type == PluginSettingType.number;
   final textual =
-      type == PluginSettingType.string || type == PluginSettingType.text;
+      type == PluginSettingType.string ||
+      type == PluginSettingType.text ||
+      type == PluginSettingType.combo;
   final min = numeric ? optional<num>('min') : null;
   final max = numeric ? optional<num>('max') : null;
   if (type == PluginSettingType.integer &&
@@ -152,7 +157,8 @@ PluginSettingField _parseField(Object? key, Object? json) {
   if (maxLength != null && maxLength <= 0) {
     throw FormatException('settings.$key.maxLength must be positive');
   }
-  final options = type == PluginSettingType.select
+  final options =
+      type == PluginSettingType.select || type == PluginSettingType.combo
       ? _parseOptions(key, json['options'])
       : const <PluginSettingOption>[];
   final field = PluginSettingField(
@@ -178,6 +184,7 @@ PluginSettingField _parseField(Object? key, Object? json) {
   // 模型取决于用户自己的 AI 设置，清单无法给出可用的默认值。
   if (type == PluginSettingType.secret ||
       type == PluginSettingType.model ||
+      (type == PluginSettingType.combo && defaultValue == '') ||
       validatePluginSettingValue(field, defaultValue) != null) {
     throw FormatException('settings.$key.default is invalid');
   }
@@ -230,6 +237,7 @@ PluginSettingIssue? validatePluginSettingValue(
   switch (field.type) {
     case PluginSettingType.string:
     case PluginSettingType.text:
+    case PluginSettingType.combo:
     case PluginSettingType.secret:
       if (value is! String) {
         return PluginSettingIssue.wrong_type;

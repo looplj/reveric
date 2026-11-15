@@ -207,6 +207,18 @@ Map<String, Object?> _fieldComponent(
       'label': field.title.resolve(locale),
       'value': _path(_valuePath(field)),
     },
+    PluginSettingType.combo => {
+      'id': id,
+      'component': 'ComboField',
+      'label': field.title.resolve(locale),
+      'options': [
+        for (final option in field.options)
+          {'label': option.label.resolve(locale), 'value': option.value},
+      ],
+      'value': _path(_valuePath(field)),
+      if (field.defaultValue != null) 'placeholder': '${field.defaultValue}',
+      'checks': checks,
+    },
     PluginSettingType.select => {
       'id': id,
       'component': 'ChoicePicker',
@@ -380,6 +392,8 @@ List<Map<String, Object?>> buildPluginConfigMessages({
         settings[field.key] = value is bool && value;
       case PluginSettingType.select:
         settings[field.key] = [if (value is String) value];
+      case PluginSettingType.combo:
+        settings[field.key] = value is String ? value : '';
       case PluginSettingType.model:
         final selection = pluginModelSelection(value);
         settings[field.key] = [selection == null ? '' : _modelValue(selection)];
@@ -392,28 +406,29 @@ List<Map<String, Object?>> buildPluginConfigMessages({
   final groups = <String>[];
   final allChecks = <Map<String, Object?>>[];
   for (final field in fields) {
-    final groupId = 'group_${field.key}';
-    groups.add(groupId);
+    final childId = field.isSecret ? _rowId(field.key) : _fieldId(field.key);
     final description = field.description?.resolve(locale);
-    components
-      ..add({
+    if (description != null && description.isNotEmpty) {
+      final groupId = 'group_${field.key}';
+      groups.add(groupId);
+      components.add({
         'id': groupId,
-        'component': 'Column',
-        'children': [
-          field.isSecret ? _rowId(field.key) : _fieldId(field.key),
-          if (description != null && description.isNotEmpty)
-            'desc_${field.key}',
-        ],
-      })
-      ..add(
-        _fieldComponent(
-          field,
-          strings,
-          locale,
-          modelOptions: modelOptions,
-          value: values[field.key],
-        ),
-      );
+        'component': 'FieldGroup',
+        'child': childId,
+        'description': description,
+      });
+    } else {
+      groups.add(childId);
+    }
+    components.add(
+      _fieldComponent(
+        field,
+        strings,
+        locale,
+        modelOptions: modelOptions,
+        value: values[field.key],
+      ),
+    );
     if (field.isSecret) {
       components
         ..add(
@@ -436,14 +451,6 @@ List<Map<String, Object?>> buildPluginConfigMessages({
           'component': 'Text',
           'text': strings.clear,
         });
-    }
-    if (description != null && description.isNotEmpty) {
-      components.add({
-        'id': 'desc_${field.key}',
-        'component': 'Text',
-        'text': description,
-        'variant': 'caption',
-      });
     }
     allChecks.addAll(_checksOf(field, strings));
   }
@@ -471,12 +478,17 @@ List<Map<String, Object?>> buildPluginConfigMessages({
     ]);
   }
 
+  final hasFooter = showSave || actions.isNotEmpty;
   components.addAll([
     {
       'id': 'root',
       'component': 'Column',
-      'children': [...groups, 'footer'],
+      'children': [
+        ...groups,
+        if (hasFooter) ...['footer_gap', 'footer'],
+      ],
     },
+    if (hasFooter) {'id': 'footer_gap', 'component': 'Gap', 'size': 'xs'},
     {
       'id': 'footer',
       'component': 'Row',
@@ -570,6 +582,8 @@ readPluginConfigSubmission({
         value = raw is bool ? raw : false;
       case PluginSettingType.select:
         value = raw is List && raw.isNotEmpty ? raw.first : null;
+      case PluginSettingType.combo:
+        value = raw is String && raw.isNotEmpty ? raw : null;
       case PluginSettingType.model:
         final selected = raw is List && raw.isNotEmpty ? raw.first : null;
         value = selected is String && selected.isNotEmpty

@@ -273,4 +273,67 @@ void main() {
       );
     });
   });
+
+  group('combo fields', () {
+    final field = parsePluginSettingFields({
+      'primaryModel': {
+        'type': 'combo',
+        'title': 'Primary model',
+        'required': true,
+        'maxLength': 32,
+        'default': 'custom/model',
+        'options': [
+          {'value': 'listed/model', 'label': 'Listed'},
+        ],
+      },
+    }).single;
+
+    test('keeps a default that is not one of the suggestions', () {
+      expect(field.type, PluginSettingType.combo);
+      expect(field.defaultValue, 'custom/model');
+      expect(field.options.single.value, 'listed/model');
+    });
+
+    test(
+      'accepts listed and custom text, and rejects an empty required value',
+      () {
+        expect(validatePluginSettingValue(field, 'listed/model'), isNull);
+        expect(validatePluginSettingValue(field, 'openai/gpt-6-luna'), isNull);
+        expect(
+          validatePluginSettingValue(field, ''),
+          PluginSettingIssue.missing,
+        );
+        expect(
+          validatePluginSettingValue(field, 'x' * 33),
+          PluginSettingIssue.too_long,
+        );
+      },
+    );
+
+    for (final (name, json) in [
+      (
+        'a combo without options',
+        {
+          'a': {'type': 'combo', 'title': 'A'},
+        },
+      ),
+      (
+        'an empty combo default',
+        {
+          'a': {
+            'type': 'combo',
+            'title': 'A',
+            'default': '',
+            'options': [
+              {'value': 'x', 'label': 'X'},
+            ],
+          },
+        },
+      ),
+    ]) {
+      test('rejects $name', () {
+        expect(() => parsePluginSettingFields(json), throwsFormatException);
+      });
+    }
+  });
 }

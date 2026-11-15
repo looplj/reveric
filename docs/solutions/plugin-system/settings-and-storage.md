@@ -52,7 +52,7 @@ T-31a 的供应商实例配置另见 [Provider 扩展](providers.md#身份配置
 | --- | --- |
 | 字段模型与校验 | `lib/shared/models/plugin/setting_field.dart`：`parsePluginSettingFields` 解析清单 `settings.fields`（已知属性类型错误、默认值不合规、`min > max`、选项重复等抛 `FormatException`，未知属性忽略）；`validatePluginSettingValue` 是保存前的唯一校验规则，T-09 的 service 写入前复用 |
 | 表单 | `lib/shared/widgets/settings/plugins/config_form.dart` 的 `PluginConfigForm`：输入 `fields`、已保存的普通配置、已保存凭据的字段名和 `onSave` 回调；T-09 把它放进设置页，并在 `onSave` 中持久化 |
-| 消息生成 | `config_surface.dart`：字段到组件的映射（`string` / `text` / `integer` / `number` / `secret` 用 TextField 的对应变体，`boolean` 用 Switch，`select` 用 ChoicePicker），以及把页面数据读回为提交内容 |
+| 消息生成 | `config_surface.dart`：字段到组件的映射（`string` / `text` / `integer` / `number` / `secret` 用 TextField 的对应变体，`boolean` 用 Switch，`select` 用 ChoicePicker，`combo` 用 ComboField），以及把页面数据读回为提交内容 |
 
 - 校验规则只在 Dart 侧维护一份：页面数据每次变化后，Host 用 `validatePluginSettingValue` 重算各字段，结果写入页面数据的 `/valid`，组件的 checks 只引用这些路径。字段在用户编辑后显示错误，保存按钮在全部规则通过前禁用；保存时再完整校验一次。
 - 凭据原文不进入页面数据：输入框初始为空，已保存时占位提示「已设置，留空则保持不变」并显示「清空」。清空只标记待清除，点保存后才生效；必填凭据清空后要重新填写才能保存。`onSave` 收到的凭据只包含有变更的字段：新值或 `null`（清除）。
