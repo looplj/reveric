@@ -1,8 +1,10 @@
 # MiniMax H3 提示词
 
-适用于 MiniMax H3 系列，具体型号按 `catalog_model_id` 查 [视频提示词](video-prompts.md) 的模型对照。内容原则见 [视频提示词](video-prompts.md) 与 [分镜指南](storyboard.md)；本附件只规定 H3 的结构与标记，取代通用 Shot 格式。正文、字段名和镜头标记全部写英文；台词、歌词和画面中可见的文字保留原语言。
+适用于 MiniMax H3 及其系列服务（非 H3 型号不适用本附件）。实际支持的输入模式（T2VA／I2VA／FL2VA／Ref2VA）与参考上限以运行时模型查询结果为准。本附件规定 H3 的结构与标记，取代通用 Shot 格式。正文、字段名和镜头标记全部写英文；台词、歌词和画面中可见的文字保留原语言。
 
 ## 先判断输入模式
+
+按当前型号**实际已绑定**的输入选择结构（仅在运行时支持对应模式时启用）：
 
 | 实际输入 | 模式 | 结构 |
 |---|---|---|
@@ -15,10 +17,10 @@
 
 ## 帧模式：对齐句 + 三个核心字段
 
-对齐句是提示词第一行，后接一个空行。句式固定，句中图片位置放对应输入的 ref 标签：
+对齐句是提示词第一行，后接一个空行。句式固定，句中图片位置填入完整 `<ref input_id="…" label="…" />` 标签：
 
-- I2VA：`For the target video, at 0.00 seconds into the target video, <ref 首帧/> (from [Shot 1]) is fully referenced.`
-- FL2VA：`How the reference pictures align with the target video — <ref 首帧/> (from Shot 1) aligns with the 0.00-second mark of the target video; <ref 尾帧/> (from Shot N) aligns with the S.SS-second mark of the target video.`
+- I2VA：`For the target video, at 0.00 seconds into the target video, <ref input_id="…" label="首帧" /> (from [Shot 1]) is fully referenced.`
+- FL2VA：`How the reference pictures align with the target video — <ref input_id="…" label="首帧" /> (from Shot 1) aligns with the 0.00-second mark of the target video; <ref input_id="…" label="尾帧" /> (from Shot N) aligns with the S.SS-second mark of the target video.`
 
 `N` 是最后一个镜头的序号，`S.SS` 是生成时长，固定两位小数（8 秒写 `8.00`）。改时长或镜头数后同步改这一行。
 
@@ -30,19 +32,25 @@ overall_soundscape: ...
 non_diegetic_music: ...
 ```
 
-- `integrated_multimodal_description`：按时间线写画面、动作、镜头、说话人、台词和同步发生的剧内声音。`[Shot 1]` 开头先写整体风格（如 `Live-action, cinematic,`）和起始构图。I2VA 从首帧的主体、构图和场景出发往后写，不重新设计图中外观；FL2VA 写两端之间可见的过程，优先单镜头，最后一个镜头结束时到达尾帧。
+- `integrated_multimodal_description`：按时间线写画面、动作、镜头、说话人、台词和同步发生的剧内声音。`[Shot 1]` 开头写起始构图。I2VA 从首帧的主体、构图和场景出发往后写，不重新设计图中外观；FL2VA 写两端之间可见的过程，优先单镜头，最后一个镜头结束时到达尾帧。
 - `overall_soundscape`：1–4 句，环境声、动作声和非语言人声（脚步、呼吸、关门），不重复台词。只有要求全程无声时写 `N/A`。
 - `non_diegetic_music`：1–3 句，写配器、速度与强弱变化，不写情绪词。剧中人物听得见的音乐写进第一个字段。没有配乐写 `N/A`。
 
 ## Ref2VA：六个字段
 
-依次写 `subject_definitions`、`summary`、`retention_analysis`、`detailed_description`、`overall_soundscape`、`non_diegetic_music`。
+依次写 `subject_definitions`、`summary`、`retention_analysis`、`detailed_description`、`overall_soundscape`、`non_diegetic_music`（引用均写完整 `<ref input_id="…" label="…" />`）：
 
-- `subject_definitions`：每行定义一个要追踪的内容，用 `<Subject N>` 标记，并写明来源参考、用途和主要特征，如 `<Subject 1> is the young woman in <ref …/>, with shoulder-length black hair and a grey wool coat.` 参考图本身作为首帧或构图锚点时，单独写一行说明它对应哪个镜头。
+- `subject_definitions`：每行定义一个要追踪的内容，用 `<Subject N>` 标记，并写明来源参考、用途和主要特征，如 `<Subject 1> is the young woman in <ref input_id="…" label="林岚" />, with shoulder-length black hair and a grey wool coat.` 有参考图或关键帧作为首/尾帧或构图锚点时，在此单独写一行用完整 `<ref input_id="…" label="…" />` 说明它对应哪个镜头。
 - `summary`：一段英文，用方括号前缀写任务类型，如 `[reference generation]`、`[keyframe completion + reference generation]`，再概括目标视频和各参考的作用。不在这里引入新标签。
-- `retention_analysis`：每个标签一行，写出现在哪些镜头，以及 `fully_preserved`、`partially_preserved`、`attribute_transfer` 或 `weak_reference`；音频用 `fully_copy`、`partially_copy`、`reference` 或 `weak_reference`。
-- `detailed_description`：先用一两句英文写整体风格，再逐镜写。每个镜头写清当前构图、主体外观与位置、环境与光线、动作与状态变化、运镜和声音，以及参考内容在哪里起作用。生成任务通常 350–500 个英文词；对白多时以装下完整台词为准。
+- `retention_analysis`：按场内状态与取景核对后的出镜安排填写，每个标签一行，写出现在哪些镜头，以及 `fully_preserved`、`partially_preserved`、`attribute_transfer` 或 `weak_reference`；音频用 `fully_copy`、`partially_copy`、`reference` 或 `weak_reference`。
+- `detailed_description`：逐镜写清当前构图、主体外观与位置、环境与光线、动作与状态变化、运镜和声音，以及参考内容在哪里起作用。
 - 后两个声音字段同帧模式。
+
+## 内容转换与字段核对
+
+先保证每镜起始构图、动作与状态变化、运镜、声音与末帧终点完整连贯，再放入 H3 字段；帧模式同样保留完整的动作与状态变化。
+
+Ref2VA 先按共用成稿检查核对场内状态、逐镜可见范围与正文落点，再交叉核对 `subject_definitions`、`retention_analysis` 与 `detailed_description`。每个必要主体的来源、出镜镜头和正文中的可见位置应一致；画外或被遮挡的主体按剧情需要交代位置与声音。
 
 ## 镜头、运镜与切点
 

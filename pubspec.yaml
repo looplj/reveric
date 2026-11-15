@@ -267,7 +267,9 @@ flutter:
     - assets/official_skills/screenplay-writing/SKILL.md
     - assets/official_skills/screenplay-writing/references/
     - assets/official_skills/screenplay-production/SKILL.md
+    - assets/official_skills/screenplay-production/NOTICE.md
     - assets/official_skills/screenplay-production/references/
+    - assets/official_skills/screenplay-production/references/examples/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

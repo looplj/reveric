@@ -30,9 +30,82 @@ class _FileAssetBundle extends AssetBundle {
   }
 }
 
+/// 若 [graph] 存在有向环（含自环），返回可读路径 `a -> b -> a`；无环返回 null。
+String? _findLinkCycle(Map<String, Set<String>> graph) {
+  final state = <String, int>{}; // 1 = visiting, 2 = visited
+  final stack = <String>[];
+
+  String? dfs(String node) {
+    state[node] = 1;
+    stack.add(node);
+    for (final next in graph[node] ?? const <String>{}) {
+      final nextState = state[next];
+      if (nextState == 1) {
+        final cycleStart = stack.indexOf(next);
+        return [...stack.sublist(cycleStart), next].join(' -> ');
+      }
+      if (nextState == null) {
+        final cycle = dfs(next);
+        if (cycle != null) return cycle;
+      }
+    }
+    stack.removeLast();
+    state[node] = 2;
+    return null;
+  }
+
+  for (final node in graph.keys) {
+    if (state[node] == null) {
+      final cycle = dfs(node);
+      if (cycle != null) return cycle;
+    }
+  }
+  return null;
+}
+
+/// 收集除 [entryPath] 外各附件的标题与被链接别名，用于拦截「标题」式回指成环。
+Map<String, Set<String>> _collectAttachmentTitleAliases(
+  Map<String, String> files, {
+  required String entryPath,
+}) {
+  final aliases = <String, Set<String>>{};
+  final h1Pattern = RegExp(r'^#\s+(.+)$', multiLine: true);
+  final labelLinkPattern = RegExp(r'\[([^\]]+)\]\(([^)#]+\.md)(?:#[^)]*)?\)');
+
+  void register(String alias, String targetPath) {
+    final normalized = alias.trim();
+    if (normalized.isEmpty || targetPath == entryPath) return;
+    aliases.putIfAbsent(normalized, () => <String>{}).add(targetPath);
+  }
+
+  for (final file in files.entries) {
+    if (file.key == entryPath) continue;
+    final h1 = h1Pattern.firstMatch(file.value)?.group(1)?.trim();
+    if (h1 != null && h1.isNotEmpty) {
+      register(h1, file.key);
+      if (h1.contains('与')) {
+        register(h1.split('与').first, file.key);
+      }
+    }
+  }
+  for (final file in files.entries) {
+    for (final match in labelLinkPattern.allMatches(file.value)) {
+      final target = Uri.parse(match.group(2)!);
+      if (target.hasScheme) continue;
+      final resolved = Uri.parse(file.key).resolveUri(target).path;
+      if (files.containsKey(resolved)) {
+        register(match.group(1)!, resolved);
+      }
+    }
+  }
+  return aliases;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const loader = BundledOfficialSkillsLoader();
+  const productionNoticeAssetPath =
+      'assets/official_skills/screenplay-production/NOTICE.md';
   late AssetBundle bundle;
 
   setUp(() {
@@ -116,9 +189,13 @@ void main() {
   );
 
   test(
-    'relative Markdown reference links resolve inside each installed skill',
+    'relative Markdown reference links resolve inside each installed skill without cycles or malformed ref tags',
     () async {
       final links = RegExp(r'\]\(([^)#]+)(?:#[^)]*)?\)');
+      final quotedTitle = RegExp(r'「([^」]+)」');
+      final refTag = RegExp(r'<ref\b[^>]*>');
+      final inputIdAttr = RegExp(r'input_id="([^"]+)"');
+      final labelAttr = RegExp(r'label="([^"]+)"');
       for (final spec in bundledOfficialSkillSpecs) {
         final detail = await loader.get(bundle, spec.name);
         final files = {
@@ -126,7 +203,19 @@ void main() {
           for (final reference in detail.references)
             reference.path: reference.content,
         };
+        final titleAliases = _collectAttachmentTitleAliases(
+          files,
+          entryPath: 'SKILL.md',
+        );
+        final graph = <String, Set<String>>{
+          for (final path in files.keys) path: <String>{},
+        };
         for (final file in files.entries) {
+          expect(
+            file.value,
+            isNot(contains('promptExtend')),
+            reason: '${spec.name} (${file.key}): use snake_case prompt_extend',
+          );
           for (final match in links.allMatches(file.value)) {
             final target = Uri.parse(match.group(1)!);
             if (target.hasScheme) {
@@ -138,15 +227,55 @@ void main() {
               contains(resolved),
               reason: '${spec.name}: ${file.key} -> $target',
             );
+            graph[file.key]!.add(resolved);
+          }
+          if (file.key != 'SKILL.md') {
+            for (final match in quotedTitle.allMatches(file.value)) {
+              final phrase = match.group(1)!;
+              final targets = titleAliases[phrase];
+              if (targets == null) continue;
+              final otherTargets = targets
+                  .where((target) => target != file.key)
+                  .toSet();
+              graph[file.key]!.addAll(otherTargets);
+              expect(
+                otherTargets,
+                isEmpty,
+                reason:
+                    '${spec.name} (${file.key}) must not redirect via title '
+                    '「$phrase」 to $otherTargets',
+              );
+            }
+          }
+          for (final match in refTag.allMatches(file.value)) {
+            final tag = match.group(0)!;
+            if (tag == '<ref>') {
+              continue;
+            }
+            final hasInputId =
+                inputIdAttr.firstMatch(tag)?.group(1)?.trim().isNotEmpty ??
+                false;
+            final hasLabel =
+                labelAttr.firstMatch(tag)?.group(1)?.trim().isNotEmpty ?? false;
+            expect(
+              hasInputId && hasLabel,
+              isTrue,
+              reason: '${spec.name} (${file.key}): malformed ref tag $tag',
+            );
           }
         }
+        expect(
+          _findLinkCycle(graph),
+          isNull,
+          reason: '${spec.name} must keep a cycle-free DAG reference graph',
+        );
       }
     },
   );
 
-  test('production v5 keeps its name and neutral tool-skill routing', () async {
+  test('production keeps its name and neutral tool-skill routing', () async {
     final skill = await loader.get(bundle, '剧本制片');
-    expect(skill.version, 5);
+    expect(skill.version, 6);
     expect(skill.name, '剧本制片');
     expect(skill.prompt, contains('画布作品工具'));
     expect(skill.whenToUse, contains('把剧本做成视频'));
@@ -158,6 +287,12 @@ void main() {
           .singleWhere((ref) => ref.path == 'references/production.md')
           .content,
       contains('文本节点'),
+    );
+    expect(
+      skill.references
+          .singleWhere((ref) => ref.path == 'references/qwen-image-prompts.md')
+          .content,
+      contains('prompt_extend'),
     );
   });
 
@@ -287,6 +422,22 @@ void main() {
     );
   });
 
+  test(
+    'production notice is packaged without loading it as skill content',
+    () async {
+      expect(
+        await rootBundle.loadString(productionNoticeAssetPath),
+        await File(productionNoticeAssetPath).readAsString(),
+      );
+      final trackingBundle = _FileAssetBundle();
+      await loader.get(trackingBundle, '剧本制片');
+      expect(
+        trackingBundle.loadedPaths,
+        isNot(contains(productionNoticeAssetPath)),
+      );
+    },
+  );
+
   test('spec table and asset directory do not drift', () async {
     final onDisk = Directory(bundledOfficialSkillsAssetDir)
         .listSync(recursive: true)
@@ -297,14 +448,19 @@ void main() {
       for (final spec in bundledOfficialSkillSpecs) spec.assetPath,
       for (final spec in bundledOfficialSkillSpecs) ...spec.referenceAssetPaths,
     };
-    // 技能内容都必须进入规格表。
+    final packagedFiles = {...inSpec, productionNoticeAssetPath};
+    // 技能内容进入规格表，许可文件独立打包。
     expect(
-      onDisk.difference(inSpec),
+      onDisk.difference(packagedFiles),
       isEmpty,
-      reason: '这些文件在 assets/official_skills/ 下但未登记主文件或附件。',
+      reason: '这些文件在 assets/official_skills/ 下但未登记主文件、附件或许可文件。',
     );
     // 规格表有、目录里没有 → 运行时 loadString 会抛错。
-    expect(inSpec.difference(onDisk), isEmpty, reason: '这些技能资源已登记但文件不存在。');
+    expect(
+      packagedFiles.difference(onDisk),
+      isEmpty,
+      reason: '这些技能资源已登记但文件不存在。',
+    );
   });
 
   test('spec table sort_order and names are unique and contiguous', () {

@@ -24,6 +24,77 @@ import 'package:reveric/shared/services/ai/ffmpeg/arguments.dart';
 import 'package:reveric/shared/services/production/contact_sheet.dart';
 import 'package:reveric/shared/services/bundled_control_skills.dart';
 
+/// 若 [graph] 存在有向环（含自环），返回可读路径 `a -> b -> a`；无环返回 null。
+String? _findLinkCycle(Map<String, Set<String>> graph) {
+  final state = <String, int>{}; // 1 = visiting, 2 = visited
+  final stack = <String>[];
+
+  String? dfs(String node) {
+    state[node] = 1;
+    stack.add(node);
+    for (final next in graph[node] ?? const <String>{}) {
+      final nextState = state[next];
+      if (nextState == 1) {
+        final cycleStart = stack.indexOf(next);
+        return [...stack.sublist(cycleStart), next].join(' -> ');
+      }
+      if (nextState == null) {
+        final cycle = dfs(next);
+        if (cycle != null) return cycle;
+      }
+    }
+    stack.removeLast();
+    state[node] = 2;
+    return null;
+  }
+
+  for (final node in graph.keys) {
+    if (state[node] == null) {
+      final cycle = dfs(node);
+      if (cycle != null) return cycle;
+    }
+  }
+  return null;
+}
+
+/// 收集除 [entryPath] 外各附件的标题与被链接别名，纳入无环图校验。
+Map<String, Set<String>> _collectAttachmentTitleAliases(
+  Map<String, String> files, {
+  required String entryPath,
+}) {
+  final aliases = <String, Set<String>>{};
+  final h1Pattern = RegExp(r'^#\s+(.+)$', multiLine: true);
+  final labelLinkPattern = RegExp(r'\[([^\]]+)\]\(([^)#]+\.md)(?:#[^)]*)?\)');
+
+  void register(String alias, String targetPath) {
+    final normalized = alias.trim();
+    if (normalized.isEmpty || targetPath == entryPath) return;
+    aliases.putIfAbsent(normalized, () => <String>{}).add(targetPath);
+  }
+
+  for (final file in files.entries) {
+    if (file.key == entryPath) continue;
+    final h1 = h1Pattern.firstMatch(file.value)?.group(1)?.trim();
+    if (h1 != null && h1.isNotEmpty) {
+      register(h1, file.key);
+      if (h1.contains('与')) {
+        register(h1.split('与').first, file.key);
+      }
+    }
+  }
+  for (final file in files.entries) {
+    for (final match in labelLinkPattern.allMatches(file.value)) {
+      final target = match.group(2)!;
+      if (target.contains('://')) continue;
+      final resolved = Uri.parse(file.key).resolveUri(Uri.parse(target)).path;
+      if (files.containsKey(resolved)) {
+        register(match.group(1)!, resolved);
+      }
+    }
+  }
+  return aliases;
+}
+
 /// 从项目根目录磁盘读取 asset 的 fake bundle。
 ///
 /// flutter test 默认从项目根目录运行,所以直接用相对路径读文件。
@@ -675,6 +746,10 @@ void main() {
       final skills = await loader.loadAll(trackingBundle);
       final registered = trackingBundle.loadedPaths;
       final link = RegExp(r'\]\(([^)#]+\.md)(?:#[^)]*)?\)');
+      final quotedTitle = RegExp(r'「([^」]+)」');
+      final refTag = RegExp(r'<ref\b[^>]*>');
+      final inputIdAttr = RegExp(r'input_id="([^"]+)"');
+      final labelAttr = RegExp(r'label="([^"]+)"');
       for (final skill in skills) {
         final root = File(skill.assetPath).parent;
         final bodies = {
@@ -682,20 +757,61 @@ void main() {
           for (final ref in skill.references)
             '${root.path}/${ref.path}': ref.content,
         };
+        final titleAliases = _collectAttachmentTitleAliases(
+          bodies,
+          entryPath: skill.assetPath,
+        );
+        final graph = <String, Set<String>>{
+          for (final path in bodies.keys) path: <String>{},
+        };
         for (final entry in bodies.entries) {
           for (final match in link.allMatches(entry.value)) {
             final target = match.group(1)!;
             if (target.contains('://')) {
               continue;
             }
-            final path = File('${File(entry.key).parent.path}/$target').path;
+            final path = Uri.parse(
+              entry.key,
+            ).resolveUri(Uri.parse(target)).path;
             expect(
               bodies.containsKey(path),
               isTrue,
               reason: '${entry.key}: $target',
             );
+            graph[entry.key]!.add(path);
+          }
+          if (entry.key != skill.assetPath) {
+            for (final match in quotedTitle.allMatches(entry.value)) {
+              final targets = titleAliases[match.group(1)!];
+              if (targets == null) continue;
+              graph[entry.key]!.addAll(
+                targets.where((target) => target != entry.key),
+              );
+            }
+          }
+          for (final match in refTag.allMatches(entry.value)) {
+            final tag = match.group(0)!;
+            if (tag == '<ref>') {
+              continue;
+            }
+            final hasInputId =
+                inputIdAttr.firstMatch(tag)?.group(1)?.trim().isNotEmpty ??
+                false;
+            final hasLabel =
+                labelAttr.firstMatch(tag)?.group(1)?.trim().isNotEmpty ?? false;
+            expect(
+              hasInputId && hasLabel,
+              isTrue,
+              reason: '${entry.key}: malformed ref tag $tag',
+            );
           }
         }
+        expect(
+          _findLinkCycle(graph),
+          isNull,
+          reason:
+              '${skill.callName} must keep a cycle-free DAG reference graph',
+        );
       }
       final onDisk = Directory('assets/bundled_skills')
           .listSync(recursive: true)

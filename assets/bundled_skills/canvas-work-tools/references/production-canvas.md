@@ -4,7 +4,7 @@
 
 ## 节点与布局
 
-读取 `production/canvas` 或其 `nodes` 获取节点身份与连线。用 Create 在 `production/canvas/nodes` 创建节点，媒体配置保存在 [分镜与媒体节点](clips.md) 对应的片段中。节点 `type` 与可写字段以 `/_schema/production` 为准。
+读取 `production/canvas` 或其 `nodes` 获取节点身份与连线。用 Create 在 `production/canvas/nodes` 创建节点，节点 `type` 与可写字段以 `/_schema/production` 为准（片段输入与生成配置由「画布作品工具」的节点片段入口负责）。
 
 ```json
 {"path":"production/canvas/nodes","fields":{"type":"video","title":"门口对话","x":420,"y":0}}
