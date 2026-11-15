@@ -484,7 +484,7 @@ void main() {
       for (final declaration in [
         {
           'name': 'Images',
-          'settings': {'actions': {}},
+          'settings': {'unknown': {}},
         },
         {
           'name': 'Images',

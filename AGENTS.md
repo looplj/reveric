@@ -10,6 +10,14 @@
 
 当前支持的平台为 **Windows、macOS、Android**。平台适配、构建、测试与验收以这三个平台为范围。
 
+## 插件仓库与维护入口
+
+涉及外部插件、插件市场或 SDK 分发时，先读 `plugins/README.md` 的“外部插件维护”。插件独立仓库名为 `reveric-plugins`，默认与本仓库同级，相对路径为 `../reveric-plugins/`；先确认目录存在，若不存在再询问实际位置，不在本仓库重新创建插件源码。
+
+- 小云雀短片和营销分别维护在插件仓库的 `plugins/xiaoyunque/`、`plugins/xiaoyunque-marketing/`，实现与测试完全独立，不互相引用。
+- SDK 源码仍在本仓库的 `plugins/sdk/`，宿主在 `lib/shared/services/plugins/`。SDK 更新后须同步插件仓库的 `vendor/` 安装包、根 `package.json` 和 `package-lock.json`，并验证全部插件；不要求发布到 npm。
+- 发布流程和索引契约见插件仓库的 `README.md`。文档及依赖配置使用仓库名和相对路径，不写本机绝对路径。
+
 ## 工作契约
 
 1. **先读后写**：修改前读取导出、直接调用方、共享工具、现有测试和命中的规则。不了解结构原因时先停下来说明。

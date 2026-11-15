@@ -1,6 +1,6 @@
 # 插件工作区维护说明
 
-本文写给维护 Reveric 插件系统的开发者：说明 `plugins/` 工作区和 SDK 的结构、契约改动要同步哪些地方、怎么构建、验证和发布。插件开发者的文档是 [sdk/README.md](sdk/README.md)，它也是 npm 包 `reveric-plugin-sdk` 的说明页。
+本文写给维护 Reveric 插件系统的开发者：说明 `plugins/` 工作区和 SDK 的结构、契约改动要同步哪些地方、怎么构建、验证和发布。插件开发者的文档是 [sdk/README.md](sdk/README.md)，它也是 SDK 包 `reveric-plugin-sdk` 的说明页。
 
 ## 工作区
 
@@ -17,7 +17,7 @@
 内置插件的目录结构和第三方插件相同（`src/index.ts`、`src/views/<name>.tsx`、`migrations/`），由同一个 `buildPlugin` 构建，区别只有两点：
 
 - 输出目录是 `assets/plugins/<id>/`。
-- 类型检查由 `build.mjs` 对整个工作区统一执行（`plugins/tsconfig.json`），所以每个内置插件不需要自己的 `tsconfig.json`。
+- 类型检查由 `build.mjs` 对整个工作区统一执行（`plugins/tsconfig.json`）。外部插件由各自仓库维护独立的 `package.json`、`tsconfig.json` 和测试入口。
 
 ## SDK 目录
 
@@ -181,12 +181,76 @@ FJS_PROBE_LIBRARY=<target>/debug/libfjs.dylib fvm flutter test -j 1 \
 
 `source_map_test` 会把 `manage.tsx` 的源码行号和已提交的 `manage.js.map` 对照，所以改了 `manage.tsx` 之后要先重新构建，再跑这个测试。
 
-## 发布 SDK
+## 分发 SDK
 
-1. 确认上面的验证全部通过。
-2. 按语义化版本修改 `sdk/package.json` 的 `version`；不兼容的改动见"兼容性"一节。
-3. 在 `plugins/sdk/` 下运行 `npm pack --dry-run`，确认文件列表只包含 `files` 中列出的文件，以及 README 和 LICENSE。
-4. 在 `plugins/sdk/` 下运行 `npm publish`。
+SDK 不要求发布到 npm registry。`npm pack` 只生成安装包，不上传；`npm publish` 才会发布到 registry。源码、类型、CLI 和构建器随同一个 SDK 包分发。
+
+1. 修改 SDK 内容时分配新版本，不用同一版本号覆盖已经分发的包；SDK 的版本规则见“兼容性”。
+2. 在 `plugins/sdk/` 下运行 `npm pack --dry-run` 检查文件列表，然后运行 `npm pack --pack-destination /absolute/path/to/output`。
+3. 在独立目录安装该 `.tgz`，验证实际消费者的类型检查、测试和 ZIP 打包，不能只验证一个 Hello World。
+4. 团队分发可将 `.tgz` 提交到插件仓库的 `vendor/`，由根 `package.json` 使用 `file:vendor/<包名>.tgz` 并提交 lockfile；CI 的 `npm ci` 直接使用该包，无需 npm 发布权限。也可改用固定版本的 GitHub Release 下载 URL。
+5. 如需服务公开 npm 用户，再选择执行 `npm publish`。两种分发方式必须使用同一版本的相同内容。
+
+当前工作区直接链接 `sdk/`，不能用工作区测试通过代替已分发包的验证。插件仓库使用固定的 SDK 包，升级流程见下节。
+
+## 外部插件维护
+
+| 仓库 | 相对仓库根目录的路径 | 维护内容 |
+| --- | --- | --- |
+| `reveric` | `plugins/sdk/` | SDK 源码、类型、构建器和开发文档 |
+| `reveric` | `lib/shared/services/plugins/` | 客户端插件宿主 |
+| `reveric-plugins` | `plugins/xiaoyunque/` | 小云雀短片的实现、模型、测试与说明 |
+| `reveric-plugins` | `plugins/xiaoyunque-marketing/` | 小云雀营销的实现、模型、测试与说明 |
+| `reveric-plugins` | `vendor/` | 固定版本的 SDK `.tgz` |
+| `reveric-plugins` | `scripts/`、`.github/workflows/` | 检查、打包、发布与索引流程 |
+
+这里的名称是两个 Git 仓库，不是 `reveric` 内的子目录。以下跨仓库命令假设两者放在同一个父目录；实际放置不同也可以，只需调整相对路径，不把个人机器的绝对路径提交进文档、package 或 lockfile。
+
+小云雀源码和产物已从本仓库移除，后续只在 `reveric-plugins` 修改。两插件各自维护实现、模型定义、测试 fixture，不互相引用，也不提取共享业务代码。同一个上游变更影响两者时，分别修改和验证。
+
+### 更新插件
+
+在 `reveric-plugins` 根目录使用 Node.js 22：
+
+```sh
+npm ci
+npm test --workspace @reveric-plugins/xiaoyunque
+npm run check -- xiaoyunque
+npm run plan -- --offline
+```
+
+修改营销插件时将两处名称改为 `xiaoyunque-marketing`。修改两者时运行 `npm run check` 检查全部。普通修复由发布流程自动升 patch；需要 minor/major 时提高对应 `plugin.json.version`。PR 合并到 `main` 后自动发布 ZIP 和索引，不需手工打 tag。线上流程须先完成插件仓库 README 的 GitHub 接入步骤。
+
+### 更新 SDK
+
+1. 在 `reveric/plugins/sdk/` 修改接口、类型或工具，涉及新宿主能力时同步修改客户端实现。兼容扩展可升 patch；0.x 阶段的不兼容 SDK 改动升 minor，宿主协议不兼容则另升 `pluginApiVersion` 主版本。
+2. 修改 `plugins/sdk/package.json` 的版本，在 `reveric/plugins/` 运行 `npm install --package-lock-only` 更新工作区 lockfile，并运行 `npm test`。
+3. 将新版本打到插件仓库，命令从两仓库的共同父目录开始：
+
+   ```sh
+   cd reveric/plugins/sdk
+   npm pack --dry-run
+   npm pack --pack-destination ../../../reveric-plugins/vendor
+   cd ../../../reveric-plugins
+   npm install -D --save-exact ./vendor/reveric-plugin-sdk-<version>.tgz
+   npm ci
+   npm test
+   npm run check
+   npm run plan -- --offline
+   ```
+
+4. `<version>` 替换为实际新版本。`reveric` 提交 SDK 源码、版本和工作区 lockfile；`reveric-plugins` 提交新 `.tgz`、根 `package.json`、`package-lock.json` 及必要的插件适配。不能只更新 SDK 源码而漏掉 `vendor/`，也不能手改 `node_modules`。已分发包不覆盖，新内容使用新版本和文件名。
+5. SDK 包、根依赖或 lockfile 的变动会让全部插件重新检查和发布。若依赖新宿主能力，先交付客户端支持，再发布依赖它的插件，并记录验收的客户端版本。SDK 打包成功不等于旧客户端兼容。
+
+整个流程只需 `npm pack` 和安装包，不要求 `npm publish`。SDK 的 MIT 许可证随包分发。
+
+### 验收边界
+
+客户端保留通用 Provider 注册、模型解析、凭据隔离、视频恢复和 ZIP 安装测试，分别见 `test/shared/services/plugins/` 下的 `media_test.dart`、`provider_models_test.dart`、`config_test.dart`、`video_recovery_test.dart`、`installer_test.dart`。插件的协议与模型参数在插件仓库测试，不依赖 Dart catalog 或主仓库内置产物。
+
+应用内验收覆盖 Windows、macOS、Android 的 ZIP 安装、启用、实例配置、模型获取和生成恢复。插件市场尚未接入客户端时，用户手动导入 ZIP；自动发布不等于客户端自动更新。真实出片与线上 Release/Pages 验证单独记录，模拟测试不能替代。
+
+本次迁出不做旧内置安装兼容。现有安装器拒绝用 ZIP 覆盖 `bundled` 来源，验收使用全新应用配置；若未来需要保留旧实例、密钥和任务，单独设计来源转换，不能通过删除业务数据模拟无损升级。
 
 ## 内置插件
 
@@ -197,8 +261,6 @@ FJS_PROBE_LIBRARY=<target>/debug/libfjs.dylib fvm flutter test -j 1 \
 | `deepseek/` | `reveric.deepseek` | DeepSeek 搜索与读取，带设置动作 |
 | `keenable/` | `reveric.keenable` | Keenable 搜索与读取，API Key 可选（不填时使用公共接口），带设置动作 |
 | `zhuque/` | `reveric.zhuque` | 朱雀文本 AI 检测，需配置 EdgeOne Makers API Key，带设置动作 |
-| `xiaoyunque/` | `reveric.xiaoyunque` | 小云雀-短片：10 个视频模型，支持首尾帧、参考素材与积分查询 |
-| `xiaoyunque-marketing/` | `reveric.xiaoyunque-marketing` | 小云雀-营销：4 个营销视频模型，支持字幕开关与积分查询 |
 
 内置插件的首次启用策略由 `lib/shared/services/plugins/host.dart` 中的 `_defaultEnabledBundledPlugins` 管理；新增默认启用项时，将插件 ID 加入该集合。已有用户选择保持不变。
 

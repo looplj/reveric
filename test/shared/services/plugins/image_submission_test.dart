@@ -247,6 +247,9 @@ void main() {
             'configuration' => 'generation_failed',
             _ => 'submission_unknown',
           }, reason: id);
+          if (scenario == 'rejected' && provider.isPluginProvider) {
+            expect(row.errorMessage, 'explicit rejection', reason: id);
+          }
           if (scenario == 'receipt') {
             expect(row.providerTaskId, 'accepted');
             expect(row.providerState, {'cursor': 7});

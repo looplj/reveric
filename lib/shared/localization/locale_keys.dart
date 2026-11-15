@@ -3565,6 +3565,34 @@ abstract final class LocaleKeys {
   static const pluginUnreviewed = 'plugin.unreviewed';
   static const pluginVersionUpgrade = 'plugin.version_upgrade';
   static const pluginUnsavedChangesMessage = 'plugin.unsaved_changes_message';
+  static const pluginTabInstalled = 'plugin.tab_installed';
+  static const pluginTabMarketplace = 'plugin.tab_marketplace';
+  static const pluginMarketplaceSearchHint = 'plugin.marketplace_search_hint';
+  static const pluginMarketplaceEmpty = 'plugin.marketplace_empty';
+  static const pluginMarketplaceEmptyDescription =
+      'plugin.marketplace_empty_description';
+  static const pluginMarketplaceSearchEmpty = 'plugin.marketplace_search_empty';
+  static const pluginMarketplaceLoadFailed = 'plugin.marketplace_load_failed';
+  static const pluginMarketplaceLoadFailedDescription =
+      'plugin.marketplace_load_failed_description';
+  static const pluginMarketplaceCachedWarning =
+      'plugin.marketplace_cached_warning';
+  static const pluginMarketplaceInstalled = 'plugin.marketplace_installed';
+  static const pluginMarketplaceInstalledVersion =
+      'plugin.marketplace_installed_version';
+  static const pluginMarketplaceUpdate = 'plugin.marketplace_update';
+  static const pluginMarketplaceUpdateVersion =
+      'plugin.marketplace_update_version';
+  static const pluginMarketplaceUnsupported = 'plugin.marketplace_unsupported';
+  static const pluginMarketplaceDownloadFailed =
+      'plugin.marketplace_download_failed';
+  static const pluginMarketplaceIntegrityFailed =
+      'plugin.marketplace_integrity_failed';
+  static const pluginMarketplaceSource = 'plugin.marketplace_source';
+  static const pluginMarketplaceRepository = 'plugin.marketplace_repository';
+  static const pluginMarketplaceReleaseNotes =
+      'plugin.marketplace_release_notes';
+  static const pluginMarketplaceDownloading = 'plugin.marketplace_downloading';
   // ── reading ────────────────────────────────────────
   static const readingTitle = 'reading.title';
   static const readingLibraryTitle = 'reading.library_title';

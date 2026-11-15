@@ -16,15 +16,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../components/reveric_placeholder.dart';
+import '../../../components/reveric_segmented_control.dart';
 import '../../../localization/app_localization.dart';
 import '../../../localization/locale_keys.dart';
 import '../../../providers/plugin_providers.dart';
 import '../../../theme/theme.dart';
 import '../settings_section_widgets.dart';
 import 'install_button.dart';
+import 'marketplace_tab.dart';
 import 'navigation.dart';
 import 'overview.dart';
 import 'row.dart';
+
+enum _PluginsTab { installed, marketplace }
 
 class PluginsSettingsSection extends HookConsumerWidget {
   const PluginsSettingsSection({super.key, this.onOpen});
@@ -33,6 +37,7 @@ class PluginsSettingsSection extends HookConsumerWidget {
   final ValueChanged<PluginSettingsTarget>? onOpen;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tab = useState(_PluginsTab.installed);
     final plugins = ref.watch(pluginStatusesProvider);
     final installFailed = useState(false);
     final colors = RevericTheme.colorsOf(context);
@@ -51,48 +56,74 @@ class PluginsSettingsSection extends HookConsumerWidget {
       child: SettingsSection(
         titleKey: LocaleKeys.settingsPlugins,
         descriptionKey: LocaleKeys.pluginDescription,
-        trailing: PluginInstallButton(
-          onPicked: (archive) => open(PluginPreviewTarget(archive)),
-          onFailed: () => installFailed.value = true,
-        ),
+        trailing: tab.value == _PluginsTab.installed
+            ? PluginInstallButton(
+                onPicked: (archive) => open(PluginPreviewTarget(archive)),
+                onFailed: () => installFailed.value = true,
+              )
+            : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (installFailed.value) ...[
-              PluginNotice(message: context.t(LocaleKeys.pluginPackageInvalid)),
-              const SizedBox(height: RevericSpacing.lg),
-            ],
-            plugins.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (_, _) => Text(
-                context.t(LocaleKeys.pluginLoadFailed),
-                style: typo.ui.copyWith(color: colors.warningText),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: RevericSegmentedControl<_PluginsTab>(
+                selected: tab.value,
+                onChanged: (next) => tab.value = next,
+                segments: [
+                  RevericSegment(
+                    value: _PluginsTab.installed,
+                    label: context.t(LocaleKeys.pluginTabInstalled),
+                  ),
+                  RevericSegment(
+                    value: _PluginsTab.marketplace,
+                    icon: RevericIcons.storefront,
+                    label: context.t(LocaleKeys.pluginTabMarketplace),
+                  ),
+                ],
               ),
-              data: (items) => items.isEmpty
-                  ? SettingsCard(
-                      children: [
-                        Center(
-                          child: RevericPlaceholder.empty(
-                            icon: RevericIcons.layers_outlined,
-                            description: context.t(LocaleKeys.pluginEmpty),
-                          ),
-                        ),
-                      ],
-                    )
-                  : SettingsCard(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        for (final (index, item) in items.indexed) ...[
-                          if (index > 0) const SettingsRowDivider(),
-                          PluginSettingsRow(
-                            key: ValueKey(item.id),
-                            status: item,
-                            onOpen: () => open(PluginDetailTarget(item.id)),
+            ),
+            const SizedBox(height: RevericSpacing.lg),
+            if (tab.value == _PluginsTab.installed) ...[
+              if (installFailed.value) ...[
+                PluginNotice(
+                  message: context.t(LocaleKeys.pluginPackageInvalid),
+                ),
+                const SizedBox(height: RevericSpacing.lg),
+              ],
+              plugins.when(
+                loading: () => const LinearProgressIndicator(),
+                error: (_, _) => Text(
+                  context.t(LocaleKeys.pluginLoadFailed),
+                  style: typo.ui.copyWith(color: colors.warningText),
+                ),
+                data: (items) => items.isEmpty
+                    ? SettingsCard(
+                        children: [
+                          Center(
+                            child: RevericPlaceholder.empty(
+                              icon: RevericIcons.layers_outlined,
+                              description: context.t(LocaleKeys.pluginEmpty),
+                            ),
                           ),
                         ],
-                      ],
-                    ),
-            ),
+                      )
+                    : SettingsCard(
+                        padding: EdgeInsets.zero,
+                        children: [
+                          for (final (index, item) in items.indexed) ...[
+                            if (index > 0) const SettingsRowDivider(),
+                            PluginSettingsRow(
+                              key: ValueKey(item.id),
+                              status: item,
+                              onOpen: () => open(PluginDetailTarget(item.id)),
+                            ),
+                          ],
+                        ],
+                      ),
+              ),
+            ] else
+              PluginMarketplaceTab(onOpen: open),
           ],
         ),
       ),

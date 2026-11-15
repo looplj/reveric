@@ -182,6 +182,7 @@ void main() {
       );
       var host = makeHost('1.0.0');
       final referenceServices = <ReferenceStorageService>[];
+      var time = DateTime.now();
       VideoTaskService makeService() {
         final refs = ReferenceStorageService(
           database: database,
@@ -196,6 +197,7 @@ void main() {
           rootDirectory: root,
           references: refs,
           pluginHost: host,
+          now: () => time,
           probeResult: (_) async => const MediaInfo(
             duration: Duration(seconds: 5),
             hasVideo: true,
@@ -313,18 +315,22 @@ void main() {
         ),
       );
       await jobs.refresh('invalid');
-      expect(
-        (await jobs.getTask('invalid'))!.status,
-        GenerationTaskStatus.reconciliation_required,
-      );
-      expect((await jobs.getTask('invalid'))!.providerTaskId, 'remote');
+      final retrying = (await jobs.getTask('invalid'))!;
+      expect(retrying.status, GenerationTaskStatus.running);
+      expect(retrying.errorCode, 'invalid_response');
+      expect(retrying.providerTaskId, 'remote');
+      expect(retrying.nextPollAt, isNotNull);
       final beforeQueries = queries;
       await jobs.refreshDue();
       expect(
         queries,
         beforeQueries,
-        reason: 'Malformed success stops automatic polling',
+        reason: 'Malformed success waits for retry backoff',
       );
+      time = retrying.nextPollAt!.add(const Duration(seconds: 1));
+      await jobs.refreshDue();
+      expect(queries, beforeQueries + 1);
+      expect((await jobs.getTask('invalid'))!.providerTaskId, 'remote');
       expect(submits, 1);
       await host.setEnabled('test.video', false);
       await jobs.refresh('invalid');
@@ -360,12 +366,12 @@ void main() {
       );
       await jobs.refresh('invalid-detail');
       final invalid = (await jobs.getTask('invalid-detail'))!;
-      expect(invalid.status, GenerationTaskStatus.reconciliation_required);
+      expect(invalid.status, GenerationTaskStatus.running);
       expect(invalid.errorCode, 'invalid_response');
       expect(invalid.errorDetail, contains('error.detail'));
       expect(invalid.providerTaskId, 'remote');
       expect(invalid.providerState, {'cursor': 'running'});
-      expect(invalid.nextPollAt, isNull);
+      expect(invalid.nextPollAt, isNotNull);
       final afterInvalid = queries;
       await jobs.refreshDue();
       expect(queries, afterInvalid);

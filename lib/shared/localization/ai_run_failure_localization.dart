@@ -46,6 +46,24 @@ String localizeAiRunFailure(
   return t(key);
 }
 
+/// 将插件或上游返回的可读错误拆解为专用本地化 key 或可透传的原文。
+({String? messageKey, String? providerMessage}) resolveProviderFailureMessage({
+  String? code,
+  String? message,
+}) {
+  final rawMessage = message == null ? null : tryReadProviderMessage(message);
+  if (rawMessage == null) {
+    return (messageKey: null, providerMessage: null);
+  }
+  final recognized = recognizedAiRunFailureKey(
+    AiRunFailure.requestFailed(providerMessage: rawMessage, providerCode: code),
+  );
+  return (
+    messageKey: recognized,
+    providerMessage: recognized == null ? rawMessage : null,
+  );
+}
+
 /// 按精确错误码或消息规则识别出的专用文案 key。错误族前缀和 HTTP 状态码只给
 /// 泛化原因，不算识别，返回 null，界面应优先展示供应商原文。
 String? recognizedAiRunFailureKey(AiRunFailure failure) {

@@ -311,14 +311,14 @@ void main() {
           );
           await jobs.start();
           await jobs.refreshDue();
-          expect(paths, ['/submit']);
           if (phase == 'invalidstate') {
-            await jobs.refresh('task');
             expect(
               (await jobs.getTask('task'))!.status,
               GenerationTaskStatus.completed,
             );
             expect(paths, ['/submit', '/result']);
+          } else {
+            expect(paths, ['/submit']);
           }
           return;
         }

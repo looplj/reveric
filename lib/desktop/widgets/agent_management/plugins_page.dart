@@ -74,13 +74,16 @@ class PluginsRegion extends HookWidget {
         mobile: false,
         onClose: close,
       ),
-      PluginPreviewTarget(:final archive) => PluginPreviewPage(
-        key: ObjectKey(archive),
-        archive: archive,
-        mobile: false,
-        onClose: close,
-        onInstalled: (pluginId) => target.value = PluginDetailTarget(pluginId),
-      ),
+      PluginPreviewTarget(:final archive, :final marketplace) =>
+        PluginPreviewPage(
+          key: ObjectKey(archive),
+          archive: archive,
+          marketplace: marketplace,
+          mobile: false,
+          onClose: close,
+          onInstalled: (pluginId) =>
+              target.value = PluginDetailTarget(pluginId),
+        ),
     };
   }
 }

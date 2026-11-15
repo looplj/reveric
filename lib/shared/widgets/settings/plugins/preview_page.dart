@@ -32,6 +32,8 @@ import '../../../services/plugins/registry.dart';
 import '../../../services/plugins/runtime.dart';
 import '../../../theme/theme.dart';
 import '../settings_section_widgets.dart';
+import 'marketplace_links.dart';
+import 'navigation.dart';
 import 'overview.dart';
 import 'permissions.dart';
 import 'subpage.dart';
@@ -46,6 +48,7 @@ class PluginPreviewPage extends HookConsumerWidget {
     required this.mobile,
     required this.onClose,
     required this.onInstalled,
+    this.marketplace,
   });
 
   final PluginPackageArchive archive;
@@ -56,6 +59,9 @@ class PluginPreviewPage extends HookConsumerWidget {
 
   /// 安装成功，参数为插件 id。
   final ValueChanged<String> onInstalled;
+
+  /// 非空表示来自官方插件市场，不展示本地未审核警告并展示来源外链。
+  final PluginMarketplaceOrigin? marketplace;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -193,11 +199,22 @@ class PluginPreviewPage extends HookConsumerWidget {
           local: true,
           previousVersion: installed?.manifest?.version,
           notices: [
-            PluginNotice(message: context.t(LocaleKeys.pluginUnreviewed)),
+            if (marketplace == null)
+              PluginNotice(message: context.t(LocaleKeys.pluginUnreviewed)),
             if (failed.value)
               PluginNotice(message: context.t(LocaleKeys.pluginInstallFailed)),
           ],
         ),
+        if (marketplace != null &&
+            (marketplace!.repository != null ||
+                marketplace!.releaseUrl != null))
+          Padding(
+            padding: const EdgeInsets.only(top: RevericSpacing.sm),
+            child: PluginMarketplaceLinks(
+              repository: marketplace!.repository,
+              releaseUrl: marketplace!.releaseUrl,
+            ),
+          ),
         if (manifest.permissions.isNotEmpty)
           SettingsSection(
             titleKey: LocaleKeys.pluginPermissions,

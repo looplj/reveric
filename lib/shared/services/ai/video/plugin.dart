@@ -4,6 +4,7 @@
 //   lib/shared/services/plugins/host.dart
 //   lib/shared/services/plugins/files.dart
 import '../../../agent/agent_tool_dispatcher.dart';
+import '../../../localization/ai_run_failure_localization.dart';
 import '../../../models/ai_provider.dart';
 import '../../../models/video/request.dart';
 import '../../../models/video/task_result.dart';
@@ -129,7 +130,18 @@ class PluginVideoClient extends VideoClient {
               : error is FormatException
               ? VideoErrorCode.invalid_response
               : VideoErrorCode.unavailable);
-      throw VideoException(classification, detail: '$error');
+      final resolved = switch (error) {
+        PluginExecutionError(:final code, :final message)
+            when !code.startsWith('plugin_') && code != 'user_cancelled' =>
+          resolveProviderFailureMessage(code: code, message: message),
+        _ => (messageKey: null, providerMessage: null),
+      };
+      throw VideoException(
+        classification,
+        messageKey: resolved.messageKey,
+        providerMessage: resolved.providerMessage,
+        detail: '$error',
+      );
     }
   }
 

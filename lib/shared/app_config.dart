@@ -27,6 +27,10 @@ const revericQqGroupNumber = '924148054';
 const revericSkillsCatalogUrl =
     'https://raw.githubusercontent.com/looplj/reveric-skills/main/catalog.json';
 
+/// 插件市场官方索引地址，由 Cloudflare R2 分发。
+const revericPluginMarketplaceIndexUrl =
+    'https://downloads.reveric.app/plugins/index.json';
+
 /// AGPLv3 第 7 条附加条款要求修改版保留的作者署名，与 NOTICES 保持一致，不做本地化。
 const revericAttribution = 'Based on Reveric by looplj.';
 

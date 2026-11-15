@@ -155,6 +155,7 @@ class ProductionHistory extends HookConsumerWidget {
                 GenerationTaskStatus.cancelled,
                 GenerationTaskStatus.action_required,
                 GenerationTaskStatus.reconciliation_required,
+                GenerationTaskStatus.submission_unknown,
               }.contains(status);
               final retryable =
                   status == GenerationTaskStatus.saving ||
