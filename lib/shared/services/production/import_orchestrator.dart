@@ -179,7 +179,7 @@ class MediaImportOrchestrator {
               _log.info('reused id=${existing.id}');
               return (await database.assetDao.getAsset(existing.id))!;
             }
-            final id = existing?.id ?? buildRandomId('ast');
+            final id = existing?.id ?? buildRandomId('ast', length: 12);
             final sibling = await database.assetDao.findByHash(
               digest,
               format.$1,

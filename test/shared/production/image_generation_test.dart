@@ -420,7 +420,7 @@ void main() {
         expect(task.path, startsWith('file_workspaces/work/images/'));
         expect(task.path, endsWith('.png'));
         final asset = (await appDb.assetDao.getAsset(task.resultAssetId!))!;
-        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
         expect(asset.path, task.path);
         expect(
           await File('${root.path}/${asset.path}').readAsBytes(),

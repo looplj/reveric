@@ -183,7 +183,7 @@ class ImageLibraryService {
     } catch (_) {
       // 尺寸探测失败不影响资产留存；调用方可继续使用已知尺寸。
     }
-    final id = buildRandomId('ast');
+    final id = buildRandomId('ast', length: 12);
     await _database.imageAssetDao.insertAsset(
       AssetsCompanion.insert(
         type: 'image',

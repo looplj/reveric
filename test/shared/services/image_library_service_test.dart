@@ -169,8 +169,8 @@ void main() {
     );
 
     expect(second.id, isNot(first.id));
-    expect(first.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
-    expect(second.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+    expect(first.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
+    expect(second.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
     // Existing releases stored ordinary JSON text in this same SQLite column.
     await database.customStatement(
       'UPDATE assets SET metadata_json = ? WHERE id = ?',
@@ -283,7 +283,7 @@ void main() {
 
       expect(again.id, first.id);
       for (final asset in [first, other, otherPurpose]) {
-        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
       }
       expect(other.id, isNot(first.id));
       // 同作品换场景：另起一条记录，但复用已登记的文件。

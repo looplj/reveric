@@ -424,7 +424,7 @@ void main() {
       final first = await service.requireRun(await submit(service, p));
       expect(first.status, GenerationTaskStatus.completed);
       final asset = (await appDb.assetDao.getAsset(first.resultAssetId!))!;
-      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
       expect(await File('${root.path}/${asset.path}.part').exists(), false);
       expect(asset.source, 'generated');
       expect(asset.novelId, 'work');

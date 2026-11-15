@@ -70,6 +70,20 @@ void main() {
     },
   );
 
+  test(
+    'generation tasks use twelve random characters; other IDs stay short',
+    () {
+      for (final type in ShortEntityIdType.values) {
+        final id = buildShortEntityId(type);
+        final suffixLength = type == ShortEntityIdType.generationTask ? 12 : 6;
+        expect(
+          id,
+          matches('^${shortEntityIdPrefixes[type]}_[A-Z0-9]{$suffixLength}\$'),
+        );
+      }
+    },
+  );
+
   test('rejects an invalid controlled random index', () {
     expect(
       () => buildShortEntityId(ShortEntityIdType.chapter, nextInt: (_) => 36),

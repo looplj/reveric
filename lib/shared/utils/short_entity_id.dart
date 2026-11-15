@@ -100,7 +100,8 @@ const Map<ShortEntityIdType, String> shortEntityIdPrefixes = {
 /// 合并；调用方必须显式选择 [ShortEntityIdType]，不得用 `substring` 从类型名
 /// 推导前缀。通用 `buildRandomId` 服务于其他作用域和数据规模，必须保持原样。
 ///
-/// 返回格式为注册的小写前缀、下划线和六位 `A-Z0-9` 后缀。存储层负责检查
+/// 返回格式为注册的小写前缀、下划线和 `A-Z0-9` 后缀；生成记录使用十二位，
+/// 其他实体使用六位。存储层负责检查
 /// 有效行、软删除行、同批候选，并以严格 INSERT 处理最终的并发碰撞。
 String buildShortEntityId(
   ShortEntityIdType type, {
@@ -112,7 +113,10 @@ String buildShortEntityId(
   }
   final randomIndex = nextInt ?? _shortEntityIdRandom.nextInt;
   final buffer = StringBuffer(prefix)..write('_');
-  for (var i = 0; i < shortEntityIdSuffixLength; i++) {
+  final suffixLength = type == ShortEntityIdType.generationTask
+      ? 12
+      : shortEntityIdSuffixLength;
+  for (var i = 0; i < suffixLength; i++) {
     final index = randomIndex(_shortEntityIdAlphabet.length);
     if (index < 0 || index >= _shortEntityIdAlphabet.length) {
       throw RangeError.range(

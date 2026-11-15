@@ -964,7 +964,7 @@ void main() {
         expect(posts, 1);
         final tasks = await db.select(db.generationTasks).get();
         expect(tasks, hasLength(1));
-        expect(tasks.single.id, matches(r'^gen_[A-Z0-9]{6}$'));
+        expect(tasks.single.id, matches(r'^gen_[A-Z0-9]{12}$'));
         expect(
           operations.state.runs.singleWhere((run) => !run.terminal).taskId,
           tasks.single.id,
@@ -997,7 +997,7 @@ void main() {
         expect(history.map((task) => task.id).toSet(), hasLength(2));
         expect(
           history.map((task) => task.id),
-          everyElement(matches(r'^gen_[A-Z0-9]{6}$')),
+          everyElement(matches(r'^gen_[A-Z0-9]{12}$')),
         );
       } finally {
         if (!response.isCompleted) {
@@ -2350,7 +2350,7 @@ void main() {
       await service.retryDownload(id);
       final completed = (await service.getTask(id))!;
       final asset = (await db.assetDao.getAsset(completed.resultAssetId!))!;
-      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
       expect(asset.durationMs, 5000);
       expect(posts, 1);
       expect(queries, 1);
@@ -2402,7 +2402,7 @@ void main() {
       await restored.start();
       final result = (await restored.getTask(id))!;
       final asset = (await db.assetDao.getAsset(result.resultAssetId!))!;
-      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
       expect(asset.type, 'video');
       expect(asset.width, 1280);
       expect(asset.height, 720);

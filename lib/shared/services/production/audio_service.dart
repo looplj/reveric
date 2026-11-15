@@ -489,7 +489,7 @@ class AudioTaskService {
     await database.generationTaskDao.registerResult(
       id,
       AssetsCompanion.insert(
-        id: buildRandomId('ast'),
+        id: buildRandomId('ast', length: 12),
         type: 'audio',
         purpose: AssetPurpose.production_generated.value,
         name: Value(id),
