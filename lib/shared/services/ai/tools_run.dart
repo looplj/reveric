@@ -302,6 +302,9 @@ mixin _AiToolManagerRunMixin
     ),
     'production': _RunCommandDefinition(
       codemode: const {
+        'canvas-preview': _RunCodemodeAccess.denied(
+          'Canvas preview images must be viewed through a direct Run call.',
+        ),
         'image-preset': _RunCodemodeAccess.read(),
         'capture-panorama': _RunCodemodeAccess.write(),
         'derive-view': _RunCodemodeAccess.write(),
@@ -316,6 +319,7 @@ mixin _AiToolManagerRunMixin
       },
       media: true,
       subcommands: const {
+        'canvas-preview': RunPermission.none(),
         'capture-panorama': RunPermission.none(),
         'derive-view': RunPermission.required('generation.image'),
         'image-preset': RunPermission.none(),

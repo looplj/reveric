@@ -33,6 +33,16 @@ class MediaLibraryService {
     root: root,
   );
 
+  /// 仅读取已缓存的视频第 0 帧 PNG 缩略图，未命中返回 null 且不触发 ffmpeg。
+  Future<File?> cachedVideoThumbnail(String stored) {
+    final path = relativePath(stored);
+    final resolved = resolvePath(path);
+    return _videoThumbnails.getIfCached(
+      relativePath: path,
+      resolvedPath: resolved,
+    );
+  }
+
   /// 抽取并缓存视频第 0 帧 PNG 缩略图，源文件大小或修改时间变更时自动失效。
   Future<File> videoThumbnail(
     String stored, {

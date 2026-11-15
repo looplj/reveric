@@ -74,6 +74,21 @@ class VideoThumbnailCache {
     }
   }
 
+  /// 仅查询已落盘缓存的缩略图文件；未命中时不触发 ffmpeg 抽取。
+  Future<File?> getIfCached({
+    required String relativePath,
+    required String resolvedPath,
+  }) async {
+    final cached = await _lookupCache(
+      relativePath: relativePath,
+      resolvedPath: resolvedPath,
+    );
+    if (cached == null) {
+      return null;
+    }
+    return cached.exists ? cached.target : null;
+  }
+
   Future<File> getOrCreate({
     required String relativePath,
     required String resolvedPath,
@@ -82,9 +97,34 @@ class VideoThumbnailCache {
     if (cancellation?.cancelled == true) {
       throw const MediaException(MediaFailure.cancelled);
     }
+    final cached = await _lookupCache(
+      relativePath: relativePath,
+      resolvedPath: resolvedPath,
+    );
+    if (cached == null) {
+      throw const MediaException(MediaFailure.invalid_media);
+    }
+    if (cancellation?.cancelled == true) {
+      throw const MediaException(MediaFailure.cancelled);
+    }
+    if (cached.exists) {
+      unawaited(_touch(cached.target));
+      return cached.target;
+    }
+    final job = _inFlight.putIfAbsent(
+      cached.key,
+      () => _startJob(cached.key, cached.dir, resolvedPath, cached.target),
+    );
+    return _awaitJob(cached.key, job, cancellation);
+  }
+
+  Future<({String key, Directory dir, File target, bool exists})?> _lookupCache({
+    required String relativePath,
+    required String resolvedPath,
+  }) async {
     final stat = await File(resolvedPath).stat();
     if (stat.type != FileSystemEntityType.file || stat.size == 0) {
-      throw const MediaException(MediaFailure.invalid_media);
+      return null;
     }
     final key = sha256
         .convert(
@@ -94,19 +134,9 @@ class VideoThumbnailCache {
         )
         .toString();
     final dir = await _ensureDirectory();
-    if (cancellation?.cancelled == true) {
-      throw const MediaException(MediaFailure.cancelled);
-    }
     final target = File(p.join(dir.path, '$key.png'));
-    if (await target.exists() && await target.length() > 0) {
-      unawaited(_touch(target));
-      return target;
-    }
-    final job = _inFlight.putIfAbsent(
-      key,
-      () => _startJob(key, dir, resolvedPath, target),
-    );
-    return _awaitJob(key, job, cancellation);
+    final exists = await target.exists() && await target.length() > 0;
+    return (key: key, dir: dir, target: target, exists: exists);
   }
 
   _ThumbJob _startJob(

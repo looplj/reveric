@@ -5110,6 +5110,9 @@ abstract final class LocaleKeys {
   static const todoRemaining = 'todo.remaining';
 
   // ── tool ────────────────────────────────────────
+  static const toolRunProduction = 'tool.run_production';
+  static const toolRunProductionCanvasPreview =
+      'tool.run_production_canvas_preview';
   static const toolRunProductionCapturePanorama =
       'tool.run_production_capture_panorama';
   static const toolRunProductionDeriveView = 'tool.run_production_derive_view';
@@ -5140,6 +5143,7 @@ abstract final class LocaleKeys {
   static const toolRunDirectorPreview = 'tool.run_director_preview';
   static const toolRunDirectorOutput = 'tool.run_director_output';
   static const toolRunDirectorFrames = 'tool.run_director_frames';
+  static const toolRunFiles = 'tool.run_files';
   static const toolRunFilesList = 'tool.run_files_list';
   static const toolRunFilesReadText = 'tool.run_files_read_text';
   static const toolRunViewImage = 'tool.run_view_image';
@@ -5147,6 +5151,7 @@ abstract final class LocaleKeys {
       'tool.run_files_read_video_metadata';
   static const toolRunFilesReadAudioMetadata =
       'tool.run_files_read_audio_metadata';
+  static const toolRunStyles = 'tool.run_styles';
   static const toolNameCodemode = 'tool.name_codemode';
   static const toolPending = 'tool.pending';
   static const toolProcessTitle = 'tool.process_title';
@@ -5382,9 +5387,11 @@ abstract final class LocaleKeys {
   static const toolRunEditingPreview = 'tool.run_editing_preview';
   static const toolRunEditingFrames = 'tool.run_editing_frames';
   static const toolRunEditingExport = 'tool.run_editing_export';
+  static const toolRunOperations = 'tool.run_operations';
   static const toolRunOperationsList = 'tool.run_operations_list';
   static const toolRunOperationsRead = 'tool.run_operations_read';
   static const toolRunOperationsWait = 'tool.run_operations_wait';
+  static const toolRunFfmpeg = 'tool.run_ffmpeg';
   static const toolRunFfmpegCapabilities = 'tool.run_ffmpeg_capabilities';
   static const toolRunFfmpegProbe = 'tool.run_ffmpeg_probe';
   static const toolRunFfmpegFrames = 'tool.run_ffmpeg_frames';

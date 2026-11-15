@@ -37,6 +37,7 @@ void main() {
     testWidgets('localizes production Run cards in $locale', (tester) async {
       final zh = locale.languageCode == 'zh';
       final actions = [
+        ('production', 'canvas-preview', '预览制作画布', 'Preview production canvas'),
         ('production', 'capture-panorama', '全景取景', 'Capture panorama views'),
         ('production', 'derive-view', '派生图片视角', 'Derive image view'),
         ('production', 'image-preset', '创建图片预设草稿', 'Create image preset draft'),
@@ -210,6 +211,41 @@ void main() {
                         localizedRunHelpTopic(context, 'providers'),
                         zh ? '供应商' : 'Providers',
                       );
+                      final helpTopics = [
+                        ('production', '制作', 'Production'),
+                        ('files', '文件', 'Files'),
+                        ('assets', '素材', 'Assets'),
+                        ('stagings', '导演台', 'Director'),
+                        ('styles', '风格', 'Styles'),
+                        ('editing', '剪辑', 'Editing'),
+                        ('ffmpeg', '媒体处理', 'Media processing'),
+                        ('operations', '后台任务', 'Background tasks'),
+                      ];
+                      for (final topic in helpTopics) {
+                        final help = AiToolCallBlock(
+                          id: 'help_${topic.$1}',
+                          callId: 'help_${topic.$1}',
+                          toolName: 'Run',
+                          arguments: {
+                            'command': 'help',
+                            'subcommand': topic.$1,
+                          },
+                        );
+                        expect(
+                          localizedToolCallTitle(context, help),
+                          zh ? '查看命令帮助' : 'Reading command help',
+                        );
+                        expect(
+                          toolRowTarget(context, help, null),
+                          zh ? topic.$2 : topic.$3,
+                        );
+                        expect(
+                          toolHeaderSubtitle(context, help, null),
+                          zh
+                              ? '查看命令帮助 ${topic.$2}'
+                              : 'Reading command help ${topic.$3}',
+                        );
+                      }
                       final export = describeToolOperation(context, (
                         capability: null,
                         kind: 'editing.export',
