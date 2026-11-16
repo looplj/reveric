@@ -56,7 +56,7 @@ class CoverReferenceSection extends HookConsumerWidget {
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
-    ref.watch(coverImageChoicesProvider);
+    ref.watch(coverDraftImageChoicesProvider(novelId));
     final limit = controller.referenceLimit;
     final atLimit = limit != null && state.references.length >= limit;
     final byId = {for (final asset in libraryAssets) asset.id: asset};

@@ -608,7 +608,11 @@ final List<AiProvider> aiProviderBuiltinDefaults = [
       'gpt-5.3-chat-latest',
       'gpt-5.3-codex',
     ],
-    imageModels: ['gpt-image-2'],
+    imageModels: [
+      'gpt-image-2.5-flare',
+      'gpt-image-2.5-sunburst',
+      'gpt-image-2',
+    ],
     embeddingModels: const [],
     temperature: 0.7,
     maxTurns: 512,

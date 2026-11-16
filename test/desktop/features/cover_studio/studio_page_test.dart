@@ -9,6 +9,8 @@
 //   .agents/rules/testing.md
 //   .agents/rules/i18n.md
 
+import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -157,6 +159,7 @@ final _novel = Novel(
 Widget _wrap({required AppDatabase database, required Widget child}) {
   return ProviderScope(
     overrides: [
+      aiSettingsProvider.overrideWithValue(AiSettings(providers: const [])),
       appDatabaseProvider.overrideWithValue(database),
       // 不走 settings DB：否则 dispose 时 Drift stream 会留下 pending Timer。
       appBackgroundActiveProvider.overrideWithValue(false),

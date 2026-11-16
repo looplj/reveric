@@ -956,8 +956,19 @@ List<String> imageModelsForProvider(String providerType) =>
         .toList(growable: false) ??
     const [];
 
-// OpenAI Images 与 Codex 按像素尺寸编码，只能承载登记了尺寸表的目录型号。
+// OpenAI Images 与 Codex 按像素尺寸编码；渠道为自动尺寸目录补充像素规格。
 final _pixelSizeChannels = {
+  'image-advance': ImageChannelModel(
+    catalogId: 'gpt-image-2',
+    includedInPresets: false,
+  ),
+  for (final id in ['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'])
+    id: ImageChannelModel(
+      catalogId: id,
+      includedInPresets: false,
+      capabilities: _atlasGptImage25Capabilities,
+      requestDefaults: _atlasGptImage25Defaults,
+    ),
   for (final entry in imageModelsCatalog.entries)
     if (entry.value.capabilities.sizes.isNotEmpty)
       entry.key: ImageChannelModel(

@@ -60,12 +60,12 @@ final class MapStudioImageModelSelectionProvider
 String _$mapStudioImageModelSelectionHash() =>
     r'cb6e741e11d227f2066bcfd8e87f1eb705e28cdd';
 
-/// 地图出图 / 改图使用默认图片模型。
+/// 地图出图 / 改图绑定当前草稿选定的供应商和图片模型。
 
 @ProviderFor(mapImageEditCallback)
-final mapImageEditCallbackProvider = MapImageEditCallbackProvider._();
+final mapImageEditCallbackProvider = MapImageEditCallbackFamily._();
 
-/// 地图出图 / 改图使用默认图片模型。
+/// 地图出图 / 改图绑定当前草稿选定的供应商和图片模型。
 
 final class MapImageEditCallbackProvider
     extends
@@ -75,20 +75,27 @@ final class MapImageEditCallbackProvider
           AiMultiImageEditCallback?
         >
     with $Provider<AiMultiImageEditCallback?> {
-  /// 地图出图 / 改图使用默认图片模型。
-  MapImageEditCallbackProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'mapImageEditCallbackProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
+  /// 地图出图 / 改图绑定当前草稿选定的供应商和图片模型。
+  MapImageEditCallbackProvider._({
+    required MapImageEditCallbackFamily super.from,
+    required String? super.argument,
+  }) : super(
+         retry: null,
+         name: r'mapImageEditCallbackProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
 
   @override
   String debugGetCreateSourceHash() => _$mapImageEditCallbackHash();
+
+  @override
+  String toString() {
+    return r'mapImageEditCallbackProvider'
+        ''
+        '($argument)';
+  }
 
   @$internal
   @override
@@ -98,7 +105,8 @@ final class MapImageEditCallbackProvider
 
   @override
   AiMultiImageEditCallback? create(Ref ref) {
-    return mapImageEditCallback(ref);
+    final argument = this.argument as String?;
+    return mapImageEditCallback(ref, modelId: argument);
   }
 
   /// {@macro riverpod.override_with_value}
@@ -108,15 +116,47 @@ final class MapImageEditCallbackProvider
       providerOverride: $SyncValueProvider<AiMultiImageEditCallback?>(value),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is MapImageEditCallbackProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
 }
 
 String _$mapImageEditCallbackHash() =>
-    r'8c12651ebb150cc3fa06f302ea38b23e97988571';
+    r'66812a6586a19405d33aae10d8cfb0b1453d106c';
+
+/// 地图出图 / 改图绑定当前草稿选定的供应商和图片模型。
+
+final class MapImageEditCallbackFamily extends $Family
+    with $FunctionalFamilyOverride<AiMultiImageEditCallback?, String?> {
+  MapImageEditCallbackFamily._()
+    : super(
+        retry: null,
+        name: r'mapImageEditCallbackProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// 地图出图 / 改图绑定当前草稿选定的供应商和图片模型。
+
+  MapImageEditCallbackProvider call({String? modelId}) =>
+      MapImageEditCallbackProvider._(argument: modelId, from: this);
+
+  @override
+  String toString() => r'mapImageEditCallbackProvider';
+}
 
 /// 文生图 callback：地图首次生成（无参考图）时使用。
 
 @ProviderFor(mapImageGenerateCallback)
-final mapImageGenerateCallbackProvider = MapImageGenerateCallbackProvider._();
+final mapImageGenerateCallbackProvider = MapImageGenerateCallbackFamily._();
 
 /// 文生图 callback：地图首次生成（无参考图）时使用。
 
@@ -129,19 +169,26 @@ final class MapImageGenerateCallbackProvider
         >
     with $Provider<AiImageGenerationCallback?> {
   /// 文生图 callback：地图首次生成（无参考图）时使用。
-  MapImageGenerateCallbackProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'mapImageGenerateCallbackProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
+  MapImageGenerateCallbackProvider._({
+    required MapImageGenerateCallbackFamily super.from,
+    required String? super.argument,
+  }) : super(
+         retry: null,
+         name: r'mapImageGenerateCallbackProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
 
   @override
   String debugGetCreateSourceHash() => _$mapImageGenerateCallbackHash();
+
+  @override
+  String toString() {
+    return r'mapImageGenerateCallbackProvider'
+        ''
+        '($argument)';
+  }
 
   @$internal
   @override
@@ -151,7 +198,8 @@ final class MapImageGenerateCallbackProvider
 
   @override
   AiImageGenerationCallback? create(Ref ref) {
-    return mapImageGenerateCallback(ref);
+    final argument = this.argument as String?;
+    return mapImageGenerateCallback(ref, modelId: argument);
   }
 
   /// {@macro riverpod.override_with_value}
@@ -161,10 +209,43 @@ final class MapImageGenerateCallbackProvider
       providerOverride: $SyncValueProvider<AiImageGenerationCallback?>(value),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is MapImageGenerateCallbackProvider &&
+        other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
 }
 
 String _$mapImageGenerateCallbackHash() =>
-    r'2b950c24200951eb568d0aa1ee103092443daa67';
+    r'4b1e4295898bd2f0a842cd4002b8fb8e5e0c8ef7';
+
+/// 文生图 callback：地图首次生成（无参考图）时使用。
+
+final class MapImageGenerateCallbackFamily extends $Family
+    with $FunctionalFamilyOverride<AiImageGenerationCallback?, String?> {
+  MapImageGenerateCallbackFamily._()
+    : super(
+        retry: null,
+        name: r'mapImageGenerateCallbackProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// 文生图 callback：地图首次生成（无参考图）时使用。
+
+  MapImageGenerateCallbackProvider call({String? modelId}) =>
+      MapImageGenerateCallbackProvider._(argument: modelId, from: this);
+
+  @override
+  String toString() => r'mapImageGenerateCallbackProvider';
+}
 
 @ProviderFor(mapPlaceNameReader)
 final mapPlaceNameReaderProvider = MapPlaceNameReaderProvider._();

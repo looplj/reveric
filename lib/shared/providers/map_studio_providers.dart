@@ -16,6 +16,7 @@ import '../services/ai/tools.dart'
     show AiImageGenerationCallback, AiMultiImageEditCallback;
 
 import 'settings_providers.dart';
+import 'ai_providers.dart' show studioImageModelSelectionProvider;
 import 'plugin_providers.dart';
 import 'video_tasks.dart';
 import '../services/map_place_name_reader.dart' show MapPlaceNameReader;
@@ -24,12 +25,27 @@ export 'map_studio_controller.dart' show mapStudioControllerProvider;
 
 part 'map_studio_providers.g.dart';
 
-final mapImageChoicesProvider = Provider<ImageModelChoices?>((ref) {
-  final selection = ref.watch(mapStudioImageModelSelectionProvider);
-  return selection == null
-      ? null
-      : ImageModelChoices(selection.config, selection.model);
-});
+final mapDraftImageModelSelectionProvider = Provider.autoDispose
+    .family<MapStudioImageModelSelection?, String?>((ref, modelId) {
+      if (modelId == null) {
+        return ref.watch(mapStudioImageModelSelectionProvider);
+      }
+      final selection = ref.watch(studioImageModelSelectionProvider(modelId));
+      return selection == null
+          ? null
+          : MapStudioImageModelSelection(
+              config: selection.config,
+              model: selection.model,
+            );
+    });
+
+final mapImageChoicesProvider = Provider.autoDispose
+    .family<ImageModelChoices?, String?>((ref, modelId) {
+      final selection = ref.watch(mapDraftImageModelSelectionProvider(modelId));
+      return selection == null
+          ? null
+          : ImageModelChoices(selection.config, selection.model);
+    });
 
 class MapStudioImageModelSelection {
   const MapStudioImageModelSelection({
@@ -58,10 +74,10 @@ MapStudioImageModelSelection? mapStudioImageModelSelection(Ref ref) {
   return MapStudioImageModelSelection(config: config, model: option.model);
 }
 
-/// 地图出图 / 改图使用默认图片模型。
+/// 地图出图 / 改图绑定当前草稿选定的供应商和图片模型。
 @riverpod
-AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
-  final selection = ref.watch(mapStudioImageModelSelectionProvider);
+AiMultiImageEditCallback? mapImageEditCallback(Ref ref, {String? modelId}) {
+  final selection = ref.watch(mapDraftImageModelSelectionProvider(modelId));
   if (selection == null) return null;
   final host = ref.watch(pluginHostServiceProvider);
   final references = ref.watch(referenceStorageServiceProvider);
@@ -83,7 +99,7 @@ AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
     return service.editImages(
       prompt,
       imageData: imageData,
-      model: model,
+      model: model ?? selection.model,
       options: options,
       size: size,
       quality: quality,
@@ -94,8 +110,11 @@ AiMultiImageEditCallback? mapImageEditCallback(Ref ref) {
 
 /// 文生图 callback：地图首次生成（无参考图）时使用。
 @riverpod
-AiImageGenerationCallback? mapImageGenerateCallback(Ref ref) {
-  final selection = ref.watch(mapStudioImageModelSelectionProvider);
+AiImageGenerationCallback? mapImageGenerateCallback(
+  Ref ref, {
+  String? modelId,
+}) {
+  final selection = ref.watch(mapDraftImageModelSelectionProvider(modelId));
   if (selection == null) return null;
   final host = ref.watch(pluginHostServiceProvider);
   final references = ref.watch(referenceStorageServiceProvider);
@@ -115,7 +134,7 @@ AiImageGenerationCallback? mapImageGenerateCallback(Ref ref) {
     );
     return service.generateImage(
       prompt,
-      model: model,
+      model: model ?? selection.model,
       options: options,
       size: size,
       quality: quality,

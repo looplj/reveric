@@ -9,6 +9,7 @@
 //   .agents/rules/testing.md
 //   .agents/rules/i18n.md
 
+import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -335,6 +336,7 @@ class _CartographerFixture extends StatelessWidget {
 Widget _wrap(Widget child) {
   return ProviderScope(
     overrides: [
+      aiSettingsProvider.overrideWithValue(AiSettings(providers: const [])),
       mapStudioImageModelSelectionProvider.overrideWithValue(
         MapStudioImageModelSelection(
           config: aiProviderBuiltinById(

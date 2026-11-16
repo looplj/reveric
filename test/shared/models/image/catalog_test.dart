@@ -15,6 +15,22 @@ AiProvider _provider(String type) =>
     aiProviderBuiltinById('openai')!.copyWith(type: type);
 
 void main() {
+  test('GPT Image versions expose pixel sizes in direct channels', () {
+    for (final type in ['openai', 'codex']) {
+      for (final id in [
+        'gpt-image-2',
+        'gpt-image-2.5-flare',
+        'gpt-image-2.5-sunburst',
+        'image-advance',
+      ]) {
+        final channel = lookupImageChannelModel(type, id)!;
+        expect(channel.catalogId, id == 'image-advance' ? 'gpt-image-2' : id);
+        expect(channel.capabilities.size('3:4', '2K'), '1536x2048');
+        channel.capabilities.validateSize('1536x2048');
+      }
+    }
+  });
+
   test(
     'OpenRouter image additions retain channel-specific reference limits',
     () {

@@ -35,8 +35,6 @@ import '../../../shared/widgets/unsaved_changes_dialog.dart';
 import '../../../shared/services/generate_map_orchestrator.dart';
 import '../../../shared/widgets/map/location_types.dart';
 import '../../../shared/providers/map_studio_controller.dart';
-import '../../../shared/providers/map_studio_providers.dart'
-    show mapImageChoicesProvider;
 import '../../../shared/hooks/use_map_generate_form.dart';
 import '../../../shared/widgets/map/map_generate_fields.dart';
 import '../../../shared/widgets/map/map_generate_footer.dart';
@@ -416,7 +414,7 @@ class _GenerateTab extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final form = useMapGenerateForm(
-      choices: ref.watch(mapImageChoicesProvider),
+      ref: ref,
       locations: locations,
       rootId: rootId,
       mapType: mapType,
@@ -454,6 +452,7 @@ class _GenerateTab extends HookConsumerWidget {
             RevericSpacing.md,
           ),
           child: MapGenerateFooter(
+            modelId: form.modelId.value,
             databasePath: databasePath,
             hasPendingAgentDraft: agentDraft != null,
             hasChildLocations: locations.any(

@@ -802,7 +802,7 @@ final class ImageGenerationCallbackFamily extends $Family
 
 @ProviderFor(coverImageGenerationCallback)
 final coverImageGenerationCallbackProvider =
-    CoverImageGenerationCallbackProvider._();
+    CoverImageGenerationCallbackFamily._();
 
 final class CoverImageGenerationCallbackProvider
     extends
@@ -812,19 +812,26 @@ final class CoverImageGenerationCallbackProvider
           AiImageGenerationCallback?
         >
     with $Provider<AiImageGenerationCallback?> {
-  CoverImageGenerationCallbackProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'coverImageGenerationCallbackProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
+  CoverImageGenerationCallbackProvider._({
+    required CoverImageGenerationCallbackFamily super.from,
+    required String? super.argument,
+  }) : super(
+         retry: null,
+         name: r'coverImageGenerationCallbackProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
 
   @override
   String debugGetCreateSourceHash() => _$coverImageGenerationCallbackHash();
+
+  @override
+  String toString() {
+    return r'coverImageGenerationCallbackProvider'
+        ''
+        '($argument)';
+  }
 
   @$internal
   @override
@@ -834,7 +841,8 @@ final class CoverImageGenerationCallbackProvider
 
   @override
   AiImageGenerationCallback? create(Ref ref) {
-    return coverImageGenerationCallback(ref);
+    final argument = this.argument as String?;
+    return coverImageGenerationCallback(ref, modelId: argument);
   }
 
   /// {@macro riverpod.override_with_value}
@@ -844,14 +852,43 @@ final class CoverImageGenerationCallbackProvider
       providerOverride: $SyncValueProvider<AiImageGenerationCallback?>(value),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is CoverImageGenerationCallbackProvider &&
+        other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
 }
 
 String _$coverImageGenerationCallbackHash() =>
-    r'1347f36202789e99f51669941103289da9e0b6fc';
+    r'ac245b63684d36e8dc9dff4a2bdaab4700b65b23';
+
+final class CoverImageGenerationCallbackFamily extends $Family
+    with $FunctionalFamilyOverride<AiImageGenerationCallback?, String?> {
+  CoverImageGenerationCallbackFamily._()
+    : super(
+        retry: null,
+        name: r'coverImageGenerationCallbackProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  CoverImageGenerationCallbackProvider call({String? modelId}) =>
+      CoverImageGenerationCallbackProvider._(argument: modelId, from: this);
+
+  @override
+  String toString() => r'coverImageGenerationCallbackProvider';
+}
 
 @ProviderFor(coverImageMultiEditCallback)
 final coverImageMultiEditCallbackProvider =
-    CoverImageMultiEditCallbackProvider._();
+    CoverImageMultiEditCallbackFamily._();
 
 final class CoverImageMultiEditCallbackProvider
     extends
@@ -861,19 +898,26 @@ final class CoverImageMultiEditCallbackProvider
           AiMultiImageEditCallback?
         >
     with $Provider<AiMultiImageEditCallback?> {
-  CoverImageMultiEditCallbackProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'coverImageMultiEditCallbackProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
+  CoverImageMultiEditCallbackProvider._({
+    required CoverImageMultiEditCallbackFamily super.from,
+    required String? super.argument,
+  }) : super(
+         retry: null,
+         name: r'coverImageMultiEditCallbackProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
 
   @override
   String debugGetCreateSourceHash() => _$coverImageMultiEditCallbackHash();
+
+  @override
+  String toString() {
+    return r'coverImageMultiEditCallbackProvider'
+        ''
+        '($argument)';
+  }
 
   @$internal
   @override
@@ -883,7 +927,8 @@ final class CoverImageMultiEditCallbackProvider
 
   @override
   AiMultiImageEditCallback? create(Ref ref) {
-    return coverImageMultiEditCallback(ref);
+    final argument = this.argument as String?;
+    return coverImageMultiEditCallback(ref, modelId: argument);
   }
 
   /// {@macro riverpod.override_with_value}
@@ -893,10 +938,39 @@ final class CoverImageMultiEditCallbackProvider
       providerOverride: $SyncValueProvider<AiMultiImageEditCallback?>(value),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is CoverImageMultiEditCallbackProvider &&
+        other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
 }
 
 String _$coverImageMultiEditCallbackHash() =>
-    r'2c01ebc1f59bf178ae72a7557b9f6b7486c91562';
+    r'd7a3fde2680c61c825a026cfd9e3a26ae8398b32';
+
+final class CoverImageMultiEditCallbackFamily extends $Family
+    with $FunctionalFamilyOverride<AiMultiImageEditCallback?, String?> {
+  CoverImageMultiEditCallbackFamily._()
+    : super(
+        retry: null,
+        name: r'coverImageMultiEditCallbackProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  CoverImageMultiEditCallbackProvider call({String? modelId}) =>
+      CoverImageMultiEditCallbackProvider._(argument: modelId, from: this);
+
+  @override
+  String toString() => r'coverImageMultiEditCallbackProvider';
+}
 
 @ProviderFor(imageEditCallback)
 final imageEditCallbackProvider = ImageEditCallbackFamily._();

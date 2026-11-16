@@ -15,6 +15,7 @@
 //   反查某个 key 是否已存在时，优先 Grep value 的片段，不要猜常量名。
 // - 新增或修改 key 必须同步 en 与 zh-CN 两份 JSON，规则见 .agents/rules/i18n.md。
 abstract final class LocaleKeys {
+  static const aiImageModelCurrentDraft = 'ai.image_model_current_draft';
   static const productionImageCandidates =
       'screenplay.production.imageCandidates';
   static const productionImageCandidate =

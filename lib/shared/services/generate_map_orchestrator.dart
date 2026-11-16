@@ -110,6 +110,7 @@ typedef MapGenerationImageReady =
 /// 生成请求参数。
 class MapGenerationRequest {
   const MapGenerationRequest({
+    this.modelId,
     required this.styleId,
     this.customStyleWord,
     required this.resolutionId,
@@ -122,6 +123,8 @@ class MapGenerationRequest {
     this.parentReferenceMapId,
   });
 
+  /// 完整供应商与模型选项 ID，由工作台解析后绑定生成服务。
+  final String? modelId;
   final String? styleId;
   final String? customStyleWord;
   final String resolutionId;

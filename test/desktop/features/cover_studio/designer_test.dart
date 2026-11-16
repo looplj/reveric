@@ -10,6 +10,7 @@
 //   .agents/rules/testing.md
 //   .agents/rules/i18n.md
 
+import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -282,6 +283,7 @@ Widget _wrap({
 }) {
   return ProviderScope(
     overrides: [
+      aiSettingsProvider.overrideWithValue(AiSettings(providers: const [])),
       appDatabaseProvider.overrideWithValue(database),
       if (choices != null) coverImageChoicesProvider.overrideWithValue(choices),
       // 门禁会 watch Reveric 封面模型；测试不接 settings DB，固定为无配置。

@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/providers/map_studio_providers.dart';
+import 'package:reveric/shared/providers/cover_studio_providers.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 
@@ -28,6 +29,78 @@ void main() {
     final mapSelection = container.read(mapStudioImageModelSelectionProvider);
     expect(mapSelection?.config.id, 'external');
     expect(mapSelection?.model, 'external-image');
+  });
+  test(
+    'draft selection switches provider, resets, and never saves defaults',
+    () {
+      final first = _externalImageProvider.copyWith(
+        imageModels: ['gpt-image-2'],
+      );
+      final second = first.copyWith(
+        id: 'second',
+        imageModels: ['gpt-image-2.5-flare'],
+      );
+      final settings = AiSettings(
+        providers: [first, second],
+        defaultImageModelId: 'external::gpt-image-2',
+      );
+      final container = ProviderContainer(
+        overrides: [aiSettingsProvider.overrideWithValue(settings)],
+      );
+      addTearDown(container.dispose);
+      final provider = coverStudioControllerProvider('novel');
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
+      final controller = container.read(provider.notifier);
+      controller.setModel('second::gpt-image-2.5-flare');
+      expect(container.read(provider).modelId, 'second::gpt-image-2.5-flare');
+      final choices = container.read(coverDraftImageChoicesProvider('novel'))!;
+      expect(choices.provider.id, 'second');
+      expect(choices.model, 'gpt-image-2.5-flare');
+      final map = container.read(
+        mapDraftImageModelSelectionProvider('second::gpt-image-2.5-flare'),
+      )!;
+      expect(map.config.id, 'second');
+      expect(map.model, 'gpt-image-2.5-flare');
+      controller.setModel('second::removed');
+      expect(container.read(provider).modelId, 'second::gpt-image-2.5-flare');
+      expect(
+        container.read(studioImageModelSelectionProvider('second::removed')),
+        isNull,
+      );
+      controller.startNewDraft();
+      expect(container.read(provider).modelId, isNull);
+      expect(
+        container.read(coverDraftImageChoicesProvider('novel'))!.provider.id,
+        'external',
+      );
+      expect(
+        container.read(aiSettingsProvider).defaultImageModelId,
+        'external::gpt-image-2',
+      );
+    },
+  );
+
+  test('explicit unavailable models never fall back to the default', () {
+    final settings = AiSettings(
+      providers: [
+        _externalImageProvider,
+        _externalImageProvider.copyWith(id: 'disabled', enabled: false),
+      ],
+      defaultImageModelId: 'external::external-image',
+    );
+    final container = ProviderContainer(
+      overrides: [aiSettingsProvider.overrideWithValue(settings)],
+    );
+    addTearDown(container.dispose);
+    for (final id in [
+      'disabled::external-image',
+      'external::removed',
+      'missing::external-image',
+    ]) {
+      expect(container.read(studioImageModelSelectionProvider(id)), isNull);
+      expect(container.read(mapDraftImageModelSelectionProvider(id)), isNull);
+    }
   });
 }
 

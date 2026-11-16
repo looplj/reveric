@@ -11,6 +11,8 @@
 //   .agents/rules/data-deletion.md
 //   .agents/rules/i18n.md
 
+import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/production/asset_content.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -192,7 +194,10 @@ Future<void> _seedBatch(AppDatabase database) async {
 
 Widget _wrap({required AppDatabase database, required Widget child}) {
   return ProviderScope(
-    overrides: [appDatabaseProvider.overrideWithValue(database)],
+    overrides: [
+      aiSettingsProvider.overrideWithValue(AiSettings(providers: const [])),
+      appDatabaseProvider.overrideWithValue(database),
+    ],
     child: EasyLocalization(
       supportedLocales: const [Locale('en')],
       path: 'assets/translations',

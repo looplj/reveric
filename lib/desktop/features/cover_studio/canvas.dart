@@ -596,7 +596,9 @@ class _Actions extends ConsumerWidget {
     final canRework = current != null && !state.busy;
     final canUseImage = current?.asset != null && !state.busy;
     final resolutionLabel =
-        ref.watch(coverImageChoicesProvider)?.resolution(state.resolutionId) ??
+        ref
+            .watch(coverDraftImageChoicesProvider(novelId))
+            ?.resolution(state.resolutionId) ??
         (RegExp(r'^[124]k$').hasMatch(state.resolutionId)
             ? state.resolutionId.toUpperCase()
             : state.resolutionId);

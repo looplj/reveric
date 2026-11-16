@@ -15,7 +15,7 @@ import 'tool_permissions.dart';
 import 'tool_operations.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart'
-    show ProviderListenableSelect, ProviderSubscription;
+    show Provider, ProviderListenableSelect, ProviderSubscription;
 import 'package:hooks_riverpod/misc.dart' show KeepAliveLink;
 import 'package:http/http.dart' as http;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -2380,6 +2380,30 @@ final aiSessionContextNotifierProvider = aiSessionContextProvider;
 
 // ==================== Image Generation Provider ====================
 
+/// 草稿中的完整模型选项 ID 不写入全局偏好；失效的显式选择必须重新选择。
+final studioImageModelSelectionProvider = Provider.autoDispose
+    .family<CoverStudioImageModelSelection?, String?>((ref, optionId) {
+      if (optionId == null) {
+        return ref.watch(coverStudioImageModelSelectionProvider);
+      }
+      final settings = ref.watch(aiSettingsProvider);
+      final option = settings.findModelOptionById(
+        kind: AiModelKind.image,
+        optionId: optionId,
+      );
+      if (option == null) {
+        return null;
+      }
+      final config = settings.findConfigForSelection(
+        providerId: option.providerId,
+        model: option.model,
+        kind: AiModelKind.image,
+      );
+      return config == null
+          ? null
+          : CoverStudioImageModelSelection(config: config, model: option.model);
+    });
+
 /// 封面工作台使用用户配置的默认图片模型。
 class CoverStudioImageModelSelection {
   const CoverStudioImageModelSelection({
@@ -2485,8 +2509,11 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
 }
 
 @riverpod
-AiImageGenerationCallback? coverImageGenerationCallback(Ref ref) {
-  final selection = ref.watch(coverStudioImageModelSelectionProvider);
+AiImageGenerationCallback? coverImageGenerationCallback(
+  Ref ref, {
+  String? modelId,
+}) {
+  final selection = ref.watch(studioImageModelSelectionProvider(modelId));
   if (selection == null) return null;
   final host = ref.watch(pluginHostServiceProvider);
   final references = ref.watch(referenceStorageServiceProvider);
@@ -2516,8 +2543,11 @@ AiImageGenerationCallback? coverImageGenerationCallback(Ref ref) {
 }
 
 @riverpod
-AiMultiImageEditCallback? coverImageMultiEditCallback(Ref ref) {
-  final selection = ref.watch(coverStudioImageModelSelectionProvider);
+AiMultiImageEditCallback? coverImageMultiEditCallback(
+  Ref ref, {
+  String? modelId,
+}) {
+  final selection = ref.watch(studioImageModelSelectionProvider(modelId));
   if (selection == null) return null;
   final host = ref.watch(pluginHostServiceProvider);
   final references = ref.watch(referenceStorageServiceProvider);

@@ -42,7 +42,9 @@ class CoverGenerateFooter extends ConsumerWidget {
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
-    final imageSelection = ref.watch(coverStudioImageModelSelectionProvider);
+    final imageSelection = ref.watch(
+      studioImageModelSelectionProvider(state.modelId),
+    );
     if (state.generating) {
       return Column(
         children: [

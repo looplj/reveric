@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/services/generate_map_orchestrator.dart';
 import 'package:reveric/shared/providers/map_studio_controller.dart';
+import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/models/map_studio_models.dart';
 import 'package:reveric/shared/providers/map_studio_providers.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -48,9 +49,19 @@ void main() {
       final library = buildImageLibraryService(appDatabase);
       var imageCalls = 0;
       final reader = _PlaceReader();
-      final imageProvider = aiProviderBuiltinById(
-        'openai',
-      )!.copyWith(id: 'map-plugin', type: 'plugin:map.test');
+      final imageProvider = aiProviderBuiltinById('openai')!.copyWith(
+        id: 'map-plugin',
+        type: 'plugin:map.test',
+        enabled: true,
+        apiKey: 'test',
+        imageModels: ['map'],
+      );
+      aiProviderTypeConfigs['plugin:map.test'] = const AiProviderTypeConfig(
+        displayName: 'Map test',
+        modelIdSource: ModelIdSource.registered,
+        providerModelKinds: {AiModelKind.image},
+      );
+      addTearDown(() => aiProviderTypeConfigs.remove('plugin:map.test'));
       pluginProviderModels.replace(
         imageProvider,
         parsePluginProviderModels([
@@ -87,6 +98,7 @@ void main() {
         ImageInvocationOptions? options,
         List<String>? imageData,
       }) async {
+        expect(model, 'map');
         expect(size, '1400x1000');
         expect(quality, 'studio');
         expect(complexity, 'fine');
@@ -108,9 +120,16 @@ void main() {
           mapStudioImageModelSelectionProvider.overrideWithValue(
             MapStudioImageModelSelection(config: imageProvider, model: 'map'),
           ),
+          aiSettingsProvider.overrideWithValue(
+            AiSettings(providers: [imageProvider]),
+          ),
           mapPlaceNameReaderProvider.overrideWithValue(reader),
-          mapImageEditCallbackProvider.overrideWithValue(imageCallback),
-          mapImageGenerateCallbackProvider.overrideWithValue(imageCallback),
+          mapImageEditCallbackProvider(
+            modelId: 'map-plugin::map',
+          ).overrideWithValue(imageCallback),
+          mapImageGenerateCallbackProvider(
+            modelId: 'map-plugin::map',
+          ).overrideWithValue(imageCallback),
         ],
       );
       addTearDown(() async {
@@ -141,6 +160,7 @@ void main() {
       final controller = container.read(provider.notifier);
       Future<void> generate({bool edit = false}) => controller.generate(
         MapGenerationRequest(
+          modelId: 'map-plugin::map',
           referenceCurrentImage: edit,
           styleId: 'parchment',
           resolutionId: 'custom',
@@ -174,6 +194,7 @@ void main() {
       );
       expect(first.hasImage, isTrue);
       expect(first.version, 1);
+      expect(first.model, 'map');
 
       await generate(edit: true);
       final second = MapStudioSettings.fromMap(
@@ -185,6 +206,7 @@ void main() {
           .watchAssets(novelId: 'novel-test', purpose: AssetPurpose.map.value)
           .first;
       expect(assets, hasLength(2));
+      expect(assets.every((asset) => asset.model == 'map'), isTrue);
       expect(reader.calls, 2);
       final oldAsset = assets.singleWhere((asset) => asset.path == first.image);
       await controller.previewAsset(

@@ -1,4 +1,5 @@
 {
+  "ai.image_model_current_draft": "Applies to this image draft only",
   "ai.image_submission_unknown": "The submission outcome is unknown. Check the provider before generating again; it may already have accepted the request.",
   "ai.image_invalid_outputs": "The provider returned an invalid image result. Check the result before generating again.",
   "ai.image_parameters_unavailable": "These image settings are not supported by the selected model. Choose one of its available options.",

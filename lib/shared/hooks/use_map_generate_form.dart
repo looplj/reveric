@@ -13,6 +13,8 @@
 //   .agents/rules/text-input-ime.md
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../providers/map_studio_providers.dart';
 
 import '../database/novel_content_database.dart';
 import '../models/map_agent.dart';
@@ -24,7 +26,8 @@ import '../services/map_prompt_builder.dart';
 class MapGenerateForm {
   MapGenerateForm._({
     required this.styleId,
-    required this.choices,
+    required this._readChoices,
+    required this.modelId,
     required this.ratioId,
     required this.complexityId,
     required this.customStyleController,
@@ -43,7 +46,9 @@ class MapGenerateForm {
     required this._applyDraft,
   });
 
-  final ImageModelChoices? choices;
+  final ImageModelChoices? Function() _readChoices;
+  ImageModelChoices? get choices => _readChoices();
+  final ValueNotifier<String?> modelId;
   final ValueNotifier<String> ratioId;
   final ValueNotifier<String?> complexityId;
   final ValueNotifier<String?> styleId;
@@ -69,6 +74,7 @@ class MapGenerateForm {
   /// 表单里任一选项变化都会通知；字段组件据此重建。
   Listenable get listenable => Listenable.merge([
     styleId,
+    modelId,
     ratioId,
     complexityId,
     customStyleError,
@@ -108,6 +114,7 @@ class MapGenerateForm {
   }
 
   MapGenerationRequest toRequest() => MapGenerationRequest(
+    modelId: modelId.value,
     styleId: styleId.value,
     customStyleWord: styleId.value == mapCustomStyleId
         ? currentStyleWord()
@@ -126,7 +133,7 @@ class MapGenerateForm {
 /// [rootId] 是参与生成的地点树根：正式地图是 map.locationId，待生成是所属地点 id。
 /// [lastStyleWord] 是这张图上次成图的画风词；没画过时默认沿用上层地图的画风。
 MapGenerateForm useMapGenerateForm({
-  required ImageModelChoices? choices,
+  required WidgetRef ref,
   required List<Location> locations,
   required String rootId,
   required String mapType,
@@ -135,6 +142,8 @@ MapGenerateForm useMapGenerateForm({
   required NovelMap? parentMap,
   required String? parentMapName,
 }) {
+  final modelId = useState<String?>(null);
+  final choices = ref.watch(mapImageChoicesProvider(modelId.value));
   final parentSettings = parentMap == null
       ? null
       : MapStudioSettings.fromMap(parentMap.settings);
@@ -241,7 +250,8 @@ MapGenerateForm useMapGenerateForm({
 
   return MapGenerateForm._(
     styleId: styleId,
-    choices: choices,
+    modelId: modelId,
+    readChoices: () => ref.read(mapImageChoicesProvider(modelId.value)),
     ratioId: ratioId,
     complexityId: complexityId,
     customStyleController: customStyleController,
@@ -258,6 +268,7 @@ MapGenerateForm useMapGenerateForm({
     parentMapName: parentMapName,
     resetPrompt: () => writePrompt(composePrompt(), edited: false),
     applyDraft: (draft) {
+      final choices = ref.read(mapImageChoicesProvider(modelId.value));
       styleId.value = draft.styleId;
       customStyleController.text = draft.customStyleWord ?? '';
       resolutionId.value =

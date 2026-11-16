@@ -28,6 +28,7 @@ import '../../providers/cover_studio_providers.dart';
 import '../../services/cover_prompt_builder.dart';
 import '../../theme/theme.dart';
 import 'chips.dart';
+import '../ai/studio_image_model_selector.dart';
 import '../media_asset_image.dart';
 
 /// 设计师表单只有提示词一个字段：书名与署名不再单列输入框，避免与提示词正文
@@ -336,7 +337,7 @@ class CoverQualitySection extends ConsumerWidget {
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
-    final choices = ref.watch(coverImageChoicesProvider);
+    final choices = ref.watch(coverDraftImageChoicesProvider(novelId));
     final qualities = choices?.qualities ?? const <String>[];
     if (qualities.isEmpty) {
       return const SizedBox.shrink();
@@ -374,7 +375,7 @@ class CoverComplexitySection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final choices = ref.watch(coverImageChoicesProvider);
+    final choices = ref.watch(coverDraftImageChoicesProvider(novelId));
     final levels = choices?.complexities ?? const <String>[];
     if (levels.isEmpty) {
       return const SizedBox.shrink();
@@ -420,7 +421,7 @@ class CoverResolutionSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final choices = ref.watch(coverImageChoicesProvider);
+    final choices = ref.watch(coverDraftImageChoicesProvider(novelId));
     final resolutions = choices?.resolutions ?? const <String>[];
     final state = ref.watch(coverStudioControllerProvider(novelId));
     final controller = ref.read(
@@ -458,7 +459,7 @@ class CoverRatioSection extends ConsumerWidget {
   final String novelId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final choices = ref.watch(coverImageChoicesProvider);
+    final choices = ref.watch(coverDraftImageChoicesProvider(novelId));
     final ratios = choices?.ratios ?? const <String>[];
     final state = ref.watch(coverStudioControllerProvider(novelId));
     final controller = ref.read(
@@ -467,6 +468,12 @@ class CoverRatioSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        StudioImageModelSelector(
+          value: state.modelId,
+          enabled: !state.busy,
+          onChanged: controller.setModel,
+        ),
+        const SizedBox(height: RevericSpacing.lg),
         CoverSectionHead(
           icon: RevericIcons.image_outlined,
           label: context.t(LocaleKeys.editorCoverRatio),

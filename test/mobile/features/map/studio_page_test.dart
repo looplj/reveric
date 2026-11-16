@@ -11,6 +11,8 @@
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 //   .agents/rules/i18n.md
+import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
@@ -19,7 +21,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/mobile/features/map/studio_page.dart';
-import 'package:reveric/shared/database/app_database.dart' show AiProvider;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/map_agent.dart';
@@ -56,6 +57,7 @@ void main() {
     addTearDown(locations.close);
     final container = ProviderContainer(
       overrides: [
+        aiSettingsProvider.overrideWithValue(AiSettings(providers: const [])),
         mapStudioImageModelSelectionProvider.overrideWithValue(
           MapStudioImageModelSelection(
             config: _imageProvider,

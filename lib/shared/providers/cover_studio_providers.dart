@@ -17,7 +17,8 @@
 import 'dart:convert';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart' show Provider;
+import 'package:flutter_riverpod/flutter_riverpod.dart'
+    show Provider, ProviderListenableSelect;
 import 'package:easy_localization/easy_localization.dart';
 
 import '../database/app_database.dart';
@@ -39,6 +40,20 @@ final coverImageChoicesProvider = Provider<ImageModelChoices?>((ref) {
       ? null
       : ImageModelChoices(selection.config, selection.model);
 });
+
+final coverDraftImageChoicesProvider = Provider.autoDispose
+    .family<ImageModelChoices?, String>((ref, novelId) {
+      final modelId = ref.watch(
+        coverStudioControllerProvider(novelId).select((s) => s.modelId),
+      );
+      if (modelId == null) {
+        return ref.watch(coverImageChoicesProvider);
+      }
+      final selection = ref.watch(studioImageModelSelectionProvider(modelId));
+      return selection == null
+          ? null
+          : ImageModelChoices(selection.config, selection.model);
+    });
 
 /// 配置图片模型后可进入封面工作台。
 @riverpod
@@ -131,6 +146,7 @@ class CoverStudioState {
     this.resolutionId = coverDefaultResolutionId,
     this.qualityId = coverDefaultQualityId,
     this.complexityId,
+    this.modelId,
     this.advancedOpen = false,
     this.batchCount = coverBatchCount,
     this.references = const [],
@@ -156,6 +172,9 @@ class CoverStudioState {
 
   /// 复杂度。null 表示尚未手选；提交时由生图服务按型号校验并补目录默认值。
   final String? complexityId;
+
+  /// 当前草稿的供应商与模型选项 ID。
+  final String? modelId;
 
   /// 高级设置默认折叠：风格 / 色调 / 构图 / 档案 / 灵感都是点选追加的碎片。
   final bool advancedOpen;
@@ -199,6 +218,7 @@ class CoverStudioState {
     String? resolutionId,
     String? qualityId,
     String? complexityId,
+    String? modelId,
     bool clearComplexityId = false,
     bool? advancedOpen,
     int? batchCount,
@@ -223,6 +243,7 @@ class CoverStudioState {
     CoverStudioPromptRestore? promptRestore,
   }) {
     return CoverStudioState(
+      modelId: modelId ?? this.modelId,
       ratioId: ratioId ?? this.ratioId,
       resolutionId: resolutionId ?? this.resolutionId,
       qualityId: qualityId ?? this.qualityId,
@@ -263,7 +284,7 @@ class CoverStudioController extends _$CoverStudioController {
   @override
   CoverStudioState build(String novelId) {
     ref.listen(coverImageChoicesProvider, (_, next) {
-      if (next == null || state.busy) {
+      if (next == null || state.busy || state.modelId != null) {
         return;
       }
       state = state.copyWith(
@@ -288,11 +309,44 @@ class CoverStudioController extends _$CoverStudioController {
           );
   }
 
+  CoverStudioImageModelSelection? get _selection =>
+      ref.read(studioImageModelSelectionProvider(state.modelId));
+
+  ImageModelChoices? get _choices {
+    if (state.modelId == null) {
+      return ref.read(coverImageChoicesProvider);
+    }
+    final selection = _selection;
+    return selection == null
+        ? null
+        : ImageModelChoices(selection.config, selection.model);
+  }
+
+  void setModel(String id) {
+    if (state.busy) {
+      return;
+    }
+    final selection = ref.read(studioImageModelSelectionProvider(id));
+    if (selection == null) {
+      return;
+    }
+    final choices = ImageModelChoices(selection.config, selection.model);
+    state = state.copyWith(
+      modelId: id,
+      ratioId: choices.defaultRatio(state.ratioId),
+      resolutionId: choices.defaultResolution(state.resolutionId),
+      qualityId: choices.defaultQuality(state.qualityId) ?? '',
+      complexityId: choices.complexities.contains(state.complexityId)
+          ? state.complexityId
+          : choices.defaults.complexity ?? choices.complexities.firstOrNull,
+      clearComplexityId: choices.complexities.isEmpty,
+      clearError: true,
+    );
+  }
+
   int? get referenceLimit =>
-      ref.read(coverImageChoicesProvider)?.referenceLimit ??
-      (ref.read(coverImageChoicesProvider) == null
-          ? coverReferenceLimit
-          : null);
+      _choices?.referenceLimit ??
+      (_choices == null ? coverReferenceLimit : null);
 
   ({
     String? size,
@@ -301,7 +355,7 @@ class CoverStudioController extends _$CoverStudioController {
     ImageInvocationOptions options,
   })
   _imageParameters() {
-    final choices = ref.read(coverImageChoicesProvider);
+    final choices = _choices;
     if (choices == null) {
       throw const FormatException('Model declarations are unavailable');
     }
@@ -611,7 +665,7 @@ class CoverStudioController extends _$CoverStudioController {
       return;
     }
 
-    final selection = ref.read(coverStudioImageModelSelectionProvider);
+    final selection = _selection;
     if (selection == null) {
       state = state.copyWith(
         error: const CoverStudioError.localized(
@@ -723,7 +777,7 @@ class CoverStudioController extends _$CoverStudioController {
     if (state.busy) {
       return;
     }
-    final selection = ref.read(coverStudioImageModelSelectionProvider);
+    final selection = _selection;
     if (selection == null) {
       state = state.copyWith(
         error: const CoverStudioError.localized(
@@ -805,7 +859,9 @@ class CoverStudioController extends _$CoverStudioController {
 
   /// 有参考图时走多图编辑通道，否则走普通生图。
   AiImageGenerationCallback? _resolveCallback() {
-    final generation = ref.read(coverImageGenerationCallbackProvider);
+    final generation = ref.read(
+      coverImageGenerationCallbackProvider(modelId: state.modelId),
+    );
     if (generation == null) {
       state = state.copyWith(
         error: const CoverStudioError.localized(
@@ -817,7 +873,9 @@ class CoverStudioController extends _$CoverStudioController {
     final references = state.references;
     if (references.isEmpty) return generation;
 
-    final multiEdit = ref.read(coverImageMultiEditCallbackProvider);
+    final multiEdit = ref.read(
+      coverImageMultiEditCallbackProvider(modelId: state.modelId),
+    );
     if (multiEdit == null) {
       state = state.copyWith(
         error: const CoverStudioError.localized(

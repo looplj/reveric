@@ -106,7 +106,9 @@ class _MetaBar extends ConsumerWidget {
       coverStudioControllerProvider(novelId).notifier,
     );
     final resolutionLabel =
-        ref.watch(coverImageChoicesProvider)?.resolution(state.resolutionId) ??
+        ref
+            .watch(coverDraftImageChoicesProvider(novelId))
+            ?.resolution(state.resolutionId) ??
         (RegExp(r'^[124]k$').hasMatch(state.resolutionId)
             ? state.resolutionId.toUpperCase()
             : state.resolutionId);

@@ -27,6 +27,7 @@ import '../../components/reveric_text_field.dart';
 import '../../hooks/use_map_generate_form.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
+import '../ai/studio_image_model_selector.dart';
 import '../../models/map_agent.dart' show mapCustomStyleId;
 import '../../providers/map_agent_providers.dart';
 import '../../services/map_prompt_builder.dart';
@@ -107,6 +108,12 @@ class MapGenerateFields extends HookConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        StudioImageModelSelector(
+          value: form.modelId.value,
+          enabled: !busy,
+          onChanged: (id) => form.modelId.value = id,
+        ),
+        const SizedBox(height: RevericSpacing.lg),
         if (showTarget) ...[
           Row(
             key: const ValueKey('map_generate_target'),
