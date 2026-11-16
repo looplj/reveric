@@ -14,6 +14,8 @@ import 'package:reveric/shared/agent/client/gemini_client.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:reveric/shared/agent/agent_config.dart';
 
 import 'package:reveric/shared/agent/client.dart';
 import 'package:reveric/shared/agent/client/anthropic_client.dart';
@@ -54,6 +56,64 @@ String _stopReasonStream(String stopReason) {
 }
 
 void main() {
+  for (final streaming in [false, true]) {
+    for (final (model, enabled, effort, expected) in [
+      ('claude-opus-4-7', true, null, null),
+      ('claude-opus-4-8', true, 'none', null),
+      ('claude-sonnet-4-6', true, null, 0.3),
+      ('claude-sonnet-4-6', true, 'high', null),
+      ('claude-sonnet-4-6', false, null, null),
+    ]) {
+      test(
+        'temperature wire $model enabled=$enabled effort=$effort stream=$streaming',
+        () async {
+          Map<String, dynamic>? body;
+          final client = AnthropicClient(
+            apiKey: 'test',
+            model: model,
+            httpClient: MockClient((request) async {
+              body = jsonDecode(request.body) as Map<String, dynamic>;
+              return http.Response(
+                streaming
+                    ? _stopReasonStream('end_turn')
+                    : jsonEncode({
+                        'id': 'msg_test',
+                        'type': 'message',
+                        'role': 'assistant',
+                        'model': model,
+                        'content': [],
+                        'stop_reason': 'end_turn',
+                        'usage': {'input_tokens': 1, 'output_tokens': 1},
+                      }),
+                200,
+                headers: {
+                  'content-type': streaming
+                      ? 'text/event-stream'
+                      : 'application/json',
+                },
+              );
+            }),
+          );
+          final messages = [AgentMessage.user(id: 'u', content: 'hi')];
+          final options = AgentConfig(
+            enableTemperature: enabled,
+            temperature: 0.3,
+            reasoningEffort: effort,
+          );
+          if (streaming) {
+            await client
+                .chatStream(messages: messages, options: options)
+                .toList();
+          } else {
+            await client.chat(messages: messages, options: options);
+          }
+          expect(body!.containsKey('temperature'), expected != null);
+          expect(body!['temperature'], expected);
+        },
+      );
+    }
+  }
+
   test(
     'live and restored image completions send reminder and image once in actual Anthropic payload',
     () async {

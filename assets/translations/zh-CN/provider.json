@@ -106,7 +106,7 @@
   "provider.unsupported_badge": "当前版本不支持",
   "provider.type_unsupported": "当前版本不支持提供商类型 {type}。",
   "provider.chat_models_label": "聊天模型",
-  "provider.chat_models_hint": "输入模型 ID，例如 gpt-4.1",
+  "provider.chat_models_hint": "输入模型 ID，例如 gpt-5.4",
   "provider.image_models_label": "图像模型",
   "provider.image_models_hint": "输入模型 ID，例如 gpt-image-1",
   "provider.config_need_api_key": "填写 API Key 后才能启用该提供商。",

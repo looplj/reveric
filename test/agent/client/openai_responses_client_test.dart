@@ -37,6 +37,66 @@ String _responsesSseEvent(Map<String, dynamic> data) {
 }
 
 void main() {
+  for (final streaming in [false, true]) {
+    for (final (model, enabled, effort, expected) in [
+      ('gpt-5.4', true, null, 0.3),
+      ('gpt-5.4', false, null, null),
+      ('gpt-5.4', true, 'high', null),
+      ('gpt-6-sol', true, null, null),
+    ]) {
+      test(
+        'Responses temperature $model enabled=$enabled effort=$effort stream=$streaming',
+        () async {
+          Map<String, dynamic>? body;
+          http.Client transport() => MockClient((request) async {
+            body = jsonDecode(request.body) as Map<String, dynamic>;
+            final response = {
+              'id': 'resp_1',
+              'status': 'completed',
+              'output': [],
+            };
+            return http.Response(
+              streaming
+                  ? _responsesSseEvent({
+                      'type': 'response.completed',
+                      'response': response,
+                    })
+                  : jsonEncode(response),
+              200,
+              headers: {
+                'content-type': streaming
+                    ? 'text/event-stream'
+                    : 'application/json',
+              },
+            );
+          });
+          final client = OpenAIResponsesClient(
+            apiKey: 'test',
+            baseUrl: 'https://example.invalid',
+            model: model,
+            httpClient: transport(),
+            streamHttpClientFactory: transport,
+          );
+          final messages = [AgentMessage.user(id: 'u', content: 'hi')];
+          final options = AgentConfig(
+            enableTemperature: enabled,
+            temperature: 0.3,
+            reasoningEffort: effort,
+          );
+          if (streaming) {
+            await client
+                .chatStream(messages: messages, options: options)
+                .toList();
+          } else {
+            await client.chat(messages: messages, options: options);
+          }
+          expect(body!.containsKey('temperature'), expected != null);
+          expect(body!['temperature'], expected);
+        },
+      );
+    }
+  }
+
   group('OpenAIResponsesClient.buildInputItems', () {
     test('skips system messages', () {
       final out = _make().buildInputItems([

@@ -4079,6 +4079,9 @@ abstract final class LocaleKeys {
       'settings.ai_provider_description';
   static const settingsAiProviderSection = 'settings.ai_provider_section';
   static const settingsAiTemperature = 'settings.ai_temperature';
+  static const settingsAiEnableTemperature = 'settings.ai_enable_temperature';
+  static const settingsAiEnableTemperatureDescription =
+      'settings.ai_enable_temperature_description';
   static const settingsAppearance = 'settings.appearance';
   static const settingsBackup = 'settings.backup';
   static const settingsBackupDescription = 'settings.backup_description';

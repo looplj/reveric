@@ -16,6 +16,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/ai_message_block.dart';
+import '../models/ai_provider_config.dart';
 import '../models/tool_permission.dart';
 import '../models/provider_asset.dart';
 import '../models/collections/filter.dart';
@@ -393,6 +394,10 @@ class AiProviders extends Table {
       .withDefault(const Constant('[]'))();
 
   RealColumn get temperature => real().withDefault(const Constant(0.7))();
+
+  /// 扩展配置。空值用默认：enableTemperature 为 false，请求不带温度。
+  TextColumn get config =>
+      text().map(const AiProviderConfigConverter()).nullable()();
 
   IntColumn get maxTurns => integer().withDefault(const Constant(512))();
 
@@ -1281,7 +1286,7 @@ class AppDatabase extends _$AppDatabase {
 
   static _CachedAppDatabase? _cachedDatabase;
 
-  static const currentSchemaVersion = 7;
+  static const currentSchemaVersion = 8;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1356,6 +1361,18 @@ class AppDatabase extends _$AppDatabase {
         } catch (error, stackTrace) {
           _log.error(
             '[DB] ALTER generation_tasks ADD provider_state schema=7',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 8) {
+        try {
+          await migrations.migrateToV8(migrator);
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER ai_providers ADD config schema=8',
             error: error,
             stackTrace: stackTrace,
           );

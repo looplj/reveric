@@ -32,6 +32,51 @@ String _finishReasonStream(String finishReason) {
 }
 
 void main() {
+  for (final streaming in [false, true]) {
+    for (final enabled in [false, true]) {
+      test(
+        'Gemini temperature opt-in enabled=$enabled stream=$streaming',
+        () async {
+          Map<String, dynamic>? body;
+          final client = GeminiClient(
+            apiKey: 'test',
+            model: 'gemini-4-carbon',
+            httpClient: MockClient((request) async {
+              body = jsonDecode(request.body) as Map<String, dynamic>;
+              return http.Response(
+                streaming
+                    ? _finishReasonStream('STOP')
+                    : '{"candidates":[{"finishReason":"STOP"}]}',
+                200,
+                headers: {
+                  'content-type': streaming
+                      ? 'text/event-stream'
+                      : 'application/json',
+                },
+              );
+            }),
+          );
+          final messages = [AgentMessage.user(id: 'u', content: 'hi')];
+          final options = AgentConfig(
+            enableTemperature: enabled,
+            temperature: 0.3,
+            reasoningEffort: 'high',
+          );
+          if (streaming) {
+            await client
+                .chatStream(messages: messages, options: options)
+                .toList();
+          } else {
+            await client.chat(messages: messages, options: options);
+          }
+          final generation = body!['generationConfig'] as Map;
+          expect(generation.containsKey('temperature'), enabled);
+          expect(generation['temperature'], enabled ? 0.3 : null);
+        },
+      );
+    }
+  }
+
   group('Gemini thinking configuration', () {
     for (final streaming in [false, true]) {
       for (final (model, effort, budget, wire) in [

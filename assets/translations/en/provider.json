@@ -106,7 +106,7 @@
   "provider.unsupported_badge": "Unsupported in this version",
   "provider.type_unsupported": "This version does not support provider type {type}.",
   "provider.chat_models_label": "Chat Models",
-  "provider.chat_models_hint": "Enter model ID, e.g. gpt-4.1",
+  "provider.chat_models_hint": "Enter model ID, e.g. gpt-5.4",
   "provider.image_models_label": "Image Models",
   "provider.image_models_hint": "Enter model ID, e.g. gpt-image-1",
   "provider.config_need_api_key": "Fill in API Key to enable this provider.",

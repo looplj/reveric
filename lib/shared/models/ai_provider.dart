@@ -19,6 +19,7 @@ import 'package:http/http.dart' as http;
 
 import '../../third/form/flutter_hook_form.dart';
 import '../database/app_database.dart';
+import 'ai_provider_config.dart';
 import '../localization/locale_keys.dart';
 import '../services/ai/codex/credentials.dart';
 import '../services/proxy_client.dart';
@@ -606,8 +607,6 @@ final List<AiProvider> aiProviderBuiltinDefaults = [
       'gpt-5.4-nano',
       'gpt-5.3-chat-latest',
       'gpt-5.3-codex',
-      'o3',
-      'o4-mini',
     ],
     imageModels: ['gpt-image-2'],
     embeddingModels: const [],
@@ -771,6 +770,9 @@ AiProvider? aiProviderBuiltinById(String id) {
 // ==================== Extension 方法 ====================
 
 extension AiProviderX on AiProvider {
+  /// 空 config 使用默认：不发送温度。
+  AiProviderConfig get providerConfig => config ?? const AiProviderConfig();
+
   bool get isTypeSupported => aiProviderTypeConfigs.containsKey(type);
 
   AiProviderType get typeEnum =>

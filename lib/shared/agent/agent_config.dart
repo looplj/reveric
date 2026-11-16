@@ -9,7 +9,7 @@
 import 'dart:math';
 
 import '../models/models_catalog.dart'
-    show lookupCatalogLimit, useThinkingField;
+    show lookupCatalogLimit, resolveRequestTemperature, useThinkingField;
 import 'agent_context_manager.dart' show compactThresholdForContextLimit;
 
 /// 单轮输出预算的统一上限。模型自身上限或上下文余量更小时以更小者为准。
@@ -52,6 +52,9 @@ int resolveAgentMaxTokens(String? modelId) {
 class AgentConfig {
   final double temperature;
 
+  /// 为 false 时请求省略 temperature。供应商 config 默认关闭。
+  final bool enableTemperature;
+
   /// Provider 设置 UI 已废弃；请求构造时由 [resolveAgentMaxTokens] 按模型解析。
   /// 默认值只覆盖「调用方没解析过」的兜底路径，与未知模型同档。
   final int maxTokens;
@@ -71,6 +74,7 @@ class AgentConfig {
 
   const AgentConfig({
     this.temperature = 0.7,
+    this.enableTemperature = false,
     this.maxTokens = unknownModelMaxTokens,
     this.reasoningEffort,
     this.reasoningBudget,
@@ -78,8 +82,19 @@ class AgentConfig {
     this.sessionParentId,
   });
 
+  /// 统一合并供应商开关与模型能力；null 表示请求省略温度。
+  double? requestTemperature(String? modelId) => enableTemperature
+      ? resolveRequestTemperature(
+          modelId: modelId,
+          temperature: temperature,
+          reasoningEffort: reasoningEffort,
+          reasoningBudget: reasoningBudget,
+        )
+      : null;
+
   AgentConfig copyWith({
     double? temperature,
+    bool? enableTemperature,
     int? maxTokens,
     String? reasoningEffort,
     int? reasoningBudget,
@@ -88,6 +103,7 @@ class AgentConfig {
   }) {
     return AgentConfig(
       temperature: temperature ?? this.temperature,
+      enableTemperature: enableTemperature ?? this.enableTemperature,
       maxTokens: maxTokens ?? this.maxTokens,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       reasoningBudget: reasoningBudget ?? this.reasoningBudget,

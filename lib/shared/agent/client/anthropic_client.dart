@@ -307,7 +307,7 @@ class AnthropicClient implements ProviderClient {
           ? anthropic.SystemPrompt.text(sanitizeSurrogates(systemText))
           : null,
       tools: tools?.map(_toAnthropicTool).toList(),
-      temperature: opts.temperature,
+      temperature: opts.requestTemperature(model),
       thinking: _resolveThinking(opts),
       metadata: _cacheKeyUserId != null
           ? anthropic.Metadata(userId: _cacheKeyUserId)
@@ -416,7 +416,7 @@ class AnthropicClient implements ProviderClient {
           ? anthropic.SystemPrompt.text(sanitizeSurrogates(systemText))
           : null,
       tools: tools?.map(_toAnthropicTool).toList(),
-      temperature: opts.temperature,
+      temperature: opts.requestTemperature(model),
       thinking: _resolveThinking(opts),
       metadata: _cacheKeyUserId != null
           ? anthropic.Metadata(userId: _cacheKeyUserId)

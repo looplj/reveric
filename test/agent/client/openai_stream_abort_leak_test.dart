@@ -104,7 +104,7 @@ OpenAIClient _clientWith(_HangingSendClient mock) => OpenAIClient.withApiKey(
 );
 
 ChatCompletionCreateRequest _request() => ChatCompletionCreateRequest(
-  model: 'gpt-4o-mini',
+  model: 'custom-chat-model',
   messages: [ChatMessage.user('hi')],
 );
 

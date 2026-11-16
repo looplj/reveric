@@ -329,6 +329,8 @@ class AiClient {
       return SpawnAgentResources(
         client: client,
         toolManager: ownedManager,
+        temperature: config.temperature,
+        enableTemperature: config.providerConfig.enableTemperature,
         release: () {
           try {
             ownedManager.dispose();
@@ -430,6 +432,7 @@ class AiClient {
     );
     return AgentConfig(
       temperature: _config.temperature,
+      enableTemperature: _config.providerConfig.enableTemperature,
       maxTokens: resolveAgentMaxTokens(_chatModel),
       reasoningEffort: resolvedEffort,
       reasoningBudget: resolveReasoningBudget(_chatModel, resolvedEffort),

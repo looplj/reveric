@@ -21,6 +21,7 @@ import '../models/character_voice.dart';
 import '../models/outline_draft.dart';
 import '../models/entity_relation_history.dart';
 import '../models/video/request.dart';
+import '../models/ai_provider_config.dart';
 import '../models/editing/document.dart';
 
 final _log = AppLogger.forModule('JsonMapConverter');
@@ -140,6 +141,24 @@ class StringListConverter extends TypeConverter<List<String>, String> {
 
   @override
   String toSql(List<String> value) => jsonEncode(value);
+}
+
+class AiProviderConfigConverter
+    extends TypeConverter<AiProviderConfig, String> {
+  const AiProviderConfigConverter();
+
+  @override
+  AiProviderConfig fromSql(String column) {
+    try {
+      return AiProviderConfig.fromJson(jsonDecode(column));
+    } on FormatException {
+      _log.warning('Invalid provider config JSON; using defaults');
+      return const AiProviderConfig();
+    }
+  }
+
+  @override
+  String toSql(AiProviderConfig value) => jsonEncode(value.toJson());
 }
 
 class JsonMapConverter extends TypeConverter<Map<String, dynamic>, String> {

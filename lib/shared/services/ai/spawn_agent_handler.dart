@@ -838,12 +838,18 @@ class SpawnAgentHandler {
     );
     final selectedEffort =
         subAgent.reasoningEffort ?? defaultReasoningEffortFor(catalogEfforts);
+    final resolvedEffort = resolveReasoningEffort(
+      selectedEffort,
+      modelId: model,
+    );
     return AgentConfig(
-      temperature: agentConfig.temperature,
+      temperature: modelResolution.temperature ?? agentConfig.temperature,
+      enableTemperature:
+          modelResolution.enableTemperature ?? agentConfig.enableTemperature,
       // SubAgent 可能跑在与父会话不同的模型上，输出预算必须按自己的模型解析。
       maxTokens: resolveAgentMaxTokens(model),
-      reasoningEffort: resolveReasoningEffort(selectedEffort, modelId: model),
-      reasoningBudget: agentConfig.reasoningBudget,
+      reasoningEffort: resolvedEffort,
+      reasoningBudget: resolveReasoningBudget(model, resolvedEffort),
       sessionId: agentConfig.sessionId,
       sessionParentId: agentConfig.sessionParentId,
     );
@@ -974,6 +980,8 @@ class SpawnAgentHandler {
       client: resources.client,
       providerId: hasOwnModel && !usedFallback ? subProviderId : null,
       model: hasOwnModel && !usedFallback ? subModel : null,
+      temperature: resources.temperature,
+      enableTemperature: resources.enableTemperature,
       usedFallback: usedFallback,
     );
   }
@@ -1196,11 +1204,15 @@ class _SpawnAgentModelResolution {
     required this.client,
     required this.providerId,
     required this.model,
+    this.temperature,
+    this.enableTemperature,
     this.usedFallback = false,
   });
 
   final ProviderClient client;
   final String? providerId;
   final String? model;
+  final double? temperature;
+  final bool? enableTemperature;
   final bool usedFallback;
 }

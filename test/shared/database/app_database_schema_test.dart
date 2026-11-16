@@ -142,6 +142,7 @@ void main() {
       'access_key_id',
       'secret_access_key',
       'asset_project_name',
+      'config',
     ]) {
       final column = providerColumns.singleWhere(
         (row) => row.read<String>('name') == name,

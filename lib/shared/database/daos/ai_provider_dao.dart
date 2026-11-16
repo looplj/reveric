@@ -78,6 +78,7 @@ class AiProviderDao extends DatabaseAccessor<AppDatabase>
             audioModels: Value(provider.audioModels),
             embeddingModels: Value(provider.embeddingModels),
             temperature: Value(provider.temperature),
+            config: Value(provider.config),
             maxTurns: Value(provider.maxTurns),
             reasoningEffort: Value(provider.reasoningEffort),
             proxyUrl: Value(provider.proxyUrl),

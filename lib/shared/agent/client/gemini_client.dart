@@ -395,7 +395,7 @@ class GeminiClient implements ProviderClient {
     return gai.GenerateContentRequest(
       contents: convertMessages(messages),
       generationConfig: gai.GenerationConfig(
-        temperature: opts.temperature,
+        temperature: opts.requestTemperature(model),
         maxOutputTokens: opts.maxTokens,
         thinkingConfig: thinkingConfig,
       ),

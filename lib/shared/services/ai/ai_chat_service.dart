@@ -188,6 +188,7 @@ class AiChatService {
       tools: tools,
       options: AgentConfig(
         temperature: _config.temperature,
+        enableTemperature: _config.providerConfig.enableTemperature,
         maxTokens: maxTokens,
         reasoningEffort: resolvedEffort,
         reasoningBudget: resolveReasoningBudget(_chatModel, resolvedEffort),

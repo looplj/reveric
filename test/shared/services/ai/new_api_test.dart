@@ -394,9 +394,9 @@ void _testProvider(String type, String baseUrl) {
         ('vendor/CLAUDE-sonnet-4-6', NewApiChatProtocol.anthropic),
         ('vendor/GEMINI-3.1-pro-preview', NewApiChatProtocol.gemini),
         ('vendor/GPT-5.4', NewApiChatProtocol.responses),
-        ('o1', NewApiChatProtocol.responses),
-        ('o3-mini', NewApiChatProtocol.responses),
-        ('o4-mini', NewApiChatProtocol.responses),
+        ('o1', NewApiChatProtocol.openai),
+        ('o3-mini', NewApiChatProtocol.openai),
+        ('o4-mini', NewApiChatProtocol.openai),
         ('renamed', NewApiChatProtocol.openai),
         ('other-model', NewApiChatProtocol.openai),
       ]) {

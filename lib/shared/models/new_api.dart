@@ -15,7 +15,7 @@ enum NewApiChatProtocol {
         ? NewApiChatProtocol.anthropic
         : name.startsWith('gemini-')
         ? NewApiChatProtocol.gemini
-        : name.startsWith('gpt-') || RegExp(r'^o[134](?:-|$)').hasMatch(name)
+        : name.startsWith('gpt-')
         ? NewApiChatProtocol.responses
         : NewApiChatProtocol.openai;
   }

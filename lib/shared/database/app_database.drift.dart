@@ -7930,6 +7930,15 @@ class $AiProvidersTable extends AiProviders
     requiredDuringInsert: false,
     defaultValue: const Constant(0.7),
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<AiProviderConfig?, String>
+  config = GeneratedColumn<String>(
+    'config',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<AiProviderConfig?>($AiProvidersTable.$converterconfign);
   static const VerificationMeta _maxTurnsMeta = const VerificationMeta(
     'maxTurns',
   );
@@ -8062,6 +8071,7 @@ class $AiProvidersTable extends AiProviders
     videoModels,
     embeddingModels,
     temperature,
+    config,
     maxTurns,
     reasoningEffort,
     proxyUrl,
@@ -8288,6 +8298,12 @@ class $AiProvidersTable extends AiProviders
         DriftSqlType.double,
         data['${effectivePrefix}temperature'],
       )!,
+      config: $AiProvidersTable.$converterconfign.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}config'],
+        ),
+      ),
       maxTurns: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}max_turns'],
@@ -8346,6 +8362,10 @@ class $AiProvidersTable extends AiProviders
       const StringListConverter();
   static TypeConverter<List<String>, String> $converterembeddingModels =
       const StringListConverter();
+  static TypeConverter<AiProviderConfig, String> $converterconfig =
+      const AiProviderConfigConverter();
+  static TypeConverter<AiProviderConfig?, String?> $converterconfign =
+      NullAwareTypeConverter.wrap($converterconfig);
 }
 
 class AiProvider extends DataClass implements Insertable<AiProvider> {
@@ -8362,6 +8382,9 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
   final List<String> videoModels;
   final List<String> embeddingModels;
   final double temperature;
+
+  /// 扩展配置。空值用默认：enableTemperature 为 false，请求不带温度。
+  final AiProviderConfig? config;
   final int maxTurns;
   final String? reasoningEffort;
   final String proxyUrl;
@@ -8388,6 +8411,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     required this.videoModels,
     required this.embeddingModels,
     required this.temperature,
+    this.config,
     required this.maxTurns,
     this.reasoningEffort,
     required this.proxyUrl,
@@ -8435,6 +8459,11 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       );
     }
     map['temperature'] = Variable<double>(temperature);
+    if (!nullToAbsent || config != null) {
+      map['config'] = Variable<String>(
+        $AiProvidersTable.$converterconfign.toSql(config),
+      );
+    }
     map['max_turns'] = Variable<int>(maxTurns);
     if (!nullToAbsent || reasoningEffort != null) {
       map['reasoning_effort'] = Variable<String>(reasoningEffort);
@@ -8471,6 +8500,9 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       videoModels: Value(videoModels),
       embeddingModels: Value(embeddingModels),
       temperature: Value(temperature),
+      config: config == null && nullToAbsent
+          ? const Value.absent()
+          : Value(config),
       maxTurns: Value(maxTurns),
       reasoningEffort: reasoningEffort == null && nullToAbsent
           ? const Value.absent()
@@ -8513,6 +8545,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
         json['embeddingModels'],
       ),
       temperature: serializer.fromJson<double>(json['temperature']),
+      config: serializer.fromJson<AiProviderConfig?>(json['config']),
       maxTurns: serializer.fromJson<int>(json['maxTurns']),
       reasoningEffort: serializer.fromJson<String?>(json['reasoningEffort']),
       proxyUrl: serializer.fromJson<String>(json['proxyUrl']),
@@ -8542,6 +8575,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       'videoModels': serializer.toJson<List<String>>(videoModels),
       'embeddingModels': serializer.toJson<List<String>>(embeddingModels),
       'temperature': serializer.toJson<double>(temperature),
+      'config': serializer.toJson<AiProviderConfig?>(config),
       'maxTurns': serializer.toJson<int>(maxTurns),
       'reasoningEffort': serializer.toJson<String?>(reasoningEffort),
       'proxyUrl': serializer.toJson<String>(proxyUrl),
@@ -8569,6 +8603,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     List<String>? videoModels,
     List<String>? embeddingModels,
     double? temperature,
+    Value<AiProviderConfig?> config = const Value.absent(),
     int? maxTurns,
     Value<String?> reasoningEffort = const Value.absent(),
     String? proxyUrl,
@@ -8593,6 +8628,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     videoModels: videoModels ?? this.videoModels,
     embeddingModels: embeddingModels ?? this.embeddingModels,
     temperature: temperature ?? this.temperature,
+    config: config.present ? config.value : this.config,
     maxTurns: maxTurns ?? this.maxTurns,
     reasoningEffort: reasoningEffort.present
         ? reasoningEffort.value
@@ -8635,6 +8671,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       temperature: data.temperature.present
           ? data.temperature.value
           : this.temperature,
+      config: data.config.present ? data.config.value : this.config,
       maxTurns: data.maxTurns.present ? data.maxTurns.value : this.maxTurns,
       reasoningEffort: data.reasoningEffort.present
           ? data.reasoningEffort.value
@@ -8676,6 +8713,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
           ..write('videoModels: $videoModels, ')
           ..write('embeddingModels: $embeddingModels, ')
           ..write('temperature: $temperature, ')
+          ..write('config: $config, ')
           ..write('maxTurns: $maxTurns, ')
           ..write('reasoningEffort: $reasoningEffort, ')
           ..write('proxyUrl: $proxyUrl, ')
@@ -8705,6 +8743,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     videoModels,
     embeddingModels,
     temperature,
+    config,
     maxTurns,
     reasoningEffort,
     proxyUrl,
@@ -8733,6 +8772,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
           other.videoModels == this.videoModels &&
           other.embeddingModels == this.embeddingModels &&
           other.temperature == this.temperature &&
+          other.config == this.config &&
           other.maxTurns == this.maxTurns &&
           other.reasoningEffort == this.reasoningEffort &&
           other.proxyUrl == this.proxyUrl &&
@@ -8759,6 +8799,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
   final Value<List<String>> videoModels;
   final Value<List<String>> embeddingModels;
   final Value<double> temperature;
+  final Value<AiProviderConfig?> config;
   final Value<int> maxTurns;
   final Value<String?> reasoningEffort;
   final Value<String> proxyUrl;
@@ -8784,6 +8825,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     this.videoModels = const Value.absent(),
     this.embeddingModels = const Value.absent(),
     this.temperature = const Value.absent(),
+    this.config = const Value.absent(),
     this.maxTurns = const Value.absent(),
     this.reasoningEffort = const Value.absent(),
     this.proxyUrl = const Value.absent(),
@@ -8810,6 +8852,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     this.videoModels = const Value.absent(),
     this.embeddingModels = const Value.absent(),
     this.temperature = const Value.absent(),
+    this.config = const Value.absent(),
     this.maxTurns = const Value.absent(),
     this.reasoningEffort = const Value.absent(),
     this.proxyUrl = const Value.absent(),
@@ -8838,6 +8881,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     Expression<String>? videoModels,
     Expression<String>? embeddingModels,
     Expression<double>? temperature,
+    Expression<String>? config,
     Expression<int>? maxTurns,
     Expression<String>? reasoningEffort,
     Expression<String>? proxyUrl,
@@ -8864,6 +8908,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
       if (videoModels != null) 'video_models': videoModels,
       if (embeddingModels != null) 'embedding_models': embeddingModels,
       if (temperature != null) 'temperature': temperature,
+      if (config != null) 'config': config,
       if (maxTurns != null) 'max_turns': maxTurns,
       if (reasoningEffort != null) 'reasoning_effort': reasoningEffort,
       if (proxyUrl != null) 'proxy_url': proxyUrl,
@@ -8892,6 +8937,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     Value<List<String>>? videoModels,
     Value<List<String>>? embeddingModels,
     Value<double>? temperature,
+    Value<AiProviderConfig?>? config,
     Value<int>? maxTurns,
     Value<String?>? reasoningEffort,
     Value<String>? proxyUrl,
@@ -8918,6 +8964,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
       videoModels: videoModels ?? this.videoModels,
       embeddingModels: embeddingModels ?? this.embeddingModels,
       temperature: temperature ?? this.temperature,
+      config: config ?? this.config,
       maxTurns: maxTurns ?? this.maxTurns,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       proxyUrl: proxyUrl ?? this.proxyUrl,
@@ -8986,6 +9033,11 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     if (temperature.present) {
       map['temperature'] = Variable<double>(temperature.value);
     }
+    if (config.present) {
+      map['config'] = Variable<String>(
+        $AiProvidersTable.$converterconfign.toSql(config.value),
+      );
+    }
     if (maxTurns.present) {
       map['max_turns'] = Variable<int>(maxTurns.value);
     }
@@ -9038,6 +9090,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
           ..write('videoModels: $videoModels, ')
           ..write('embeddingModels: $embeddingModels, ')
           ..write('temperature: $temperature, ')
+          ..write('config: $config, ')
           ..write('maxTurns: $maxTurns, ')
           ..write('reasoningEffort: $reasoningEffort, ')
           ..write('proxyUrl: $proxyUrl, ')
@@ -28981,6 +29034,7 @@ typedef $$AiProvidersTableCreateCompanionBuilder =
       Value<List<String>> videoModels,
       Value<List<String>> embeddingModels,
       Value<double> temperature,
+      Value<AiProviderConfig?> config,
       Value<int> maxTurns,
       Value<String?> reasoningEffort,
       Value<String> proxyUrl,
@@ -29008,6 +29062,7 @@ typedef $$AiProvidersTableUpdateCompanionBuilder =
       Value<List<String>> videoModels,
       Value<List<String>> embeddingModels,
       Value<double> temperature,
+      Value<AiProviderConfig?> config,
       Value<int> maxTurns,
       Value<String?> reasoningEffort,
       Value<String> proxyUrl,
@@ -29098,6 +29153,12 @@ class $$AiProvidersTableFilterComposer
   ColumnFilters<double> get temperature => $composableBuilder(
     column: $table.temperature,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<AiProviderConfig?, AiProviderConfig, String>
+  get config => $composableBuilder(
+    column: $table.config,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<int> get maxTurns => $composableBuilder(
@@ -29225,6 +29286,11 @@ class $$AiProvidersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get config => $composableBuilder(
+    column: $table.config,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get maxTurns => $composableBuilder(
     column: $table.maxTurns,
     builder: (column) => ColumnOrderings(column),
@@ -29338,6 +29404,9 @@ class $$AiProvidersTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumnWithTypeConverter<AiProviderConfig?, String> get config =>
+      $composableBuilder(column: $table.config, builder: (column) => column);
+
   GeneratedColumn<int> get maxTurns =>
       $composableBuilder(column: $table.maxTurns, builder: (column) => column);
 
@@ -29425,6 +29494,7 @@ class $$AiProvidersTableTableManager
                 Value<List<String>> videoModels = const Value.absent(),
                 Value<List<String>> embeddingModels = const Value.absent(),
                 Value<double> temperature = const Value.absent(),
+                Value<AiProviderConfig?> config = const Value.absent(),
                 Value<int> maxTurns = const Value.absent(),
                 Value<String?> reasoningEffort = const Value.absent(),
                 Value<String> proxyUrl = const Value.absent(),
@@ -29450,6 +29520,7 @@ class $$AiProvidersTableTableManager
                 videoModels: videoModels,
                 embeddingModels: embeddingModels,
                 temperature: temperature,
+                config: config,
                 maxTurns: maxTurns,
                 reasoningEffort: reasoningEffort,
                 proxyUrl: proxyUrl,
@@ -29477,6 +29548,7 @@ class $$AiProvidersTableTableManager
                 Value<List<String>> videoModels = const Value.absent(),
                 Value<List<String>> embeddingModels = const Value.absent(),
                 Value<double> temperature = const Value.absent(),
+                Value<AiProviderConfig?> config = const Value.absent(),
                 Value<int> maxTurns = const Value.absent(),
                 Value<String?> reasoningEffort = const Value.absent(),
                 Value<String> proxyUrl = const Value.absent(),
@@ -29502,6 +29574,7 @@ class $$AiProvidersTableTableManager
                 videoModels: videoModels,
                 embeddingModels: embeddingModels,
                 temperature: temperature,
+                config: config,
                 maxTurns: maxTurns,
                 reasoningEffort: reasoningEffort,
                 proxyUrl: proxyUrl,

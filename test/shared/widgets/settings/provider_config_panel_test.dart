@@ -98,7 +98,7 @@ void main() {
                   'display_console': false,
                 },
                 {
-                  'model': 'openai/gpt-4o',
+                  'model': 'openai/gpt-5.4',
                   'type': 'Text',
                   'display_console': true,
                 },

@@ -607,6 +607,8 @@ class ProviderConfigForm extends HookWidget {
           if (!config.isCodex &&
               config.supportsModelKind(AiModelKind.chat)) ...[
             const SizedBox(height: RevericSpacing.lg),
+            _EnableTemperatureSwitch(config: config, onChanged: onChanged),
+            const SizedBox(height: RevericSpacing.sm),
             _buildSliderField(
               context: context,
               label: context.t(LocaleKeys.settingsAiTemperature),
@@ -614,7 +616,9 @@ class ProviderConfigForm extends HookWidget {
               min: 0.0,
               max: 2.0,
               divisions: 20,
-              onChanged: (v) => onChanged(config.copyWith(temperature: v)),
+              onChanged: config.providerConfig.enableTemperature
+                  ? (v) => onChanged(config.copyWith(temperature: v))
+                  : null,
             ),
           ],
           if (config.type == AiProviderType.volcengine.name) ...[
@@ -747,7 +751,7 @@ class ProviderConfigForm extends HookWidget {
     required double min,
     required double max,
     required int divisions,
-    required ValueChanged<double> onChanged,
+    required ValueChanged<double>? onChanged,
   }) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
@@ -776,6 +780,53 @@ class ProviderConfigForm extends HookWidget {
           activeColor: colors.accent,
           inactiveColor: colors.border,
           onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _EnableTemperatureSwitch extends StatelessWidget {
+  const _EnableTemperatureSwitch({
+    required this.config,
+    required this.onChanged,
+  });
+
+  final AiProvider config;
+  final ValueChanged<AiProvider> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final enabled = config.providerConfig.enableTemperature;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.t(LocaleKeys.settingsAiEnableTemperature),
+                style: typo.uiSemibold.copyWith(color: colors.textPrimary),
+              ),
+              const SizedBox(height: RevericSpacing.xs),
+              Text(
+                context.t(LocaleKeys.settingsAiEnableTemperatureDescription),
+                style: typo.ui.copyWith(color: colors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        RevericSwitch(
+          value: enabled,
+          onChanged: (value) => onChanged(
+            config.copyWith(
+              config: Value(
+                config.providerConfig.copyWith(enableTemperature: value),
+              ),
+            ),
+          ),
         ),
       ],
     );

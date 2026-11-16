@@ -29,6 +29,10 @@ class AppDatabaseMigrations {
   Future<void> migrateToV7(Migrator m) =>
       m.addColumn(db.generationTasks, db.generationTasks.providerState);
 
+  /// v8: 供应商扩展配置。旧行保持空，读取时按默认不发送温度。
+  Future<void> migrateToV8(Migrator m) =>
+      m.addColumn(db.aiProviders, db.aiProviders.config);
+
   /// v6: 同次图片任务的有序候选结果。
   Future<void> migrateToV6(Migrator m) =>
       m.addColumn(db.generationTasks, db.generationTasks.imageOutputs);

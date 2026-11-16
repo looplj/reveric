@@ -296,7 +296,7 @@ class OpenAIResponsesClient implements ProviderClient {
           tools: tools?.map(_toTool).toList(),
           parallelToolCalls: true,
           store: false,
-          temperature: opts.temperature,
+          temperature: opts.requestTemperature(model),
           maxOutputTokens: opts.maxTokens,
           reasoning: _reasoningConfig(opts.reasoningEffort),
           include: _include,
@@ -345,7 +345,8 @@ class OpenAIResponsesClient implements ProviderClient {
       _log.info(
         'responses stream start id=$streamId model=${model ?? 'none'} '
         'messages=${messages.length} inputItems=${inputItems.length} '
-        'tools=${tools?.length ?? 0} temperature=${opts.temperature} '
+        'tools=${tools?.length ?? 0} '
+        'temperature=${opts.requestTemperature(model) ?? 'omitted'} '
         'maxOutputTokens=${opts.maxTokens} '
         'reasoningEffort=${opts.reasoningEffort ?? 'none'}',
       );
@@ -359,7 +360,7 @@ class OpenAIResponsesClient implements ProviderClient {
         tools: tools?.map(_toTool).toList(),
         parallelToolCalls: true,
         store: false,
-        temperature: opts.temperature,
+        temperature: opts.requestTemperature(model),
         maxOutputTokens: opts.maxTokens,
         reasoning: _reasoningConfig(opts.reasoningEffort),
         include: _include,
