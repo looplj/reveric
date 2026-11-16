@@ -564,6 +564,16 @@ export interface ProviderContext {
 }
 export interface ProviderFileInfo {
   handle: string; name: string; mimeType: string; size: number; sha256: string;
+  /**
+   * Probed by the Host before upload; absent only when probing was not possible.
+   * Platforms that require the client to send media metadata in their upload
+   * ticket read it from here. Video references already carry the same values in
+   * `ProviderVideoInput.references[].mediaInfo`; this exposes them at upload time.
+   */
+  mediaInfo?: ProviderFileMediaInfo;
+}
+export interface ProviderFileMediaInfo {
+  width?: number; height?: number; durationMs?: number; frameRate?: number;
 }
 export interface ProviderUploadContext extends ProviderContext {
   readonly files: { upload(handle: string, request: ProviderUploadRequest): Promise<HttpResponse> };
