@@ -1,4 +1,4 @@
-// 职责: 验证桌面剧本正文区渲染元素工具条、排版正文与底栏统计项，并能切换光标行的元素类型。
+// 职责: 验证剧本字体设置实时生效并保留编辑状态，以及跨场编辑、撤销和输入法行为。
 // 关联文件:
 //   lib/desktop/features/screenplay/script.dart
 //   lib/desktop/features/screenplay/script_elements.dart
@@ -31,6 +31,7 @@ import 'package:reveric/shared/models/content_status.dart';
 import 'package:reveric/shared/models/novel_type.dart';
 import 'package:reveric/shared/models/screenplay_element.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
+import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
@@ -54,8 +55,10 @@ void main() {
     }
   });
 
+  setUp(() => rootBundle.clear());
+
   testWidgets(
-    'shared episode editor saves cross-scene edits, undo, IME and headings',
+    'shared episode editor applies font settings and preserves cross-scene editing',
     (tester) async {
       tester.view.physicalSize = const Size(1600, 1200);
       tester.view.devicePixelRatio = 1;
@@ -87,12 +90,27 @@ void main() {
         );
       }
       const path = 'memory:desktop_screenplay_script';
+      var font = const TextStyle(
+        fontFamily: 'Georgia',
+        fontSize: 16,
+        height: 1.8,
+        letterSpacing: 0,
+      );
       Future<void> Function()? flush;
       await tester.pumpWidget(
         _wrap(
           ProviderScope(
             overrides: [
               appDatabaseProvider.overrideWithValue(appDb),
+              editorFontFamilyProvider.overrideWith((ref) => font.fontFamily!),
+              editorFontSizeProvider.overrideWith(
+                (ref) => font.fontSize!.toInt(),
+              ),
+              editorLineHeightProvider.overrideWith((ref) => font.height!),
+              editorLetterSpacingProvider.overrideWith(
+                (ref) => font.letterSpacing!,
+              ),
+              editorFontColorProvider.overrideWith((ref) => font.color),
               novelContentDatabaseProvider(path).overrideWithValue(contentDb),
             ],
             child: Scaffold(
@@ -141,6 +159,64 @@ void main() {
       expect(editor.value.where((e) => e.isHeading), hasLength(2));
       expect(find.text('The lamp goes out.'), findsOneWidget);
       expect(find.text('The door opens.'), findsOneWidget);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ScreenplayEditingScope)),
+      );
+      TextStyle actionStyle() => tester
+          .widget<EditableText>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is EditableText &&
+                  widget.controller.text == 'The lamp goes out.',
+            ),
+          )
+          .style;
+      expect(actionStyle().fontFamily, 'Georgia');
+      expect(actionStyle().fontSize, 16);
+      final sourceBeforeFontChange = editor.source;
+      final selectionBeforeFontChange = editor.selection;
+      final initialFont = font;
+      void refreshFont() {
+        container.invalidate(editorFontFamilyProvider);
+        container.invalidate(editorFontSizeProvider);
+        container.invalidate(editorLineHeightProvider);
+        container.invalidate(editorLetterSpacingProvider);
+        container.invalidate(editorFontColorProvider);
+      }
+
+      font = const TextStyle(
+        fontFamily: 'Roboto',
+        fontSize: 20,
+        height: 2,
+        letterSpacing: 1,
+        color: Color(0xFF754321),
+      );
+      refreshFont();
+      await tester.pumpAndSettle();
+      expect(actionStyle().fontFamily, font.fontFamily);
+      expect(actionStyle().fontSize, font.fontSize);
+      expect(actionStyle().height, font.height);
+      expect(actionStyle().letterSpacing, font.letterSpacing);
+      expect(actionStyle().color, font.color);
+      final headingText = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byType(ScreenplayDocumentHeading).first,
+              matching: find.byType(Text),
+            ),
+          )
+          .firstWhere((text) => text.textSpan != null);
+      expect(headingText.style!.fontFamily, font.fontFamily);
+      expect(headingText.style!.fontSize, greaterThan(font.fontSize!));
+      expect(editor.source, sourceBeforeFontChange);
+      expect(editor.selection, selectionBeforeFontChange);
+      expect(
+        tester.state<ScreenplayEditingScopeState>(
+          find.byType(ScreenplayEditingScope),
+        ),
+        same(scope),
+      );
+      expect(tester.getRect(toolbar), toolbarRect);
       if (Platform.environment['SCREENPLAY_CAPTURE_DIR']
           case final directory?) {
         final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -156,9 +232,11 @@ void main() {
         });
       }
 
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(ScreenplayEditingScope)),
-      );
+      font = initialFont;
+      refreshFont();
+      await tester.pumpAndSettle();
+      expect(actionStyle().fontFamily, 'Georgia');
+      expect(actionStyle().fontSize, 16);
       final overlay = container.read(workingOverlayServiceProvider(path));
       final proposals = <String>[];
       for (final id in [a, b]) {
@@ -376,8 +454,11 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
-      await contentDb.close();
-      await appDb.close();
+      // 数据库关闭含异步流清理，让其在真实事件循环中完成。
+      await tester.runAsync(() async {
+        await contentDb.close();
+        await appDb.close();
+      });
     },
   );
 }

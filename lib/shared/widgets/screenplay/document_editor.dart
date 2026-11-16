@@ -2,7 +2,7 @@
 // 关联文件:
 //   lib/shared/widgets/screenplay/document_session.dart
 //   lib/shared/widgets/screenplay/document_rows.dart
-//   lib/shared/widgets/screenplay/loading.dart
+//   lib/shared/widgets/screenplay/typography_scope.dart
 //   lib/shared/widgets/screenplay/editing_scope.dart
 //   lib/shared/providers/screenplay_providers.dart
 //   lib/shared/localization/locale_keys.dart
@@ -34,6 +34,7 @@ import 'document_session.dart';
 import 'document_rows.dart';
 import 'editing_scope.dart';
 import 'element_options.dart';
+import 'typography_scope.dart';
 
 final _log = AppLogger.forModule('ScreenplayDocumentEditor');
 
@@ -384,7 +385,7 @@ class _DocumentEditorBody extends HookConsumerWidget {
             actions: actions,
             trailing: host.toolbarTrailingBuilder?.call(context, session),
           ),
-          Expanded(child: editor),
+          Expanded(child: ScreenplayTypographyScope(child: editor)),
           if (host.footerBuilder != null) host.footerBuilder!(context, session),
         ],
       ),

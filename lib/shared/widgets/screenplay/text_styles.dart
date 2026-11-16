@@ -3,16 +3,17 @@
 //   lib/desktop/features/screenplay/script_elements.dart
 //   lib/desktop/features/screenplay/scenes.dart
 //   lib/shared/theme/theme.dart
-//   designs/desktop/screenplay/screenplay.css
+//   lib/shared/widgets/screenplay/typography_scope.dart
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
+import 'typography_scope.dart';
 
-/// 剧本排版样式。字号与行高来自 `designs/desktop/screenplay/screenplay.css`
-/// 的 `.sp-el--*`，全部由 theme 的 body / bodySmall / ui 派生，颜色一律取 token。
+/// 剧本正文使用编辑器字体设置，标题和辅助文字保留主题字号比例。
+/// 非编辑器展示沿用主题排版，提示与警告仍使用语义颜色。
 ///
 /// 括号提示刻意**不用** `FontStyle.italic`：中文字体没有 italic face，
 /// macOS/iOS 会由 CoreText 合成错切，Android 可能直接忽略，同一份代码两端不一致。
@@ -41,76 +42,92 @@ class ScreenplayTextStyles {
   factory ScreenplayTextStyles.of(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    final editor = ScreenplayTypographyScope.maybeOf(context);
+    final body = editor ?? typo.body;
+    final scale = (body.fontSize ?? 16) / (typo.body.fontSize ?? 16);
+    final small = editor == null
+        ? typo.bodySmall
+        : body.copyWith(fontSize: typo.bodySmall.fontSize! * scale);
+    final note = editor == null
+        ? typo.ui
+        : body.copyWith(fontSize: typo.ui.fontSize! * scale);
+    final primary = editor?.color ?? colors.textPrimary;
     return ScreenplayTextStyles(
-      sceneHeading: typo.body.copyWith(
-        fontSize: 17,
+      sceneHeading: body.copyWith(
+        fontSize: 17 * scale,
         fontWeight: FontWeight.w700,
-        height: 1.5,
-        color: colors.textPrimary,
+        height: editor?.height ?? 1.5,
+        color: primary,
       ),
-      sceneNumber: typo.body.copyWith(
-        fontSize: 17,
+      sceneNumber: body.copyWith(
+        fontSize: 17 * scale,
         fontWeight: FontWeight.w700,
-        height: 1.5,
+        height: editor?.height ?? 1.5,
         color: colors.textMuted,
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
-      sceneCondition: typo.body.copyWith(
-        fontSize: 17,
+      sceneCondition: body.copyWith(
+        fontSize: 17 * scale,
         fontWeight: FontWeight.w700,
-        height: 1.5,
-        color: colors.textPrimary,
+        height: editor?.height ?? 1.5,
+        color: primary,
       ),
-      sceneSeparator: typo.body.copyWith(
-        fontSize: 17,
+      sceneSeparator: body.copyWith(
+        fontSize: 17 * scale,
         fontWeight: FontWeight.w400,
-        height: 1.5,
+        height: editor?.height ?? 1.5,
         color: colors.textSubtle,
       ),
-      cast: typo.bodySmall.copyWith(height: 1.6, color: colors.textMuted),
-      castNames: typo.bodySmall.copyWith(
-        height: 1.6,
+      cast: small.copyWith(
+        height: editor?.height ?? 1.6,
+        color: colors.textMuted,
+      ),
+      castNames: small.copyWith(
+        height: editor?.height ?? 1.6,
         color: colors.textSecondary,
       ),
-      action: typo.body.copyWith(color: colors.textPrimary),
-      actionMarker: typo.body.copyWith(
-        fontSize: 11,
+      action: body.copyWith(color: primary),
+      actionMarker: body.copyWith(
+        fontSize: 11 * scale,
         height: 1,
         color: colors.textSubtle,
       ),
-      character: typo.body.copyWith(
+      character: body.copyWith(
         fontWeight: FontWeight.w700,
-        height: 1.6,
-        color: colors.textPrimary,
+        height: editor?.height ?? 1.6,
+        color: primary,
       ),
-      characterExtension: typo.bodySmall.copyWith(
-        height: 1.6,
+      characterExtension: small.copyWith(
+        height: editor?.height ?? 1.6,
         color: colors.textMuted,
       ),
-      parenthetical: typo.bodySmall.copyWith(
-        height: 1.6,
+      parenthetical: small.copyWith(
+        height: editor?.height ?? 1.6,
         color: colors.textMuted,
       ),
-      dialogue: typo.body.copyWith(color: colors.textPrimary),
-      transition: typo.bodySmall.copyWith(
+      dialogue: body.copyWith(color: primary),
+      transition: small.copyWith(
         fontWeight: FontWeight.w700,
-        height: 1.6,
-        letterSpacing: 2,
+        height: editor?.height ?? 1.6,
+        letterSpacing: editor?.letterSpacing ?? 2,
         color: colors.textSecondary,
       ),
-      subtitle: typo.body.copyWith(
+      subtitle: body.copyWith(
         fontWeight: FontWeight.w700,
-        height: 1.7,
-        letterSpacing: 4,
+        height: editor?.height ?? 1.7,
+        letterSpacing: editor?.letterSpacing ?? 4,
         color: colors.textSecondary,
       ),
-      note: typo.ui.copyWith(height: 1.7, color: colors.textMuted),
-      notePrefix: typo.ui.copyWith(
-        height: 1.7,
+      note: note.copyWith(
+        height: editor?.height ?? 1.7,
+        color: colors.textMuted,
+      ),
+      notePrefix: note.copyWith(
+        height: editor?.height ?? 1.7,
         fontWeight: FontWeight.w600,
         color: colors.blockquoteBorder,
       ),
-      placeholder: typo.body.copyWith(color: colors.textSubtle),
+      placeholder: body.copyWith(color: colors.textSubtle),
     );
   }
 
