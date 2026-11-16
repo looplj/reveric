@@ -2,7 +2,6 @@
 // 关联文件:
 //   lib/shared/components/reveric_dialog.dart
 //   lib/shared/components/reveric_button.dart
-//   lib/shared/widgets/confirm_dialog.dart
 //   lib/main.dart
 //   lib/shared/services/window_state_service.dart
 //   lib/desktop/widgets/novel_form_dialog.dart
@@ -16,6 +15,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart' as tray;
 
@@ -32,13 +32,20 @@ import '../../desktop/widgets/novel_form_dialog.dart';
 import '../providers/novel_providers.dart';
 import '../../desktop/pages/workspace_editor_page.dart';
 import '../components/reveric_dialog.dart';
-import '../widgets/confirm_dialog.dart';
 import '../components/reveric_button.dart';
 
 final _log = AppLogger.forModule('SystemTray');
 
 class SystemTrayService {
+  static const _exitChannel = MethodChannel('reveric/process_exit');
+  // Dart 各阶段合计 4.5 秒，为原生 5 秒强退留出余量。
+  static const _exitTimeout = Duration(milliseconds: 4500);
+  Future<void>? _activation;
+  Future<void>? _exiting;
+
   final List<Future<bool> Function()> _exitGuards = [];
+
+  /// 尽力保存和停止任务；点击托盘“退出”即发出最终指令，false 或异常不否决退出。
   VoidCallback registerExitGuard(Future<bool> Function() guard) {
     _exitGuards.add(guard);
     return () => _exitGuards.remove(guard);
@@ -90,7 +97,7 @@ class SystemTrayService {
         ..setTooltip('Reveric');
       _trayListener = trayIcon.addListener((event) async {
         if (event is tray.TrayIconClickedEvent) {
-          await showMainWindow();
+          _runTrayAction(showMainWindow);
         }
       });
       _updateMenu(trayIcon);
@@ -126,7 +133,7 @@ class SystemTrayService {
       }
       final listener = item.addListener((event) async {
         if (event is tray.MenuItemClickedEvent) {
-          await action();
+          _runTrayAction(action);
         }
       });
       _menuItems.add((item, listener));
@@ -166,19 +173,55 @@ class SystemTrayService {
   }
 
   /// 唤起主窗口：托盘点击、托盘菜单与第二实例激活请求共用。
-  Future<void> showMainWindow() async {
-    _log.checkpoint('showing main window (native)');
-    await windowManager.show();
-    await windowManager.focus();
-    final visible = await windowManager.isVisible();
-    final minimized = await windowManager.isMinimized();
-    _log.checkpoint(
-      'main window activation result visible=$visible minimized=$minimized',
-    );
-    if (!visible || minimized) {
+  Future<void> showMainWindow() {
+    if (_exiting != null) {
+      return Future.error(StateError('Application is exiting'));
+    }
+    return _activation ??= _activateWindow().whenComplete(() {
+      _activation = null;
+    });
+  }
+
+  Future<void> _activateWindow() async {
+    final stopwatch = Stopwatch()..start();
+    const timeout = Duration(milliseconds: 1500);
+    bool? visible;
+    bool? minimized;
+    Future<T> bounded<T>(Future<T> Function() operation) {
+      final remaining = timeout - stopwatch.elapsed;
+      if (remaining <= Duration.zero || _exiting != null) {
+        throw StateError(
+          'Window activation deadline expired or app is exiting',
+        );
+      }
+      return operation().timeout(remaining);
+    }
+
+    try {
+      await bounded(windowManager.show);
+      await bounded(windowManager.focus);
+      while (true) {
+        visible = await bounded(windowManager.isVisible);
+        minimized = await bounded(windowManager.isMinimized);
+        if (visible == true && minimized == false) {
+          _log.info(
+            'Window activated elapsedMs=${stopwatch.elapsedMilliseconds}',
+          );
+          return;
+        }
+        await bounded(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+      }
+    } catch (error, stack) {
+      _log.error(
+        'Window activation failed visible=$visible minimized=$minimized '
+        'elapsedMs=${stopwatch.elapsedMilliseconds}',
+        error: error,
+        stackTrace: stack,
+      );
       throw StateError('Window did not become visible after activation');
     }
-    _log.checkpoint('main window activation verified (native)');
   }
 
   Future<void> _hideWindow() async {
@@ -270,163 +313,187 @@ class SystemTrayService {
     );
   }
 
-  Future<void> _quit() async {
-    var phase = 'activate_window';
-    _log.checkpoint('tray quit selected');
-    try {
-      await showMainWindow();
-
-      final ctx = navigatorKey.currentState?.context;
-      if (ctx == null || !ctx.mounted) {
-        phase = 'exit_without_navigator';
-        _log.checkpoint('tray quit without mounted navigator');
-        await _exitApplication();
-        return;
-      }
-
-      phase = 'confirm_exit';
-      _log.checkpoint('tray quit opening confirmation');
-      final confirmed = await showConfirmDialog(
-        ctx,
-        title: '确认退出',
-        message: '确定要退出吗？',
-        confirmLabel: '退出',
-        cancelLabel: '取消',
-        variant: ConfirmDialogVariant.warning,
-      );
-      _log.checkpoint('tray quit confirmation result=$confirmed');
-
-      if (confirmed == true) {
-        phase = 'exit_application';
-        await _exitApplication();
-      }
-    } catch (error, stackTrace) {
-      _log.error(
-        'Tray quit failed phase=$phase',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      rethrow;
-    }
-  }
+  Future<void> _quit({
+    void Function(int)? terminate,
+    FutureOr<void> Function()? unlock,
+    Future<void> Function()? cleanExit,
+    Future<void> Function()? closeContentDatabases,
+    Future<void> Function()? closeAppDatabase,
+    StartupFailureReporter? failureReporter,
+    Duration timeout = _exitTimeout,
+  }) => _exiting ??= _exitApplication(
+    terminate: terminate,
+    unlock: unlock,
+    cleanExit: cleanExit,
+    closeContentDatabases: closeContentDatabases,
+    closeAppDatabase: closeAppDatabase,
+    failureReporter: failureReporter,
+    timeout: timeout,
+  );
 
   Future<void> _exitApplication({
     void Function(int)? terminate,
     FutureOr<void> Function()? unlock,
     Future<void> Function()? cleanExit,
+    Future<void> Function()? closeContentDatabases,
+    Future<void> Function()? closeAppDatabase,
     StartupFailureReporter? failureReporter,
+    required Duration timeout,
   }) async {
-    final guards = List<Future<bool> Function()>.of(_exitGuards.reversed);
-    for (var index = 0; index < guards.length; index++) {
-      _log.checkpoint(
-        'tray exit guard started index=$index count=${guards.length}',
-      );
-      final allowed = await guards[index]();
-      _log.checkpoint(
-        'tray exit guard completed index=$index allowed=$allowed',
-      );
-      if (!allowed) {
-        return;
+    final stopwatch = Stopwatch()..start();
+    var failed = false;
+    // 独立阶段预算合计 4500ms；测试可等比例缩短，总耗时不会被单个任务占满。
+    Future<(Object, StackTrace)?> stage(
+      String phase,
+      int milliseconds,
+      Future<void> Function() operation, {
+      String? errorMessage,
+    }) async {
+      try {
+        await Future<void>.sync(
+          operation,
+        ).timeout(timeout * (milliseconds / _exitTimeout.inMilliseconds));
+        return null;
+      } catch (error, stack) {
+        failed = true;
+        _log.error(
+          errorMessage ?? '[EXIT] phase=$phase failed; continuing shutdown',
+          error: error,
+          stackTrace: stack,
+        );
+        return (error, stack);
       }
     }
-    _log.info('[EXIT] requested');
-    _log.checkpoint('application exit requested (tray)');
-    CrashSentinel.markActiveExitProgressSync(
-      source: 'tray',
-      phase: 'requested',
-    );
-    await windowManager.setPreventClose(false);
 
-    // Close content databases first. Their normal close path can wait for
-    // paused query streams; the process-exit path bypasses those listeners.
-    CrashSentinel.markActiveExitProgressSync(
-      source: 'tray',
-      phase: 'closing_content_databases',
-    );
-    _log.info('[EXIT] closing content databases');
     try {
-      await NovelContentDatabase.closeAllCachedForProcessExit();
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB] table=novel_content_databases operation=CLOSE_ALL '
-        'error=$error',
-        error: error,
-        stackTrace: stackTrace,
+      // 计时器启动失败或平台线程不回包，也要给保存和关库留出执行机会。
+      final armError = await stage(
+        'arm',
+        100,
+        () => _exitChannel.invokeMethod<void>('arm'),
       );
-    }
-    _log.info('[EXIT] content databases closed');
-
-    // Close databases before terminating to prevent NativeFinalizer SIGSEGV
-    // during Dart isolate shutdown. The process-exit variant bypasses paused
-    // Drift stream listeners while still awaiting the SQLite executor.
-    CrashSentinel.markActiveExitProgressSync(
-      source: 'tray',
-      phase: 'closing_app_database',
-    );
-    _log.info('[EXIT] closing app database');
-    try {
-      await AppDatabase.closeCachedForProcessExit();
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB] table=app_database operation=CLOSE_FOR_PROCESS_EXIT '
-        'error=$error',
-        error: error,
-        stackTrace: stackTrace,
+      _log.info(
+        '[EXIT] requested nativeDeadlineAcknowledged=${armError == null}',
       );
-    }
-    _log.info('[EXIT] app database closed');
+      CrashSentinel.markActiveExitProgressSync(
+        source: 'tray',
+        phase: 'requested',
+      );
 
-    // 正常退出：只清除当前会话 marker，待重试崩溃证据由 CrashSentinel 保留。
-    // 必须在释放单实例锁之前完成，避免新进程看到旧 marker 或被旧进程删除。
-    if (cleanExit != null) {
-      await cleanExit();
-    } else {
-      CrashSentinel.markActiveSessionCleanExitSync();
-    }
-    // await 锁释放：确保激活 server 关闭、端口文件删除后再退出，
-    // 避免残留端口文件误导下一次启动的第二实例。
-    try {
-      await Future<void>.sync(
-        unlock ?? SingleInstanceService.unlock,
-      ).timeout(const Duration(seconds: 3));
+      var cleanupFailed = false;
+      final cleanupError = await stage(
+        'cleanup',
+        2800,
+        () => Future.wait<void>(
+          List<Future<bool> Function()>.of(_exitGuards.reversed).map((
+            guard,
+          ) async {
+            try {
+              if (!await guard()) {
+                cleanupFailed = true;
+                failed = true;
+                _log.warning('[EXIT] cleanup declined; continuing exit');
+              }
+            } catch (error, stack) {
+              cleanupFailed = true;
+              failed = true;
+              _log.error(
+                '[EXIT] cleanup failed',
+                error: error,
+                stackTrace: stack,
+              );
+            }
+          }),
+        ),
+      );
+
+      CrashSentinel.markActiveExitProgressSync(
+        source: 'tray',
+        phase: 'closing_content_databases',
+      );
+      final contentError = await stage(
+        'close_content_databases',
+        400,
+        closeContentDatabases ??
+            NovelContentDatabase.closeAllCachedForProcessExit,
+        errorMessage: '[DB] table=novel_content_databases operation=CLOSE_ALL',
+      );
+      CrashSentinel.markActiveExitProgressSync(
+        source: 'tray',
+        phase: 'closing_app_database',
+      );
+      final appError = await stage(
+        'close_app_database',
+        400,
+        closeAppDatabase ?? AppDatabase.closeCachedForProcessExit,
+        errorMessage:
+            '[DB] table=app_database operation=CLOSE_FOR_PROCESS_EXIT',
+      );
+
+      // 保存或关库不完整时保留诊断 marker，但仍释放单实例锁。
+      // watchdog 失败并不表示数据保存失败；数据清理成功仍可以正常清 marker。
+      if (cleanupError == null &&
+          !cleanupFailed &&
+          contentError == null &&
+          appError == null) {
+        await stage('clean_marker', 50, () async {
+          if (cleanExit != null) {
+            await cleanExit();
+          } else {
+            CrashSentinel.markActiveSessionCleanExitSync();
+          }
+        });
+      }
+      final unlockError = await stage(
+        'unlock',
+        400,
+        () => Future<void>.sync(unlock ?? SingleInstanceService.unlock),
+      );
+      if (unlockError != null) {
+        final (error, stack) = unlockError;
+        // 等待实际异步上报完成；上报也有独立期限，不会拖住最终退出。
+        await stage(
+          'report',
+          300,
+          () => (failureReporter ?? StartupFailureReporter())
+              .reportLifecycleFailure(
+                phase: 'tray_exit',
+                reason: error is TimeoutException
+                    ? 'release_instance_timeout'
+                    : 'release_instance_failed',
+                error: error,
+                stackTrace: stack,
+              ),
+        );
+      }
+      await stage(
+        'allow_window_close',
+        50,
+        () => windowManager.setPreventClose(false),
+      );
     } catch (error, stack) {
+      failed = true;
       _log.error(
-        'Tray exit instance cleanup failed',
+        '[EXIT] shutdown interrupted; terminating',
         error: error,
         stackTrace: stack,
       );
+    } finally {
       try {
-        await (failureReporter ?? StartupFailureReporter())
-            .reportLifecycleFailure(
-              phase: 'tray_exit',
-              reason: error is TimeoutException
-                  ? 'release_instance_timeout'
-                  : 'release_instance_failed',
-              error: error,
-              stackTrace: stack,
-            )
-            .timeout(const Duration(seconds: 5));
-      } catch (reportError) {
-        _log.warning('Tray exit report did not finish: $reportError');
+        _disposeTray();
+      } catch (error, stackTrace) {
+        _log.warning('tray dispose failed error=$error\n$stackTrace');
       }
+      unawaited(
+        windowManager.close().catchError((Object error) {
+          _log.warning('window close request failed error=$error');
+        }),
+      );
+      _log.info(
+        '[EXIT] terminating elapsedMs=${stopwatch.elapsedMilliseconds} failed=$failed',
+      );
+      (terminate ?? exit)(failed ? 1 : 0);
     }
-
-    // The native API releases its handles synchronously; no channel reply is needed.
-    _log.info('[EXIT] destroying tray');
-    try {
-      _disposeTray();
-    } catch (error, stackTrace) {
-      _log.warning('tray dispose failed error=$error\n$stackTrace');
-    }
-    // close() only posts the native close request. Awaiting its MethodChannel
-    // reply can strand exit if native window teardown stops the host loop.
-    unawaited(
-      windowManager.close().catchError((error, stackTrace) {
-        _log.warning('window close request failed error=$error\n$stackTrace');
-      }),
-    );
-    _log.info('[EXIT] terminating');
-    (terminate ?? exit)(0);
   }
 
   @visibleForTesting
@@ -434,13 +501,29 @@ class SystemTrayService {
     void Function(int) terminate, {
     FutureOr<void> Function()? unlock,
     Future<void> Function()? cleanExit,
+    Future<void> Function()? closeContentDatabases,
+    Future<void> Function()? closeAppDatabase,
     StartupFailureReporter? failureReporter,
+    Duration timeout = _exitTimeout,
   }) {
-    return _exitApplication(
+    return _quit(
       terminate: terminate,
       unlock: unlock,
       cleanExit: cleanExit,
+      closeContentDatabases: closeContentDatabases,
+      closeAppDatabase: closeAppDatabase,
       failureReporter: failureReporter,
+      timeout: timeout,
+    ).whenComplete(() {
+      _exiting = null;
+    });
+  }
+
+  void _runTrayAction(Future<void> Function() action) {
+    unawaited(
+      Future<void>.sync(action).catchError((Object error, StackTrace stack) {
+        _log.error('Tray action failed', error: error, stackTrace: stack);
+      }),
     );
   }
 }

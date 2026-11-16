@@ -114,7 +114,16 @@ class ScreenplayDirectorWorkspace extends HookConsumerWidget {
           ? () {}
           : SystemTrayService().registerExitGuard(() async {
               try {
-                return await guard();
+                FocusScope.of(context).unfocus();
+                // 托盘退出时可能停止出帧；直接送达失焦通知，让字段提交后再 flush。
+                await Future<void>.microtask(
+                  FocusManager.instance.applyFocusChangesIfNeeded,
+                );
+                await binding.flush();
+                if (session.hasPendingInput) {
+                  throw const DocumentError('input', 'apply_pending');
+                }
+                return true;
               } catch (error, stack) {
                 session.report(error, stack);
                 return false;

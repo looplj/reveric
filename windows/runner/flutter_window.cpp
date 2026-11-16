@@ -16,6 +16,13 @@
 
 namespace {
 
+DWORD WINAPI ForceTrayExitAfterDeadline(LPVOID) {
+  Sleep(5000);
+  // Do not run destructors or wait for the Flutter/UI thread during forced exit.
+  TerminateProcess(GetCurrentProcess(), 1);
+  return 0;
+}
+
 int CALLBACK CollectFontFamily(
     const LOGFONTW* log_font,
     const TEXTMETRICW* text_metric,
@@ -174,6 +181,32 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  process_exit_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "reveric/process_exit",
+          &flutter::StandardMethodCodec::GetInstance());
+  process_exit_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() != "arm") {
+          result->NotImplemented();
+          return;
+        }
+        // Handlers run on the platform thread. Repeated requests never reset
+        // the deadline; the worker outlives the window and Flutter engine.
+        static bool armed = false;
+        if (!armed) {
+          HANDLE worker = CreateThread(nullptr, 0, ForceTrayExitAfterDeadline,
+                                       nullptr, 0, nullptr);
+          if (!worker) {
+            result->Error("exit_watchdog_failed", "Unable to arm exit deadline");
+            return;
+          }
+          CloseHandle(worker);
+          armed = true;
+        }
+        result->Success();
+      });
   director_storage_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(flutter_controller_->engine()->messenger(), "ai.reveric.director/storage", &flutter::StandardMethodCodec::GetInstance());
   director_storage_channel_->SetMethodCallHandler([](const flutter::MethodCall<flutter::EncodableValue>& call, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
     if (call.method_name() != "availableBytes") { result->NotImplemented(); return; }
@@ -341,6 +374,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  process_exit_channel_.reset();
   director_storage_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

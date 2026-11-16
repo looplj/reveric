@@ -34,6 +34,8 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       system_fonts_channel_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      process_exit_channel_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       window_position_channel_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       crash_reporting_channel_;
