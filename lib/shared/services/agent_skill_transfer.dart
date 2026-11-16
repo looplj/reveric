@@ -247,13 +247,15 @@ class AgentSkillTransferService {
     return AgentSkillReferences.sanitize(files);
   }
 
-  /// 将用户勾选的候选写入应用全局已安装技能。同名冲突跳过；写入异常计入 failed。
+  /// 将用户勾选的候选写入应用全局已安装技能。
+  /// 同名冲突先卸载再安装；同一批里的重复名称跳过。写入异常计入 failed。
   Future<AgentSkillImportResult> importCandidates({
     required List<AgentSkillImportCandidate> candidates,
     required InstalledAgentSkillsNotifier notifier,
     required List<NovelAgentSkillModel> existing,
   }) async {
     final existingNames = existing.map((e) => e.name.trim()).toSet();
+    final handledNames = <String>{};
 
     var imported = 0;
     var skipped = 0;
@@ -263,26 +265,30 @@ class AgentSkillTransferService {
 
     for (final candidate in candidates) {
       final name = candidate.parsed.name.trim();
-      if (existingNames.contains(name) || candidate.nameConflict) {
+      if (handledNames.contains(name)) {
         skipped++;
         skippedNames.add(name);
         continue;
       }
 
+      final input = InstallSkillInput(
+        sourceKind: AgentSkillSourceKind.novelLocal,
+        name: name,
+        description: candidate.parsed.description,
+        prompt: candidate.parsed.body,
+        whenToUse: candidate.parsed.whenToUse,
+        category: candidate.parsed.category,
+        tags: candidate.parsed.tags,
+        references: candidate.references,
+      );
       try {
-        await notifier.createNovelLocalSkill(
-          InstallSkillInput(
-            sourceKind: AgentSkillSourceKind.novelLocal,
-            name: name,
-            description: candidate.parsed.description,
-            prompt: candidate.parsed.body,
-            whenToUse: candidate.parsed.whenToUse,
-            category: candidate.parsed.category,
-            tags: candidate.parsed.tags,
-            references: candidate.references,
-          ),
-        );
+        if (candidate.nameConflict || existingNames.contains(name)) {
+          await notifier.installOverwrite(input);
+        } else {
+          await notifier.createNovelLocalSkill(input);
+        }
         existingNames.add(name);
+        handledNames.add(name);
         imported++;
       } catch (error, stackTrace) {
         _log.error(
