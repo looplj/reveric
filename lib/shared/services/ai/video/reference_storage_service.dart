@@ -796,10 +796,26 @@ class ReferenceStorageService {
             taskId: taskId,
           );
           try {
+            // 有些平台的票据接口要求客户端带宽高和时长，缺了直接拒收。
+            // 探测失败（读不了媒体）不阻断上传：插件拿不到 mediaInfo 时
+            // 仍然可以按自己的方式传，只是这类平台会报错。
+            Map<String, dynamic>? mediaInfo;
+            try {
+              final probed = await _probeInfo(file, cancellation: cancellation);
+              mediaInfo = {
+                if (probed.width != null) 'width': probed.width,
+                if (probed.height != null) 'height': probed.height,
+                if (probed.durationMs != null) 'durationMs': probed.durationMs,
+                if (probed.frameRate != null) 'frameRate': probed.frameRate,
+              };
+            } catch (_) {
+              mediaInfo = null;
+            }
             final info = await scope.register(
               file,
               name: p.basename(file.path),
               mimeType: mimeType,
+              mediaInfo: mediaInfo,
             );
             final value = await host.callProvider(
               provider,

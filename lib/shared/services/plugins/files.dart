@@ -30,6 +30,7 @@ class PluginFileScope {
     File file, {
     required String name,
     required String mimeType,
+    Map<String, dynamic>? mediaInfo,
   }) async {
     if (_revoked || _claimed) {
       throw PluginHostError(
@@ -53,6 +54,9 @@ class PluginFileScope {
       'mimeType': mimeType,
       'size': size,
       'sha256': digest.toString(),
+      // 有些平台的票据接口要求客户端自己带宽高和时长，缺了会拒收。
+      // 只在调用方探测到时带上，测不到就不给这个字段。
+      'mediaInfo': ?mediaInfo,
     };
   }
 

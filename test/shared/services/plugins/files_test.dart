@@ -95,6 +95,34 @@ void main() {
       200,
     );
   });
+  test('media info is exposed only when the host probed it', () async {
+    // setUp 里的 scope 已经 claim 过，这里要一个干净的。
+    final fresh = PluginFileScope(
+      pluginId: 'plugin',
+      providerId: 'instance',
+      taskId: 'task',
+    );
+    final file = File('${directory.path}/probed.mp4');
+    await file.writeAsBytes(bytes);
+    final withInfo = await fresh.register(
+      file,
+      name: 'probed.mp4',
+      mimeType: 'video/mp4',
+      mediaInfo: {'width': 1280, 'height': 720, 'durationMs': 4000},
+    );
+    expect(withInfo['mediaInfo'], {
+      'width': 1280,
+      'height': 720,
+      'durationMs': 4000,
+    });
+    // 测不到媒体时不能给这个字段，插件据此退回自己的路径。
+    final without = await fresh.register(
+      file,
+      name: 'probed.mp4',
+      mimeType: 'video/mp4',
+    );
+    expect(without.containsKey('mediaInfo'), false);
+  });
   test('foreign, reused and expired scopes reject access', () async {
     expect(
       () =>
