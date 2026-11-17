@@ -464,18 +464,34 @@ class RevericMarkdownPreview extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final preview = RichText(
-      maxLines: maxLines,
-      overflow: overflow,
-      text: RevericMarkdownSpanBuilder.build(
-        context: context,
-        text: text,
-        style: baseStyle,
-      ),
+    final span = RevericMarkdownSpanBuilder.build(
+      context: context,
+      text: text,
+      style: baseStyle,
     );
+    // RichText 不会因为包在 SelectionArea 里就自动加入选区，必须用选区之下的
+    // context 取 registrar，并给出高亮色，拖选和复制才会落到这段正文上。
+    final selectionColor =
+        Theme.of(context).textSelectionTheme.selectionColor ??
+        colors.accent.withValues(alpha: 0.38);
+    Widget richText(BuildContext source, {required bool register}) {
+      final registrar = register ? SelectionContainer.maybeOf(source) : null;
+      return RichText(
+        maxLines: maxLines,
+        overflow: overflow,
+        text: span,
+        selectionRegistrar: registrar,
+        selectionColor: registrar == null ? null : selectionColor,
+      );
+    }
+
     final selectablePreview = selectable
-        ? SelectionArea(child: preview)
-        : preview;
+        ? SelectionArea(
+            child: Builder(
+              builder: (context) => richText(context, register: true),
+            ),
+          )
+        : richText(context, register: false);
     if (!showCopyButton) {
       return selectablePreview;
     }

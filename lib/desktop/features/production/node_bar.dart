@@ -585,13 +585,14 @@ class ProductionNodeBar extends HookConsumerWidget {
                         () => onOpenDirector(node),
                       )
                     else if (node.type == canvasNodeTypeText)
-                      // 文本没有媒体可播，「查看」在弹窗里放大正文。
+                      // 文本没有媒体可播，「查看」在弹窗里放大编辑正文。
                       button(
                         RevericIcons.visibility_outlined,
                         context.t(LocaleKeys.commonView),
-                        node.content.trim().isEmpty
-                            ? null
-                            : () => showProductionTextView(context, node),
+                        () => productionRun(
+                          context,
+                          () => showProductionTextView(context, service, node),
+                        ),
                       )
                     else if (node.type == canvasNodeTypeEditing) ...[
                       // 剪辑节点没有现成文件：打开进剪辑工程，预览先渲染再弹窗播放。

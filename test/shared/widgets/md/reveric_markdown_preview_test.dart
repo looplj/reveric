@@ -8,6 +8,7 @@
 //   .agents/rules/i18n.md
 //   .agents/rules/code-style.md
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,13 +18,12 @@ import 'package:reveric/shared/widgets/md/reveric_markdown_editor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() => rootBundle.clear());
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
   });
 
-  // 同一个 testWidgets 内连续 pump：EasyLocalization 只初始化一次，
-  // 避免为第二个用例重新加载翻译资源。
   testWidgets('selects and copies the original Markdown', (tester) async {
     const markdown = '## Core principle\n\nKeep the plot moving.';
     String? clipboardText;
@@ -41,9 +41,7 @@ void main() {
         });
 
     await tester.pumpWidget(
-      _wrap(
-        const RevericMarkdownPreview(data: markdown, showCopyButton: true),
-      ),
+      _wrap(const RevericMarkdownPreview(data: markdown, showCopyButton: true)),
     );
     await tester.pumpAndSettle();
 
@@ -78,6 +76,58 @@ void main() {
     await tester.pump();
 
     expect(clipboardText, long);
+  });
+
+  testWidgets('drag-selects preview text and copies that range', (
+    tester,
+  ) async {
+    const source = 'Alpha beta gamma delta';
+    String? clipboardText;
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            clipboardText = args['text']?.toString();
+          }
+          return null;
+        });
+
+    await tester.pumpWidget(
+      _wrap(
+        const SingleChildScrollView(
+          child: RevericMarkdownPreview(data: source, showCopyButton: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rich = tester.widget<RichText>(find.byType(RichText));
+    expect(rich.selectionRegistrar, isNotNull);
+    expect(rich.selectionColor, isNotNull);
+
+    final rect = tester.getRect(find.byType(RichText));
+    final gesture = await tester.startGesture(
+      rect.centerLeft + const Offset(2, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(rect.centerRight - const Offset(2, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(clipboardText, isNotNull);
+    expect(source.contains(clipboardText!), isTrue);
+    expect(clipboardText!.trim().length, greaterThan(4));
   });
 }
 

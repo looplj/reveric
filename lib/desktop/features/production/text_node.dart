@@ -136,11 +136,12 @@ class ProductionTextNode extends HookWidget {
       onDoubleTap: edit,
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(RevericSpacing.x3l),
-        // 画布上拖动和双击优先，正文不做文本选择；要复制进编辑态或用「查看」。
+        // 未选中时拖动移动节点。选中后正文可拖选并复制；四周留白不参与选择，
+        // 从留白拖仍能移动已选中的节点。双击仍进入编辑。
         child: RevericMarkdownPreview(
           data: node.content,
           style: typo.bodySmall.copyWith(color: colors.textPrimary),
-          selectable: false,
+          selectable: selected,
         ),
       ),
     );
