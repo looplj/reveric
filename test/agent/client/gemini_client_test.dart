@@ -11,6 +11,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:reveric/shared/agent/client.dart';
+import 'package:reveric/shared/agent/agent_event.dart';
+import 'package:reveric/shared/agent/round_assembler.dart';
+import 'package:reveric/shared/services/ai/agent_message_mapping.dart';
 import 'package:reveric/shared/agent/agent_config.dart';
 import 'package:reveric/shared/agent/client/gemini_client.dart';
 import 'package:reveric/shared/agent/message.dart';
@@ -32,6 +35,110 @@ String _finishReasonStream(String finishReason) {
 }
 
 void main() {
+  group('Gemini signature replay', () {
+    const wireSignature = 'AP+A6QEC';
+    for (final part in <Map<String, dynamic>>[
+      {'text': '', 'thoughtSignature': wireSignature},
+      {'text': '', 'thought': false, 'thoughtSignature': wireSignature},
+      {'thoughtSignature': wireSignature},
+      {'text': 'answer', 'thoughtSignature': wireSignature},
+      {'text': 'reasoning', 'thought': true, 'thoughtSignature': wireSignature},
+    ]) {
+      for (final streaming in [true, false]) {
+        test('replays signature stream=$streaming part=$part', () async {
+          final payload = {
+            'candidates': [
+              {
+                'content': {
+                  'role': 'model',
+                  'parts': [part],
+                },
+                'finishReason': 'STOP',
+              },
+            ],
+          };
+          Map<String, dynamic>? replayBody;
+          var calls = 0;
+          final client = _make(
+            httpClient: MockClient((request) async {
+              calls++;
+              if (calls > 1) {
+                replayBody = jsonDecode(request.body) as Map<String, dynamic>;
+              }
+              return http.Response(
+                streaming
+                    ? 'data: ${jsonEncode(payload)}\n\n'
+                    : jsonEncode(payload),
+                200,
+                headers: {
+                  'content-type': streaming
+                      ? 'text/event-stream'
+                      : 'application/json',
+                },
+              );
+            }),
+          );
+          final input = [AgentMessage.user(id: 'u', content: 'hello')];
+          late AgentRoundResult round;
+          if (streaming) {
+            final events = await assembleRound(
+              client.chatStream(messages: input),
+            ).toList();
+            round = events.whereType<AgentRoundComplete>().single.result;
+          } else {
+            final response = await client.chat(messages: input);
+            round = AgentRoundResult(
+              text: response.text,
+              thinking: response.thinking,
+              thinkingSignature: response.signature,
+              toolCalls: response.toolCalls,
+            );
+          }
+          expect(round.thinking, part['thought'] == true ? part['text'] : '');
+          expect(round.text, part['thought'] == true ? '' : part['text'] ?? '');
+          expect(
+            base64Encode(round.thinkingSignature!.codeUnits),
+            wireSignature,
+          );
+          final stored = convertAgentMessageToAiMessage(
+            AgentMessage.assistant(
+              id: 'a',
+              content: round.text,
+              blocks: [
+                ThinkingBlock(
+                  round.thinking,
+                  signature: round.thinkingSignature,
+                ),
+              ],
+            ),
+          );
+          final next = [
+            ...input,
+            ...convertAiMessageToAgentMessagesForModel(stored),
+            AgentMessage.user(id: 'u2', content: 'continue'),
+          ];
+          if (streaming) {
+            await client.chatStream(messages: next).toList();
+          } else {
+            await client.chat(messages: next);
+          }
+          final contents = replayBody!['contents'] as List;
+          final model = contents.cast<Map>().singleWhere(
+            (c) => c['role'] == 'model',
+          );
+          final signed = (model['parts'] as List).cast<Map>().singleWhere(
+            (p) => p.containsKey('thoughtSignature'),
+          );
+          expect(signed['thoughtSignature'], wireSignature);
+          if (round.thinking.isEmpty) {
+            expect(signed['text'], '');
+            expect(signed.containsKey('thought'), isFalse);
+          }
+        });
+      }
+    }
+  });
+
   for (final streaming in [false, true]) {
     for (final enabled in [false, true]) {
       test(

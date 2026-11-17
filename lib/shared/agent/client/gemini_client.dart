@@ -305,12 +305,14 @@ class GeminiClient implements ProviderClient {
               :final encryptedContents,
             ):
               if (encryptedContents.isNotEmpty) break;
-              if (text.isEmpty) break;
-              if (signature != null) {
+              if (text.isEmpty && (signature == null || signature.isEmpty)) {
+                break;
+              }
+              if (signature != null && signature.isNotEmpty) {
                 parts.add(
                   gai.TextPart(
                     sanitizeSurrogates(text),
-                    thought: true,
+                    thought: text.isNotEmpty ? true : null,
                     thoughtSignature: signature.codeUnits,
                   ),
                 );
@@ -451,6 +453,7 @@ class GeminiClient implements ProviderClient {
   ChatResponse _parseGeminiResponse(gai.GenerateContentResponse response) {
     final textBuf = StringBuffer();
     final thinkBuf = StringBuffer();
+    String? signature;
     final toolCalls = <ToolCall>[];
     final blockReason = response.promptFeedback?.blockReason;
     StreamFinishReason? finishReason = blockReason == null
@@ -469,21 +472,21 @@ class GeminiClient implements ProviderClient {
             :final thought,
             :final thoughtSignature,
           ):
+            if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+              signature = String.fromCharCodes(thoughtSignature);
+            }
             if (thought == true) {
-              if (thoughtSignature != null) {
-                thinkBuf.write(
-                  '[signature: ${String.fromCharCodes(thoughtSignature)}] ',
-                );
-              }
               thinkBuf.write(text);
             } else {
               textBuf.write(text);
             }
           case gai.ThoughtPart(:final thoughtSignature):
-            if (thoughtSignature != null) {
-              thinkBuf.write(
-                '[signature: ${String.fromCharCodes(thoughtSignature)}] ',
-              );
+            if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+              signature = String.fromCharCodes(thoughtSignature);
+            }
+          case gai.ThoughtSignaturePart(:final thoughtSignature):
+            if (thoughtSignature.isNotEmpty) {
+              signature = String.fromCharCodes(thoughtSignature);
             }
           case gai.FunctionCallPart(
             :final functionCall,
@@ -506,6 +509,7 @@ class GeminiClient implements ProviderClient {
     return ChatResponse(
       text: textBuf.toString(),
       thinking: thinkBuf.toString(),
+      signature: signature,
       toolCalls: toolCalls,
       usage: _convertUsage(response.usageMetadata),
       finishReason: finishReason,
@@ -575,17 +579,22 @@ class GeminiClient implements ProviderClient {
                 :final thoughtSignature,
               ):
                 if (thought == true) {
-                  if (text.isNotEmpty) yield ThinkingDelta(text);
-                  if (thoughtSignature != null) {
-                    yield SignatureDelta(
-                      String.fromCharCodes(thoughtSignature),
-                    );
+                  if (text.isNotEmpty) {
+                    yield ThinkingDelta(text);
                   }
-                } else {
-                  if (text.isNotEmpty) yield TextDelta(text);
+                } else if (text.isNotEmpty) {
+                  yield TextDelta(text);
+                }
+                // Signatures can accompany ordinary or empty text parts.
+                if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+                  yield SignatureDelta(String.fromCharCodes(thoughtSignature));
                 }
               case gai.ThoughtPart(:final thoughtSignature):
-                if (thoughtSignature != null) {
+                if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+                  yield SignatureDelta(String.fromCharCodes(thoughtSignature));
+                }
+              case gai.ThoughtSignaturePart(:final thoughtSignature):
+                if (thoughtSignature.isNotEmpty) {
                   yield SignatureDelta(String.fromCharCodes(thoughtSignature));
                 }
               case gai.FunctionCallPart(
