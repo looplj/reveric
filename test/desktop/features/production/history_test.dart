@@ -36,7 +36,7 @@ void main() {
   });
   for (final canvasWork in [false, true]) {
     testWidgets(
-      'Text is available in the ${canvasWork ? 'canvas work' : 'screenplay'} add menu',
+      'Text and Character are available in the ${canvasWork ? 'canvas work' : 'screenplay'} add menu',
       (tester) async {
         ProductionAddKind? selected;
         await tester.pumpWidget(
@@ -60,6 +60,13 @@ void main() {
         await tester.tap(find.text('Text'));
         await tester.pumpAndSettle();
         expect(selected, ProductionAddKind.text);
+        await tester.tap(find.byTooltip('Add node'));
+        await tester.pumpAndSettle();
+        expect(find.text('Character'), findsOneWidget);
+        await tester.ensureVisible(find.text('Character'));
+        await tester.tap(find.text('Character'));
+        await tester.pumpAndSettle();
+        expect(selected, ProductionAddKind.character);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();

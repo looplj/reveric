@@ -246,6 +246,7 @@ const _productionClipFields = {
             _ValueSchema(_ValueType.string),
             required: true,
           ),
+          'voice_asset_id': _ValueProperty(_ValueSchema(_ValueType.string)),
           'role': _ValueProperty(
             _ValueSchema(
               _ValueType.string,
@@ -484,7 +485,18 @@ const _canvasProductionClips = _ResourceDefinition(
   description: '制作片段',
   group: contentKindCanvas,
   listing: _ResourceListing(),
-  fields: _productionClipFields,
+  fields: {
+    ..._productionClipFields,
+    'character_id': _ResourceField(
+      value: _ValueSchema(
+        _ValueType.string,
+        nullable: true,
+        referenceTarget: 'characters',
+      ),
+      read: _FieldRead(listing: true, path: true),
+      create: _FieldInputUse(),
+    ),
+  },
   children: [_canvasClipGenerations],
   operations: _productionClipOperations,
 );

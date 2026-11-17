@@ -30,7 +30,6 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
                 'episode_id',
                 'scene_id',
                 'sort_order',
-                'character_id',
                 'location_id',
                 'item_id',
               }.contains(entry.key))

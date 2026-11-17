@@ -782,6 +782,12 @@ mixin _AiToolManagerWriteMixin
             avatarAssetId: avatarAssetId ?? '',
           );
         }
+        if (changedFields.contains('voices')) {
+          await (await _productionStyleService()).setCharacterVoices(
+            id,
+            (fields['voices'] as List).map(CharacterVoice.fromJson).toList(),
+          );
+        }
         if (changedFields.contains('tags')) {
           await _contentService.updateCharacterTags(
             entryId: id,
@@ -793,6 +799,7 @@ mixin _AiToolManagerWriteMixin
             for (final name in parsed._resource!.schema.writeFields)
               if (name != 'avatar_asset_id' &&
                   name != 'tags' &&
+                  name != 'voices' &&
                   changedFields.contains(name))
                 WorkingTextChangeRequest(
                   resourcePath: 'characters/$id/$name',
@@ -810,6 +817,34 @@ mixin _AiToolManagerWriteMixin
       });
     } on _CharacterWriteFailure catch (error) {
       return error.result;
+    } on StoryboardException catch (error) {
+      return _resourceError(
+        parsed.displayPath,
+        error.code == 'source_missing'
+            ? ToolErrorCode.not_found
+            : ToolErrorCode.invalid_argument,
+        'Invalid character media binding: ${error.code}',
+      );
+    } on MediaException catch (error) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.invalid_argument,
+        error.toString(),
+      );
+    } on FormatException catch (error) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.invalid_argument,
+        error.message,
+      );
+    } on FileSystemException catch (error) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.failed_precondition,
+        error.toString(),
+      );
+    } on ToolOperationException catch (error) {
+      return {'ok': false, 'error_code': error.code, 'error': error.message};
     } catch (error, stackTrace) {
       _log.error(
         '[DB] table=character_profiles,working_changes operation=UPDATE id=$id',

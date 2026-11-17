@@ -538,7 +538,7 @@ class ProductionBoard extends HookConsumerWidget {
       );
     };
 
-    // 库内容按 id 增量对齐到 flow：只增删节点和连线、挪位置，不整图重载，
+    // 库内容按 id 增量对齐到 flow：增删节点和连线、替换连线端点、挪位置，不整图重载，
     // 视口和选中态原地不动；节点内容变化由 nodeBuilder 读最新快照。
     useEffect(() {
       if (!content.hasData) {
@@ -598,6 +598,13 @@ class ProductionBoard extends HookConsumerWidget {
         }
       }
       for (final edge in edges) {
+        final existing = controller.getConnection(edge.id);
+        if (existing != null &&
+            (existing.sourceNodeId != edge.sourceNodeId ||
+                existing.targetNodeId != edge.targetNodeId)) {
+          // 输入 ID 在更换参考时保持不变；移除旧连线同时清理路径缓存和节点索引。
+          controller.removeConnection(edge.id);
+        }
         if (controller.getConnection(edge.id) == null &&
             byId.containsKey(edge.sourceNodeId) &&
             byId.containsKey(edge.targetNodeId)) {

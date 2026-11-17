@@ -832,6 +832,7 @@ mixin _AiToolManagerReadMixin
       'first_appear_chapter_id': entry.firstAppearChapterId,
       'avatar_asset_id': entry.avatarAssetId,
       'photos': entry.photos?.map((photo) => photo.toJson()).toList() ?? [],
+      'voices': entry.voices?.map((voice) => voice.toJson()).toList() ?? [],
     };
   }
 

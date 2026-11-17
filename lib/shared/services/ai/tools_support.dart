@@ -734,10 +734,10 @@ class _ResourceDefinition {
       address.kind == _AddressKind.name ||
       address.kind == _AddressKind.hierarchical_name;
 
-  /// 画布作品开放 canvas 组，以及与小说、剧本相同的作品 profile。
+  /// 画布作品开放 canvas 组，以及共用的作品 profile 和角色资源。
   bool supports(String kind) {
     if (kind == contentKindCanvas) {
-      return group == kind || segment == 'profile';
+      return group == kind || segment == 'profile' || segment == 'characters';
     }
     return group == _collectionGroupShared || group == kind;
   }

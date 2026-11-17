@@ -71,6 +71,19 @@ void main() {
     await root.delete(recursive: true);
   });
 
+  test('character picker selection creates a character image node', () async {
+    await db
+        .into(db.characterProfiles)
+        .insert(CharacterProfilesCompanion.insert(id: 'hero', name: 'Hero'));
+    final node = await canvas.addSubject(board.id, characterId: 'hero');
+    final clip = (await canvas.shots.getShot(node.clipId!))!;
+    expect(node.canvasId, board.id);
+    expect(node.type, 'image');
+    expect(clip.characterId, 'hero');
+    expect(clip.episodeId, isEmpty);
+    expect(clip.title, 'Hero');
+  });
+
   test('canvas root and board initialization roll back together', () async {
     final empty = NovelContentDatabase.forTest(NativeDatabase.memory());
     try {

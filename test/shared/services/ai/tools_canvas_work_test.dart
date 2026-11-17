@@ -5,6 +5,8 @@
 //   lib/shared/services/ai/media/editing.dart
 import 'dart:convert';
 import 'dart:io';
+import 'package:reveric/shared/services/image_library_service.dart';
+import 'package:reveric/shared/models/production/asset_content.dart';
 import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +35,7 @@ import '../../../helpers/resource_contract.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory root;
   late NovelContentDatabase db;
   late AppDatabase app;
   late AiToolManager tools;
@@ -162,6 +165,7 @@ void main() {
   );
 
   setUp(() async {
+    root = await Directory.systemTemp.createTemp("canvas-tools-");
     db = NovelContentDatabase.forTest(NativeDatabase.memory());
     app = AppDatabase.forTest(NativeDatabase.memory());
     await ScreenplayService(db).createCanvasStructure();
@@ -174,14 +178,13 @@ void main() {
     );
     canvas = ProductionCanvasService(
       StoryboardService(db, contentKind: contentKindCanvas),
-      MediaLibraryService(
-        app,
-        MediaService(FfmpegRunner()),
-        Directory.systemTemp,
-      ),
+      MediaLibraryService(app, MediaService(FfmpegRunner()), root),
       'work',
     );
-    final content = NovelContentService(db);
+    final content = NovelContentService(
+      db,
+      imageLibraryService: ImageLibraryService(app, () => canvas.library),
+    );
     final overlay = WorkingOverlayService(
       db,
       content,
@@ -230,6 +233,7 @@ void main() {
     sessions.dispose();
     await db.close();
     await app.close();
+    await root.delete(recursive: true);
   });
 
   test(
@@ -457,12 +461,13 @@ void main() {
   );
 
   test(
-    'root paths expose profile and production, and reject other shared collections',
+    'root paths expose characters, profile and production, and reject unrelated collections',
     () async {
       final root = await call('Read', '/works/work');
       expect((root['entries'] as List).map((entry) => entry['path']), [
         '/works/work/production',
         '/works/work/profile',
+        '/works/work/characters',
       ]);
       final profile = await call('Read', 'profile');
       expect(profile['title'], 'Canvas');
@@ -477,7 +482,6 @@ void main() {
         'lore',
         'materials',
         'relations',
-        'characters',
         'locations',
         'items',
         'canvas',
@@ -507,7 +511,6 @@ void main() {
         'scene_id',
         'sort_order',
         'is_storyboard',
-        'character_id',
         'location_id',
         'item_id',
       ]) {
@@ -524,6 +527,121 @@ void main() {
       expect(guide, isNot(contains('chapters/{chapter_id}')));
     },
   );
+
+  test('canvas characters bind image nodes and voice inputs', () async {
+    final temp = await Directory(
+      '${root.path}/file_workspaces/work',
+    ).create(recursive: true);
+    try {
+      for (final type in ['image', 'audio']) {
+        final file = File(
+          '${temp.path}/$type.${type == 'image' ? 'png' : 'wav'}',
+        );
+        await file.writeAsBytes([1, 2, 3]);
+        await app.assetDao.insertAsset(
+          AssetsCompanion.insert(
+            id: type,
+            type: type,
+            name: Value(type),
+            path: Value(file.path.substring(root.path.length + 1)),
+            purpose: 'production_output',
+            content: Value(
+              type == 'image'
+                  ? const ImageAssetContent(mimeType: 'image/png')
+                  : const AudioAssetContent(mimeType: 'audio/wav'),
+            ),
+          ),
+        );
+      }
+      final character = await call('Create', 'characters', {'name': 'Ada'});
+      expect(character['ok'], true, reason: '$character');
+      final id = character['id'] as String;
+      final voices = [
+        {'asset_id': 'audio', 'name': 'Ada voice'},
+      ];
+      final updated = await call('Write', 'characters/$id', {
+        'voices': voices,
+        'photos': [
+          {'asset_id': 'image', 'name': 'Ada image'},
+        ],
+      });
+      expect(updated['ok'], true, reason: '$updated');
+      expect((await call('Read', 'characters/$id/voices'))['value'], voices);
+      final image = await call('Create', 'production/clips', {
+        'kind': 'image',
+        'character_id': id,
+      });
+      expect(image['ok'], true, reason: '$image');
+      expect(image['character_id'], id);
+      final node = await call('Create', 'production/canvas/nodes', {
+        'type': 'image',
+        'ref_id': image['id'],
+      });
+      expect(node['ok'], true, reason: '$node');
+      final adopted = await call('Write', 'production/clips/${image['id']}', {
+        'adopted_asset_id': 'image',
+      });
+      expect(adopted['ok'], true, reason: '$adopted');
+      final video = await call('Create', 'production/clips', {
+        'kind': 'video',
+        'inputs': [
+          {
+            'id': 'person',
+            'ref_type': 'node',
+            'ref_id': node['id'],
+            'role': 'reference_image',
+            'voice_asset_id': 'audio',
+          },
+        ],
+      });
+      expect(video['ok'], true, reason: '$video');
+      final detail = await call('Read', 'production/clips/${video['id']}');
+      expect((detail['inputs'] as List).single['voice_asset_id'], 'audio');
+      final invalid = await call('Write', 'characters/$id', {
+        'voices': [
+          {'asset_id': 'image', 'name': 'Wrong type'},
+        ],
+      });
+      expect(invalid['ok'], false);
+      expect((await call('Read', 'characters/$id/voices'))['value'], voices);
+      final nodeDetail = await call(
+        'Read',
+        'production/canvas/nodes/${node['id']}',
+      );
+      expect(nodeDetail['ref_id'], image['id']);
+      for (final invalidVoices in [
+        [
+          ...voices,
+          {'asset_id': 'audio', 'name': 'Conflicting name'},
+        ],
+        [
+          {'asset_id': '', 'name': 'Empty'},
+        ],
+      ]) {
+        expect(
+          (await call('Write', 'characters/$id', {
+            'voices': invalidVoices,
+          }))['ok'],
+          false,
+        );
+      }
+      await File('${temp.path}/audio.wav').rename('${temp.path}/moved.wav');
+      final unavailable = await call('Write', 'characters/$id', {
+        'voices': [
+          {'asset_id': 'audio', 'name': 'Renamed'},
+        ],
+      });
+      expect(unavailable['error_code'], 'failed_precondition');
+      expect((await call('Read', 'characters/$id/voices'))['value'], voices);
+      final missing = await call('Create', 'production/clips', {
+        'kind': 'image',
+        'character_id': 'missing',
+      });
+      expect(missing['ok'], false);
+    } finally {
+      await temp.delete(recursive: true);
+    }
+  });
 
   test(
     'settings, text and clips use canvas paths and retain prompt inputs',

@@ -629,7 +629,10 @@ class StoryboardService {
     final itemId = values['item_id'] as String?;
     final subjectCount = [characterId, locationId, itemId].nonNulls.length;
     if (episodeId.isEmpty &&
-        (sceneId != null || order != null || subjectCount != 0)) {
+        (sceneId != null ||
+            order != null ||
+            locationId != null ||
+            itemId != null)) {
       throw const StoryboardException('invalid_config');
     }
     if (episodeId.isEmpty && restoring) {

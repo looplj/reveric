@@ -92,6 +92,20 @@ extension ProductionVoices on ProductionCanvasService {
     return (audio: audio, voices: voices);
   }
 
+  Future<void> setCharacterVoices(
+    String characterId,
+    List<CharacterVoice> voices,
+  ) => _editCharacterVoices(characterId, (_) async {
+    if (voices.map((voice) => voice.assetId).toSet().length != voices.length) {
+      throw const StoryboardException('invalid_reference');
+    }
+    for (final voice in voices) {
+      final asset = await requireAsset(voice.assetId, type: 'audio');
+      await requireFile(asset.path!, type: 'audio');
+    }
+    return voices;
+  });
+
   Future<void> addCharacterVoice(String characterId, String assetId) =>
       _editCharacterVoices(characterId, (voices) async {
         final asset = await requireAsset(assetId, type: 'audio');

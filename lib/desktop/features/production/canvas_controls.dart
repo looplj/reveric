@@ -189,7 +189,6 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
     if (widget.canvasWork) {
       items.removeWhere(
         (item) => const {
-          ProductionAddKind.character,
           ProductionAddKind.location,
           ProductionAddKind.compendium,
         }.contains(item.$1),

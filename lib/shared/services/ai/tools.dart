@@ -65,6 +65,8 @@ import '../../models/map_agent.dart';
 import '../../models/screenplay.dart';
 import '../../models/production/settings.dart';
 import '../production/canvas_service.dart';
+import '../production/voices.dart';
+import '../../models/production/media.dart';
 import '../../models/screenplay_element.dart';
 import '../../models/screenplay_element_render.dart';
 import '../../models/subagent.dart';
@@ -287,7 +289,7 @@ List<SubjectPhoto> _normalizeSubjectPhotos(List values) =>
 /// 序列化已规范化的输入或持久化字段，保持 Working Change 文本格式。
 String _encodeCharacterWorkingValue(String field, Object? value) {
   return switch (field) {
-    'aliases' => jsonEncode(value ?? const []),
+    'aliases' || 'voices' => jsonEncode(value ?? const []),
     'photos' => jsonEncode(
       (value as List? ?? const [])
           .map((raw) => SubjectPhoto.fromJson(raw).toJson())
@@ -1437,6 +1439,26 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
     hidden: false,
     listing: _ResourceListing(),
     fields: {
+      'voices': _ResourceField(
+        value: _ValueSchema(
+          _ValueType.array,
+          items: _ValueSchema(
+            _ValueType.object,
+            properties: {
+              'asset_id': _ValueProperty(
+                _ValueSchema(_ValueType.string),
+                required: true,
+              ),
+              'name': _ValueProperty(
+                _ValueSchema(_ValueType.string),
+                required: true,
+              ),
+            },
+          ),
+        ),
+        read: _FieldRead(path: true),
+        write: _FieldInputUse(field: true),
+      ),
       'photos': _ResourceField(
         value: _subjectPhotosValue,
         read: _FieldRead(path: true),

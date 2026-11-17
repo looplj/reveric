@@ -4,6 +4,7 @@
 //   lib/desktop/features/production/interaction.dart
 //   lib/shared/services/production/canvas_service.dart
 import 'dart:io';
+import 'package:reveric/shared/models/content_kind.dart';
 
 import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
@@ -37,6 +38,112 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
+  });
+
+  testWidgets('same input ID follows a replaced character reference', (
+    tester,
+  ) async {
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    final main = app.AppDatabase.forTest(NativeDatabase.memory());
+    await ScreenplayService(db).createCanvasStructure();
+    final shots = StoryboardService(db, contentKind: contentKindCanvas);
+    final source = await shots.ensureClipNode((await shots.createImage('')).id);
+    final replacement = await shots.ensureClipNode(
+      (await shots.createImage('')).id,
+    );
+    final target = await shots.ensureClipNode((await shots.createVideo('')).id);
+    final service = ProductionCanvasService(
+      shots,
+      MediaLibraryService(
+        main,
+        MediaService(FfmpegRunner()),
+        Directory.systemTemp,
+      ),
+      'work',
+    );
+    Future<void> reference(String nodeId) =>
+        shots.restoreInputs(target.clipId!, [
+          {
+            'id': 'person',
+            'ref_type': 'node',
+            'ref_id': nodeId,
+            'role': 'reference_image',
+          },
+        ]);
+    await reference(source.id);
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appBackgroundActiveProvider.overrideWithValue(false)],
+          child: EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData(),
+                home: RevericTheme(
+                  data: RevericThemeData.reveric,
+                  child: Scaffold(
+                    body: ProductionBoard(
+                      service: service,
+                      canvasId: source.canvasId,
+                      selected: null,
+                      segments: const [],
+                      segmentLabels: const {},
+                      sceneLabels: const {},
+                      camera: ProductionBoardCamera(),
+                      onSelect: (_) {},
+                      onClear: () {},
+                      onConnect: (_, _, _) {},
+                      onOpenDirector: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final controller = tester
+          .widget<flow.NodeFlowEditor<String, String>>(
+            find.byType(flow.NodeFlowEditor<String, String>),
+          )
+          .controller;
+      final edgeId = '${target.id}:person';
+      expect(controller.getConnection(edgeId)!.sourceNodeId, source.id);
+      controller.selectNode(target.id);
+      final viewport = controller.viewport;
+      final targetNode = controller.getNode(target.id);
+      for (final next in [replacement.id, source.id]) {
+        await reference(next);
+        await tester.pumpAndSettle();
+        expect(controller.connections, hasLength(1));
+        expect(controller.getConnection(edgeId)!.sourceNodeId, next);
+        expect(controller.getConnection(edgeId)!.targetNodeId, target.id);
+        expect(controller.getNode(target.id), same(targetNode));
+        expect(targetNode!.selected.value, true);
+        expect(controller.viewport, viewport);
+        expect(
+          (await shots.getShot(target.clipId!))!.inputs.single.refId,
+          next,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await db.close();
+        await main.close();
+      });
+    }
   });
 
   for (final platform in [TargetPlatform.macOS, TargetPlatform.windows]) {
@@ -121,7 +228,9 @@ void main() {
                               const Text('Selection tools'),
                               SizedBox(
                                 width: 200,
-                                child: RevericTextField(focusNode: typingFocus),
+                                child: RevericTextField(
+                                  focusNode: typingFocus,
+                                ),
                               ),
                             ],
                           ),
