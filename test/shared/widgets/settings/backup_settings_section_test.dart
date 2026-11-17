@@ -294,6 +294,28 @@ void main() {
           find.byKey(const ValueKey('restore_back_button')),
           findsOneWidget,
         );
+        await tester.tap(find.byKey(const ValueKey('restore_mode_full')));
+        await tester.pumpAndSettle();
+        await tester.runAsync(() async {
+          await tester.tap(
+            find.byKey(const ValueKey('restore_confirm_button')),
+          );
+          // Android releases its real cache file before displaying the dialog.
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        });
+        await tester.pumpAndSettle();
+        final restart = find.byKey(
+          const ValueKey('backup_restore_restart_dialog'),
+        );
+        expect(backup.restores, 1);
+        expect(restart, findsOneWidget);
+        expect(find.text('Close app'), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+        expect(restart, findsOneWidget);
+        expect(backup.restores, 1);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.runAsync(() async {
@@ -607,6 +629,18 @@ class _PathSelector extends FileSelectorPlatform {
 }
 
 class _InspectionBackup extends BackupService {
+  int restores = 0;
+  @override
+  Future<RestoreResult> restoreFromZip(
+    String zipPath, {
+    required RestoreMode mode,
+    Set<String> novelIds = const <String>{},
+    Future<void> Function()? onBeforeFileRestore,
+  }) async {
+    restores++;
+    return const RestoreResult(success: true, needsRestart: true);
+  }
+
   String? inspectedPath;
   bool reject = false;
   @override

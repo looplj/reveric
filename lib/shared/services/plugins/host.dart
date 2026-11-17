@@ -1305,12 +1305,16 @@ class PluginHostService {
   }
 
   Future<void> shutdownForRestore() => withPackageSnapshot(() async {
+    _log.info('Restore shutdown started');
     final releases = <void Function()>[];
     try {
       for (final id in _packages.keys.toList()) {
+        _log.info('Restore shutdown: draining plugin=$id');
         releases.add(await beginMaintenance(id));
       }
+      _log.info('Restore shutdown: disposing host resources');
       await dispose();
+      _log.info('Restore shutdown completed');
     } finally {
       for (final release in releases) {
         release();
@@ -2684,6 +2688,9 @@ class PluginHostService {
     if (_databases != null) {
       await (await _databases!).dispose();
     }
-    await _changes.close();
+    // A hidden page can pause its status subscription. Closing the controller
+    // prevents new events immediately, but its future waits for those listeners
+    // to resume. UI notification delivery must not hold up resource shutdown.
+    unawaited(_changes.close());
   }
 }

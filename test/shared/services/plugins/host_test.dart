@@ -3,6 +3,7 @@
 //   lib/shared/services/plugins/host.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:drift/native.dart';
@@ -194,6 +195,51 @@ Future<void> _until(bool Function() condition) async {
 }
 
 void main() {
+  test(
+    'restore shutdown does not wait for a paused status subscriber',
+    () async {
+      final root = await Directory.systemTemp.createTemp('restore_shutdown_');
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      final host = PluginHostService(
+        dao: db.pluginDao,
+        registry: PluginRegistry(hostToolNames: {}),
+        packages: () async => [],
+        platform: 'android',
+        applicationSupport: () async => root,
+      );
+      await host.start();
+      final databases = await host.privateDatabases();
+      await databases.migrate('test.restore', [
+        {'version': 1, 'sql': 'CREATE TABLE notes(id INTEGER PRIMARY KEY);'},
+      ]);
+      final done = Completer<void>();
+      final subscription = host.changes.listen((_) {}, onDone: done.complete);
+      subscription.pause();
+      try {
+        await host.shutdownForRestore().timeout(const Duration(seconds: 2));
+        // Resource shutdown still finishes before restore may replace files.
+        expect(
+          () => databases.call('test.restore', 'query', {'sql': 'SELECT 1'}),
+          throwsA(
+            isA<PluginHostError>().having(
+              (e) => e.code,
+              'code',
+              'database_closed',
+            ),
+          ),
+        );
+        expect(done.isCompleted, false);
+        subscription.resume();
+        await done.future.timeout(const Duration(seconds: 2));
+      } finally {
+        await subscription.cancel();
+        await host.dispose();
+        await db.close();
+        await root.delete(recursive: true);
+      }
+    },
+  );
+
   test('host defaults apply only to new bundled plugins', () async {
     for (final platform in ['windows', 'macos', 'android']) {
       final db = AppDatabase.forTest(NativeDatabase.memory());
