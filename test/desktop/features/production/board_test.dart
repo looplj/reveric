@@ -15,6 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/desktop/features/production/board.dart';
 import 'package:reveric/desktop/features/production/node_card.dart';
+import 'package:reveric/shared/components/reveric_text_field.dart';
+import 'package:reveric/shared/widgets/confirm_dialog.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
@@ -77,6 +79,8 @@ void main() {
         second.id: (x: 500, y: 150),
       });
       final selected = ValueNotifier<String?>(null);
+      final typingFocus = FocusNode();
+      addTearDown(typingFocus.dispose);
       addTearDown(selected.dispose);
       try {
         await tester.pumpWidget(
@@ -111,7 +115,16 @@ void main() {
                           onClear: () => selected.value = null,
                           onConnect: (_, _, _) {},
                           onOpenDirector: (_) {},
-                          bar: const Text('Selection tools'),
+                          bar: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Selection tools'),
+                              SizedBox(
+                                width: 200,
+                                child: RevericTextField(focusNode: typingFocus),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -514,7 +527,47 @@ void main() {
           await pointer.removePointer();
           await tester.pumpAndSettle();
         }
-        controller.clearSelection();
+        // Typing inside a selected node's controls must not delete that node.
+        controller.selectNode(first.id);
+        selected.value = first.id;
+        await tester.pumpAndSettle();
+        typingFocus.requestFocus();
+        await tester.pump();
+        expect(typingFocus.hasPrimaryFocus, isTrue);
+        await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmDialog), findsNothing);
+        expect(await db.canvasDao.getNodeById(first.id), isNotNull);
+
+        controller.selectNode(second.id, toggle: true);
+        controller.canvasFocusNode.requestFocus();
+        await tester.pumpAndSettle();
+        expect(controller.selectedNodeIds, {first.id, second.id});
+        await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmDialog), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(await db.canvasDao.getNodeById(first.id), isNotNull);
+        expect(await db.canvasDao.getNodeById(second.id), isNotNull);
+
+        controller.canvasFocusNode.requestFocus();
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmDialog), findsOneWidget);
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ConfirmDialog),
+            matching: find.widgetWithText(FilledButton, 'Delete'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(await db.canvasDao.getNodeById(first.id), isNull);
+        expect(await db.canvasDao.getNodeById(second.id), isNull);
+        expect(await db.canvasDao.getNodeById(videoNode.id), isNotNull);
+        expect(controller.getNode(first.id), isNull);
+        expect(controller.getNode(second.id), isNull);
       } finally {
         debugDefaultTargetPlatformOverride = null;
         await tester.pumpWidget(const SizedBox.shrink());

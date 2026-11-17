@@ -829,7 +829,7 @@ class ProductionBoard extends HookConsumerWidget {
             }
           },
           onDragCancel: (_) => interaction.cancelDrag(),
-          // 删除只走工具条菜单；键盘删除会让 flow 和库对不上。
+          // 禁止 flow 直接删除投影；键盘与按钮由 ProductionSelectionActions 持久化删除。
           onBeforeDelete: (_) async => false,
         ),
         connection: flow.ConnectionEvents<String, String>(
