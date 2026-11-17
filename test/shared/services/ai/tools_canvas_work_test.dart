@@ -75,6 +75,92 @@ void main() {
     return result;
   }
 
+  test(
+    'text node Edit replaces exact content without changing layout',
+    () async {
+      final created = await call('Create', 'production/canvas/nodes', {
+        'type': 'text',
+        'title': 'Script',
+        'content': '开场\n角色回家。\n尾声',
+        'x': 1400,
+        'y': 320,
+      });
+      expect(created['ok'], true, reason: '$created');
+      final id = created['id'] as String;
+      final path = 'production/canvas/nodes/$id/content';
+      final before = await canvas.requireNode(id);
+      Future<Map<String, dynamic>> edit(
+        String oldText,
+        String newText, {
+        bool all = false,
+        String? target,
+      }) async {
+        final result = await tools.executeTool(
+          name: 'Edit',
+          input: {
+            'path': target ?? path,
+            'old_text': oldText,
+            'new_text': newText,
+            'all': all,
+          },
+        );
+        jsonEncode(result);
+        return result;
+      }
+
+      final changed = await edit('角色回家。', '角色出门。');
+      expect(changed['ok'], true, reason: '$changed');
+      expect(changed['edited'], true);
+      expect(changed['match_count'], 1);
+      final after = await canvas.requireNode(id);
+      expect(after.content, '开场\n角色出门。\n尾声');
+      expect(after.title, before.title);
+      expect(
+        (after.x, after.y, after.width, after.height, after.parentId),
+        (before.x, before.y, before.width, before.height, before.parentId),
+      );
+      expect((await call('Read', path))['value'], after.content);
+
+      final missing = await edit('不存在', '新内容');
+      expect(missing['error_code'], 'failed_precondition');
+      expect((await canvas.requireNode(id)).content, after.content);
+      final unchanged = await edit('角色出门。', '角色出门。');
+      expect(unchanged['edited'], false);
+
+      expect((await edit('角色出门。', '雨声，雨声'))['ok'], true);
+      expect((await edit('雨声', '风声'))['error_code'], 'invalid_argument');
+      expect((await canvas.requireNode(id)).content, '开场\n雨声，雨声\n尾声');
+      final multiple = await edit('雨声', '风声', all: true);
+      expect(multiple['ok'], true, reason: '$multiple');
+      expect(multiple['match_count'], 2);
+      expect((await canvas.requireNode(id)).content, '开场\n风声，风声\n尾声');
+
+      final empty = await call('Create', 'production/canvas/nodes', {
+        'type': 'text',
+      });
+      final initialized = await edit(
+        '',
+        '正文',
+        target: 'production/canvas/nodes/${empty['id']}/content',
+      );
+      expect(initialized['ok'], true, reason: '$initialized');
+      expect((await canvas.requireNode(empty['id'] as String)).content, '正文');
+      final video = await call('Create', 'production/canvas/nodes', {
+        'type': 'video',
+      });
+      final rejected = await edit(
+        '',
+        '正文',
+        target: 'production/canvas/nodes/${video['id']}/content',
+      );
+      expect(rejected['ok'], false);
+      expect(
+        (await canvas.requireNode(video['id'] as String)).content,
+        isEmpty,
+      );
+    },
+  );
+
   setUp(() async {
     db = NovelContentDatabase.forTest(NativeDatabase.memory());
     app = AppDatabase.forTest(NativeDatabase.memory());

@@ -139,6 +139,7 @@ const _productionNodeFields = {
     read: _FieldRead(path: true),
     create: _FieldInputUse(),
     write: _FieldInputUse(field: true),
+    edit: _FieldEdit(),
   ),
   'asset_id': _ResourceField(
     value: _ValueSchema(_ValueType.string),

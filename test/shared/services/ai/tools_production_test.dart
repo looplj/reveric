@@ -659,6 +659,21 @@ void main() {
       (await db.canvasDao.getNodeById(text['id'] as String))!.content,
       'Updated',
     );
+    final edited = await tools.executeTool(
+      name: 'Edit',
+      input: {
+        'path': '$canvasPath/nodes/${text['id']}/content',
+        'old_text': 'Updated',
+        'new_text': 'Edited in screenplay',
+      },
+    );
+    ok(edited);
+    jsonEncode(edited);
+    expect(edited['match_count'], 1);
+    expect(
+      (await call('Read', '$canvasPath/nodes/${text['id']}/content'))['value'],
+      'Edited in screenplay',
+    );
     expect(
       (await call('Create', '$canvasPath/nodes', {'type': 'editing'}))['error'],
       isNotNull,

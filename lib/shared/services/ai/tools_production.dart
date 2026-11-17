@@ -213,6 +213,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
     ParsedPath parsed,
     _ResourceOperation operation, {
     Map<String, dynamic> fields = const {},
+    ({String oldText, String newText, bool replaceAll})? edit,
   }) async {
     final db = _contentService.database;
     final shots = StoryboardService(db, contentKind: _targetContentKind);
@@ -515,6 +516,35 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           };
         }
         final node = await requireNode(parsed.locator('node_id')!);
+        if (edit != null) {
+          if (node.type != canvasNodeTypeText || operation.field != 'content') {
+            throw const StoryboardException('invalid_config');
+          }
+          final replaced = AiToolManager._replaceExactText(
+            node.content,
+            edit.oldText,
+            edit.newText,
+            path: parsed.displayPath,
+            replaceAll: edit.replaceAll,
+          );
+          if (replaced.error != null) {
+            return AiToolManager._replaceTextErrorResult(replaced);
+          }
+          if (replaced.changed) {
+            await (await _productionStyleService()).updateText(
+              node.id,
+              title: node.title,
+              content: replaced.value!,
+            );
+          }
+          return {
+            'ok': true,
+            'updated': replaced.changed,
+            'edited': replaced.changed,
+            'match_count': replaced.matchCount,
+            ...await nodeData((await db.canvasDao.getNodeById(node.id))!),
+          };
+        }
         if (tool == _ResourceTool.remove) {
           await removeNode(node);
           return {

@@ -95,7 +95,7 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       _canvasProductionNodes,
       _canvasProductionEdges,
     }.contains(parsed._resource!.schema)) {
-      return _executeProduction(parsed, operation, fields: fields);
+      return _executeProduction(parsed, operation, fields: fields, edit: edit);
     }
     if (parsed.resourceSegment == 'generations') {
       try {
