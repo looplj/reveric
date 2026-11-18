@@ -1813,6 +1813,7 @@ abstract final class LocaleKeys {
   static const editingNoFreeTrack = 'screenplay.editing.noFreeTrack';
   static const editingReplaced = 'screenplay.editing.replaced';
   static const editingNewSubtitle = 'screenplay.editing.newSubtitle';
+  static const editingNewText = 'screenplay.editing.newText';
   static const editingRoleMain = 'screenplay.editing.roleMain';
   static const editingRoleOverlay = 'screenplay.editing.roleOverlay';
   static const editingRoleSubtitle = 'screenplay.editing.roleSubtitle';
@@ -1820,14 +1821,17 @@ abstract final class LocaleKeys {
   static const editingRoleSfx = 'screenplay.editing.roleSfx';
   static const editingRoleMusic = 'screenplay.editing.roleMusic';
   static const editingRoleAudio = 'screenplay.editing.roleAudio';
+  static const editingRoleText = 'screenplay.editing.roleText';
   static const editingSnapOn = 'screenplay.editing.snapOn';
   static const editingSnapOff = 'screenplay.editing.snapOff';
   static const editingAudioTrack = 'screenplay.editing.audioTrack';
+  static const editingTextTrack = 'screenplay.editing.textTrack';
   static const editingZoomOut = 'screenplay.editing.zoomOut';
   static const editingZoomIn = 'screenplay.editing.zoomIn';
   static const editingFit = 'screenplay.editing.fit';
   static const editingMagnetHint = 'screenplay.editing.magnetHint';
   static const editingAddSubtitle = 'screenplay.editing.addSubtitle';
+  static const editingAddText = 'screenplay.editing.addText';
   static const editingRemoveTrack = 'screenplay.editing.removeTrack';
   static const editingUnlock = 'screenplay.editing.unlock';
   static const editingUnmute = 'screenplay.editing.unmute';
@@ -1848,9 +1852,19 @@ abstract final class LocaleKeys {
   static const editingText = 'screenplay.editing.text';
   static const editingStyle = 'screenplay.editing.style';
   static const editingPosition = 'screenplay.editing.position';
+  static const editingPositionTopLeft = 'screenplay.editing.positionTopLeft';
   static const editingPositionTop = 'screenplay.editing.positionTop';
+  static const editingPositionTopRight = 'screenplay.editing.positionTopRight';
+  static const editingPositionLeft = 'screenplay.editing.positionLeft';
   static const editingPositionCenter = 'screenplay.editing.positionCenter';
+  static const editingPositionRight = 'screenplay.editing.positionRight';
+  static const editingPositionBottomLeft =
+      'screenplay.editing.positionBottomLeft';
   static const editingPositionBottom = 'screenplay.editing.positionBottom';
+  static const editingPositionBottomRight =
+      'screenplay.editing.positionBottomRight';
+  static const editingHorizontal = 'screenplay.editing.horizontal';
+  static const editingVertical = 'screenplay.editing.vertical';
   static const editingSourceRange = 'screenplay.editing.sourceRange';
   static const editingVolume = 'screenplay.editing.volume';
   static const editingOriginalSound = 'screenplay.editing.originalSound';

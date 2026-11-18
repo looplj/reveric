@@ -1273,15 +1273,30 @@ void main() {
           'fields': {
             'text': 'After',
             'text_style': 'title',
-            'text_position': 'center',
+            'scale': 1.5,
+            'opacity': .8,
+            'x': .96,
+            'y': .04,
+            'anchor_x': 1,
+            'anchor_y': 0,
           },
+        },
+        {'op': 'add_text_track', 'id': 'marks'},
+        {
+          'op': 'add_text',
+          'id': 'mark',
+          'track_id': 'marks',
+          'start_frame': 0,
+          'text': 'LOGO',
         },
       ]);
       final video = built.document.mainClips.single;
       expect(video.origin!.id, 'shot-one');
       final content = video.content as EditingVideoContent;
-      expect(content.transform.scale, .4);
-      expect(content.transform.x, closeTo(.74, 1e-9));
+      expect(
+        content.transform.toJson(),
+        EditingCommands.autoPlacement(.4).toJson(),
+      );
       expect(content.opacity, .6);
       final audio = built.document.clips.singleWhere(
         (c) => c.content is EditingAudioContent,
@@ -1296,12 +1311,44 @@ void main() {
         ),
         (-6, 6, 12),
       );
-      expect(built.document.clips.last.content.toJson(), {
-        'kind': 'text',
-        'text': 'After',
-        'style': 'title',
-        'position': 'center',
-      });
+      expect(
+        built.document.clips
+            .singleWhere((c) => c.id == 'text')
+            .content
+            .toJson(),
+        {
+          'kind': 'text',
+          'text': 'After',
+          'style': 'title',
+          'transform': {
+            'scale': 1.5,
+            'x': .96,
+            'y': .04,
+            'anchor_x': 1.0,
+            'anchor_y': 0.0,
+          },
+          'opacity': .8,
+        },
+      );
+      final marks = built.document.track('marks');
+      expect((marks.kind, marks.role, marks.order), ('text', 'text', 1));
+      expect(
+        built.document.clips.singleWhere((c) => c.id == 'mark').trackId,
+        'marks',
+      );
+      final moved = await engine.apply(built.document, 'A', [
+        {
+          'op': 'update_clip',
+          'clip_id': 'main',
+          'fields': {'x': .1, 'anchor_x': 0},
+        },
+      ]);
+      expect(
+        (moved.document.mainClips.single.content as EditingVideoContent)
+            .transform
+            .toJson(),
+        EditingCommands.autoPlacement(.4).copyWith(x: .1, anchorX: 0).toJson(),
+      );
       final replaced = await engine.apply(built.document, 'A', [
         {
           'op': 'replace_source',
@@ -1327,11 +1374,16 @@ void main() {
         {
           'op': 'update_clip',
           'clip_id': 'text',
-          'fields': {'opacity': .5},
+          'fields': {'anchor_x': 1.5},
         },
         {
           'op': 'update_clip',
-          'clip_id': 'main',
+          'clip_id': 'text',
+          'fields': {'scale': 3},
+        },
+        {
+          'op': 'update_clip',
+          'clip_id': audio.id,
           'fields': {'x': .5},
         },
       ]) {
@@ -1340,6 +1392,26 @@ void main() {
           throwsFormatException,
         );
       }
+      await expectLater(
+        engine.apply(built.document, 'A', [
+          {
+            'op': 'update_clip',
+            'clip_id': 'text',
+            'fields': {'text_position': 'center'},
+          },
+        ]),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('text_position'),
+              contains('anchor_x'),
+              contains('text_style'),
+            ),
+          ),
+        ),
+      );
     },
   );
 

@@ -89,6 +89,7 @@ String editingTrackName(BuildContext context, EditingTrack track) =>
         EditingRole.dialogue => LocaleKeys.editingRoleDialogue,
         EditingRole.sfx => LocaleKeys.editingRoleSfx,
         EditingRole.music => LocaleKeys.editingRoleMusic,
+        EditingRole.text => LocaleKeys.editingRoleText,
         _ => LocaleKeys.editingRoleAudio,
       });
 
@@ -98,6 +99,7 @@ String editingTrackIcon(EditingTrack track) => switch (track.role) {
   EditingRole.subtitle => RevericIcons.subtitles,
   EditingRole.dialogue => RevericIcons.microphone,
   EditingRole.music => RevericIcons.music_notes,
+  EditingRole.text => RevericIcons.text_fields_outlined,
   _ => RevericIcons.waveform,
 };
 

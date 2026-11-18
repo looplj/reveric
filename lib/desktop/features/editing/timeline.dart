@@ -283,6 +283,11 @@ class _Toolbar extends StatelessWidget {
           ),
           labeled(
             RevericIcons.add,
+            context.t(LocaleKeys.editingTextTrack),
+            () => controller.addTextTrack(context),
+          ),
+          labeled(
+            RevericIcons.add,
             context.t(LocaleKeys.editingAudioTrack),
             () => controller.addAudioTrack(context),
           ),
@@ -464,11 +469,15 @@ class _TrackHead extends StatelessWidget {
           if (t.kind == 'text')
             _Toggle(
               icon: RevericIcons.add,
-              tooltip: context.t(LocaleKeys.editingAddSubtitle),
+              tooltip: context.t(
+                t.role == EditingRole.subtitle
+                    ? LocaleKeys.editingAddSubtitle
+                    : LocaleKeys.editingAddText,
+              ),
               on: false,
               onTap: t.locked ? null : () => controller.addText(context, t),
             ),
-          if (t.role == EditingRole.audio)
+          if (t.role == EditingRole.audio || t.role == EditingRole.text)
             _Toggle(
               icon: RevericIcons.close,
               tooltip: context.t(LocaleKeys.editingRemoveTrack),

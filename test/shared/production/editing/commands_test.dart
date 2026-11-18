@@ -257,10 +257,164 @@ void main() {
           c.content is EditingTextContent &&
           (c.content as EditingTextContent).text == '开船了',
     );
-    expect(EditingRenderService.burns(title, EditingSubtitles.srt), isTrue);
-    expect(EditingRenderService.burns(subtitle, EditingSubtitles.srt), isFalse);
-    expect(EditingRenderService.burns(title, EditingSubtitles.none), isFalse);
+    final t1 = withTitle.track('T1');
+    expect(EditingRenderService.burns(t1, title, EditingSubtitles.srt), isTrue);
+    expect(
+      EditingRenderService.burns(t1, subtitle, EditingSubtitles.srt),
+      isFalse,
+    );
+    expect(
+      EditingRenderService.burns(t1, title, EditingSubtitles.none),
+      isFalse,
+    );
   });
+
+  test('text tracks stack freely, always burn and stay out of SRT', () {
+    var doc = EditingCommands.addTextTrack(fixture());
+    doc = EditingCommands.addTextTrack(doc);
+    final added = doc.tracks.where((t) => t.role == EditingRole.text).toList();
+    expect(added.map((t) => (t.kind, t.order)), [('text', 1), ('text', 2)]);
+    doc = EditingCommands.addText(doc, added.first.id, 48, 'LOGO');
+    doc = EditingCommands.addText(doc, added.last.id, 48, '第一集');
+    final logo = doc.clips.singleWhere((c) => c.trackId == added.first.id);
+    for (final mode in [
+      EditingSubtitles.burn,
+      EditingSubtitles.srt,
+      EditingSubtitles.none,
+    ]) {
+      expect(EditingRenderService.burns(added.first, logo, mode), isTrue);
+    }
+    expect(EditingRenderService.srt(doc), EditingRenderService.srt(fixture()));
+    expect(
+      EditingRenderService.cacheKey(doc, 48, 48, (854, 480)),
+      isNot(
+        EditingRenderService.cacheKey(
+          doc.copyWith(
+            tracks: [
+              for (final t in doc.tracks)
+                t.id == added.first.id
+                    ? EditingTrack(
+                        id: t.id,
+                        kind: t.kind,
+                        role: EditingRole.subtitle,
+                        order: t.order,
+                      )
+                    : t,
+            ],
+          ),
+          48,
+          48,
+          (854, 480),
+        ),
+      ),
+    );
+    final removed = EditingCommands.removeTrack(doc, added.first.id);
+    expect(removed.clips.where((c) => c.id == logo.id), isEmpty);
+    expect(removed.tracks.singleWhere((t) => t.id == added.last.id).order, 1);
+  });
+
+  test(
+    'text placement keeps scale, opacity and anchors within product range',
+    () {
+      final doc = fixture();
+      final sub = doc.clips.singleWhere((c) => c.id == 'sub');
+      final content = sub.content as EditingTextContent;
+      EditingDocument update(EditingTextContent next) =>
+          EditingCommands.update(doc, sub.copyWith(content: next));
+      const corner = EditingTransform(
+        scale: 2,
+        x: .96,
+        y: .04,
+        anchorX: 1,
+        anchorY: 0,
+      );
+      final placed = update(content.copyWith(transform: corner, opacity: .5));
+      expect(placed.clips.singleWhere((c) => c.id == 'sub').content.toJson(), {
+        'kind': 'text',
+        'text': '开船了',
+        'style': 'subtitle',
+        'transform': corner.toJson(),
+        'opacity': .5,
+      });
+      expect(
+        () => update(
+          content.copyWith(transform: content.transform.copyWith(scale: 2.5)),
+        ),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('.2..2'),
+          ),
+        ),
+      );
+      for (final invalid in [
+        content.copyWith(transform: corner.copyWith(anchorX: 1.5)),
+        content.copyWith(transform: corner.copyWith(y: -.1)),
+        content.copyWith(opacity: 1.2),
+      ]) {
+        expect(() => update(invalid), throwsFormatException);
+      }
+      expect(
+        () => update(content.copyWith(style: 'caption')),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('subtitle, title'),
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'legacy text positions and centred transforms read as equivalent anchors',
+    () {
+      final json = fixture().toJson();
+      final clips = json['clips'] as List;
+      final video = (clips.first as Map)['content'] as Map;
+      video['transform'] = {'scale': .4, 'x': .74, 'y': .26};
+      final text = (clips.last as Map)['content'] as Map;
+      final expected = {
+        'top': const EditingTransform(y: .09, anchorY: 0),
+        'center': const EditingTransform(),
+        'bottom': EditingTextContent.bottom,
+      };
+      for (final MapEntry(key: position, value: transform)
+          in expected.entries) {
+        text
+          ..clear()
+          ..addAll(<String, dynamic>{
+            'kind': 'text',
+            'text': '旧字幕',
+            'style': 'subtitle',
+            'position': position,
+          });
+        final doc = EditingDocument.fromJson(Map<String, dynamic>.from(json));
+        final content = doc.clips.last.content as EditingTextContent;
+        expect(content.transform.toJson(), transform.toJson());
+        expect(content.opacity, 1);
+        expect(content.toJson().containsKey('position'), isFalse);
+        final old =
+            (doc.mainClips.first.content as EditingVideoContent).transform;
+        expect((old.anchorX, old.anchorY), (.5, .5));
+        // 旧版自动摆放的右上角画面，换缩放后仍按自动规则重新摆放。
+        final resized = EditingCommands.update(
+          doc,
+          doc.mainClips.first.copyWith(
+            content: (doc.mainClips.first.content as EditingVideoContent)
+                .copyWith(transform: old.copyWith(scale: .6)),
+          ),
+        );
+        expect(
+          (resized.mainClips.first.content as EditingVideoContent).transform
+              .toJson(),
+          EditingCommands.autoPlacement(.6).toJson(),
+        );
+      }
+    },
+  );
   test(
     'cache keys ignore track locks and names, invalidate changed interval only',
     () {
@@ -350,7 +504,13 @@ void main() {
     expect(content['audio_detached'], false);
     expect((content['source'] as Map)['asset_id'], videoSource.assetId);
     final text = doc.clips.last.content.toJson();
-    expect(text.keys.toSet(), {'kind', 'text', 'style', 'position'});
+    expect(text.keys.toSet(), {
+      'kind',
+      'text',
+      'style',
+      'transform',
+      'opacity',
+    });
     expect(EditingDocument.fromJson(json).toJson(), json);
     expect(EditingDocument.fromJson(json).clips.first.origin, isNull);
     content['kind'] = 'future';
@@ -428,8 +588,13 @@ void main() {
       );
       final changed = resized.mainClips.first;
       final transform = (changed.content as EditingVideoContent).transform;
-      expect(transform.x, closeTo(.74, 1e-9));
-      expect(transform.y, closeTo(.26, 1e-9));
+      expect(transform.toJson(), {
+        'scale': .4,
+        'x': .94,
+        'y': .06,
+        'anchor_x': 1.0,
+        'anchor_y': 0.0,
+      });
       final renamed = EditingCommands.update(
         resized,
         changed.copyWith(name: 'Name'),
@@ -445,7 +610,36 @@ void main() {
       expect(
         (full.mainClips.first.content as EditingVideoContent).transform
             .toJson(),
-        {'scale': 1.0, 'x': .5, 'y': .5},
+        {'scale': 1.0, 'x': .5, 'y': .5, 'anchor_x': .5, 'anchor_y': .5},
+      );
+      final placed = EditingCommands.update(
+        full,
+        full.mainClips.first.copyWith(
+          content: video.copyWith(
+            transform: const EditingTransform(
+              scale: .5,
+              x: .1,
+              y: .9,
+              anchorX: 0,
+              anchorY: 1,
+            ),
+          ),
+        ),
+      );
+      final manual = placed.mainClips.first;
+      final rescaled = EditingCommands.update(
+        placed,
+        manual.copyWith(
+          content: (manual.content as EditingVideoContent).copyWith(
+            transform: (manual.content as EditingVideoContent).transform
+                .copyWith(scale: .3),
+          ),
+        ),
+      );
+      expect(
+        (rescaled.mainClips.first.content as EditingVideoContent).transform
+            .toJson(),
+        {'scale': .3, 'x': .1, 'y': .9, 'anchor_x': 0.0, 'anchor_y': 1.0},
       );
     },
   );

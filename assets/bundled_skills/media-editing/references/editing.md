@@ -4,7 +4,7 @@
 
 editing 负责组织素材并剪辑成片，FFmpeg 负责素材加工。需要先转码、降噪、调色或处理外部字幕时，读取媒体加工附件，取得处理后的文件，再通过 add_media 或 replace_source 显式使用。工程内的顺序、片段区间、音量、字幕与叠加效果保留为可编辑数据，不提前压成单个文件来代替时间线修改。
 
-界面“剪辑／多轨剪辑”中的片段属于时间线；其“分割”操作切开时间线片段，不调用“AI 拆分镜”，也不创建新的场内分镜。主轨、叠加、字幕、对白、音效和音乐按读取到的轨道角色定位。
+界面“剪辑／多轨剪辑”中的片段属于时间线；其“分割”操作切开时间线片段，不调用“AI 拆分镜”，也不创建新的场内分镜。主轨、叠加、字幕、文字、对白、音效和音乐按读取到的轨道角色定位。
 
 ## 命令参数
 
@@ -32,7 +32,7 @@ editing 负责组织素材并剪辑成片，FFmpeg 负责素材加工。需要�
 {"command":"editing","subcommand":"read","options":{"editing_id":"{editing_id}"}}
 ```
 
-read 可选 track_id，或同时给 start_frame / end_frame 查询全局帧区间，两种过滤不能混用。时间轴按返回的 fps 换算帧数，不能把秒直接填入 frame 字段。读取结果统一使用 snake_case。片段层包含 `id/track_id/name/start_frame/duration_frames/origin/content`，按 `content.kind` 区分 video、audio、text。video/audio 的素材位于 `content.source`，字段为 `asset_id/media_type/duration_us/has_audio`，素材入点为 `content.source_in_us`；video 的画面属性位于 `content.transform` 和 `content.opacity`。text 内容仅包含 `text/style/position`。命令参数仍以下方 commands 表为准，比如 `text_style` 修改 `content.style`。
+read 可选 track_id，或同时给 start_frame / end_frame 查询全局帧区间，两种过滤不能混用。时间轴按返回的 fps 换算帧数，不能把秒直接填入 frame 字段。读取结果统一使用 snake_case。片段层包含 `id/track_id/name/start_frame/duration_frames/origin/content`，按 `content.kind` 区分 video、audio、text。video/audio 的素材位于 `content.source`，字段为 `asset_id/media_type/duration_us/has_audio`，素材入点为 `content.source_in_us`；video 与 text 的画面属性位于 `content.transform`（`scale/x/y/anchor_x/anchor_y`）和 `content.opacity`；text 另有 `text/style`。命令参数仍以下方 commands 表为准，比如 `text_style` 修改 `content.style`。
 
 `origin` 可空；`type=production_clip` 时 id 记录制作片段来源，实际素材以 `content.source.asset_id` 为准，不随制作片段后来更换采用结果而变化。使用 production_clip_id 加入或替换时写入 origin，使用 path 替换时清空；分割沿用来源记录。
 
@@ -42,7 +42,8 @@ read 可选 track_id，或同时给 start_frame / end_frame 查询全局帧区�
 
 | op | 参数 |
 |---|---|
-| `add_audio_track` | 可选 `id` |
+| `add_audio_track` | 可选 `id`；新建普通音频轨 |
+| `add_text_track` | 可选 `id`；新建文字轨 |
 | `update_track` | `track_id`、`fields`，fields 可含 name、locked、hidden、muted；muted 仅用于音轨 |
 | `reorder_track` | `track_id`、`order` |
 | `remove_track` | `track_id` |
@@ -54,7 +55,7 @@ read 可选 track_id，或同时给 start_frame / end_frame 查询全局帧区�
 | `split_clip` | `clip_id`、`frame`，切点严格位于片段内部 |
 | `duplicate_clip` | `clip_id`；主轨用 `index`，其他轨道用 `start_frame`；可选新 `id` |
 | `remove_clip` | `clip_id` |
-| `update_clip` | `clip_id`、`fields`，fields 可含 name、scale、opacity、gain_db、fade_in_frames、fade_out_frames、text、text_style、text_position |
+| `update_clip` | `clip_id`、`fields`，fields 可含 name、scale、opacity、x、y、anchor_x、anchor_y、gain_db、fade_in_frames、fade_out_frames、text、text_style |
 | `extract_audio` | `clip_id`；可选 `track_id`，将有原声且未分离的视频片段原声放到音频轨 |
 | `replace_source` | `clip_id`、path 或 production_clip_id 二选一 |
 | `set_ratio` | `ratio`，取值与 create 相同 |
@@ -70,9 +71,13 @@ read 可选 track_id，或同时给 start_frame / end_frame 查询全局帧区�
 
 新对象可提供唯一 ID 供同批后续命令引用；已有对象只使用读到的 ID。锁定轨道先单独解锁，再提交后续修改。遇到 conflict 重新读取用户最新编辑，重新计算本次变更，不复用旧 revision 强行提交。
 
-`update_clip` 的字段按内容类型生效：视频可改 scale、opacity、gain_db 与 fades，音频可改 gain_db 与 fades，文字可改 text、text_style、text_position；三类都可改 name。scale 范围为 0.2 至 1，gain_db 为 -60 至 12。
+`update_clip` 的字段按内容类型生效：视频可改 scale、opacity、位置、gain_db 与 fades，音频可改 gain_db 与 fades，文字可改 text、text_style、scale、opacity 与位置；三类都可改 name。视频 scale 为 0.2 至 1，文字 scale 为 0.2 至 2；opacity 为 0 至 1；gain_db 为 -60 至 12。text_style 为 `subtitle`（默认字号为画面短边的 5%）或 `title`（7.5%），文字 scale 在此基础上缩放。
 
-scale 小于 1 时，缩放后的图层框位于右上方，框的上边缘和右边缘各留 6% 边距；素材在框内保持比例并居中。素材与工程比例不同时，实际画面边缘不一定贴住该边距。scale 等于 1 时居中。transform 的 x/y 表示图层中心的归一化坐标，不能通过 `update_clip` 单独修改。
+位置由 x、y、anchor_x、anchor_y 共同决定，四者均为 0 至 1：图层框上的锚点 (anchor_x, anchor_y) 落在画面的 (x, y)，坐标按画面宽高归一化，(0,0) 为左上角。无需知道文字宽度即可贴边，例如右上角留 4% 边距用 `{"x":0.96,"y":0.04,"anchor_x":1,"anchor_y":0}`，底部居中用 `{"x":0.5,"y":0.91,"anchor_x":0.5,"anchor_y":1}`（新文字的默认位置）。多行文字按 anchor_x 左、中、右对齐，超过画面宽度 84% 时自动折行。视频图层框为画面的 scale 倍，素材在框内保持比例并居中；素材与工程比例不同时，实际画面边缘不一定贴住框边。
+
+视频只改 scale、不给位置字段且仍在自动位置时，scale 小于 1 摆到右上角（上、右各留 6%），等于 1 时居中；同时给出位置字段或之前已手动定位时保持给定位置。
+
+字幕轨（role `subtitle`）按导出时选择的字幕方式处理，SRT 只收录其中 `subtitle` 样式的片段；文字轨（role `text`）总是烧录进画面，适合水印、标注和角标。同一时刻需要叠放多段文字时，用 add_text_track 新建文字轨分别放置；同类轨道按 order 自下而上叠放。
 
 `extract_audio` 保留原时间位置、时长、源入点、音量、淡入淡出及 origin。省略 track_id 时，优先找整个片段区间空闲且未锁定、未静音、未隐藏的对白轨，其次找普通音频轨，没有则自动新建普通音频轨；不自动使用音效或音乐轨。显式指定轨道时必须为未锁定的音频轨，区间占用则失败，不自动换轨或截短。结果通过 created_clip_ids 和 created_track_ids 返回新对象。
 

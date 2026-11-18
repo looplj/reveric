@@ -19,9 +19,15 @@ abstract final class EditingCommands {
     }
     for (final clip in doc.clips) {
       final content = clip.content;
-      if (content is EditingVideoContent &&
-          (content.transform.scale < .2 || content.transform.scale > 1)) {
-        throw const FormatException('Invalid scale');
+      final (scale, max) = switch (content) {
+        EditingVideoContent(:final transform) => (transform.scale, 1),
+        EditingTextContent(:final transform) => (transform.scale, 2),
+        EditingAudioContent() => (1.0, 1),
+      };
+      if (scale < .2 || scale > max) {
+        throw FormatException(
+          'Invalid scale $scale: ${content.kind} scale must be within .2..$max',
+        );
       }
       if (content is EditingSourceContent &&
           (content.gainDb < -60 || content.gainDb > 12)) {
@@ -57,15 +63,25 @@ abstract final class EditingCommands {
     return next;
   }
 
-  static EditingDocument addAudioTrack(EditingDocument doc) {
-    final order = doc.tracks.where((t) => t.kind == 'audio').length;
+  static EditingDocument addAudioTrack(EditingDocument doc) =>
+      _addTrack(doc, 'audio', EditingRole.audio);
+
+  static EditingDocument addTextTrack(EditingDocument doc) =>
+      _addTrack(doc, 'text', EditingRole.text);
+
+  static EditingDocument _addTrack(
+    EditingDocument doc,
+    String kind,
+    String role,
+  ) {
+    final order = doc.tracks.where((t) => t.kind == kind).length;
     final next = doc.copyWith(
       tracks: [
         ...doc.tracks,
         EditingTrack(
           id: const Uuid().v4(),
-          kind: 'audio',
-          role: EditingRole.audio,
+          kind: kind,
+          role: role,
           order: order,
         ),
       ],
@@ -296,23 +312,34 @@ abstract final class EditingCommands {
         : _change(doc, [c], []);
   }
 
+  /// 未手动定位的视频画面：满幅居中，缩小后贴右上角留 6% 边距。
+  static EditingTransform autoPlacement(double scale) => scale < 1
+      ? EditingTransform(scale: scale, x: .94, y: .06, anchorX: 1, anchorY: 0)
+      : EditingTransform(scale: scale);
+
+  /// 视频图层框占画面的 scale 比例，锚点写法不同但框重合即视为同一位置。
+  static bool _sameBox(EditingTransform a, EditingTransform b) {
+    bool near(double p, double q) => (p - q).abs() < 1e-9;
+    return near(a.scale, b.scale) &&
+        near(a.x - a.anchorX * a.scale, b.x - b.anchorX * b.scale) &&
+        near(a.y - a.anchorY * a.scale, b.y - b.anchorY * b.scale);
+  }
+
   static EditingDocument update(EditingDocument doc, EditingClip clip) {
     final old = _clip(doc, clip.id);
     final content = clip.content;
     final previous = old.content;
-    if (content is EditingVideoContent &&
-        previous is EditingVideoContent &&
-        content.transform.scale != previous.transform.scale) {
-      final scale = content.transform.scale;
-      clip = clip.copyWith(
-        content: content.copyWith(
-          transform: EditingTransform(
-            scale: scale,
-            x: scale < 1 ? 1 - .06 - scale / 2 : .5,
-            y: scale < 1 ? .06 + scale / 2 : .5,
-          ),
-        ),
-      );
+    if (content is EditingVideoContent && previous is EditingVideoContent) {
+      final next = content.transform;
+      final before = previous.transform;
+      // 只改缩放时，自动摆放的画面跟着重新摆放；手动定位过的保持锚点不动。
+      if (next.scale != before.scale &&
+          next.samePlacement(before) &&
+          _sameBox(before, autoPlacement(before.scale))) {
+        clip = clip.copyWith(
+          content: content.copyWith(transform: autoPlacement(next.scale)),
+        );
+      }
     }
     return _onMain(doc, old)
         ? _layoutMain(doc, _swap(doc.mainClips, clip.id, [clip]))

@@ -15,8 +15,12 @@ class EditingAgentCommands {
   EditingAgentCommands(this.resolveSource);
   final Future<EditingSource> Function(Map<String, dynamic>) resolveSource;
   static void keys(Map value, Set<String> allowed) {
-    if (value.keys.any((key) => !allowed.contains(key))) {
-      throw const FormatException('Unknown editing parameter.');
+    final unknown = value.keys.where((key) => !allowed.contains(key));
+    if (unknown.isNotEmpty) {
+      throw FormatException(
+        'Unknown editing parameter: ${unknown.join(', ')}. '
+        'Allowed: ${allowed.join(', ')}.',
+      );
     }
   }
 
@@ -194,10 +198,12 @@ class EditingAgentCommands {
       }
 
       switch (op) {
-        case 'add_audio_track':
+        case 'add_audio_track' || 'add_text_track':
           keys(command, {'op', 'id'});
           final nextId = id();
-          final next = EditingCommands.addAudioTrack(doc);
+          final next = op == 'add_audio_track'
+              ? EditingCommands.addAudioTrack(doc)
+              : EditingCommands.addTextTrack(doc);
           final added = next.tracks.last;
           doc = next.copyWith(
             tracks: [
@@ -346,16 +352,23 @@ class EditingAgentCommands {
         case 'update_clip':
           keys(command, {'op', 'clip_id', 'fields'});
           text(command, 'clip_id');
-          final f = fields({
-            'name',
+          const placement = {
             'scale',
             'opacity',
-            'gain_db',
-            'fade_in_frames',
-            'fade_out_frames',
-            'text',
-            'text_style',
-            'text_position',
+            'x',
+            'y',
+            'anchor_x',
+            'anchor_y',
+          };
+          const source = {'gain_db', 'fade_in_frames', 'fade_out_frames'};
+          var content = clip!.content;
+          final f = fields({
+            'name',
+            ...switch (content) {
+              EditingVideoContent() => {...placement, ...source},
+              EditingAudioContent() => source,
+              EditingTextContent() => {...placement, 'text', 'text_style'},
+            },
           });
           double? number(String key) {
             final value = f[key];
@@ -364,29 +377,14 @@ class EditingAgentCommands {
             }
             return (value as num?)?.toDouble();
           }
-          var content = clip!.content;
-          keys(f, switch (content) {
-            EditingVideoContent() => {
-              'name',
-              'scale',
-              'opacity',
-              'gain_db',
-              'fade_in_frames',
-              'fade_out_frames',
-            },
-            EditingAudioContent() => {
-              'name',
-              'gain_db',
-              'fade_in_frames',
-              'fade_out_frames',
-            },
-            EditingTextContent() => {
-              'name',
-              'text',
-              'text_style',
-              'text_position',
-            },
-          });
+          EditingTransform place(EditingTransform transform) =>
+              transform.copyWith(
+                scale: number('scale'),
+                x: number('x'),
+                y: number('y'),
+                anchorX: number('anchor_x'),
+                anchorY: number('anchor_y'),
+              );
           if (content is EditingSourceContent) {
             content = content.copyWith(
               gainDb: number('gain_db'),
@@ -398,23 +396,17 @@ class EditingAgentCommands {
                   : null,
             );
             if (content is EditingVideoContent) {
-              final scale = number('scale');
               content = content.copyWith(
                 opacity: number('opacity'),
-                transform: scale == null
-                    ? null
-                    : EditingTransform(
-                        scale: scale,
-                        x: content.transform.x,
-                        y: content.transform.y,
-                      ),
+                transform: place(content.transform),
               );
             }
           } else if (content is EditingTextContent) {
             content = content.copyWith(
               text: f['text'] as String?,
               style: f['text_style'] as String?,
-              position: f['text_position'] as String?,
+              opacity: number('opacity'),
+              transform: place(content.transform),
             );
           }
           doc = EditingCommands.update(

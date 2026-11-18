@@ -20,10 +20,13 @@ abstract final class EditingRole {
   static const sfx = 'sfx';
   static const music = 'music';
   static const audio = 'audio';
+
+  /// 普通文字轨：导出时总是烧录进画面，不参与字幕导出方式。
+  static const text = 'text';
   static const byKind = {
     'video': [main, overlay],
     'audio': [dialogue, sfx, music, audio],
-    'text': [subtitle],
+    'text': [subtitle, text],
   };
 }
 
@@ -109,14 +112,47 @@ class EditingTrack {
   );
 }
 
+/// 图层框上的锚点 (anchorX, anchorY) 落在画面的 (x, y)，坐标都按宽高归一化到 0..1。
 class EditingTransform {
-  const EditingTransform({this.scale = 1, this.x = .5, this.y = .5});
-  final double scale, x, y;
-  Map<String, dynamic> toJson() => {'scale': scale, 'x': x, 'y': y};
+  const EditingTransform({
+    this.scale = 1,
+    this.x = .5,
+    this.y = .5,
+    this.anchorX = .5,
+    this.anchorY = .5,
+  });
+  final double scale, x, y, anchorX, anchorY;
+  bool samePlacement(EditingTransform other) =>
+      x == other.x &&
+      y == other.y &&
+      anchorX == other.anchorX &&
+      anchorY == other.anchorY;
+  EditingTransform copyWith({
+    double? scale,
+    double? x,
+    double? y,
+    double? anchorX,
+    double? anchorY,
+  }) => EditingTransform(
+    scale: scale ?? this.scale,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    anchorX: anchorX ?? this.anchorX,
+    anchorY: anchorY ?? this.anchorY,
+  );
+  Map<String, dynamic> toJson() => {
+    'scale': scale,
+    'x': x,
+    'y': y,
+    'anchor_x': anchorX,
+    'anchor_y': anchorY,
+  };
   factory EditingTransform.fromJson(Map<String, dynamic> j) => EditingTransform(
     scale: (j['scale'] as num).toDouble(),
     x: (j['x'] as num).toDouble(),
     y: (j['y'] as num).toDouble(),
+    anchorX: (j['anchor_x'] as num? ?? .5).toDouble(),
+    anchorY: (j['anchor_y'] as num? ?? .5).toDouble(),
   );
 }
 
@@ -270,32 +306,52 @@ final class EditingTextContent extends EditingContent {
   const EditingTextContent({
     required this.text,
     this.style = 'subtitle',
-    this.position = 'bottom',
+    this.transform = bottom,
+    this.opacity = 1,
   });
-  final String text, style, position;
+  static const styles = ['subtitle', 'title'];
+
+  /// 底部居中，文字块下沿留出 9% 边距。
+  static const bottom = EditingTransform(y: .91, anchorY: 1);
+  final String text, style;
+
+  /// scale 是相对样式基准字号的倍数；多行文字按 anchorX 对齐。
+  final EditingTransform transform;
+  final double opacity;
   @override
   String get kind => 'text';
   EditingTextContent copyWith({
     String? text,
     String? style,
-    String? position,
+    EditingTransform? transform,
+    double? opacity,
   }) => EditingTextContent(
     text: text ?? this.text,
     style: style ?? this.style,
-    position: position ?? this.position,
+    transform: transform ?? this.transform,
+    opacity: opacity ?? this.opacity,
   );
   @override
   Map<String, dynamic> toJson() => {
     'kind': kind,
     'text': text,
     'style': style,
-    'position': position,
+    'transform': transform.toJson(),
+    'opacity': opacity,
   };
   factory EditingTextContent.fromJson(Map<String, dynamic> j) =>
       EditingTextContent(
         text: j['text'] as String,
         style: j['style'] as String,
-        position: j['position'] as String,
+        transform: j['transform'] == null
+            // 早期工程只存 top/center/bottom，按当时的版面换算成等价锚点。
+            ? switch (j['position']) {
+                'top' => const EditingTransform(y: .09, anchorY: 0),
+                'center' => const EditingTransform(),
+                _ => bottom,
+              }
+            : EditingTransform.fromJson(j['transform'] as Map<String, dynamic>),
+        opacity: (j['opacity'] as num? ?? 1).toDouble(),
       );
 }
 
@@ -451,6 +507,19 @@ class EditingDocument {
       }
     }
 
+    void placement(EditingTransform t, double opacity) {
+      bool unit(double n) => n >= 0 && n <= 1;
+      require(
+        t.scale.isFinite && t.scale > 0,
+        'Invalid scale ${t.scale}: must be positive',
+      );
+      require(
+        [t.x, t.y, t.anchorX, t.anchorY].every(unit),
+        'Invalid position: x, y, anchor_x and anchor_y must be within 0..1',
+      );
+      require(unit(opacity), 'Invalid opacity $opacity: must be within 0..1');
+    }
+
     require(
       const ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].contains(ratio),
       'Invalid ratio',
@@ -477,10 +546,11 @@ class EditingDocument {
       );
     }
     for (final t in tracks) {
+      require(t.id.isNotEmpty, 'Invalid track: id must be nonempty');
       require(
-        t.id.isNotEmpty &&
-            (EditingRole.byKind[t.kind]?.contains(t.role) ?? false),
-        'Invalid track',
+        EditingRole.byKind[t.kind]?.contains(t.role) ?? false,
+        'Invalid track ${t.id}: kind ${t.kind} with role ${t.role}. '
+        'Valid roles: ${EditingRole.byKind.entries.map((e) => '${e.key}: ${e.value.join('/')}').join(', ')}',
       );
       final ordered = clips.where((c) => c.trackId == t.id).toList()
         ..sort((a, b) => a.startFrame.compareTo(b.startFrame));
@@ -501,10 +571,11 @@ class EditingDocument {
       require(content.kind == track(c.trackId).kind, 'Wrong track type');
       if (content is EditingTextContent) {
         require(
-          const ['subtitle', 'title'].contains(content.style) &&
-              const ['top', 'center', 'bottom'].contains(content.position),
-          'Invalid text clip',
+          EditingTextContent.styles.contains(content.style),
+          'Invalid text style ${content.style}. '
+          'Valid styles: ${EditingTextContent.styles.join(', ')}',
         );
+        placement(content.transform, content.opacity);
         continue;
       }
       final media = content as EditingSourceContent;
@@ -533,18 +604,7 @@ class EditingDocument {
           ['video', 'image'].contains(source.mediaType),
           'Invalid video source',
         );
-        require(
-          [
-                transform.scale,
-                transform.x,
-                transform.y,
-                media.opacity,
-              ].every((n) => n.isFinite) &&
-              transform.scale > 0 &&
-              media.opacity >= 0 &&
-              media.opacity <= 1,
-          'Invalid transform or opacity',
-        );
+        placement(transform, media.opacity);
         require(
           !media.audioDetached ||
               (source.mediaType == 'video' && source.hasAudio),

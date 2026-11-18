@@ -74,9 +74,8 @@ class EditingExportDialog extends HookWidget {
     final savedPath = useState<String?>(null);
     final operation = useRef<Future<void>?>(null);
     final size = ProductionSettings.dimensions(document.ratio, res.value);
-    final textTrack = document.tracks.where((t) => t.kind == 'text');
     final textCount = document.clips
-        .where((c) => textTrack.any((t) => t.id == c.trackId))
+        .where((c) => document.track(c.trackId).role == EditingRole.subtitle)
         .length;
 
     Future<void> render() async {

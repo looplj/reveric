@@ -18,6 +18,7 @@ import '../../logger/app_logger.dart';
 import '../../models/editing/document.dart';
 import '../../models/production/settings.dart';
 import '../../models/production/media.dart';
+import '../production/bundled_font.dart';
 import '../production/ffmpeg_runner.dart';
 import '../production/media_service.dart';
 import '../production/contact_sheet.dart';
@@ -29,7 +30,7 @@ final _log = AppLogger.forModule('EditingRender');
 
 typedef EditingProgress = void Function(String stage, double progress);
 
-/// 字幕导出方式：烧录进画面、另存 SRT（标题仍烧录）、不导出。
+/// 字幕轨的导出方式：烧录进画面、另存 SRT（标题仍烧录）、不导出。普通文字轨总是烧录。
 abstract final class EditingSubtitles {
   static const burn = 'burn';
   static const srt = 'srt';
@@ -48,7 +49,6 @@ class EditingRenderService {
   Future<void> get whenIdle => _tail;
   MediaCancellation? _preview;
   Future<Directory>? _cache;
-  Future<String>? _font;
   static const chunkFrames = 120;
   static const cacheLimit = 2 * 1024 * 1024 * 1024;
 
@@ -246,15 +246,27 @@ class EditingRenderService {
   }
 
   /// 该方式下要烧录进画面的文字片段。
-  static bool burns(EditingClip clip, String subtitles) {
+  static bool burns(EditingTrack track, EditingClip clip, String subtitles) {
     final content = clip.content;
     return content is EditingTextContent &&
         content.text.trim().isNotEmpty &&
-        (subtitles == EditingSubtitles.burn ||
+        (track.role != EditingRole.subtitle ||
+            subtitles == EditingSubtitles.burn ||
             (subtitles == EditingSubtitles.srt && content.style == 'title'));
   }
 
-  /// 字幕样式的文字片段按时间顺序写成 SRT。
+  /// 字幕轨上字幕样式的片段，SRT 导出的就是它们。
+  static bool isSubtitleCue(EditingDocument doc, EditingClip clip) {
+    final track = doc.track(clip.trackId);
+    final content = clip.content;
+    return track.role == EditingRole.subtitle &&
+        !track.hidden &&
+        content is EditingTextContent &&
+        content.style == 'subtitle' &&
+        content.text.trim().isNotEmpty;
+  }
+
+  /// 字幕轨上字幕样式的片段按时间顺序写成 SRT。
   static String srt(EditingDocument doc) {
     String time(int frame) {
       final ms = (frame * 1000 / editingFps).round();
@@ -262,18 +274,8 @@ class EditingRenderService {
       return '${two(ms ~/ 3600000)}:${two(ms ~/ 60000 % 60)}:${two(ms ~/ 1000 % 60)},${(ms % 1000).toString().padLeft(3, '0')}';
     }
 
-    final cues =
-        doc.clips
-            .where(
-              (c) =>
-                  doc.track(c.trackId).kind == 'text' &&
-                  !doc.track(c.trackId).hidden &&
-                  c.content is EditingTextContent &&
-                  (c.content as EditingTextContent).style == 'subtitle' &&
-                  (c.content as EditingTextContent).text.trim().isNotEmpty,
-            )
-            .toList()
-          ..sort((a, b) => a.startFrame.compareTo(b.startFrame));
+    final cues = doc.clips.where((c) => isSubtitleCue(doc, c)).toList()
+      ..sort((a, b) => a.startFrame.compareTo(b.startFrame));
     return [
       for (var i = 0; i < cues.length; i++)
         '${i + 1}\n${time(cues[i].startFrame)} --> ${time(cues[i].endFrame)}\n${(cues[i].content as EditingTextContent).text.trim()}\n',
@@ -297,7 +299,7 @@ class EditingRenderService {
         .convert(
           utf8.encode(
             jsonEncode({
-              'renderer': 4,
+              'renderer': 5,
               'subtitles': subtitles,
               'start': start,
               'count': count,
@@ -313,6 +315,7 @@ class EditingRenderService {
                           sourceFingerprints[c.media!.source.assetId],
                     'track': {
                       'kind': doc.track(c.trackId).kind,
+                      'role': doc.track(c.trackId).role,
                       'order': doc.track(c.trackId).order,
                       'hidden': doc.track(c.trackId).hidden,
                       'muted': doc.track(c.trackId).muted,
@@ -538,13 +541,6 @@ class EditingRenderService {
     '${editingFps * 1000}',
     path,
   ];
-  Future<String> _fontFile() => _font ??= () async {
-    final dir = await Directory.systemTemp.createTemp('reveric_editing_font_');
-    final file = File('${dir.path}/subtitle.ttf');
-    final data = await rootBundle.load('assets/fonts/LXGWWenKai-Regular.ttf');
-    await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-    return file.path;
-  }();
 
   /// 滤镜参数里的路径：统一正斜杠并转义冒号（Windows 盘符）。
   static String _filterPath(String path) =>
@@ -689,31 +685,36 @@ class EditingRenderService {
       }
 
       if (content is EditingTextContent) {
-        if (track.hidden || !burns(c, subtitles)) {
+        if (track.hidden || !burns(track, c, subtitles)) {
           continue;
         }
         final title = content.style == 'title';
+        final transform = content.transform;
         final short = math.min(size.$1, size.$2);
-        final fontSize = (short * (title ? .075 : .05)).round();
+        final fontSize = math.max(
+          1,
+          (short * (title ? .075 : .05) * transform.scale).round(),
+        );
         final lineHeight = fontSize * 1.4;
         final lines = _wrap(content.text, size.$1 * .84 / fontSize);
         final block = lines.length * lineHeight;
-        final top = switch (content.position) {
-          'top' => size.$2 * .09,
-          'center' => (size.$2 - block) / 2,
-          _ => size.$2 * .91 - block,
-        };
-        final font = _filterPath(await _fontFile());
+        // 锚点按文字块定位；每行按 anchorX 对齐，左/中/右对齐无需知道整块宽度。
+        final left = (size.$1 * transform.x).round();
+        final top = size.$2 * transform.y - block * transform.anchorY;
+        final opacity = content.opacity;
+        final font = _filterPath(await bundledFontFile());
         final filters = <String>[];
         for (var j = 0; j < lines.length; j++) {
           final file = File('${dir.path}/text-$i-$j.txt');
           await file.writeAsString(lines[j]);
           filters.add(
             "drawtext=fontfile='$font':textfile='${_filterPath(file.path)}':"
-            'expansion=none:fontsize=$fontSize:fontcolor=white:'
-            'borderw=${math.max(1, fontSize ~/ 18)}:bordercolor=black@0.6:'
-            'shadowcolor=black@0.5:shadowx=0:shadowy=1:'
-            'x=(w-text_w)/2:y=${(top + j * lineHeight).round()}:'
+            'expansion=none:fontsize=$fontSize:fontcolor=white@$opacity:'
+            'borderw=${math.max(1, fontSize ~/ 18)}:'
+            'bordercolor=black@${.6 * opacity}:'
+            'shadowcolor=black@${.5 * opacity}:shadowx=0:shadowy=1:'
+            'x=$left-text_w*${transform.anchorX}:'
+            'y=${(top + j * lineHeight).round()}:'
             "enable='$window'",
           );
         }
@@ -745,9 +746,11 @@ class EditingRenderService {
           2,
           (size.$2 * content.transform.scale / 2).round() * 2,
         );
-        // 素材在缩放后的图层框内等比居中，框中心使用归一化坐标。
+        // 图层框的锚点落在归一化坐标上，素材在框内等比居中。
+        final t = content.transform;
         final position =
-            'x=W*${content.transform.x}-w/2:y=H*${content.transform.y}-h/2';
+            'x=W*${t.x}-$w*${t.anchorX}+($w-w)/2:'
+            'y=H*${t.y}-$h*${t.anchorY}+($h-h)/2';
         final alpha = media.fadeInFrames == 0 && media.fadeOutFrames == 0
             ? 'colorchannelmixer=aa=${content.opacity}'
             : "geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
@@ -883,9 +886,5 @@ class EditingRenderService {
   Future<void> dispose() async {
     await _preview?.cancel();
     await _tail;
-    final font = await _font;
-    if (font != null) {
-      await File(font).parent.delete(recursive: true);
-    }
   }
 }

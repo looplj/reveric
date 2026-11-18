@@ -350,7 +350,11 @@ class EditingController extends ChangeNotifier {
             doc,
             track.id,
             frame,
-            context.t(LocaleKeys.editingNewSubtitle),
+            context.t(
+              track.role == EditingRole.subtitle
+                  ? LocaleKeys.editingNewSubtitle
+                  : LocaleKeys.editingNewText,
+            ),
           ),
         );
         select(
@@ -368,6 +372,10 @@ class EditingController extends ChangeNotifier {
 
   void addAudioTrack(BuildContext context) => editingRun(context, () {
     session.commit(EditingCommands.addAudioTrack(doc));
+  });
+
+  void addTextTrack(BuildContext context) => editingRun(context, () {
+    session.commit(EditingCommands.addTextTrack(doc));
   });
 
   @override
