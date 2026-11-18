@@ -8,12 +8,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
 import 'package:ffmpeg_kit_flutter_new/abstract_session.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffprobe_session.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new/statistics.dart';
 import 'package:ffmpeg_kit_flutter_new/level.dart';
 import 'package:ffmpeg_kit_flutter_new/log.dart';
 import 'package:path/path.dart' as p;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../logger/app_logger.dart';
 import '../../models/production/media.dart';
 import 'runtime.dart';
@@ -66,9 +70,28 @@ Future<String> readFfmpegSessionOutput(
   required MediaCancellation cancellation,
   required List<String> arguments,
 }) async {
-  final code = await session.getReturnCode();
+  ReturnCode? code;
+  Object? unavailable;
+  try {
+    code = await session.getReturnCode();
+  } catch (error) {
+    unavailable = error;
+  }
   if (cancellation.cancelled || ReturnCode.isCancel(code)) {
     throw const MediaException(MediaFailure.cancelled);
+  }
+  if (unavailable != null) {
+    // The bounded native history can drop a finished session before its
+    // result is read; the outcome is then unknown and must not pass as valid.
+    _log.error(
+      'native ${probe ? 'probe' : 'encode'} result unavailable '
+      'session=${session.getSessionId()} error=$unavailable',
+    );
+    throw MediaException(
+      probe ? MediaFailure.invalid_media : MediaFailure.encoding_failed,
+      nativeSessionId: session.getSessionId(),
+      message: 'Native session result unavailable: $unavailable',
+    );
   }
   if (!ReturnCode.isSuccess(code)) {
     final logs = await session.getAllLogs();
@@ -205,6 +228,16 @@ String linuxBundledMediaExecutable(
   );
 }
 
+void Function(Statistics) _reportProgress(MediaCancellation cancellation) =>
+    (statistics) => cancellation.onProgress?.call(
+      Duration(milliseconds: statistics.getTime().round()),
+    );
+
+/// Completion comes from the reply to FFmpegKitConfig.ffmpegExecute /
+/// ffprobeExecute. The async execute API instead delivers completion by
+/// looking the session up in the native history, which evicts in creation
+/// order (running sessions included); an evicted session then never completes
+/// and would hold the encoding queue forever.
 class FfmpegRunner {
   FfmpegRunner({String? ffmpegExecutable, String? ffprobeExecutable})
     : _ffmpegExecutable = ffmpegExecutable ?? _defaultExecutable(probe: false),
@@ -232,7 +265,7 @@ class FfmpegRunner {
   Future<FfmpegExecutionResult> executeCommand(
     List<String> arguments, {
     required MediaCancellation cancellation,
-  }) => _serialize(() => _executeCommand(arguments, cancellation));
+  }) => serialize(cancellation, () => _executeCommand(arguments, cancellation));
 
   Future<FfmpegExecutionResult> _executeCommand(
     List<String> arguments,
@@ -250,30 +283,12 @@ class FfmpegRunner {
       if (cancellation.cancelled) {
         return const FfmpegExecutionResult(exitCode: null, cancelled: true);
       }
-      final result = Completer<FfmpegExecutionResult>();
-      Future<void> finish(AbstractSession session) async {
-        final outcome = await FfmpegExecutionResult.fromSession(
-          session,
-          cancelled: cancellation.cancelled,
-        );
-        if (outcome.exitCode != 0) {
-          _log.error(
-            'native command failed session=${session.getSessionId()} '
-            'code=${outcome.exitCode} detail=${ffmpegFailureDetail(outcome.output, arguments)}',
-          );
-        }
-        result.complete(outcome);
-      }
-
-      final session = await FFmpegKit.executeWithArgumentsAsync(
+      final session = await FFmpegSession.create(
         ffmpegSessionArguments(arguments),
-        finish,
         null,
-        (statistics) => cancellation.onProgress?.call(
-          Duration(milliseconds: statistics.getTime().round()),
-        ),
+        null,
+        _reportProgress(cancellation),
       );
-      started = true;
       final id = session.getSessionId();
       if (id == null) {
         return const FfmpegExecutionResult(
@@ -283,7 +298,22 @@ class FfmpegRunner {
         );
       }
       await cancellation.bind(() => FFmpegKit.cancel(id));
-      return await result.future;
+      if (cancellation.cancelled) {
+        return const FfmpegExecutionResult(exitCode: null, cancelled: true);
+      }
+      await FFmpegKitConfig.ffmpegExecute(session);
+      started = true;
+      final outcome = await FfmpegExecutionResult.fromSession(
+        session,
+        cancelled: cancellation.cancelled,
+      );
+      if (outcome.exitCode != 0) {
+        _log.error(
+          'native command failed session=$id '
+          'code=${outcome.exitCode} detail=${ffmpegFailureDetail(outcome.output, arguments)}',
+        );
+      }
+      return outcome;
     } on UnsupportedError {
       rethrow;
     } catch (error) {
@@ -306,16 +336,41 @@ class FfmpegRunner {
     if (probe) {
       return _execute(arguments, probe: true, cancellation: cancellation);
     }
-    return _serialize(
+    return serialize(
+      cancellation,
       () => _execute(arguments, probe: false, cancellation: cancellation),
     );
   }
 
-  Future<T> _serialize<T>(Future<T> Function() run) async {
+  /// Runs encodes one at a time. A cancelled waiter leaves the queue at once
+  /// (its [run] sees the cancellation and starts no native session), while
+  /// later encodes still wait for the one ahead of it.
+  @visibleForTesting
+  static Future<T> serialize<T>(
+    MediaCancellation cancellation,
+    Future<T> Function() run,
+  ) async {
     final previous = _encodingTail;
     final released = Completer<void>();
     _encodingTail = released.future;
-    await previous;
+    final stopped = Completer<bool>();
+    void stop() {
+      if (!stopped.isCompleted) {
+        stopped.complete(false);
+      }
+    }
+
+    cancellation.addCancelListener(stop);
+    final bool ready;
+    try {
+      ready = await Future.any([previous.then((_) => true), stopped.future]);
+    } finally {
+      cancellation.removeCancelListener(stop);
+    }
+    if (!ready) {
+      unawaited(previous.whenComplete(released.complete));
+      return run();
+    }
     try {
       return await run();
     } finally {
@@ -342,39 +397,46 @@ class FfmpegRunner {
     if (cancellation.cancelled) {
       throw const MediaException(MediaFailure.cancelled);
     }
-    final result = Completer<String>();
-    Future<void> finish(AbstractSession session) async {
-      try {
-        result.complete(
-          await readFfmpegSessionOutput(
-            session,
-            probe: probe,
-            cancellation: cancellation,
-            arguments: arguments,
-          ),
-        );
-      } catch (error, stack) {
-        result.completeError(error, stack);
-      }
+    final AbstractSession session;
+    final Future<void> Function() run;
+    if (probe) {
+      final ffprobe = await FFprobeSession.create(arguments);
+      session = ffprobe;
+      run = () => FFmpegKitConfig.ffprobeExecute(ffprobe);
+    } else {
+      final ffmpeg = await FFmpegSession.create(
+        ffmpegSessionArguments(arguments),
+        null,
+        null,
+        _reportProgress(cancellation),
+      );
+      session = ffmpeg;
+      run = () => FFmpegKitConfig.ffmpegExecute(ffmpeg);
     }
-
-    final session = probe
-        ? await FFprobeKit.executeWithArgumentsAsync(arguments, finish)
-        : await FFmpegKit.executeWithArgumentsAsync(
-            ffmpegSessionArguments(arguments),
-            finish,
-            null,
-            (statistics) => cancellation.onProgress?.call(
-              Duration(milliseconds: statistics.getTime().round()),
-            ),
-          );
     final id = session.getSessionId();
     if (id == null) {
       throw const MediaException(MediaFailure.encoding_failed);
     }
     await cancellation.bind(() => FFmpegKit.cancel(id));
     try {
-      return await result.future;
+      if (cancellation.cancelled) {
+        throw const MediaException(MediaFailure.cancelled);
+      }
+      try {
+        await run();
+      } catch (error) {
+        throw MediaException(
+          probe ? MediaFailure.invalid_media : MediaFailure.encoding_failed,
+          nativeSessionId: id,
+          message: 'Native session did not start: $error',
+        );
+      }
+      return await readFfmpegSessionOutput(
+        session,
+        probe: probe,
+        cancellation: cancellation,
+        arguments: arguments,
+      );
     } finally {
       cancellation.unbind();
     }

@@ -1,6 +1,7 @@
 // 职责: 验证原生会话与 Linux 打包 CLI 的退出码、输出通道、取消和错误脱敏。
 // 关联文件:
 //   lib/shared/services/production/ffmpeg_runner.dart
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new/level.dart';
@@ -41,6 +42,8 @@ class _Session implements AbstractSession {
 
   @override
   Future<String?> getFailStackTrace() async => failure;
+  @override
+  int? getSessionId() => 7;
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -109,6 +112,97 @@ void main() {
       expect(result.exitCode, null);
       expect(result.output, 'encoder diagnostic');
       expect(result.error, contains('code retrieval failed'));
+    },
+  );
+
+  for (final probe in [false, true]) {
+    test(
+      'unreadable native result fails the ${probe ? 'probe' : 'encode'} instead of passing',
+      () async {
+        await expectLater(
+          readFfmpegSessionOutput(
+            _Session(null, '', codeError: 'getReturnCode failed.'),
+            probe: probe,
+            cancellation: MediaCancellation(),
+            arguments: const [],
+          ),
+          throwsA(
+            isA<MediaException>()
+                .having(
+                  (e) => e.reason,
+                  'reason',
+                  probe
+                      ? MediaFailure.invalid_media
+                      : MediaFailure.encoding_failed,
+                )
+                .having((e) => e.nativeSessionId, 'session', 7)
+                .having(
+                  (e) => e.message,
+                  'message',
+                  contains('getReturnCode failed.'),
+                ),
+          ),
+        );
+      },
+    );
+  }
+
+  test(
+    'unreadable result of a cancelled session reports cancellation',
+    () async {
+      final token = MediaCancellation();
+      await token.cancel();
+      await expectLater(
+        readFfmpegSessionOutput(
+          _Session(null, '', codeError: 'getReturnCode failed.'),
+          probe: false,
+          cancellation: token,
+          arguments: const [],
+        ),
+        throwsA(
+          isA<MediaException>().having(
+            (e) => e.reason,
+            'reason',
+            MediaFailure.cancelled,
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'stopping a queued encode returns while the encode ahead never finishes',
+    () async {
+      final ahead = Completer<void>();
+      final first = FfmpegRunner.serialize(
+        MediaCancellation(),
+        () => ahead.future,
+      );
+      final token = MediaCancellation();
+      var queuedSawCancel = false;
+      final queued = FfmpegRunner.serialize(token, () async {
+        queuedSawCancel = token.cancelled;
+      });
+      var laterStarted = false;
+      final later = FfmpegRunner.serialize(MediaCancellation(), () async {
+        laterStarted = true;
+      });
+      await pumpEventQueue();
+
+      await token.cancel();
+      await queued.timeout(const Duration(seconds: 1));
+      expect(queuedSawCancel, isTrue);
+      await pumpEventQueue();
+      expect(
+        laterStarted,
+        isFalse,
+        reason: 'later encodes must still wait for the one running ahead',
+      );
+
+      ahead.complete();
+      await first;
+      await later.timeout(const Duration(seconds: 1));
+      expect(laterStarted, isTrue);
     },
   );
 

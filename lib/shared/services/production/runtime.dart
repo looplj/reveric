@@ -61,6 +61,10 @@ Future<void> _initialize() async {
     },
   );
   await FFmpegKitConfig.init();
+  // Session results are read from the native history, which keeps 10 sessions
+  // by default and evicts in creation order; an editing render plus a burst of
+  // probes exceeds that. The native hard limit rejects 1000 or more.
+  await FFmpegKitConfig.setSessionHistorySize(500);
   // Sessions keep their logs for probe output and failure details; without a
   // callback the plugin would otherwise print every av_log line to the console.
   FFmpegKitConfig.setLogRedirectionStrategy(
