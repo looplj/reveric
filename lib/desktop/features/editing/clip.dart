@@ -389,54 +389,60 @@ class EditingTimelineClip extends HookWidget {
                                 ),
                               ),
                             ),
-                          Positioned(
-                            left: 6,
-                            right: 6,
-                            top: track.kind == 'text' ? 0 : 3,
-                            bottom: track.kind == 'text' ? 0 : null,
-                            child: Row(
-                              children: [
-                                if (visual && source.mediaType == 'video')
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 4),
-                                    child: RevericIcon(
-                                      RevericIcons.movie_outlined,
-                                      size: 11,
-                                      color: ink,
+                          if (width > 20)
+                            Positioned(
+                              left: 6,
+                              right: 6,
+                              top: track.kind == 'text' ? 0 : 3,
+                              bottom: track.kind == 'text' ? 0 : null,
+                              child: Row(
+                                children: [
+                                  if (width > 32 &&
+                                      visual &&
+                                      source.mediaType == 'video')
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 4),
+                                      child: RevericIcon(
+                                        RevericIcons.movie_outlined,
+                                        size: 11,
+                                        color: ink,
+                                      ),
                                     ),
-                                  ),
-                                if (text?.style == 'title')
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 4),
-                                    child: RevericIcon(
-                                      RevericIcons.title,
-                                      size: 11,
-                                      color: ink,
+                                  if (width > 32 && text?.style == 'title')
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 4),
+                                      child: RevericIcon(
+                                        RevericIcons.title,
+                                        size: 11,
+                                        color: ink,
+                                      ),
                                     ),
-                                  ),
-                                Flexible(
-                                  child: Text(
-                                    editingClipLabel(controller, c),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: typo.uiTinySemibold.copyWith(
-                                      color: text != null
-                                          ? colors.textPrimary
-                                          : ink,
-                                    ),
-                                  ),
-                                ),
-                                if (visual && !track.main && video!.opacity < 1)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 4),
+                                  Flexible(
                                     child: Text(
-                                      '${(video.opacity * 100).round()}%',
-                                      style: typo.uiTiny.copyWith(color: ink),
+                                      editingClipLabel(controller, c),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: typo.uiTinySemibold.copyWith(
+                                        color: text != null
+                                            ? colors.textPrimary
+                                            : ink,
+                                      ),
                                     ),
                                   ),
-                              ],
+                                  if (width > 64 &&
+                                      visual &&
+                                      !track.main &&
+                                      video!.opacity < 1)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 4),
+                                      child: Text(
+                                        '${(video.opacity * 100).round()}%',
+                                        style: typo.uiTiny.copyWith(color: ink),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
-                          ),
                           if (width > 56 && text == null)
                             Positioned(
                               right: 6,
@@ -522,11 +528,12 @@ class _ImageStrip extends StatelessWidget {
         children: [
           for (var x = 0.0; x < constraints.maxWidth; x += tile)
             SizedBox(
-              width: tile,
+              width: math.min(tile, constraints.maxWidth - x),
               height: height,
               child: Image.file(
                 File(path),
                 fit: BoxFit.cover,
+                alignment: Alignment.centerLeft,
                 cacheHeight: (height * dpr).round(),
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
