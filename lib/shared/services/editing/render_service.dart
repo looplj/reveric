@@ -459,7 +459,7 @@ class EditingRenderService {
         .convert(
           utf8.encode(
             jsonEncode({
-              'renderer': 6,
+              'renderer': 7,
               'part': part?.name,
               'start': start,
               'count': count,
@@ -837,8 +837,10 @@ class EditingRenderService {
       final frames = math.min(start + count, c.endFrame) - first;
       final elapsed = first - c.startFrame;
       final delay = first - start;
+      // FFmpeg 由时间戳换算出的 t 可能比整帧秒数小一点浮点误差，
+      // 两端都按半帧取界，否则片段首帧会被漏掉而露出底下的黑底。
       final window =
-          'between(t,${editingSeconds(delay)},${editingSeconds(delay + frames) - 1 / (2 * editingFps)})';
+          'between(t,${editingSeconds(delay) - 1 / (2 * editingFps)},${editingSeconds(delay + frames) - 1 / (2 * editingFps)})';
       token.onProgress = (d) => progress(
         'render',
         (i + (d.inMicroseconds / 1000000 / seconds).clamp(0, 1)) /
