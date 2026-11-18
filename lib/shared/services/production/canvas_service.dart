@@ -150,7 +150,10 @@ class ProductionCanvasService {
       shots.write('UPDATE production_clips', clipId, () async {
         final clip = await shots.getShot(clipId);
         if (clip == null) {
-          throw const StoryboardException('source_missing');
+          throw StoryboardException(
+            'source_missing',
+            'Clip $clipId was not found.',
+          );
         }
         await shots.requireEpisode(clip.episodeId);
         if (choice case PresetProductionStyle() || CustomProductionStyle()) {
@@ -289,7 +292,10 @@ class ProductionCanvasService {
             ))
             .getSingleOrNull();
     if (canvas == null || canvas.kind != canvasKindProduction) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Production canvas $id was not found.',
+      );
     }
     await shots.requireEpisode(settings?.id ?? '');
     return canvas;
@@ -311,7 +317,10 @@ class ProductionCanvasService {
   Future<CanvasNode> requireNode(String id) async {
     final node = await db.canvasDao.getNodeById(id);
     if (node == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Canvas node $id was not found.',
+      );
     }
     await requireCanvas(node.canvasId);
     if ((node.isGenerationNode && node.clipId == null) ||
@@ -319,18 +328,27 @@ class ProductionCanvasService {
         (node.type == canvasNodeTypeStaging &&
             (node.stagingId == null ||
                 await db.screenplayDao.getStaging(node.stagingId!) == null))) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Canvas node $id has no linked clip, media or staging.',
+      );
     }
     if (node.clipId != null) {
       final shot = await shots.getShot(node.clipId!);
       if (shot == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Clip ${node.clipId} of canvas node $id was not found.',
+        );
       }
       await shots.requireEpisode(shot.episodeId);
       if (shot.episodeId.isNotEmpty &&
           (await db.screenplayDao.getEpisode(shot.episodeId))?.canvasId !=
               node.canvasId) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Clip ${node.clipId} of canvas node $id belongs to another canvas.',
+        );
       }
     }
     return node;
@@ -413,7 +431,10 @@ class ProductionCanvasService {
       throw const StoryboardException('invalid_reference');
     }
     return await db.editingDao.get(node.editingId!) ??
-        (throw const StoryboardException('source_missing'));
+        (throw StoryboardException(
+          'source_missing',
+          'Editing project ${node.editingId} of canvas node $nodeId was not found.',
+        ));
   }
 
   Future<CanvasNode> addText(
@@ -504,7 +525,10 @@ class ProductionCanvasService {
     if (node.clipId case final clipId?) {
       final clip = await shots.getShot(clipId);
       if (clip == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Clip $clipId of canvas node ${node.id} was not found.',
+        );
       }
       if (clip.hasSubject) {
         throw const StoryboardException('invalid_config');
@@ -514,13 +538,15 @@ class ProductionCanvasService {
       )..where((t) => t.id.equals(clipId))).write(
         ProductionClipsCompanion(title: Value(title), updatedAt: Value(now)),
       );
-      return;
     }
     if (node.stagingId case final id?) {
       await db.screenplayDao.serializeStaging(id, () async {
         final row = await db.screenplayDao.getStaging(id);
         if (row == null) {
-          throw const StoryboardException('source_missing');
+          throw StoryboardException(
+            'source_missing',
+            'Staging $id of canvas node ${node.id} was not found.',
+          );
         }
         if (row.document == null) {
           await (db.update(
@@ -547,7 +573,10 @@ class ProductionCanvasService {
     if (node.editingId case final id?) {
       final project = await db.editingDao.get(id);
       if (project == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Editing project $id of canvas node ${node.id} was not found.',
+        );
       }
       await db.editingDao.save(
         id,
@@ -803,7 +832,10 @@ class ProductionCanvasService {
           : await db.locationDao.getById(locationId);
       final item = itemId == null ? null : await db.itemDao.getById(itemId);
       if (character == null && location == null && item == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'No character, location or item matches the subject.',
+        );
       }
       final episodeId = await episodeForCanvas(canvasId);
       final clip = await shots.createImage(
@@ -832,21 +864,27 @@ class ProductionCanvasService {
     if (clip.characterId != null) {
       final character = await db.characterProfileDao.getById(clip.characterId!);
       if (character == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Character ${clip.characterId} was not found.',
+        );
       }
       return character.photos ?? const [];
     }
     if (clip.locationId != null) {
       final location = await db.locationDao.getById(clip.locationId!);
       if (location == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Location ${clip.locationId} was not found.',
+        );
       }
       return location.photos ?? const [];
     }
     if (clip.itemId case final id?) {
       final item = await db.itemDao.getById(id);
       if (item == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException('source_missing', 'Item $id was not found.');
       }
       return item.photos ?? const [];
     }

@@ -664,7 +664,7 @@ class ProductionToolHost {
     } on StoryboardException catch (error) {
       throw ToolOperationException(
         error.code == 'request_conflict' ? 'conflict' : 'failed_precondition',
-        'The production request could not be completed (${error.code}).',
+        'The production request could not be completed (${error.reason}).',
       );
     } finally {
       unlink();
@@ -690,7 +690,8 @@ class ProductionToolHost {
       );
     }
 
-    final selectorCount = (options.containsKey('scope') ? 1 : 0) +
+    final selectorCount =
+        (options.containsKey('scope') ? 1 : 0) +
         (options.containsKey('node_ids') ? 1 : 0) +
         (options.containsKey('bounds') ? 1 : 0);
     if (selectorCount > 1) {
@@ -724,7 +725,7 @@ class ProductionToolHost {
       } on StoryboardException catch (error) {
         throw ToolOperationException(
           error.code == 'not_found' ? 'not_found' : 'failed_precondition',
-          'Episode not found or invalid (${error.code}).',
+          'Episode not found or invalid (${error.reason}).',
         );
       }
       final episode = await canvas.db.screenplayDao.getEpisode(episodeId);
@@ -794,14 +795,14 @@ List<String>? _parsePreviewNodeIds(Object? raw) {
     return null;
   }
   if (raw is! List || raw.isEmpty) {
-    throw const FormatException('node_ids must be a non-empty list of strings.');
+    throw const FormatException(
+      'node_ids must be a non-empty list of strings.',
+    );
   }
   final ids = <String>[];
   for (final item in raw) {
     if (item is! String || item.trim().isEmpty) {
-      throw const FormatException(
-        'node_ids must contain non-empty strings.',
-      );
+      throw const FormatException('node_ids must contain non-empty strings.');
     }
     ids.add(item.trim());
   }

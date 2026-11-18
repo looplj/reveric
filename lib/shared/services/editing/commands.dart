@@ -3,6 +3,7 @@
 //   lib/shared/models/editing/document.dart
 //   lib/desktop/features/editing/session.dart
 import 'dart:math' as math;
+import 'package:collection/collection.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/editing/document.dart';
 
@@ -131,6 +132,9 @@ abstract final class EditingCommands {
       doc.clips.singleWhere((c) => c.id == id);
   static bool _onMain(EditingDocument doc, EditingClip clip) =>
       doc.track(clip.trackId).main;
+  static String _occupied(String trackId, EditingClip other) =>
+      'Occupied: track $trackId already has clip ${other.id} at frames '
+      '${other.startFrame}-${other.endFrame}.';
 
   static EditingDocument _change(
     EditingDocument doc,
@@ -322,10 +326,11 @@ abstract final class EditingCommands {
       throw StateError('Use insertMain');
     }
     final others = doc.clips.where((c) => c.trackId == track.id);
-    if (others.any(
+    final blocker = others.firstWhereOrNull(
       (c) => clip.startFrame >= c.startFrame && clip.startFrame < c.endFrame,
-    )) {
-      throw StateError('Occupied');
+    );
+    if (blocker != null) {
+      throw StateError(_occupied(track.id, blocker));
     }
     final next = others
         .where((c) => c.startFrame > clip.startFrame)
@@ -415,12 +420,13 @@ abstract final class EditingCommands {
     if (doc.track(clip.trackId).locked) {
       throw StateError('Track locked');
     }
-    bool free(EditingTrack track) => !doc.clips.any(
+    EditingClip? blocker(EditingTrack track) => doc.clips.firstWhereOrNull(
       (c) =>
           c.trackId == track.id &&
           c.startFrame < clip.endFrame &&
           c.endFrame > clip.startFrame,
     );
+    bool free(EditingTrack track) => blocker(track) == null;
     EditingTrack? target;
     if (trackId != null) {
       target = doc.track(trackId);
@@ -430,8 +436,8 @@ abstract final class EditingCommands {
       if (target.locked) {
         throw StateError('Track locked');
       }
-      if (!free(target)) {
-        throw StateError('Occupied');
+      if (blocker(target) case final other?) {
+        throw StateError(_occupied(target.id, other));
       }
     } else {
       final candidates =

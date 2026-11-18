@@ -133,6 +133,7 @@ class FfmpegCommand {
             File('${temporary.path}/frame-$i.png'),
             cancellation,
             timestampUs: positions[i] * 1000,
+            detailMaxSide: positions.length == 1 ? contactSheetMaxSide : null,
           ),
         );
       }
@@ -281,7 +282,13 @@ class FfmpegCommand {
       await plan.resolveArguments(sessionId, actual, cancellation);
       await outputs.prepare(actual);
       await outputs.validateInputs(plan.paths);
-      final command = <String>[if (!parsed.probe) '-nostdin'];
+      final command = <String>[
+        if (!parsed.probe) ...[
+          '-nostdin',
+          // The version banner is ~19 KB of build flags and local paths per run.
+          if (!actual.contains('-hide_banner')) '-hide_banner',
+        ],
+      ];
       for (var index = 0; index < actual.length; index++) {
         if (outputs.defaultPassLog case final prefix?
             when parsed.outputs.containsKey(index) ||
@@ -378,12 +385,17 @@ class FfmpegCommand {
           ? 'cancelled'
           : result.errorCode ?? (result.exitCode == 0 ? 'completed' : 'failed');
       final log = result.output;
+      // Successful runs only need the closing summary; failures keep more
+      // context for the diagnostic.
+      final logLimit = status == 'completed' ? 2048 : 16384;
       return {
         'ok': status == 'completed',
         'status': status,
         'exit_code': result.exitCode,
-        'log': log.length > 65536 ? log.substring(log.length - 65536) : log,
-        'log_truncated': log.length > 65536,
+        'log': log.length > logLimit
+            ? log.substring(log.length - logLimit)
+            : log,
+        'log_truncated': log.length > logLimit,
         if (status == 'cancelled') 'cancelled': true,
         if (budgetFailure != null) ...{
           'error_code': budgetFailure is ToolOperationException

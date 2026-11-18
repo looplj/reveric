@@ -147,27 +147,9 @@ abstract final class PromptFragments {
     ].join('\n');
   }
 
-  static String userRules(String? rawRules) {
-    final trimmed = rawRules?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return '';
-    }
-
-    final rules = trimmed
-        .split(RegExp(r'\r?\n'))
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
-    if (rules.isEmpty) {
-      return '';
-    }
-
-    return rules.map((rule) => '<user_rule>$rule</user_rule>').join('\n');
-  }
-
   /// 与 orchestrator 尾部相同的「用户自定义规则」整块；无规则时返回空串。
   static String userRulesSection(String? rawRules) {
-    final rules = userRules(rawRules);
+    final rules = rawRules?.trim() ?? '';
     if (rules.isEmpty) {
       return '';
     }

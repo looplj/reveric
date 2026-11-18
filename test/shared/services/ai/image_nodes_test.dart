@@ -44,6 +44,7 @@ import 'package:reveric/shared/services/tool_permission_gate.dart';
 import 'package:reveric/shared/services/tool_permissions.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
+import '../../../helpers/tool_operation_wait.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -88,7 +89,7 @@ void main() {
     if (!wait || runId is! String) {
       return response;
     }
-    return operations.wait(runId, context);
+    return waitPastApproval(operations, runId, context);
   }
 
   setUp(() async {
@@ -472,7 +473,10 @@ void main() {
       'method': 'panorama',
     });
     expect(response['error_code'], 'failed_precondition');
-    expect(response['error'], 'StoryboardException(source_missing)');
+    expect(
+      response['error'],
+      'StoryboardException(source_missing: Canvas node missing-node was not found.)',
+    );
     expect(requests, isEmpty);
   });
 
@@ -574,7 +578,8 @@ void main() {
           'resolution': '4K',
         });
         await approvals.resolve(approval, allow: true);
-        final done = await operations.wait(
+        final done = await waitPastApproval(
+          operations,
           response['run_id'] as String,
           context,
         );
@@ -625,7 +630,11 @@ void main() {
       final approval = (await waiting).single;
       await canvas.unadopt(node.id);
       await approvals.resolve(approval, allow: true);
-      final done = await operations.wait(response['run_id'] as String, context);
+      final done = await waitPastApproval(
+        operations,
+        response['run_id'] as String,
+        context,
+      );
       expect(done['error_code'], 'failed_precondition');
       expect(done['error'], contains('invalid_reference'));
       expect(requests, isEmpty);

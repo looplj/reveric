@@ -3329,7 +3329,12 @@ void main() {
           expect(created['id'], savedId);
         }
         final entries = created['entries'] as List;
-        expect(entries.map((entry) => entry['text']), ['A', 'C', 'B']);
+        expect(entries.map((entry) => entry['id']), [
+          anchorId,
+          created['id'],
+          initialElements.elements.last.id,
+        ]);
+        expect(entries.any((entry) => entry.containsKey('text')), isFalse);
         expect(created['id'], entries[1]['id']);
         expect(created['id'], isNot(anchorId));
         expect(created['path'], 'scenes/$sceneId/elements/${created['id']}');

@@ -8,8 +8,9 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
-const contactSheetMaxFrames = 12;
-const _maxSide = 2048, _maxCell = 640, _gap = 4;
+const contactSheetMaxFrames = 16;
+const contactSheetMaxSide = 2048;
+const _maxCell = 640, _gap = 4;
 
 class ContactSheet {
   const ContactSheet(this.jpeg, this.width, this.height, this.cells);
@@ -67,11 +68,11 @@ Future<ContactSheet> composeContactSheet(
   final rows = (count / columns).ceil();
   final aspect = sourceWidth / sourceHeight;
   var cellWidth = math.min(
-    math.min(sourceWidth, _maxCell),
-    (_maxSide - _gap * (columns - 1)) ~/ columns,
+    math.min(sourceWidth, count == 1 ? contactSheetMaxSide : _maxCell),
+    (contactSheetMaxSide - _gap * (columns - 1)) ~/ columns,
   );
   var cellHeight = (cellWidth / aspect).round();
-  final rowLimit = (_maxSide - _gap * (rows - 1)) ~/ rows;
+  final rowLimit = (contactSheetMaxSide - _gap * (rows - 1)) ~/ rows;
   if (cellHeight > rowLimit) {
     cellHeight = rowLimit;
     cellWidth = (cellHeight * aspect).round();

@@ -56,6 +56,7 @@ void main() {
   late ToolOperationRegistry registry;
   late ToolOperationManager manager;
   final snapshots = <Map<String, dynamic>>[];
+  final publishedReminders = <String>{};
   ToolExecutionContext owner({AgentCancellationToken? token}) =>
       ToolExecutionContext(
         sessionId: 'session',
@@ -81,11 +82,14 @@ void main() {
     );
     registry = ToolOperationRegistry();
     snapshots.clear();
+    publishedReminders.clear();
     manager = ToolOperationManager(
       ownerSessionId: 'session',
       registry: registry,
       gate: () => gate,
-      onChanged: (_) {},
+      onChanged: (state) => publishedReminders.addAll(
+        state.pending.map((completion) => completion.record.runId),
+      ),
       onRecord: (r) => snapshots.add(r.toJson()),
       cancelTimeout: const Duration(milliseconds: 1),
     );
@@ -195,7 +199,17 @@ void main() {
             );
             return {'ok': true};
           }, background: background);
-          final saved = await manager.wait(first['run_id'] as String, owner());
+          final runId = first['run_id'] as String;
+          if (background) {
+            while (manager.state.pending.isEmpty) {
+              await Future<void>.delayed(Duration.zero);
+            }
+            expect(
+              manager.takeCompletion(runId)!.reminder,
+              contains(_FailedMediaSession.diagnostic),
+            );
+          }
+          final saved = await manager.wait(runId, owner());
           final expectedCode = probe ? 'invalid_media' : 'encoding_failed';
           expect(saved['error_code'], expectedCode);
           expect(saved['error'], contains(_FailedMediaSession.diagnostic));
@@ -213,12 +227,7 @@ void main() {
           ).response();
           expect(restored['result'], result);
           expect(restored['error'], saved['error']);
-          if (background) {
-            expect(
-              manager.takeCompletion(first['run_id'] as String)!.reminder,
-              contains(_FailedMediaSession.diagnostic),
-            );
-          } else {
+          if (!background) {
             expect(first['result'], result);
             expect(first['error'], saved['error']);
           }
@@ -268,7 +277,7 @@ void main() {
   );
 
   test(
-    'registers before awaiting, freezes input, waits without cancellation and notifies once',
+    'registers before awaiting, freezes input, and a waited result gets no reminder',
     () async {
       final entered = Completer<void>();
       final finish = Completer<Map<String, dynamic>>();
@@ -295,12 +304,68 @@ void main() {
         'files': ['media/done.mp4'],
       });
       expect((await manager.wait(id, owner()))['status'], 'completed');
-      expect(manager.state.pending, hasLength(1));
-      expect(manager.takeCompletion(id), isNotNull);
+      expect(publishedReminders, isNot(contains(id)));
+      expect(manager.state.pending, isEmpty);
       expect(manager.takeCompletion(id), isNull);
       expect(manager.state.needsRetention, false);
     },
   );
+
+  test('a timed-out wait still gets a completion reminder', () async {
+    final finish = Completer<Map<String, dynamic>>();
+    final receipt = await start((_) => finish.future);
+    final id = receipt['run_id'] as String;
+    expect((await manager.wait(id, owner(), timeoutMs: 1))['timed_out'], true);
+    final terminal = registry.changes.firstWhere(
+      (r) => r.runId == id && r.terminal,
+    );
+    finish.complete({'ok': true});
+    await terminal;
+    expect(manager.takeCompletion(id), isNotNull);
+  });
+
+  test(
+    'waiting again on a finished run does not revive its reminder',
+    () async {
+      final receipt = await start((_) async => {'ok': true});
+      final id = receipt['run_id'] as String;
+      while (manager.state.pending.isEmpty) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect((await manager.wait(id, owner()))['status'], 'completed');
+      expect(manager.state.pending, isEmpty);
+      expect(manager.takeCompletion(id), isNull);
+    },
+  );
+
+  test('wait returns at once while the run waits for user approval', () async {
+    final permission = ToolActionRequest(
+      action: 'generation.video',
+      context: const ToolPermissionContext(
+        workId: 'work',
+        sessionId: 'session',
+      ),
+      targetPath: '/editings/one',
+      summary: const {'model': 'frozen'},
+    );
+    final receipt = await start(
+      (_) async => {'ok': true},
+      permission: permission,
+    );
+    final id = receipt['run_id'] as String;
+    final stopwatch = Stopwatch()..start();
+    final midWait = await manager.wait(id, owner(), timeoutMs: 60000);
+    expect(stopwatch.elapsed, lessThan(const Duration(seconds: 5)));
+    expect(midWait['status'], 'waiting_approval');
+    expect(midWait['hint'], contains('approve'));
+    expect(midWait.containsKey('timed_out'), false);
+
+    final immediate = await manager.wait(id, owner(), timeoutMs: 60000);
+    expect(immediate['status'], 'waiting_approval');
+    expect(immediate['hint'], contains('approve'));
+    expect(manager.cancel(id, owner())['accepted'], true);
+    expect((await manager.wait(id, owner()))['status'], 'cancelled');
+  });
 
   test(
     'ask cancellation never executes and foreground cancellation leaves background alive',
@@ -402,8 +467,10 @@ void main() {
       cleanup.complete();
       expect((await manager.wait(id, owner()))['status'], 'completed');
       expect(manager.state.pending, isEmpty);
-      final other = await start((_) async => {'ok': true});
-      await manager.wait(other['run_id'] as String, owner());
+      await start((_) async => {'ok': true});
+      while (manager.state.pending.isEmpty) {
+        await Future<void>.delayed(Duration.zero);
+      }
       expect(manager.state.pending, hasLength(1));
       await manager.stopTurns({'turn'});
       expect(manager.state.pending, isEmpty);
@@ -548,8 +615,11 @@ void main() {
         (_) async => {'ok': true},
         verify: () async => throw StateError('injected preparation failure'),
       );
+      while (manager.state.pending.isEmpty) {
+        await Future<void>.delayed(Duration.zero);
+      }
       expect(
-        (await manager.wait(failed['run_id'] as String, owner()))['status'],
+        manager.read(failed['run_id'] as String, owner())['status'],
         'failed',
       );
       expect(manager.state.pending, hasLength(1));

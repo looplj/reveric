@@ -72,12 +72,12 @@ import '../../shared/agent/agent.dart';
 import '../../shared/components/reveric_search_field.dart';
 import '../../shared/components/reveric_surfaces.dart';
 import '../../shared/database/app_database.dart' show AiChatSession, Novel;
-import '../../shared/database/novel_content_database.dart'
-    show AgentRule, WorkingChange;
+import '../../shared/database/novel_content_database.dart' show WorkingChange;
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
 import '../../shared/logger/app_logger.dart';
 import '../../shared/models/agent_profile.dart';
+import '../../shared/models/agent_rule.dart' show AgentRule, AgentRuleListX;
 import '../../shared/models/ai_provider.dart';
 import '../../shared/models/ai_chat_models.dart';
 import '../../shared/models/ai_session_mode.dart';
@@ -854,7 +854,7 @@ class _MobileNovelChatBody extends HookConsumerWidget {
               workspaceTitle: chapterTitle,
               workspaceContent: promptBuilder.buildWorkspaceSeedContent(),
               username: settings?.username ?? '',
-              userRules: _formatMobileAgentRules(agentRules),
+              userRules: agentRules.formatForPrompt(),
               novelChatSessionCount: novelChatSessionCount,
             );
     final container = ProviderScope.containerOf(context, listen: false);
@@ -2699,22 +2699,6 @@ Future<void> _openWorkspaceResource(
     return;
   }
   await navigator.push(MaterialPageRoute<void>(builder: (_) => page!));
-}
-
-String? _formatMobileAgentRules(List<AgentRule> rules) {
-  final enabled = <AgentRule>[];
-  for (final rule in rules) {
-    if (rule.enabled) {
-      enabled.add(rule);
-    }
-  }
-  enabled.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-  if (enabled.isEmpty) {
-    return null;
-  }
-  return enabled
-      .map((rule) => '${rule.name}：${rule.content.trim()}')
-      .join('\n');
 }
 
 /// resourceType 已被还原为 [NovelWorkspaceSection]，此处再映射到移动端 entry 分区。

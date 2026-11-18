@@ -93,7 +93,10 @@ mixin _AiToolManagerSuggestNextActionMixin on _AiToolManagerBase {
       return const {'ok': true};
     }
 
-    final judgement = ChatNextActionArbiter.judge(rawSuggestions);
+    final judgement = ChatNextActionArbiter.judge(
+      rawSuggestions,
+      allowFeatures: contentKind != contentKindCanvas,
+    );
     for (final drop in judgement.drops) {
       _log.warning(
         'SuggestNextAction suggestion dropped callId=$callId '

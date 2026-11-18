@@ -511,7 +511,7 @@ class ChatTurnRunner {
   /// 建议开关等环境事实，由宿主（面板）解析后注入；只用于决定是否下发工具。
   final ChatNextActionEnvironment nextActionEnvironment;
 
-  /// 宿主是否提供跳转能力。false（后台会话 等无 UI 场景）时工具不下发。
+  /// 是否在聊天界面展示下一步建议。无界面的会话不下发此工具。
   final bool supportsNextActionSuggestions;
   late final Future<List<SubAgent>> _availableSubAgents =
       loadRuntimeChatSubAgents(container);
@@ -1236,7 +1236,7 @@ class ChatTurnRunner {
 
       notifyCallback: notifyCallback,
       askUserCallback: (request) => _askUser(sessionId, request),
-      // 宿主不支持跳转，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
+      // 宿主不展示建议，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
       suggestNextActionCallback:
           (supportsNextActionSuggestions &&
               nextActionEnvironment.suggestionsEnabled)
@@ -1467,7 +1467,7 @@ class ChatTurnRunner {
         );
       },
       askUserCallback: (request) => _askUser(sessionId, request),
-      // 宿主不支持跳转，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
+      // 宿主不展示建议，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
       suggestNextActionCallback:
           (supportsNextActionSuggestions &&
               nextActionEnvironment.suggestionsEnabled)

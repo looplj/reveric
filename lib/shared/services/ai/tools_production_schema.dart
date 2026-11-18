@@ -140,6 +140,7 @@ const _productionNodeFields = {
     create: _FieldInputUse(),
     write: _FieldInputUse(field: true),
     edit: _FieldEdit(),
+    search: {_FieldSearch.body},
   ),
   'asset_id': _ResourceField(
     value: _ValueSchema(_ValueType.string),
@@ -180,6 +181,7 @@ const _productionNodeFields = {
     read: _FieldRead(listing: true, path: true),
     create: _FieldInputUse(),
     write: _FieldInputUse(field: true),
+    search: {_FieldSearch.short_text},
   ),
   'x': _ResourceField(
     value: _ValueSchema(_ValueType.number),

@@ -183,7 +183,10 @@ class EditingRenderService {
       document.validate();
       _check(cancellation);
       await projects.verify(document, cancellation);
-      final size = ProductionSettings.dimensions(document.ratio, '480p');
+      final size = ProductionSettings.dimensions(
+        document.ratio,
+        positions.length == 1 ? '1080p' : '480p',
+      );
       final temporary = await Directory.systemTemp.createTemp(
         'reveric_editing_frames_',
       );
@@ -211,6 +214,7 @@ class EditingRenderService {
               '${block.path}/video.mp4',
               File('${block.path}/frame.png'),
               cancellation,
+              detailMaxSide: positions.length == 1 ? contactSheetMaxSide : null,
             ),
           );
           await block.delete(recursive: true);

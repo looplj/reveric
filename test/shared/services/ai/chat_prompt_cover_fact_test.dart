@@ -48,6 +48,19 @@ void main() {
   });
 
   group('orchestrator 下一步建议场景指引', () {
+    test('画布提示词保留下步建议并使用画布任务', () {
+      final rendered = const ChatPromptUseCase().system(
+        ChatPanelPromptInput(
+          context: const AiSessionContext(contentKind: contentKindCanvas),
+          systemInstruction: File(
+            'assets/prompts/agent/orchestrator.md',
+          ).readAsStringSync(),
+        ),
+      );
+      expect(rendered, contains('SuggestNextAction'));
+      expect(rendered, contains('在画布中只给 `kind=prompt` 建议'));
+      expect(rendered, isNot(contains('feature=ai_council')));
+    });
     test('调用时机写在 orchestrator.md，不写进工具描述', () {
       final raw = File(
         'assets/prompts/agent/orchestrator.md',

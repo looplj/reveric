@@ -532,7 +532,8 @@ void main() {
         },
       );
       expect(created['ok'], isTrue, reason: '$created');
-      expect(created[subject.key], subject.value);
+      expect(created['fields'], contains(subject.key));
+      expect(created['adjusted'], isNull);
       expect(created['ignored_fields'], isNull);
       final clip = (await service.shots.getShot(created['id'] as String))!;
       expect(clip.subjectId, subject.value);
@@ -1969,7 +1970,7 @@ void main() {
         },
       );
       expect(bound['updated'], isTrue, reason: '$bound');
-      expect(bound['inputs'], hasLength(1));
+      expect(bound['input_ids'], ['ref-image']);
       final listing = await tools.executeTool(
         name: 'Run',
         input: {
@@ -2143,7 +2144,10 @@ void main() {
       expect((history['entries'] as List).single['result_applied'], false);
       final entry = (history['entries'] as List).single as Map;
       expect(entry, isNot(contains('request')));
-      final generationDetail = resourceContractTreeForTesting(entry['path'] as String);
+      final generationDetail = await tools.executeTool(
+        name: 'Read',
+        input: {'path': entry['path'] as String},
+      );
       expect(generationDetail['request'], generation.requestJson.toJson());
       final snapshot = await tools.executeTool(
         name: 'Read',
@@ -2240,8 +2244,8 @@ void main() {
           });
           expect(created['created'], isTrue, reason: '$created');
           expect(created['ignored_fields'], isNull);
-          expect(created['prompt'], prompt);
-          expect(created['inputs'], bindings);
+          expect(created.containsKey('prompt'), isFalse);
+          expect(created['input_ids'], ['node-ref', 'asset-ref']);
           final id = created['id'] as String;
           final creation = (await overlay.getWorkingChanges())
               .where((change) => change.resourceId == id)
@@ -2453,7 +2457,7 @@ void main() {
           },
         );
         expect(result['created'], isTrue, reason: '$result');
-        expect(result['prompt'], 'Plain');
+        expect(result['input_ids'], isEmpty);
         final id = result['id'] as String;
         expect(await service.shots.inputSnapshot(id), isEmpty);
         expect(

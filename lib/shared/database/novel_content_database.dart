@@ -1296,6 +1296,7 @@ class VideoStagings extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// 剧本节拍功能已移除；暂时保留此表中的节拍数据及场次对节拍的引用。
 @DataClassName('ScreenplayBeatRow')
 class ScreenplayBeats extends Table {
   TextColumn get id => text()();

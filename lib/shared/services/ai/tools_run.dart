@@ -561,12 +561,14 @@ mixin _AiToolManagerRunMixin
           }
           throw _RunCommandException(
             '[error] unknown $command command: $subcommand\n'
-            '${_bundledSkillCommandGuidance(command, contentKind: contentKind)}',
+            '${_bundledSkillCommandGuidance(command, contentKind: contentKind)}'
+            '${_otherCommandHint(command, subcommand)}',
             exitCode: 127,
           );
         }
         throw FormatException(
-          '$command requires ${definition.subcommands!.keys.join(', ')}',
+          '$command requires ${definition.subcommands!.keys.join(', ')}.'
+          '${_otherCommandHint(command, subcommand)}',
         );
       }
       return await definition.run(
@@ -613,6 +615,31 @@ mixin _AiToolManagerRunMixin
         'hint': hint,
       };
     }
+  }
+
+  /// Points a misrouted action at the command group that owns it.
+  String _otherCommandHint(String command, String subcommand) {
+    if (subcommand.isEmpty) {
+      return '';
+    }
+    final owners = [
+      for (final entry in _runCommands.entries)
+        if (entry.key != command &&
+            !(entry.value.media && !_mediaOperations) &&
+            !(entry.value.session && !_sessionOperations) &&
+            entry.value.codemode.containsKey(subcommand))
+          entry.key,
+    ];
+    // Generic actions such as list/read exist in many groups and give no signal.
+    if (owners.isEmpty || owners.length > 2) {
+      return '';
+    }
+    if (owners.contains('providers') && subcommand == 'models') {
+      return '\n[hint] Use Run providers models '
+          'provider_id=<id from providers list> kind=chat|image|video|audio.';
+    }
+    final calls = owners.map((owner) => 'Run $owner $subcommand').join(' or ');
+    return '\n[hint] "$subcommand" belongs to $calls.';
   }
 
   String _runContextHelp(String? command) {

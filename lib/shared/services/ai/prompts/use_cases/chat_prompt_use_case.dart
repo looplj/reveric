@@ -176,18 +176,9 @@ class ChatPromptUseCase {
       tailBlocks.add(skillBlock);
     }
 
-    final rules = PromptFragments.userRules(input.workContext.userRules);
+    final rules = PromptFragments.userRulesSection(input.workContext.userRules);
     if (rules.isNotEmpty) {
-      tailBlocks.add(
-        composer.compose([
-          PromptSection(
-            key: 'user_rules',
-            title: '用户自定义规则',
-            description: '以下是用户设定的规则，优先级高于默认行为。请始终遵守这些规则。',
-            content: rules,
-          ),
-        ]),
-      );
+      tailBlocks.add(rules);
     }
 
     for (final block in tailBlocks) {

@@ -322,6 +322,36 @@ void main() {
     }
   });
 
+  test('exports and imports matching titles after a clip rename', () async {
+    final image = await source.addImage(canvasId);
+    final clip = (await source.shots.getShot(image.clipId!))!;
+    await source.shots.apply(clip.id, {
+      ...source.shots.snapshot(clip),
+      'title': 'Renamed',
+    });
+    final packaged = await const ProductionCanvasPackageOrchestrator()
+        .exportToFile(canvas: source, canvasId: canvasId, title: 'Board');
+    try {
+      final manifest = await _manifest(packaged.file);
+      final node = (manifest['nodes'] as List).cast<Map>().singleWhere(
+        (n) => n['type'] == canvasNodeTypeImage,
+      );
+      expect(node['title'], 'Renamed');
+      expect(node['clip']['title'], 'Renamed');
+
+      final imported = await _import(packaged.file, actions, library);
+      final novel = (await appDb.novelDao.get(imported.novelId))!;
+      final content = NovelContentDatabase(novel.contentDatabasePath!);
+      opened.add(content);
+      final still = await (content.select(
+        content.canvasNodes,
+      )..where((row) => row.type.equals(canvasNodeTypeImage))).getSingle();
+      expect(still.title, 'Renamed');
+    } finally {
+      await packaged.delete();
+    }
+  });
+
   test('rejects a package that records a source work', () async {
     await source.addText(canvasId, title: 'Note', content: 'hello');
     final packaged = await const ProductionCanvasPackageOrchestrator()

@@ -591,6 +591,7 @@ void main() {
         final image = await canvas.addImage(canvasId);
         await canvas.renameNode(image.id, 'Key art');
         expect(await canvas.nodeTitle(image.id), 'Key art');
+        expect((await db.canvasDao.getNodeById(image.id))!.title, 'Key art');
         expect((await canvas.shots.getShot(image.clipId!))!.title, 'Key art');
 
         final director = await canvas.addDirector(canvasId, 'Blocking');

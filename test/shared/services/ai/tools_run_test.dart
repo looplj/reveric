@@ -34,6 +34,7 @@ import 'package:reveric/shared/services/tool_permissions.dart';
 import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
+import '../../../helpers/tool_operation_wait.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/map_agent.dart';
@@ -2559,5 +2560,5 @@ Future<Map<String, dynamic>> _settled(
   if (runId is! String || receipt['background'] != true) {
     return receipt;
   }
-  return operations.wait(runId, context);
+  return waitPastApproval(operations, runId, context);
 }

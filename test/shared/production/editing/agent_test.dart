@@ -255,7 +255,7 @@ void main() {
         [-1],
         [72],
         [0.5],
-        List.filled(13, 0),
+        List.filled(17, 0),
       ]) {
         await expectLater(
           run('frames', {
@@ -739,7 +739,18 @@ void main() {
             },
           ],
         }),
-        throwsA(isA<ToolOperationException>()),
+        throwsA(
+          isA<ToolOperationException>().having(
+            (e) => e.message,
+            'message',
+            matches(
+              RegExp(
+                r'^commands\[2\] \(add_text\): Occupied: track T1 already has '
+                r'clip \S+ at frames 0-\d+\.$',
+              ),
+            ),
+          ),
+        ),
       );
       final row = (await db.editingDao.get(id))!;
       expect(row.revision, 0);
@@ -1034,7 +1045,11 @@ void main() {
         throwsA(
           isA<ToolOperationException>()
               .having((e) => e.code, 'code', 'failed_precondition')
-              .having((e) => e.message, 'message', 'Audio already detached'),
+              .having(
+                (e) => e.message,
+                'message',
+                'commands[0] (extract_audio): Audio already detached',
+              ),
         ),
       );
       final detached = ui.document!.toJson();

@@ -2400,7 +2400,7 @@ void main() {
       AgentRule(
         id: 'rule_1',
         name: '章节字数',
-        content: '每章约 4000 字',
+        content: '每章约 4000 字\n\n对白场景可以更短。',
         enabled: true,
         sortOrder: 0,
         createdAt: now,
@@ -2440,7 +2440,7 @@ void main() {
     expect(system, contains('路径语法：'));
     expect(system, contains('同一响应内的多个直接工具调用不能依赖彼此的结果'));
     expect(system, contains('工具返回失败、报错或 skipped 时，不要直接跳过原任务'));
-    expect(system, contains('<user_rule>章节字数：每章约 4000 字</user_rule>'));
+    expect(system, contains('- 章节字数：每章约 4000 字\n\n  对白场景可以更短。'));
     expect(system, isNot(contains('不应出现')));
   });
 

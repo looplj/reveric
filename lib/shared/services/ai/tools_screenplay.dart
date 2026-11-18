@@ -895,7 +895,9 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       if (!toolResultIsSuccess(result)) {
         return result;
       }
-      return {...result, 'edited': changed, 'match_count': matchCount};
+      // Edit never creates elements, so the element listing adds nothing.
+      return {...result, 'edited': changed, 'match_count': matchCount}
+        ..remove('entries');
     }
 
     try {
@@ -1115,7 +1117,11 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     return {
       'ok': true,
       'path': 'scenes/$sceneId/elements',
-      'entries': await _elementEntries(saved),
+      // New element IDs are needed for follow-up edits; the text is not.
+      'entries': [
+        for (final entry in await _elementEntries(saved))
+          Map<String, dynamic>.from(entry)..remove('text'),
+      ],
     };
   }
 
@@ -1157,7 +1163,12 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       expectedCurrentText: oldText,
     );
     _reportWorkingChange(change);
-    return {'ok': true, 'path': 'scenes/$sceneId/$field', field: target};
+    return {
+      'ok': true,
+      'path': 'scenes/$sceneId/$field',
+      'updated': true,
+      'fields': [field],
+    };
   }
 
   Future<Map<String, dynamic>> _stageSynopsis(
@@ -1181,7 +1192,12 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       expectedCurrentText: current,
     );
     _reportWorkingChange(change);
-    return {'ok': true, 'path': 'scenes/$sceneId/synopsis', 'synopsis': target};
+    return {
+      'ok': true,
+      'path': 'scenes/$sceneId/synopsis',
+      'updated': true,
+      'fields': ['synopsis'],
+    };
   }
 
   Future<Map<String, dynamic>> _stageEpisodeOutline(
@@ -1208,7 +1224,8 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     return {
       'ok': true,
       'path': 'episodes/$episodeId/outline',
-      'outline': target,
+      'updated': true,
+      'fields': ['outline'],
     };
   }
 

@@ -102,7 +102,7 @@ class ProductionPanoramaCommands {
       } on StoryboardException catch (error) {
         throw ToolOperationException(
           'failed_precondition',
-          'A panorama image or image node with panorama view enabled is required (${error.code}).',
+          'A panorama image or image node with panorama view enabled is required (${error.reason}).',
         );
       } on MediaException catch (error) {
         throw ToolOperationException(

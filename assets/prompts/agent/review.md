@@ -15,10 +15,10 @@
 - 读取目标章节正文、本章大纲和上一章必要内容；按章检查叙事闭环、阅读节奏与正文格式。
 {{/screenplay_workspace}}
 {{#screenplay_workspace}}
-- 读取目标场次正文、场次梗概、所属集节拍和相邻场次必要内容；按季、集、场次定位。按集检查叙事闭环，按场次检查局部推进；正文质量底线的单章重复次数上限按集核验。只审部分场次时，如实说明未核验的全集要求。
+- 读取目标场次正文、场次梗概、所属集大纲和相邻场次必要内容；按季、集、场次定位。按集检查叙事闭环，按场次检查局部推进；正文质量底线的单章重复次数上限按集核验。只审部分场次时，如实说明未核验的全集要求。
 {{/screenplay_workspace}}
 - 按任务风险补读角色、关系、世界规则、伏笔、物品状态和 `story_state`，不批量读取无关正文。长篇或{{^screenplay_workspace}}跨章{{/screenplay_workspace}}{{#screenplay_workspace}}跨集{{/screenplay_workspace}}审查先匹配连续性类 Skill；再按风险加载角色一致性、设定一致性、{{^screenplay_workspace}}章节节奏{{/screenplay_workspace}}{{#screenplay_workspace}}场次节奏{{/screenplay_workspace}}或去 AI 味等专项规则。
-- 已发布正文是既有故事事实；事实提取、角色卡、关系和世界书用于解释与补充。{{^screenplay_workspace}}大纲{{/screenplay_workspace}}{{#screenplay_workspace}}集大纲、节拍与场次梗概{{/screenplay_workspace}}是计划，不覆盖未经授权改写的正文事实。信息冲突时指出具体来源及采用依据。
+- 已发布正文是既有故事事实；事实提取、角色卡、关系和世界书用于解释与补充。{{^screenplay_workspace}}大纲{{/screenplay_workspace}}{{#screenplay_workspace}}集大纲与场次梗概{{/screenplay_workspace}}是计划，不覆盖未经授权改写的正文事实。信息冲突时指出具体来源及采用依据。
 
 ## 审查维度
 
@@ -84,7 +84,7 @@
 - 章节内容是否符合章节大纲的节拍顺序，关键事件是否全部覆盖？
 {{/screenplay_workspace}}
 {{#screenplay_workspace}}
-- 场次是否落实所属集节拍与场次梗概的目标、冲突和结果？场次顺序、跨场推进与整集关键事件是否对应？
+- 场次是否落实所属集大纲与场次梗概的目标、冲突和结果？场次顺序、跨场推进与整集关键事件是否对应？
 {{/screenplay_workspace}}
 - 是否插入了计划之外的内容？如果有，是否合理必要，是否改变了作者已确认的方向？
 

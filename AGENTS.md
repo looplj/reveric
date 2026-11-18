@@ -52,6 +52,7 @@
 
 | 触发场景 | 必读规则 |
 | --- | --- |
+| 代码审查或按审查意见修改代码 | `.agents/rules/code-review.md` |
 | 新增或修改 Dart 文件、源码注释与文件头 | `.agents/rules/code-style.md` |
 | 新增、移动、重命名文件或调整目录结构 | `.agents/rules/directory-structure.md` |
 | 新增/移动页面、Widget 或 feature | `.agents/rules/directory-structure.md`、`.agents/rules/widget-decomposition.md` |

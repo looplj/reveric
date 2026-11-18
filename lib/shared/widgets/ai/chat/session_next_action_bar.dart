@@ -17,10 +17,12 @@ class SessionNextActionBar extends ConsumerWidget {
     required this.sessionId,
     required this.enabled,
     required this.onPick,
+    this.showFeatureActions = true,
   });
 
   final String? sessionId;
   final bool enabled;
+  final bool showFeatureActions;
   final ValueChanged<ChatNextAction> onPick;
 
   @override
@@ -48,7 +50,8 @@ class SessionNextActionBar extends ConsumerWidget {
       )),
       actions: [
         for (final raw in turn.block.suggestions)
-          ?deserializeChatNextAction(raw),
+          if (showFeatureActions || raw['kind'] != 'feature')
+            ?deserializeChatNextAction(raw),
       ],
       onPick: onPick,
     );

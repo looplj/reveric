@@ -204,6 +204,14 @@ class EditingToolHost {
         'clips': session.document!.clips.map((c) => c.toJson()).toList(),
         'total_frames': session.document!.totalFrames,
       };
+      // Mutations report what changed; Read returns the whole timeline.
+      Map<String, dynamic> summary() => {
+        'ok': true,
+        'id': id,
+        'editing_id': id,
+        'revision': session.revision,
+        'total_frames': session.document!.totalFrames,
+      };
       if (action == 'read') {
         if (options.containsKey('track_id') &&
             (options.containsKey('start_frame') ||
@@ -292,7 +300,7 @@ class EditingToolHost {
           return result;
         });
         return {
-          ...data(),
+          ...summary(),
           'results': results,
           'changes': EditingAgentCommands.changes(before, session.document!),
         };
@@ -301,7 +309,7 @@ class EditingToolHost {
         final before = session.document!;
         await session.travel(expected, redo: action == 'redo');
         return {
-          ...data(),
+          ...summary(),
           'changes': EditingAgentCommands.changes(before, session.document!),
         };
       }

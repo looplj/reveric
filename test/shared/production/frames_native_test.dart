@@ -85,6 +85,52 @@ class _NativeRunner extends FfmpegRunner {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
+    'native frames preserves single-frame detail and fits 16 samples in four rows',
+    () async {
+      final root = await Directory.systemTemp.createTemp('reveric-frames-');
+      addTearDown(() => root.delete(recursive: true));
+      final runner = _NativeRunner();
+      final files = SessionFiles(root: root.path, novelId: 'work');
+      final source = '${root.path}/detail.mp4';
+      await runner.execute(
+        [
+          '-f',
+          'lavfi',
+          '-i',
+          'testsrc2=s=1280x720:r=16:d=1',
+          '-c:v',
+          'libx264',
+          source,
+        ],
+        probe: false,
+        cancellation: MediaCancellation(),
+      );
+      final command = FfmpegCommand(files, runner);
+      Future<img.Image> inspect(List<int> times) async {
+        final result = await command.frames(
+          'session',
+          source,
+          times,
+          MediaCancellation(),
+        );
+        expect((result['cells'] as List).map((c) => c['timestamp_ms']), times);
+        final file = await files.resolve(result['file_path'] as String);
+        return img.decodeJpg(await file.readAsBytes())!;
+      }
+
+      final single = await inspect([0]);
+      expect([single.width, single.height], [1280, 720]);
+      final grid = await inspect(List.generate(16, (i) => i * 60));
+      // Four 509×286 cells per row with 4-pixel gutters.
+      expect([grid.width, grid.height], [2048, 1156]);
+    },
+    skip: _binary.isEmpty
+        ? 'Set FFMPEG_TEST_BIN for native frame checks.'
+        : false,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
     'native execute expands JPEG and PNG sequences alongside a single image',
     () async {
       final root = await Directory.systemTemp.createTemp(

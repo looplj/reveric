@@ -195,9 +195,12 @@ void main() {
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();
-        await db.close();
-        await main.close();
-        await tester.runAsync(() => root.delete(recursive: true));
+        // Drift closes through real isolate IO, which FakeAsync never advances.
+        await tester.runAsync(() async {
+          await db.close();
+          await main.close();
+          await root.delete(recursive: true);
+        });
       }
     },
     timeout: const Timeout(Duration(minutes: 2)),

@@ -98,7 +98,7 @@ class ProductionNodeCommands {
         } on StoryboardException catch (error) {
           throw ToolOperationException(
             'failed_precondition',
-            'StoryboardException(${error.code})',
+            'StoryboardException(${error.reason})',
           );
         }
       }
@@ -254,7 +254,7 @@ class ProductionNodeCommands {
     } on StoryboardException catch (error) {
       throw ToolOperationException(
         error.code == 'source_missing' ? 'not_found' : 'failed_precondition',
-        'StoryboardException(${error.code})',
+        'StoryboardException(${error.reason})',
       );
     }
   }

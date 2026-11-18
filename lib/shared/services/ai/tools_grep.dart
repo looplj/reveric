@@ -15,7 +15,7 @@ const _resourceGrepSearchFileBudget = 1000;
 
 const _grepDescription = '''在作品工作区资源文本字段中查找正则匹配。
 
-它会搜索章节正文、剧本标题／集大纲／节拍说明／场次梗概／元素正文、角色资料和世界观文档等文本字段。
+它会搜索章节正文、剧本标题／集大纲／场次梗概／元素正文、角色资料和世界观文档等文本字段。
 剧本搜索省略季集筛选时覆盖全剧本。
 优先提供 `path` 或 `glob` 限定搜索范围；根路径搜索可能被扫描预算截断。
 
@@ -227,7 +227,9 @@ mixin _AiToolManagerGrepMixin on _AiToolManagerResourceSearchSupportMixin {
         'search_file_limit': _resourceGrepSearchFileBudget,
         'search_truncated': searchTruncated,
         if (_targetsRelations([root, glob]))
-          'hint': _relationsNotSearchableHint,
+          'hint': _relationsNotSearchableHint
+        else if (searchedFiles == 0)
+          'hint': _noSearchableFieldsHint(root, hasGlob: compiledGlob != null),
       };
     }
 

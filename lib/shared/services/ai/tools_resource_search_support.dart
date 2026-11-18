@@ -18,6 +18,23 @@ const _resourcePathScanBudget = 5000;
 const String _relationsNotSearchableHint =
     'Use GraphSearch to search relations.';
 
+/// Grep 没有读到文本字段时，根据搜索范围给出下一步。
+String _noSearchableFieldsHint(String rootPath, {required bool hasGlob}) {
+  if (hasGlob) {
+    return 'No text fields were searched with this glob. Broaden or remove the glob and retry.';
+  }
+  final ref = _resourceReferencePath(_normalizeResourceDisplayPath(rootPath));
+  return 'No text fields were searched under this path. '
+      'Read $ref to inspect the resource directly.';
+}
+
+/// Glob 在路径下没有任何可列出的子路径时，提示改用 Read 查看资源本身。
+String _noListableChildrenHint(String rootPath) {
+  final ref = _resourceReferencePath(_normalizeResourceDisplayPath(rootPath));
+  return 'No listable child paths exist under this path. '
+      'Read $ref to inspect the resource directly.';
+}
+
 /// 调用是否冲着 relations 去的：只看调用方显式给的 path / pattern / glob，
 /// `**` 这类全局模式不算。
 bool _targetsRelations(Iterable<String?> inputs) {
@@ -130,6 +147,21 @@ mixin _AiToolManagerResourceSearchSupportMixin
       }
     }
 
+    // 给了 path 时，模式也按相对 path 的子路径匹配，与在该目录下执行 glob 一致。
+    final relativeBase = root.isRoot
+        ? null
+        : '${_normalizeResourceMatchPath(root.displayPath)}/';
+    bool globMatches(String path) {
+      if (glob!.matches(path)) {
+        return true;
+      }
+      final normalizedPath = _normalizeResourceMatchPath(path);
+      return relativeBase != null &&
+          normalizedPath.length > relativeBase.length &&
+          normalizedPath.startsWith(relativeBase) &&
+          glob.matches(normalizedPath.substring(relativeBase.length));
+    }
+
     final visited = <String>{};
     final out = <_ResourcePathEntry>[];
     var truncated = false;
@@ -188,7 +220,7 @@ mixin _AiToolManagerResourceSearchSupportMixin
           return;
         }
       }
-      if (glob == null || glob.matches(normalized)) {
+      if (glob == null || globMatches(normalized)) {
         if (budget != null && out.length >= budget) {
           truncated = true;
           return;

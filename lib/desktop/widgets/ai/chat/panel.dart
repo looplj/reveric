@@ -185,9 +185,11 @@ class AiChatPanel extends HookConsumerWidget {
 
   /// 跳到指定功能（圆桌 / 小剧场 / 封面工作台），`seedText` 预填目标输入框。
   ///
-  /// 为 null 表示宿主不提供跳转能力：SuggestNextAction 不下发，空态目录里的
-  /// 跳转项也会被过滤掉。
+  /// 未提供时只展示提示词建议。
   final void Function(FeatureId feature, String? seedText)? onOpenFeature;
+
+  bool get _supportsNextActionSuggestions =>
+      onRequestHandoff != null && onActiveSessionIdChanged != null;
 
   /// 外部传入的 composer 焦点节点。设置后,外部可通过 `requestFocus()`
   /// 聚焦输入框(如画布页「AI 共创」按钮)。为 null 时面板自建焦点节点。
@@ -1414,7 +1416,8 @@ class AiChatPanel extends HookConsumerWidget {
                 // SizedBox.shrink()，这里不留占位。
                 SessionNextActionBar(
                   sessionId: activeSessionId,
-                  enabled: suggestionsEnabled && onOpenFeature != null,
+                  enabled: suggestionsEnabled && _supportsNextActionSuggestions,
+                  showFeatureActions: onOpenFeature != null,
                   onPick: handleNextAction,
                 ),
                 ToolOperationStrip(

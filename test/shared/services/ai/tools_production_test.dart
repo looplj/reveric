@@ -1693,7 +1693,7 @@ void main() {
       expect(fixed['cells'].single['camera_id'], camera['id']);
       for (final options in [
         {'frames': []},
-        {'frames': List.filled(13, 0)},
+        {'frames': List.filled(17, 0)},
         {
           'frames': [121],
         },

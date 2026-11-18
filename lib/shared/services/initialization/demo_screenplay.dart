@@ -185,23 +185,6 @@ Future<void> _seedDemoContent(
   if (root == null) {
     throw StateError('Demo screenplay root was not created.');
   }
-  final beatIds = <String, String>{};
-  for (final beat in demoScreenplayBeats) {
-    final episodeId = episodeIds[beat.episodeNumber];
-    if (episodeId == null) {
-      throw StateError(
-        'Demo screenplay beat has no episode: ${beat.episodeNumber}',
-      );
-    }
-    beatIds[beat.key] = await screenplayService.createBeat(
-      screenplayId: root.id,
-      episodeId: episodeId,
-      actNumber: beat.actNumber,
-      title: beat.title,
-      description: beat.description,
-    );
-  }
-
   for (final scene in demoScreenplayScenes) {
     final episodeId = episodeIds[scene.episodeNumber];
     if (episodeId == null) {
@@ -215,7 +198,6 @@ Future<void> _seedDemoContent(
     final sceneId = await screenplayService.createScene(
       screenplayId: root.id,
       episodeId: episodeId,
-      beatId: scene.beatKey == null ? null : beatIds[scene.beatKey],
       interiorExterior: heading.interiorExterior,
       locationId: heading.locationKey == null
           ? null

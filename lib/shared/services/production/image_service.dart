@@ -91,7 +91,10 @@ class ImageTaskService {
   Future<GenerationTask> requireRun(String id) async {
     final task = await database.generationTaskDao.getById(id);
     if (task == null || task.kind != GenerationKind.image) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Image generation run $id was not found.',
+      );
     }
     return task;
   }
@@ -786,9 +789,7 @@ class ImageTaskService {
     try {
       for (final (index, output) in stored.indexed) {
         if (output.url != null) {
-          outputs.add(
-            ProviderUrlOutput(output.url!),
-          );
+          outputs.add(ProviderUrlOutput(output.url!));
         } else {
           final asset = output.assetId == null
               ? null

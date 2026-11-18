@@ -96,13 +96,48 @@ class EditingAgentCommands {
     String title,
     List<Map<String, dynamic>> commands,
   ) async {
+    var index = 0;
+    String at(String message) {
+      final op = commands[index]['op'];
+      return 'commands[$index]${op is String ? ' ($op)' : ''}: $message';
+    }
+
+    try {
+      return await _apply(original, title, commands, (i) => index = i);
+    } on ToolOperationException catch (error) {
+      throw ToolOperationException(
+        error.code,
+        at(error.message),
+        hint: error.hint,
+      );
+    } on FormatException catch (error) {
+      throw FormatException(at(error.message));
+    } on StateError catch (error) {
+      throw StateError(at(error.message));
+    }
+  }
+
+  Future<
+    ({
+      EditingDocument document,
+      String title,
+      List<Map<String, dynamic>> result,
+    })
+  >
+  _apply(
+    EditingDocument original,
+    String title,
+    List<Map<String, dynamic>> commands,
+    void Function(int index) onCommand,
+  ) async {
     var doc = original;
     final results = <Map<String, dynamic>>[];
     final locked = original.tracks
         .where((t) => t.locked)
         .map((t) => t.id)
         .toSet();
-    for (final command in commands) {
+    for (final (index, command) in commands.indexed) {
+      onCommand(index);
       final before = doc;
       final op = text(command, 'op');
       final clipId = command['clip_id'] as String?;
@@ -110,9 +145,9 @@ class EditingAgentCommands {
           ? null
           : doc.clips.where((c) => c.id == clipId).firstOrNull;
       if (clipId != null && clip == null) {
-        throw const ToolOperationException(
+        throw ToolOperationException(
           'not_found',
-          'Editing clip not found.',
+          'Editing clip not found: $clipId.',
         );
       }
       final trackId = command['track_id'] as String? ?? clip?.trackId;
@@ -120,9 +155,9 @@ class EditingAgentCommands {
           ? null
           : doc.tracks.where((t) => t.id == trackId).firstOrNull;
       if (trackId != null && track == null) {
-        throw const ToolOperationException(
+        throw ToolOperationException(
           'not_found',
-          'Editing track not found.',
+          'Editing track not found: $trackId.',
         );
       }
       final unlock =

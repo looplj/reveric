@@ -155,7 +155,10 @@ class StoryboardPrompt {
     for (final ref in references) {
       if (!validIds.contains(ref.inputId)) {
         throw FormatException(
-          'Unknown prompt reference input_id: ${ref.inputId}.',
+          'Unknown prompt reference input_id: ${ref.inputId}. '
+          'Available input IDs: ${validIds.isEmpty ? 'none' : validIds.join(', ')}. '
+          'Each <ref input_id> must name an input of this clip; when creating '
+          'the clip, pass the referenced inputs in the same call\'s inputs.',
         );
       }
     }

@@ -4031,7 +4031,7 @@ class AiToolManager extends _AiToolManagerBase
   final ValueNotifier<AiSessionMode>? sessionModeNotifier;
   final AiAskUserCallback? askUserCallback;
 
-  /// 已裁决建议的挂载回调。为 null（宿主未提供导航能力，或用户在设置里关闭）时，
+  /// 已裁决建议的挂载回调。为 null（宿主未启用建议，或用户在设置里关闭）时，
   /// SuggestNextAction 既不注册 dispatch 也不下发 ToolDef。
   @override
   final SuggestNextActionCallback? suggestNextActionCallback;
@@ -4875,7 +4875,7 @@ class AiToolManager extends _AiToolManagerBase
         ),
       );
     }
-    // 宿主未提供导航能力，或用户在设置里关闭建议时，工具连 schema 都不下发。
+    // 宿主未启用建议，或用户在设置里关闭建议时，工具连 schema 都不下发。
     if (suggestNextActionCallback != null) {
       defs.add(
         ToolDef(

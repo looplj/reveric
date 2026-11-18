@@ -38,6 +38,50 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
         'adopted_asset_id': row.adoptedAssetId,
       };
 
+      // Mutations name what changed instead of echoing the written record;
+      // short placement fields always return because the service may derive
+      // them, other values return only when stored differently from the request.
+      const placement = {
+        'kind',
+        'episode_id',
+        'scene_id',
+        'sort_order',
+        'is_storyboard',
+      };
+      Map<String, dynamic> changeSummary(
+        ProductionClipRow row,
+        String change,
+        Map<String, dynamic> requested, {
+        int? matchCount,
+      }) {
+        final stored = data(row);
+        final adjusted = {
+          for (final entry in requested.entries)
+            if (entry.key != 'prompt' &&
+                entry.key != 'inputs' &&
+                !placement.contains(entry.key) &&
+                stored.containsKey(entry.key) &&
+                !const DeepCollectionEquality().equals(
+                  stored[entry.key],
+                  entry.value,
+                ))
+              entry.key: stored[entry.key],
+        };
+        return {
+          'ok': true,
+          change: true,
+          'id': row.id,
+          'path': stored['path'],
+          for (final key in placement)
+            if (stored.containsKey(key)) key: stored[key],
+          'fields': requested.keys.toList(),
+          'match_count': ?matchCount,
+          if (adjusted.isNotEmpty) 'adjusted': adjusted,
+          if (requested.containsKey('inputs'))
+            'input_ids': [for (final input in row.inputs) input.id],
+        };
+      }
+
       if (operation.tool == _ResourceTool.read && parsed._resource!.listing) {
         final sceneId = parsed.queryParameters['scene_id'];
         final episodeId = parsed.queryParameters['episode_id'];
@@ -158,12 +202,7 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
             inputs: inputs,
             origin: origin,
           );
-          return {
-            'ok': true,
-            'created': true,
-            ...data(row),
-            'inputs': await service.inputSnapshot(row.id),
-          };
+          return changeSummary(row, 'created', fields);
         }
         final row = await StoryboardEditOrchestrator().create(
           service: service,
@@ -173,7 +212,7 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
           values: values,
           origin: origin,
         );
-        return {'ok': true, 'created': true, ...data(row)};
+        return changeSummary(row, 'created', fields);
       }
       var row = await service.getShot(parsed.locator('clip_id')!);
       if (row == null) {
@@ -195,16 +234,26 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
           ? 'edited'
           : 'updated';
       final values = Map<String, dynamic>.from(fields);
+      int? matchCount;
       if (edit != null) {
         final current = service.snapshot(row)[parsed.field] as String;
-        if (edit.oldText.isEmpty ||
-            !current.contains(edit.oldText) ||
-            (!edit.replaceAll &&
-                edit.oldText.allMatches(current).length != 1)) {
+        matchCount = edit.oldText.isEmpty
+            ? 0
+            : edit.oldText.allMatches(current).length;
+        if (edit.oldText.isEmpty || matchCount == 0) {
           return _resourceError(
             parsed.displayPath,
             ToolErrorCode.invalid_argument,
-            'The requested text must match exactly; read the field again.',
+            edit.oldText.isEmpty
+                ? 'old_text must not be empty.'
+                : 'old_text was not found in ${parsed.field}; read the field again.',
+          );
+        }
+        if (!edit.replaceAll && matchCount != 1) {
+          return _resourceError(
+            parsed.displayPath,
+            ToolErrorCode.invalid_argument,
+            'old_text matches $matchCount times in ${parsed.field}; include more surrounding text or set all=true.',
           );
         }
         values[parsed.field!] = edit.replaceAll
@@ -269,12 +318,12 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
             await host.adopt(row!.id, selected);
           }
           final current = (await service.getShot(node.clipId!))!;
-          return {
-            'ok': true,
-            changed: true,
-            ...data(current),
-            'inputs': await service.inputSnapshot(current.id),
-          };
+          return changeSummary(
+            current,
+            changed,
+            edit == null ? fields : {parsed.field!: values[parsed.field]},
+            matchCount: matchCount,
+          );
         });
       }
       row = await StoryboardEditOrchestrator().moveOrSave(
@@ -284,22 +333,31 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
         values: values,
         origin: origin,
       );
-      return {'ok': true, changed: true, ...data(row)};
+      return changeSummary(
+        row,
+        changed,
+        edit == null ? fields : {parsed.field!: values[parsed.field]},
+        matchCount: matchCount,
+      );
     } on ToolOperationException catch (error) {
       return {'ok': false, 'error_code': error.code, 'error': error.message};
     } on StoryboardException catch (e) {
       return _resourceError(
         parsed.displayPath,
         ToolErrorCode.invalid_argument,
-        switch (e.code) {
-          'source_missing' => 'The source scene or episode is unavailable.',
-          'invalid_asset' => 'The referenced asset is missing or unavailable.',
-          'invalid_reference' =>
-            'The referenced input source is missing or invalid.',
-          'cross_episode_move' =>
-            'Moving a clip across episodes is not supported. Create a copy in the destination scene.',
-          _ => 'Invalid production settings.',
-        },
+        [
+          switch (e.code) {
+            'source_missing' => 'The source scene or episode is unavailable.',
+            'invalid_asset' =>
+              'The referenced asset is missing or unavailable.',
+            'invalid_reference' =>
+              'The referenced input source is missing or invalid.',
+            'cross_episode_move' =>
+              'Moving a clip across episodes is not supported. Create a copy in the destination scene.',
+            _ => 'Invalid production settings.',
+          },
+          ?e.detail,
+        ].join(' '),
       );
     } on FormatException catch (e) {
       return _resourceError(

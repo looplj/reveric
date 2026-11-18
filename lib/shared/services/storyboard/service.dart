@@ -32,6 +32,9 @@ class StoryboardException implements Exception {
   /// 给 Agent 的具体原因；界面按 [code] 映射文案，不展示它。
   final String? detail;
 
+  /// Code plus detail for Agent-facing messages.
+  String get reason => detail == null ? code : '$code: $detail';
+
   @override
   String toString() => detail == null
       ? 'StoryboardException($code${field == null ? '' : ', field=$field'})'
@@ -152,7 +155,10 @@ class StoryboardService {
   Future<ScreenplayRow> requireSettings() async {
     final row = await getSettings();
     if (row == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'The screenplay was not found.',
+      );
     }
     return row;
   }
@@ -186,7 +192,10 @@ class StoryboardService {
           await database.screenplayDao.getRoot() != null) {
         return;
       }
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'No episode was given and the work has no screenplay.',
+      );
     }
     final episode = await database.screenplayDao.getEpisode(id);
     final root = await database.screenplayDao.getRoot();
@@ -198,18 +207,24 @@ class StoryboardService {
         root == null ||
         episode.screenplayId != root.id ||
         season.screenplayId != root.id) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Episode $id was not found in this screenplay.',
+      );
     }
   }
 
   Future<ScreenplaySceneRecord> requireScene(String id) async {
     final scene = await database.screenplayDao.getScene(id);
     if (scene == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException('source_missing', 'Scene $id was not found.');
     }
     await requireEpisode(scene.episodeId);
     if (scene.screenplayId != (await database.screenplayDao.getRoot())!.id) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Scene $id belongs to another screenplay.',
+      );
     }
     return scene;
   }
@@ -343,61 +358,62 @@ class StoryboardService {
     return (await getShot(id))!;
   });
 
-  Future<CanvasEntry> ensureCanvas(String episodeId) => write(
-    'ENSURE_CANVAS',
-    episodeId,
-    () async {
-      await requireEpisode(episodeId);
-      if (episodeId.isEmpty) {
-        return _ensureWorkCanvas();
-      }
-      final production = (await database.screenplayDao.getEpisode(episodeId))!;
-      if (production.canvasId != null) {
-        final canvas = await database.canvasDao.getCanvasById(
-          production.canvasId!,
+  Future<CanvasEntry> ensureCanvas(
+    String episodeId,
+  ) => write('ENSURE_CANVAS', episodeId, () async {
+    await requireEpisode(episodeId);
+    if (episodeId.isEmpty) {
+      return _ensureWorkCanvas();
+    }
+    final production = (await database.screenplayDao.getEpisode(episodeId))!;
+    if (production.canvasId != null) {
+      final canvas = await database.canvasDao.getCanvasById(
+        production.canvasId!,
+      );
+      if (canvas == null || canvas.kind != canvasKindProduction) {
+        throw StoryboardException(
+          'source_missing',
+          'Production canvas ${production.canvasId} of episode $episodeId was not found.',
         );
-        if (canvas == null || canvas.kind != canvasKindProduction) {
-          throw const StoryboardException('source_missing');
-        }
-        await _ensureSceneNodes(canvas.id, episodeId);
-        return canvas;
       }
-      final id = await insertWithShortEntityId(
-        type: ShortEntityIdType.canvas,
-        tableName: 'canvases',
-        idExists: database.canvasDao.canvasIdExists,
-        insert: (id) => database
-            .into(database.canvases)
-            .insert(
-              CanvasesCompanion.insert(
-                id: id,
-                name: 'production-$episodeId',
-                kind: const Value(canvasKindProduction),
-              ),
+      await _ensureSceneNodes(canvas.id, episodeId);
+      return canvas;
+    }
+    final id = await insertWithShortEntityId(
+      type: ShortEntityIdType.canvas,
+      tableName: 'canvases',
+      idExists: database.canvasDao.canvasIdExists,
+      insert: (id) => database
+          .into(database.canvases)
+          .insert(
+            CanvasesCompanion.insert(
+              id: id,
+              name: 'production-$episodeId',
+              kind: const Value(canvasKindProduction),
             ),
-      );
-      await (database.update(
-        database.screenplayEpisodes,
-      )..where((t) => t.id.equals(production.id))).write(
-        ScreenplayEpisodesCompanion(
-          canvasId: Value(id),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
-      final clips =
-          await (database.select(database.productionClips)..where(
-                (t) =>
-                    t.episodeId.equals(episodeId) &
-                    t.deletedAt.equals(notDeletedSentinel),
-              ))
-              .get();
-      for (final clip in clips) {
-        await ensureClipNode(clip.id);
-      }
-      await _ensureSceneNodes(id, episodeId);
-      return (await database.canvasDao.getCanvasById(id))!;
-    },
-  );
+          ),
+    );
+    await (database.update(
+      database.screenplayEpisodes,
+    )..where((t) => t.id.equals(production.id))).write(
+      ScreenplayEpisodesCompanion(
+        canvasId: Value(id),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    final clips =
+        await (database.select(database.productionClips)..where(
+              (t) =>
+                  t.episodeId.equals(episodeId) &
+                  t.deletedAt.equals(notDeletedSentinel),
+            ))
+            .get();
+    for (final clip in clips) {
+      await ensureClipNode(clip.id);
+    }
+    await _ensureSceneNodes(id, episodeId);
+    return (await database.canvasDao.getCanvasById(id))!;
+  });
 
   Future<CanvasEntry> _ensureWorkCanvas() async {
     final existing =
@@ -442,7 +458,10 @@ class StoryboardService {
       write('ENSURE_NODE', clipId, () async {
         final clip = await getShot(clipId);
         if (clip == null) {
-          throw const StoryboardException('source_missing');
+          throw StoryboardException(
+            'source_missing',
+            'Clip $clipId was not found.',
+          );
         }
         final canvas = await ensureCanvas(clip.episodeId);
         final existing =
@@ -455,7 +474,10 @@ class StoryboardService {
                 .getSingleOrNull();
         if (existing != null) {
           if (existing.canvasId != canvas.id) {
-            throw const StoryboardException('source_missing');
+            throw StoryboardException(
+              'source_missing',
+              'The canvas node of clip $clipId is on another canvas.',
+            );
           }
           return existing;
         }
@@ -599,7 +621,7 @@ class StoryboardService {
   }) => write(creating ? 'INSERT' : 'UPDATE', id, () async {
     final previous = await getShot(id);
     if (!creating && previous == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException('source_missing', 'Clip $id was not found.');
     }
     final sceneId = values['scene_id'] as String?;
     final kind = values['kind'] as String;
@@ -650,12 +672,18 @@ class StoryboardService {
             await database.characterProfileDao.getById(characterId) == null ||
         locationId != null &&
             await database.locationDao.getById(locationId) == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Character $characterId or location $locationId was not found.',
+      );
     }
     if (itemId != null) {
       final item = await database.itemDao.getById(itemId);
       if (item == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Item $itemId was not found.',
+        );
       }
       if (!compendiumEntityTypes.contains(item.type)) {
         throw const StoryboardException('invalid_config');
@@ -730,13 +758,24 @@ class StoryboardService {
       await (database.update(
         database.productionClips,
       )..where((t) => t.id.equals(id))).write(companion);
+      final title = companion.title.value;
+      if (previous!.title != title) {
+        await database.canvasDao.updateReferenceTitles(
+          refType: canvasNodeRefTypeProductionClip,
+          refId: id,
+          title: title,
+        );
+      }
     }
   });
 
   Future<List<Map<String, dynamic>>> inputSnapshot(String clipId) async {
     final clip = await getShot(clipId);
     if (clip == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Clip $clipId was not found.',
+      );
     }
     return clip.inputs.map((input) => input.toJson()).toList();
   }
@@ -748,7 +787,10 @@ class StoryboardService {
     final values = inputs.map(ProductionInput.fromJson).toList();
     ProductionInput.validateList(values);
     if (await getShot(clipId) == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Clip $clipId was not found.',
+      );
     }
     final references = values
         .where((input) => input.sourceNodeId != null)
@@ -803,7 +845,10 @@ class StoryboardService {
   Future<void> setErrorDismissed(String clipId, bool dismissed) =>
       write('SET_ERROR_DISMISSED', clipId, () async {
         if (await getShot(clipId) == null) {
-          throw const StoryboardException('source_missing');
+          throw StoryboardException(
+            'source_missing',
+            'Clip $clipId was not found.',
+          );
         }
         await (database.update(database.productionClips)
               ..where((t) => t.id.equals(clipId)))
@@ -813,7 +858,7 @@ class StoryboardService {
   Future<void> softDelete(String id) => write('SOFT_DELETE', id, () async {
     final row = await getShot(id);
     if (row == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException('source_missing', 'Clip $id was not found.');
     }
     final nodes =
         await (database.select(database.canvasNodes)..where(

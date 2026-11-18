@@ -226,7 +226,15 @@ void main() {
       final args = runner.commands.single;
       expect(args[args.indexOf('-i') + 1], await source.resolveSymbolicLinks());
       expect(args.last, '${root.path}/media/out.png');
-      expect(args, containsAll(['-nostdin', '-protocol_whitelist', 'file']));
+      expect(
+        args,
+        containsAll([
+          '-nostdin',
+          '-hide_banner',
+          '-protocol_whitelist',
+          'file',
+        ]),
+      );
       expect(args, isNot(contains('-n')));
       expect(
         await File('${root.path}/media/out.png').readAsString(),
@@ -327,7 +335,7 @@ void main() {
   });
 
   test(
-    'long logs explicitly report truncation and preserve the final diagnostic',
+    'long failure logs report truncation and preserve the final diagnostic',
     () async {
       runner.result = FfmpegExecutionResult(
         exitCode: 1,
@@ -335,10 +343,30 @@ void main() {
       );
       final result = await run();
       expect(result['log_truncated'], true);
-      expect((result['log'] as String).length, 65536);
+      expect((result['log'] as String).length, 16384);
       expect(result['log'], endsWith('last error'));
     },
   );
+
+  test('successful runs keep only the closing summary of the log', () async {
+    runner.result = FfmpegExecutionResult(
+      exitCode: 0,
+      output: '${'Stream #0:0 mapping\n' * 2000}video:109kB audio:0kB',
+    );
+    final result = await run();
+    expect(result['ok'], true);
+    expect(result['log_truncated'], true);
+    expect((result['log'] as String).length, 2048);
+    expect(result['log'], endsWith('video:109kB audio:0kB'));
+  });
+
+  test('does not repeat -hide_banner when the caller passes it', () async {
+    await run(['-hide_banner', '-i', source.path, 'media/out.png']);
+    expect(
+      runner.commands.single.where((arg) => arg == '-hide_banner'),
+      hasLength(1),
+    );
+  });
 
   test(
     'refuses overwriting existing targets and output path escapes',

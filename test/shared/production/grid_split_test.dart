@@ -259,6 +259,7 @@ class _Library extends MediaLibraryService {
     String? batchId,
     String? prompt,
     String? model,
+    void Function(double progress)? onProgress,
   }) {
     if (source == 'grid_split' && ++crops == 2 && fail) {
       throw StateError('registration failed');
@@ -274,6 +275,7 @@ class _Library extends MediaLibraryService {
       batchId: batchId,
       prompt: prompt,
       model: model,
+      onProgress: onProgress,
     );
   }
 }

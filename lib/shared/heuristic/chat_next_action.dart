@@ -162,7 +162,10 @@ abstract final class ChatNextActionArbiter {
   ///
   /// 只做形状与白名单校验，不按作品状态动态过滤目标。丢弃不回传模型
   /// （见方案 5.1「返回值最小化」），调用方按 [ChatNextActionDrop] 写 warn 日志即可。
-  static ChatNextActionJudgement judge(List<dynamic> raw) {
+  static ChatNextActionJudgement judge(
+    List<dynamic> raw, {
+    bool allowFeatures = true,
+  }) {
     final actions = <ChatNextAction>[];
     final drops = <ChatNextActionDrop>[];
 
@@ -204,6 +207,10 @@ abstract final class ChatNextActionArbiter {
             ),
           );
         case 'feature':
+          if (!allowFeatures) {
+            drops.add((index: index, reason: 'feature_navigation_unavailable'));
+            continue;
+          }
           final featureKey = _string(map['feature']);
           final feature = FeatureIdX.fromStorageKey(featureKey);
           if (feature == null ||

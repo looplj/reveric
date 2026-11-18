@@ -823,7 +823,7 @@ mixin _AiToolManagerWriteMixin
         error.code == 'source_missing'
             ? ToolErrorCode.not_found
             : ToolErrorCode.invalid_argument,
-        'Invalid character media binding: ${error.code}',
+        'Invalid character media binding: ${error.reason}',
       );
     } on MediaException catch (error) {
       return _resourceError(

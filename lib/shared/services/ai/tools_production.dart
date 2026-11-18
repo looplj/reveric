@@ -248,6 +248,11 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
       };
     }
 
+    // Mutation results leave out text the caller just wrote.
+    Future<Map<String, dynamic>> nodeSummary(String id) async =>
+        (await nodeData((await db.canvasDao.getNodeById(id))!))
+          ..remove('content');
+
     Map<String, dynamic> edgeData(ProductionConnection edge) => {
       'id': edge.id,
       'source_node_id': edge.sourceNodeId,
@@ -509,11 +514,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
             throw const StoryboardException('invalid_config');
           }
           await position(node, fields);
-          return {
-            'ok': true,
-            'created': true,
-            ...await nodeData((await db.canvasDao.getNodeById(node.id))!),
-          };
+          return {'ok': true, 'created': true, ...await nodeSummary(node.id)};
         }
         final node = await requireNode(parsed.locator('node_id')!);
         if (edit != null) {
@@ -542,7 +543,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
             'updated': replaced.changed,
             'edited': replaced.changed,
             'match_count': replaced.matchCount,
-            ...await nodeData((await db.canvasDao.getNodeById(node.id))!),
+            ...await nodeSummary(node.id),
           };
         }
         if (tool == _ResourceTool.remove) {
@@ -586,11 +587,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           );
         }
         await position(node, fields);
-        return {
-          'ok': true,
-          'updated': true,
-          ...await nodeData((await db.canvasDao.getNodeById(node.id))!),
-        };
+        return {'ok': true, 'updated': true, ...await nodeSummary(node.id)};
       });
     } on ToolOperationException catch (error) {
       return {'ok': false, 'error_code': error.code, 'error': error.message};
@@ -600,7 +597,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
         error.code == 'source_missing'
             ? ToolErrorCode.not_found
             : ToolErrorCode.invalid_argument,
-        'Invalid production canvas operation: ${error.code}',
+        'Invalid production canvas operation: ${error.reason}',
       );
     } on DocumentError catch (error) {
       return _resourceError(

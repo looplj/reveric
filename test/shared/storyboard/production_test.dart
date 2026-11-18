@@ -686,8 +686,11 @@ void main() {
       );
       expect(image['error_code'], isNull, reason: '$image');
       expect(image['kind'], 'image');
-      expect(image['ratio'], '1:1');
-      expect(image['resolution'], '1K');
+      final imageSnapshot = service.snapshot(
+        (await service.getShot(image['id'] as String))!,
+      );
+      expect(imageSnapshot['ratio'], '1:1');
+      expect(imageSnapshot['resolution'], '1K');
       final copied = await edits.copy(
         service: service,
         overlay: overlay,

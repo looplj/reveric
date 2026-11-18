@@ -40,7 +40,7 @@ class ProductionImageCommands {
     } on StoryboardException catch (error) {
       throw ToolOperationException(
         error.code == 'request_conflict' ? 'conflict' : 'failed_precondition',
-        'StoryboardException(${error.code})',
+        'StoryboardException(${error.reason})',
       );
     } on MediaException catch (error) {
       throw ToolOperationException(
@@ -219,7 +219,7 @@ class ProductionImageCommands {
       } on StoryboardException catch (error) {
         throw ToolOperationException(
           'failed_precondition',
-          'The source image is unavailable: StoryboardException(${error.code})',
+          'The source image is unavailable: ${error.reason}',
         );
       }
     }

@@ -1,4 +1,4 @@
-// 职责: 内置 demo 剧本的固定种子数据 — 集纲、人物、地点、设定、节拍与正文元素
+// 职责: 内置 demo 剧本的固定种子数据 — 集纲、人物、地点、设定与正文元素
 // 关联文件:
 //   lib/shared/services/initialization/demo_screenplay.dart
 //   lib/shared/models/screenplay_element.dart
@@ -101,21 +101,6 @@ class DemoScreenplayEpisodeSeed {
   final String outline;
 }
 
-class DemoScreenplayBeatSeed {
-  const DemoScreenplayBeatSeed({
-    required this.key,
-    required this.episodeNumber,
-    required this.actNumber,
-    required this.title,
-    required this.description,
-  });
-  final String key;
-  final int episodeNumber;
-  final int actNumber;
-  final String title;
-  final String description;
-}
-
 class DemoScreenplayElementSeed {
   const DemoScreenplayElementSeed({
     required this.type,
@@ -141,7 +126,6 @@ class DemoScreenplaySceneSeed {
     required this.title,
     required this.synopsis,
     required this.stage,
-    required this.beatKey,
     required this.emotion,
     required this.events,
     required this.elements,
@@ -150,7 +134,6 @@ class DemoScreenplaySceneSeed {
   final String title;
   final String synopsis;
   final String stage;
-  final String? beatKey;
   final List<String> emotion;
   final List<Map<String, String>> events;
   final List<DemoScreenplayElementSeed> elements;
@@ -395,100 +378,12 @@ const demoScreenplayEpisodes = <DemoScreenplayEpisodeSeed>[
   ),
 ];
 
-const demoScreenplayBeats = <DemoScreenplayBeatSeed>[
-  DemoScreenplayBeatSeed(
-    key: "e1_b1",
-    episodeNumber: 1,
-    actNumber: 1,
-    title: "发现旧件",
-    description: "铭牌与清点表上的设备年份冲突，许知夏要求查看采购原卷。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e1_b2",
-    episodeNumber: 1,
-    actNumber: 2,
-    title: "证人松口",
-    description: "罗一舟阻止销毁铭牌，指出报废清单的年份，却不肯说明自己如何知道。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e2_b1",
-    episodeNumber: 2,
-    actNumber: 1,
-    title: "编号重合",
-    description: "报废清单与新购发票出现相同编号，设备来源有了可核查的矛盾。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e2_b2",
-    episodeNumber: 2,
-    actNumber: 2,
-    title: "缺页有人留",
-    description: "罗一舟承认保存底联，决定带许知夏到修船棚交接。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e3_b1",
-    episodeNumber: 3,
-    actNumber: 1,
-    title: "纸上的指令",
-    description: "底联补上未试水与强令出航的记录，许知夏保留完整原件。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e3_b2",
-    episodeNumber: 3,
-    actNumber: 2,
-    title: "物证不能代人开口",
-    description: "机舱装置与口述吻合，但罗一舟害怕承担失实签字的后果，拒绝署名。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e4_b1",
-    episodeNumber: 4,
-    actNumber: 1,
-    title: "赔偿换原件",
-    description: "梁峥的收据要求交还原件并确认旧记录无误，许知夏拒绝签字。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e4_b2",
-    episodeNumber: 4,
-    actNumber: 2,
-    title: "署名与期限",
-    description: "罗一舟承担自己的签字责任，材料获签收；拖航提前到当日傍晚，机舱现场面临消失。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e5_b1",
-    episodeNumber: 5,
-    actNumber: 1,
-    title: "现场进水",
-    description: "涨潮浸入旧船，罗一舟为护住装置进入机舱，旧腿伤使他无法及时爬回。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e5_b2",
-    episodeNumber: 5,
-    actNumber: 2,
-    title: "先救活人",
-    description: "许知夏放弃冒险搬动证物，救出罗一舟；检查人员赶到并暂停拖航，现场获记录。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e6_b1",
-    episodeNumber: 6,
-    actNumber: 1,
-    title: "记录更正",
-    description: "核查确认旧泵未经完整试水仍出航，许成在舱内抢修，梁峥暂停调度权限。",
-  ),
-  DemoScreenplayBeatSeed(
-    key: "e6_b2",
-    episodeNumber: 6,
-    actNumber: 2,
-    title: "船走人留下",
-    description: "许知夏面对罗一舟的道歉保留距离，在送别旧船后回到修船棚。",
-  ),
-];
-
 const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
   DemoScreenplaySceneSeed(
     episodeNumber: 1,
     title: "封存柜",
     synopsis: "许知夏发现铭牌被磨过，留下原件与发现位置的照片。",
     stage: "draft",
-    beatKey: "e1_b1",
     emotion: ["疑惑"],
     events: [
       {
@@ -595,7 +490,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "交接日程",
     synopsis: "梁峥要求按时交船，试图用加班费换回铭牌。",
     stage: "draft",
-    beatKey: "e1_b1",
     emotion: ["压迫"],
     events: [
       {
@@ -711,7 +605,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "护栏旁",
     synopsis: "罗一舟给出报废清单线索，许知夏意识到他一直知道旧件来历。",
     stage: "draft",
-    beatKey: "e1_b2",
     emotion: ["试探"],
     events: [
       {
@@ -854,7 +747,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "两本账",
     synopsis: "孟遥找到同号记录，按流程保留核查副本。",
     stage: "draft",
-    beatKey: "e2_b1",
     emotion: ["专注"],
     events: [
       {
@@ -961,7 +853,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "被抽走的一页",
     synopsis: "梁峥阻止继续查阅，孟遥记录缺页而未接受口头销毁说明。",
     stage: "draft",
-    beatKey: "e2_b1",
     emotion: ["紧张"],
     events: [
       {
@@ -1077,7 +968,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "签过字的人",
     synopsis: "罗一舟承认失实签字，并答应交出复写底联。",
     stage: "draft",
-    beatKey: "e2_b2",
     emotion: ["愧疚"],
     events: [
       {
@@ -1229,7 +1119,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "没有裁掉的签名",
     synopsis: "许知夏接收底联，拒绝裁掉罗一舟的签名。",
     stage: "draft",
-    beatKey: "e3_b1",
     emotion: ["克制"],
     events: [
       {
@@ -1354,7 +1243,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "舱底的绳结",
     synopsis: "临时排水装置仍在，罗一舟说明许成抢修时的行动。",
     stage: "draft",
-    beatKey: "e3_b1",
     emotion: ["悲伤"],
     events: [
       {
@@ -1470,7 +1358,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "空着的落款",
     synopsis: "罗一舟拒绝在口述记录上签名，许知夏决定先提交已有证据。",
     stage: "draft",
-    beatKey: "e3_b2",
     emotion: ["失望"],
     events: [
       {
@@ -1577,7 +1464,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "交接清单",
     synopsis: "孟遥完成证物目录，说明仍需保全机舱现场。",
     stage: "draft",
-    beatKey: "e4_b1",
     emotion: ["审慎"],
     events: [
       {
@@ -1675,7 +1561,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "附条件的钱",
     synopsis: "许知夏拒绝用原件和失实确认换取赔偿。",
     stage: "draft",
-    beatKey: "e4_b1",
     emotion: ["对抗"],
     events: [
       {
@@ -1791,7 +1676,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "签收之后",
     synopsis: "证据获正式签收，罗一舟补签证词，众人得知拖航提前。",
     stage: "draft",
-    beatKey: "e4_b2",
     emotion: ["紧迫"],
     events: [
       {
@@ -1898,7 +1782,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "提前到来的拖船",
     synopsis: "众人守候检查人员，罗一舟发现机舱水位异常。",
     stage: "draft",
-    beatKey: "e5_b1",
     emotion: ["焦灼"],
     events: [
       {
@@ -2005,7 +1888,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "不要碰那根管",
     synopsis: "许知夏救出受困船长，保持物证原位。",
     stage: "draft",
-    beatKey: "e5_b1",
     emotion: ["惊险"],
     events: [
       {
@@ -2112,7 +1994,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "停航通知",
     synopsis: "拖航暂停，检查人员记录原位装置并接收船长现场指认。",
     stage: "draft",
-    beatKey: "e5_b2",
     emotion: ["释然"],
     events: [
       {
@@ -2210,7 +2091,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "逐页核对",
     synopsis: "核查结果更正许成岗位记录，相关责任继续调查。",
     stage: "draft",
-    beatKey: "e6_b1",
     emotion: ["郑重"],
     events: [
       {
@@ -2317,7 +2197,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "没有答应的原谅",
     synopsis: "罗一舟道歉，许知夏要求他继续如实配合，未承诺原谅。",
     stage: "draft",
-    beatKey: "e6_b1",
     emotion: ["复杂"],
     events: [
       {
@@ -2442,7 +2321,6 @@ const demoScreenplayScenes = <DemoScreenplaySceneSeed>[
     title: "新的修理单",
     synopsis: "旧船离港，许知夏留下折尺继续修船，故事收束。",
     stage: "draft",
-    beatKey: "e6_b2",
     emotion: ["平静"],
     events: [
       {

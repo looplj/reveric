@@ -301,6 +301,7 @@ class _ActiveOperation {
   final ToolOperationRecord record;
   final cancellation = AgentCancellationController();
   final done = Completer<Map<String, dynamic>>();
+  final waiters = <Completer<Map<String, dynamic>>>{};
   bool mayNotify = true;
   Timer? cancelTimer;
   void Function()? unlinkParent;
@@ -326,6 +327,7 @@ class ToolOperationManager {
   final _active = <String, _ActiveOperation>{};
   final _records = <String, ToolOperationRecord>{};
   final _pending = <String, ToolOperationCompletion>{};
+
   bool _disposed = false;
   bool _mutating = false;
 
@@ -622,20 +624,37 @@ class ToolOperationManager {
             'completed_result': record.result,
           };
         }
-        _active.remove(record.runId);
+        ToolOperationCompletion? completion;
         if (!_disposed &&
             active.mayNotify &&
+            !active.waiters.any((waiter) => !waiter.isCompleted) &&
             record.status != ToolOperationStatus.cancelled) {
-          final completion = ToolOperationCompletion(record);
+          completion = ToolOperationCompletion(record);
           if (record.result != null) {
             completion.modelImages = (await assembleToolResultContent(
               record.result!,
             )).whereType<ImageBlock>().toList();
           }
+        }
+        // A wait can arrive while images are loading. Deliver the final
+        // response or queue its reminder in one synchronous step.
+        final response = record.response();
+        var delivered = false;
+        for (final waiter in active.waiters) {
+          if (!waiter.isCompleted) {
+            waiter.complete(response);
+            delivered = true;
+          }
+        }
+        if (!delivered &&
+            completion != null &&
+            !_disposed &&
+            active.mayNotify) {
           _pending[record.runId] = completion;
         }
+        _active.remove(record.runId);
         _publish(record);
-        active.done.complete(record.response());
+        active.done.complete(response);
       }),
     );
     return background ? Future.value(record.response()) : active.done.future;
@@ -684,10 +703,18 @@ class ToolOperationManager {
     if (timeoutMs < 1 || timeoutMs > 60000) {
       throw const FormatException('timeout_ms must be between 1 and 60000.');
     }
-    if (record.terminal && !_active.containsKey(id)) {
+    final active = _active[id];
+    if (record.terminal && active == null) {
+      if (_pending.remove(id) != null) {
+        _publish();
+      }
       return record.response();
     }
+    if (record.status == ToolOperationStatus.waiting_approval) {
+      return _awaitingApproval(record);
+    }
     final done = Completer<Map<String, dynamic>>();
+    active!.waiters.add(done);
     final timer = Timer(Duration(milliseconds: timeoutMs), () {
       if (!done.isCompleted) {
         done.complete({...record.response(), 'timed_out': true});
@@ -698,13 +725,34 @@ class ToolOperationManager {
         done.complete({'ok': false, 'cancelled': true, 'run_id': id});
       }
     });
+    // Waiting cannot advance an approval; only the user can.
+    final approval = registry.changes
+        .where(
+          (r) =>
+              r.runId == id && r.status == ToolOperationStatus.waiting_approval,
+        )
+        .listen((r) {
+          if (!done.isCompleted) {
+            done.complete(_awaitingApproval(r));
+          }
+        });
     try {
-      return await Future.any([_active[id]!.done.future, done.future]);
+      return await done.future;
     } finally {
+      active.waiters.remove(done);
       timer.cancel();
       unlink?.call();
+      await approval.cancel();
     }
   }
+
+  Map<String, dynamic> _awaitingApproval(ToolOperationRecord record) => {
+    ...record.response(),
+    'hint':
+        'The operation is waiting for the user to approve it in the app. '
+        'Ask the user to respond, then use Run operations wait with '
+        'run_id="${record.runId}" again.',
+  };
 
   Map<String, dynamic> cancel(String id, ToolExecutionContext context) {
     final record = _require(id, context);

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/ai_session_mode.dart';
+import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
 import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
@@ -79,6 +80,31 @@ void main() {
       );
     });
 
+    test('画布与小说下发相同的工具定义，画布只保留提示词建议', () async {
+      List<Map<String, dynamic>>? received;
+      final manager = _buildManager(
+        contentKind: contentKindCanvas,
+        onSuggest: (_, items) => received = items,
+      );
+      final def = manager.allToolDefs().singleWhere(
+        (t) => t.name == suggestNextActionToolName,
+      );
+      final novelDef = _buildManager(
+        onSuggest: (_, _) {},
+      ).allToolDefs().singleWhere((t) => t.name == suggestNextActionToolName);
+      expect(def.inputSchema, equals(novelDef.inputSchema));
+      expect(def.description, novelDef.description);
+      await manager.executeTool(
+        name: suggestNextActionToolName,
+        input: {
+          'suggestions': [
+            {'kind': 'feature', 'feature': 'ai_council', 'label': '圆桌'},
+            {'kind': 'prompt', 'label': '核对首尾帧', 'prompt': '核对上下段首尾帧'},
+          ],
+        },
+      );
+      expect(received!.single['prompt'], '核对上下段首尾帧');
+    });
     test('feature 枚举固定包含封面工作台', () {
       final manager = _buildManager(onSuggest: (_, _) {});
 
@@ -214,7 +240,10 @@ void main() {
   });
 }
 
-AiToolManager _buildManager({SuggestNextActionCallback? onSuggest}) {
+AiToolManager _buildManager({
+  SuggestNextActionCallback? onSuggest,
+  String contentKind = contentKindNovel,
+}) {
   final db = NovelContentDatabase.forTest(NativeDatabase.memory());
   final appDb = AppDatabase.forTest(NativeDatabase.memory());
   final contentService = NovelContentService(db);
@@ -230,5 +259,6 @@ AiToolManager _buildManager({SuggestNextActionCallback? onSuggest}) {
       novelActionsService: NovelActionsService(appDb),
     ),
     suggestNextActionCallback: onSuggest,
+    contentKind: contentKind,
   )..registerAllTools();
 }

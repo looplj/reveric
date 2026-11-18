@@ -528,6 +528,31 @@ void main() {
     },
   );
 
+  test('renaming a clip also updates the stored canvas node title', () async {
+    final clip = await call('Create', 'production/clips', {
+      'kind': 'image',
+      'title': 'Old',
+    });
+    expect(clip['ok'], true, reason: '$clip');
+    final node = await call('Create', 'production/canvas/nodes', {
+      'type': 'image',
+      'ref_id': clip['id'],
+    });
+    expect(node['ok'], true, reason: '$node');
+    final renamed = await call('Write', 'production/clips/${clip['id']}', {
+      'title': 'New',
+    });
+    expect(renamed['ok'], true, reason: '$renamed');
+    expect(
+      (await db.canvasDao.getNodeById(node['id'] as String))!.title,
+      'New',
+    );
+    expect(
+      (await call('Read', 'production/canvas/nodes/${node['id']}'))['title'],
+      'New',
+    );
+  });
+
   test('canvas characters bind image nodes and voice inputs', () async {
     final temp = await Directory(
       '${root.path}/file_workspaces/work',
@@ -572,7 +597,13 @@ void main() {
         'character_id': id,
       });
       expect(image['ok'], true, reason: '$image');
-      expect(image['character_id'], id);
+      expect(
+        (await call(
+          'Read',
+          'production/clips/${image['id']}/character_id',
+        ))['value'],
+        id,
+      );
       final node = await call('Create', 'production/canvas/nodes', {
         'type': 'image',
         'ref_id': image['id'],
@@ -780,6 +811,10 @@ void main() {
       }
       expect((await run('help', '', {}))['output'], contains('画布作品工具'));
       expect((await run('help', 'editing', {}))['output'], contains('媒体处理与剪辑'));
+      expect(
+        (await run('production', 'models', {}))['output'],
+        contains('Run providers models provider_id='),
+      );
     },
   );
 

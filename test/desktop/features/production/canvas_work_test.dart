@@ -4,6 +4,8 @@
 //   lib/desktop/features/production/region.dart
 //   lib/desktop/features/editing/canvas_shell.dart
 import 'dart:io';
+import 'package:reveric/shared/models/ai_chat_models.dart'
+    show AiMessage, AiSuggestNextActionBlock;
 import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/gestures.dart';
@@ -128,7 +130,7 @@ void main() {
     );
     await tester.tap(find.byTooltip('Add node'));
     await tester.pumpAndSettle();
-    expect(find.text('Character'), findsNothing);
+    expect(find.text('Character'), findsOneWidget);
     expect(find.text('Text'), findsOneWidget);
     await tester.tap(find.text('Text'));
     await tester.pumpAndSettle();
@@ -295,7 +297,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(RevericDialog),
-        matching: find.byType(RevericMarkdownPreview),
+        matching: find.byType(RevericMarkdownEditor),
       ),
       findsOneWidget,
     );
@@ -438,6 +440,105 @@ void main() {
       await db.close();
       await app.close();
     },
+  );
+
+  testWidgets(
+    'canvas chat offers an editable next step without feature navigation',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final app = AppDatabase.forTest(NativeDatabase.memory());
+      // Configure a local test endpoint so the real composer is available; never submit.
+      await app
+          .into(app.aiProviders)
+          .insert(
+            AiProvidersCompanion.insert(
+              id: 'test',
+              name: 'Test',
+              type: 'openai',
+              enabled: const Value(true),
+              apiKey: const Value('test-only'),
+              baseUrl: const Value('http://127.0.0.1:9'),
+              models: const Value(['test-model']),
+            ),
+          );
+
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      await ScreenplayService(db).createCanvasStructure();
+      await app.novelDao.create(
+        id: 'canvas',
+        title: 'Canvas',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: db.filePath,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDatabaseProvider.overrideWithValue(app),
+            appSettingsDatabaseProvider.overrideWithValue(app),
+            novelContentDatabaseProvider(db.filePath).overrideWithValue(db),
+          ],
+          child: directorTestApp(
+            const WorkspaceEditorPage(novelId: 'canvas', openChatOnEntry: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final panel = tester.widget<AiChatPanel>(find.byType(AiChatPanel));
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(CanvasWorkPage)),
+      );
+      container
+          .read(aiChatSessionProvider(panel.activeSessionId).notifier)
+          .replaceMessages([
+            AiMessage.user(id: 'u', content: '检查分镜'),
+            AiMessage.assistant(
+              id: 'a',
+              content: '检查完毕。',
+              blocks: const [
+                AiSuggestNextActionBlock(
+                  id: 'suggest',
+                  callId: 'call',
+                  suggestions: [
+                    {
+                      'id': 'step',
+                      'kind': 'prompt',
+                      'label': '核对接缝',
+                      'prompt': '检查上下段首尾帧',
+                    },
+                    {
+                      'id': 'jump',
+                      'kind': 'feature',
+                      'feature': 'ai_council',
+                      'label': '前往圆桌',
+                    },
+                  ],
+                ),
+              ],
+            ),
+          ]);
+      await tester.pumpAndSettle();
+      expect(find.text('前往圆桌'), findsNothing);
+      await tester.tap(find.text('核对接缝'));
+      await tester.pump();
+      final controller = tester
+          .widget<ChatAttachmentInput>(find.byType(ChatAttachmentInput))
+          .controller;
+      expect(controller.text, '检查上下段首尾帧');
+      expect(
+        container.read(aiChatSessionProvider(panel.activeSessionId)).messages,
+        hasLength(2),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await db.close();
+        await app.close();
+      });
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
   );
 
   for (final platform in [TargetPlatform.macOS, TargetPlatform.windows]) {

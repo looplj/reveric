@@ -780,7 +780,10 @@ void main() {
       'media operation completion is persisted once and cannot restart after consumption',
       () async {
         final requestId = runtime.startRequest();
-        final receipt = await runtime.operations.start(
+        final queued = runtime.operations.registry.changes.firstWhere(
+          (_) => runtime.operations.state.pending.isNotEmpty,
+        );
+        await runtime.operations.start(
           context: ToolExecutionContext(
             sessionId: 'parent',
             sourceTurnId: 'origin',
@@ -797,10 +800,7 @@ void main() {
             'files': ['preview.mp4'],
           },
         );
-        await runtime.operations.wait(
-          receipt['run_id'] as String,
-          ToolExecutionContext(sessionId: 'parent'),
-        );
+        await queued;
         final notice = runtime.operations.state.pending.single;
         final client = FakeProviderClient();
         runtime.agent = FakeAgent.create(client: client);
