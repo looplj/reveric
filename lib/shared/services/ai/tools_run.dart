@@ -865,8 +865,10 @@ mixin _AiToolManagerRunMixin
             'file_unavailable',
             error.toString(),
             hint:
-                'Use Run files list to find the exact input path, then retry. '
-                'Do not construct filenames from asset IDs.',
+                'Relative paths resolve from the work files directory; use Run '
+                'files list to find the exact path. Absolute paths must exist on '
+                'this device. Omit drawtext fontfile to use the built-in CJK '
+                'font. Do not construct filenames from asset IDs.',
           );
         } on UnsupportedError {
           throw const ToolOperationException(

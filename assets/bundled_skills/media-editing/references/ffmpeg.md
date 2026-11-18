@@ -75,7 +75,7 @@ execute 必须提供已有文件、图片序列或 concat 清单作为输入。�
 
 concat 列表通过 -f concat -i list.txt 输入。绝对路径或不符合 FFmpeg 安全文件名规则的条目需要显式指定 -safe 0。清单只支持 file、duration、inpoint、outpoint；file 相对路径按清单所在目录解析。清单内不接受网络、嵌套播放列表或自定义 option 指令。所有文件都必须可读取；同规格无损拼接可用 -c copy，需要滤镜变换时使用 concat 滤镜。
 
-字幕烧录使用 subtitles / ass 的 filename（或 f），文字水印使用 drawtext 的 text、textfile、fontfile；LUT 使用 lut3d / lut1d 的 file，曲线文件使用 curves 的 psfile。依赖的相对路径从当前作品文件目录解析，不相对视频目录猜测；字体、字幕、附件、序列和 concat 子文件都计入读取授权，清单中新发现的作品外文件可能需要再次审批。不支持 fontsdir 目录加载及 curves 的 plot 文件输出。滤镜仍使用 FFmpeg 自身的两层转义语法：JSON 字符串转义之外，冒号、引号、反斜杠等还需按滤镜语法转义，Windows 盘符尤其如此。
+字幕烧录使用 subtitles / ass 的 filename（或 f），文字水印使用 drawtext 的 text、textfile、fontfile；LUT 使用 lut3d / lut1d 的 file，曲线文件使用 curves 的 psfile。drawtext 省略 fontfile 时自动使用应用内置的中文字体（霞鹜文楷），中英文都能显示，不要猜测系统字体路径；确需其他字体时，fontfile 只填已确认存在的文件。依赖的相对路径从当前作品文件目录解析，不相对视频目录猜测；字体、字幕、附件、序列和 concat 子文件都计入读取授权，清单中新发现的作品外文件可能需要再次审批。不支持 fontsdir 目录加载及 curves 的 plot 文件输出。滤镜仍使用 FFmpeg 自身的两层转义语法：JSON 字符串转义之外，冒号、引号、反斜杠等还需按滤镜语法转义，Windows 盘符尤其如此。
 
 ```json
 {"command":"ffmpeg","subcommand":"execute","options":{"args":["-i","{file_path}","-vf","subtitles=filename=files/captions.srt","-c:v","libx264","captioned.mp4"]}}

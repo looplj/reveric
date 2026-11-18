@@ -7,6 +7,7 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import '../../../models/tool_permission.dart';
+import '../../production/bundled_font.dart';
 import '../../production/ffmpeg_runner.dart';
 import '../files/session_files.dart';
 import '../files/command_paths.dart';
@@ -390,11 +391,14 @@ class FfmpegInputs {
         actual[entry.key] = input.path;
       }
     }
+    final font = parsed.graphs.values.any((graph) => graph.usesDefaultFont)
+        ? await bundledFontFile()
+        : null;
     for (final graph in parsed.graphs.entries) {
       actual[graph.key] = graph.value.rewrite({
         for (final path in graph.value.dependencies)
           path: identities[path]!.resolved,
-      });
+      }, defaultFont: font);
     }
     for (final entry in parsed.fileInputs.entries) {
       actual[entry.key] = identities[entry.value]!.resolved;

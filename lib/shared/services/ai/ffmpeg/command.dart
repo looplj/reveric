@@ -219,6 +219,7 @@ class FfmpegCommand {
         for (final filter in ffmpegFilterFileOptions.entries)
           for (final option in filter.value) '${filter.key}:$option',
       ],
+      'drawtext_default_font': 'built-in CJK font when fontfile is omitted',
       'concat_input': true,
       'generated_inputs': false,
       'null_output': true,

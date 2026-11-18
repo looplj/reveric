@@ -333,6 +333,24 @@ void main() {
       );
 
       test(
+        'drawtext without fontfile burns CJK text with the bundled font',
+        () async {
+          final input = await source();
+          final result = await run([
+            '-i',
+            input,
+            '-vf',
+            "drawtext=text='她还没变异呢，还是人':fontsize=24:fontcolor=white:x=4:y=4",
+            '-frames:v',
+            '1',
+            'titled.png',
+          ]);
+          expect(result['ok'], true);
+          expect(await (await output('titled.png')).length(), greaterThan(0));
+        },
+      );
+
+      test(
         'sequence retries after files cleanup while unrelated old numbers remain intact',
         () async {
           final input = await source();

@@ -343,7 +343,10 @@ void main() {
       final text = 'drawtext=text=${ffmpegFilterValue(literal)}';
       final graph = FfmpegFilterGraph(text);
       expect(graph.dependencies, isEmpty);
-      expect(graph.rewrite({}), text);
+      expect(
+        graph.rewrite({}, defaultFont: '/fonts/a.ttf'),
+        'drawtext=fontfile=/fonts/a.ttf:text=${ffmpegFilterValue(literal)}',
+      );
       expect(
         FfmpegFilterGraph('subtitles=/outside/subtitle.srt').dependencies,
         {'/outside/subtitle.srt'},
@@ -569,6 +572,44 @@ void main() {
       );
     },
   );
+  test('drawtext without fontfile resolves to the bundled font', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await File('${root.path}/in.mp4').writeAsString('data');
+    await File('${root.path}/font.ttf').writeAsString('font');
+    final parsed = parse([
+      '-i',
+      'in.mp4',
+      '-vf',
+      "drawtext=text='标题，测试':x=10,drawtext=fontfile=font.ttf:text=B,scale=2:2",
+      'out.mp4',
+    ]);
+    var approvals = 0;
+    final plan = await FfmpegCommand(files, FfmpegRunner()).inspect(
+      parsed,
+      authorizeExternal: (_) async {
+        approvals++;
+      },
+    );
+    expect(approvals, 0);
+    final actual = parsed.args.toList();
+    await plan.resolveArguments('session', actual, MediaCancellation());
+    final segments = ffmpegSplit(actual[3], ',;');
+    final graph = FfmpegFilterGraph(actual[3]);
+    final fonts = graph.dependencies.where((p) => p.endsWith('.ttf')).toList();
+    expect(fonts, hasLength(2));
+    final bundled = fonts.singleWhere((p) => !p.startsWith(root.path));
+    expect(bundled, endsWith('LXGWWenKai-Regular.ttf'));
+    expect(await File(bundled).length(), greaterThan(1000000));
+    expect(segments[0], startsWith('drawtext=fontfile='));
+    expect(segments[2], contains(ffmpegFilterValue('${root.path}/font.ttf')));
+    expect(segments[4], 'scale=2:2');
+    expect(graph.usesDefaultFont, isFalse);
+    expect(
+      () => FfmpegFilterGraph('drawtext=text=A').rewrite({}),
+      throwsStateError,
+    );
+  });
+
   test(
     'local concat, sequence, filters and attachments require no external approval',
     () async {
