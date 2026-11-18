@@ -16,6 +16,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:reveric/shared/agent/agent.dart';
 import 'package:reveric/shared/agent/agent_hook.dart';
 import 'package:reveric/shared/agent/agent_context_manager.dart';
@@ -25,6 +26,7 @@ import 'package:reveric/shared/agent/client/provider_history_preflight.dart';
 import 'package:reveric/shared/agent/fake_agent.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/database/app_database.dart';
+import 'package:reveric/shared/database/daos/todo_dao.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
@@ -33,11 +35,13 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/ai_session_mode.dart';
 import 'package:reveric/shared/models/novel_workspace.dart';
 import 'package:reveric/shared/models/subagent.dart';
+import 'package:reveric/shared/providers/agent_skill_providers.dart';
 import 'package:reveric/shared/providers/ai_mode_processing.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/providers/subagent_providers.dart';
+import 'package:reveric/shared/providers/todo_providers.dart';
 import 'package:reveric/shared/providers/trace_providers.dart';
 import 'package:reveric/shared/services/ai/chat_prompt_builder.dart';
 import 'package:reveric/shared/services/ai/chat_session_controller.dart';
@@ -183,6 +187,7 @@ ChatSessionController _buildController(
   String? databasePath,
   void Function(Agent agent)? onContextSettled,
   void Function(String)? onComposerWarning,
+  AiPromptService? aiPromptService,
 }) {
   return ChatSessionController(
     container: container,
@@ -206,7 +211,7 @@ ChatSessionController _buildController(
     store: store,
     promptBuilder: ChatPromptBuilder(),
     availableSubAgents: const [],
-    aiPromptService: AiPromptService(),
+    aiPromptService: aiPromptService ?? AiPromptService(),
     promptContext: const AiSessionContext(
       databasePath: null,
       novelName: 'Test Novel',
@@ -1849,7 +1854,7 @@ void main() {
     await fixture.processFuture;
   });
 
-  test('in-flight queue: defer, send now, clear, and staged remind', () async {
+  test('in-flight queue: defer, clear, and staged remind', () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -1963,51 +1968,7 @@ void main() {
     expect(stagedToolResultIndex, isNonNegative);
     expect(stagedRemindIndex, greaterThan(stagedToolResultIndex));
 
-    // 3) 立刻发送：stage queued_chat + remind，排在 tool_result 之后。
-    const sendNowSessionId = 'sess_send_queued_now';
-    final sendNowFixture = await _startInFlightToolTurn(
-      container,
-      sessionId: sendNowSessionId,
-    );
-    final sendNowStore = DefaultChatComposerStore();
-    final sendNowController = _buildController(
-      container,
-      sessionId: sendNowSessionId,
-      store: sendNowStore,
-    );
-
-    await sendNowController.send('queued request');
-    expect(sendNowStore.queuedMessage?.sendOnNextTurn, isFalse);
-    await sendNowController.sendQueuedMessageNow();
-    expect(sendNowStore.queuedMessage?.sendOnNextTurn, isTrue);
-
-    sendNowFixture.releaseTool.complete();
-    await sendNowFixture.processFuture;
-
-    expect(sendNowFixture.client.capturedStreamRequests, hasLength(2));
-    final sendNowSecondRequest =
-        sendNowFixture.client.capturedStreamRequests[1].messages;
-    expect(
-      () => preflightProviderHistory(
-        sendNowSecondRequest,
-        ProviderHistoryPolicy.openAiChat,
-      ),
-      returnsNormally,
-    );
-    final sendNowToolResultIndex = sendNowSecondRequest.indexWhere(
-      (message) => message.blocks.whereType<ToolResultBlock>().isNotEmpty,
-    );
-    final sendNowRemindIndex = sendNowSecondRequest.indexWhere(
-      (message) => message.content.contains('current_workspace_context'),
-    );
-    final sendNowQueuedIndex = sendNowSecondRequest.indexWhere(
-      (message) => message.id == 'queued_chat',
-    );
-    expect(sendNowToolResultIndex, isNonNegative);
-    expect(sendNowRemindIndex, greaterThan(sendNowToolResultIndex));
-    expect(sendNowQueuedIndex, greaterThan(sendNowRemindIndex));
-
-    // 4) 取消排队：unstage，并把文案 append 回输入框。
+    // 3) 取消排队：把文案 append 回输入框。
     const clearSessionId = 'sess_clear_queued';
     final clearFixture = await _startInFlightToolTurn(
       container,
@@ -2023,8 +1984,6 @@ void main() {
     );
 
     await clearController.send('queued request');
-    await clearController.sendQueuedMessageNow();
-    expect(clearStore.queuedMessage?.sendOnNextTurn, isTrue);
     clearController.clearQueuedMessage(restoreToComposer: true);
     expect(clearStore.queuedMessage, isNull);
     expect(restored, ['queued request']);
@@ -2631,6 +2590,162 @@ void main() {
         dispatcher.capturedCalls.single.context?.sourceSessionId,
         realSessionId,
       );
+    },
+  );
+
+  test(
+    'send now starts a new request while the old transport is blocked',
+    () async {
+      final fixture = SpawnAgentRuntimeFixture();
+      await fixture.initialize();
+      const databasePath = 'send-now.sqlite';
+      const sessionId = 'send-now';
+      const novelId = 'test_work';
+      final provider = _materializationProvider.copyWith(
+        type: 'openai_compatible',
+      );
+      await _seedMaterializationWork(fixture.appDb, novelId, databasePath);
+      await AiSessionPersistenceService(
+        fixture.appDb,
+        novelId,
+        novelContentDatabase: fixture.novelDb,
+      ).createActiveSession(
+        id: sessionId,
+        title: 'Send now',
+        provider: provider.id,
+        model: _materializationModel,
+        mode: 'chat',
+        agentSlug: 'orchestrator',
+      );
+      final outboxClient = MockClient((_) async => http.Response('', 200));
+      final outbox = AnonymousOutboxService(
+        database: fixture.appDb,
+        httpClient: outboxClient,
+        getBaseUrl: () => null,
+        getEnabled: () => false,
+        autoFlush: false,
+      );
+      final sentRequests = <String>[];
+      http.Client createClient() => MockClient((request) async {
+        if (!request.url.path.endsWith('/chat/completions')) {
+          return http.Response('{"data":[]}', 200);
+        }
+        sentRequests.add(request.body);
+        return http.Response(
+          'data: {"choices":[{"index":0,"delta":{"content":"New reply"}}]}\n\n'
+          'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+          'data: [DONE]\n\n',
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      });
+      final container = ProviderContainer(
+        overrides: [
+          appDatabaseProvider.overrideWithValue(fixture.appDb),
+          appSettingsDatabaseProvider.overrideWithValue(fixture.appDb),
+          novelContentDatabaseProvider(
+            databasePath,
+          ).overrideWithValue(fixture.novelDb),
+          agentSkillAppDatabaseProvider.overrideWithValue(fixture.appDb),
+          todoDaoProvider.overrideWith((ref) => TodoDao(fixture.appDb)),
+          aiSettingsProvider.overrideWithValue(
+            AiSettings(providers: [provider]),
+          ),
+          globalSubAgentsProvider.overrideWith(_EmptyGlobalSubAgents.new),
+          traceReporterServiceProvider.overrideWithValue(
+            TraceReporterService(
+              deviceIdService: _MaterializationDeviceIdService(),
+              outbox: outbox,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        outbox.dispose();
+        outboxClient.close();
+        await fixture.dispose();
+      });
+
+      final session = aiChatSessionProvider(sessionId);
+      container.listen(session, (_, _) {});
+      container.read(session.notifier)
+        ..startNewSession(
+          sessionId: sessionId,
+          providerId: provider.id,
+          model: _materializationModel,
+          sessionMode: AiSessionMode.chat,
+          agentSlug: 'orchestrator',
+        )
+        ..addUserMessage('Previous turn');
+      container
+          .read(aiModeProcessingTrackerProvider.notifier)
+          .setForegroundSession(
+            mode: AiSessionMode.chat,
+            sessionId: sessionId,
+            foreground: true,
+          );
+
+      final oldRequestStarted = Completer<void>();
+      final oldResponse = Completer<FakeProviderClientResponse>();
+      final oldClient = FakeProviderClient(
+        responder: (_) {
+          if (!oldRequestStarted.isCompleted) {
+            oldRequestStarted.complete();
+            return oldResponse.future;
+          }
+          return const FakeProviderClientResponse.text('Late reply');
+        },
+      );
+      final runtime = container.read(aiChatRuntimeProvider(sessionId).notifier);
+      runtime.agent = FakeAgent.create(client: oldClient);
+      final store = DefaultChatComposerStore();
+      var composerClears = 0;
+      final controller = _buildController(
+        container,
+        sessionId: sessionId,
+        store: store,
+        clearComposer: () => composerClears++,
+        databasePath: databasePath,
+        aiPromptService: AiPromptService.fromInitializedTemplates(),
+      );
+
+      final initialTurn = http.runWithClient(
+        () => controller.send('Initial request'),
+        createClient,
+      );
+      try {
+        await oldRequestStarted.future.timeout(const Duration(seconds: 5));
+        await controller.send('Queued request');
+        expect(store.queuedMessage?.text, 'Queued request');
+        const draftHandoff = PendingChatHandoff(
+          label: 'Draft handoff',
+          content: 'Unsent draft context',
+        );
+        store.pendingHandoff = draftHandoff;
+
+        await controller.sendQueuedMessageNow();
+        expect(oldClient.cancelCallCount, 1);
+        await initialTurn.timeout(const Duration(seconds: 5));
+
+        expect(oldClient.streamCallCount, 1);
+        expect(oldResponse.isCompleted, isFalse);
+        expect(sentRequests.single, contains('Queued request'));
+        expect(store.queuedMessage, isNull);
+        expect(store.pendingHandoff, same(draftHandoff));
+        expect(composerClears, 2);
+        final messages = container.read(session).messages;
+        expect(
+          messages.where((m) => m.effectiveText == 'Queued request'),
+          hasLength(1),
+        );
+        expect(messages.last.effectiveText, 'New reply');
+      } finally {
+        oldResponse.complete(
+          const FakeProviderClientResponse.text('Late reply'),
+        );
+        await initialTurn;
+      }
     },
   );
 

@@ -570,7 +570,6 @@ class _MobileNovelChatBody extends HookConsumerWidget {
     final pendingAutoSend = useState(false);
 
     // 页面卸载时：若普通排队尚未 stage 且 agent 仍在跑，提升为下一轮（与桌面面板卸载一致）。
-    // 「后台运行」路径通常已在 handleProcessingExit 里 sendQueuedMessageNow；此处作兜底。
     useEffect(() {
       final queuedNotifier = queuedMessage;
       final providerContainer = ProviderScope.containerOf(
@@ -1375,10 +1374,6 @@ class _MobileNovelChatBody extends HookConsumerWidget {
         await ref
             .read(aiChatRuntimeProvider(sessionId).notifier)
             .stopAll(source: AiChatCancelSource.exitPause);
-      } else if (queuedMessage.value != null) {
-        // 后台继续运行 AI：把排队消息交给仍存活（processing 期间 keepAlive）的 agent，
-        // 由下一轮消费，避免离页后排队内容既不发送也不恢复而静默丢失。
-        await buildController().sendQueuedMessageNow();
       }
       allowLeaveWithRunningAgent.value = true;
       await Future<void>.delayed(Duration.zero);

@@ -79,6 +79,7 @@ typedef _AiChatNewSessionSignalKey = ({String novelId, String signal});
 /// Chat runtime 的稳定取消来源，用于匿名 trace 区分正常控制流入口。
 enum AiChatCancelSource {
   stopButton('stop_button'),
+  sendQueuedMessageNow('send_queued_message_now'),
   exitPause('exit_pause'),
   modelSwitch('model_switch'),
   rollback('rollback'),
@@ -342,11 +343,11 @@ class AiChatRuntime extends _$AiChatRuntime {
   /// 快速开书草稿的 novel_draft remind 每会话仅投递一次的已发标记。
   bool novelDraftRemindSent = false;
 
-  /// 「立即发送」staged 到当前 in-flight agent 下一轮的完整排队消息。
+  /// 界面离开时 staged 到当前 in-flight agent 下一轮的完整排队消息。
   ///
   /// 存在 runtime（processing 期间 keepAlive）而非 panel-scoped store，使得
   /// 离开 / 折叠聊天界面后，仍存活的 turn 能在下一轮消费它，避免排队内容随
-  /// 面板卸载而静默丢失（见 chat_session_controller 的 send-now / flush 逻辑）。
+  /// 面板卸载而静默丢失。
   QueuedChatMessage? _pendingNextTurnMessage;
 
   /// 供重建后的聊天面板恢复「下一轮发送」横幅；消费仍只允许走 take 方法。
@@ -814,7 +815,7 @@ class AiChatRuntime extends _$AiChatRuntime {
     novelDraftRemindSent = true;
   }
 
-  /// 记录「立即发送」staged 的下一轮完整消息（配合 agent.stageNextTurn 使用）。
+  /// 记录 staged 的下一轮完整消息（配合 agent.stageNextTurn 使用）。
   void stagePendingNextTurnMessage(QueuedChatMessage message) {
     _pendingNextTurnMessage = message;
     state = state.copyWith(hasPendingNextTurnMessage: true);
