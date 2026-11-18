@@ -498,6 +498,7 @@
   "screenplay.editing.properties": "属性",
   "screenplay.editing.duration": "时长",
   "screenplay.editing.opacity": "不透明度",
+  "screenplay.editing.speed": "倍速",
   "screenplay.editing.fadeIn": "淡入",
   "screenplay.editing.fadeOut": "淡出",
   "screenplay.editing.lock": "锁定",

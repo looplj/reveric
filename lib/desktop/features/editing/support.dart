@@ -71,6 +71,10 @@ String editingTimecode(int frame) =>
 String editingDurationLabel(int frames) =>
     '${editingSeconds(frames).toStringAsFixed(1)}s';
 
+/// 1.5x、0.25x
+String editingSpeedLabel(double speed) =>
+    '${speed.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '')}x';
+
 /// 轨道编号：T1 / V1 / V2 / A1…，按同类轨道的层级。
 String editingTrackCode(EditingTrack track) =>
     '${switch (track.kind) {

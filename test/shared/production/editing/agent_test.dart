@@ -6,7 +6,7 @@
 import 'dart:async';
 import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
-import 'commands_test.dart' show fixture, videoSource;
+import 'commands_test.dart' show fixture, mainLayout, videoSource;
 import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/agent/message.dart';
@@ -1603,6 +1603,49 @@ void main() {
         (cloneAfter['clips'] as List).map((c) => c['id']),
         isNot(contains('txt1')),
       );
+    },
+  );
+
+  test(
+    'update_clip speed retimes before fades and reports the new range',
+    () async {
+      final engine = EditingAgentCommands((_) async => videoSource);
+      final result = await engine.apply(fixture(), 'A', [
+        {
+          'op': 'update_clip',
+          'clip_id': 'm2',
+          'fields': {'speed': 2, 'fade_out_frames': 30},
+        },
+      ]);
+      expect(mainLayout(result.document), [
+        ('m1', 0, 96),
+        ('m2', 96, 60),
+        ('m3', 156, 120),
+      ]);
+      final m2 = result.document.clips.singleWhere((c) => c.id == 'm2');
+      expect((m2.media!.speed, m2.media!.fadeOutFrames), (2.0, 30));
+      final change = (result.result.single['changes'] as List).singleWhere(
+        (c) => c['clip_id'] == 'm2',
+      );
+      expect(change['after']['speed'], 2.0);
+      expect(change['after']['duration_frames'], 60);
+      for (final command in [
+        {
+          'op': 'update_clip',
+          'clip_id': 'm2',
+          'fields': {'speed': 5},
+        },
+        {
+          'op': 'update_clip',
+          'clip_id': 'sub',
+          'fields': {'speed': 2},
+        },
+      ]) {
+        await expectLater(
+          engine.apply(fixture(), 'A', [command]),
+          throwsFormatException,
+        );
+      }
     },
   );
 }

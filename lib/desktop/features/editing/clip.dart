@@ -62,11 +62,10 @@ class EditingTimelineClip extends HookWidget {
     // 源素材能提供的区间：左边最多拉回到源头，右边到源尾。
     final headroom = source == null || source.mediaType == 'image'
         ? null
-        : editingFrames(media!.sourceInUs);
+        : media!.framesFromSourceStart;
     final tailroom = source == null || source.mediaType == 'image'
         ? null
-        : editingFrames(source.durationUs - media!.sourceInUs) -
-              c.durationFrames;
+        : media!.framesToSourceEnd - c.durationFrames;
     final neighbours = doc.clips.where(
       (o) => o.trackId == c.trackId && o.id != c.id,
     );
@@ -429,6 +428,16 @@ class EditingTimelineClip extends HookWidget {
                                       ),
                                     ),
                                   ),
+                                  if (width > 48 &&
+                                      media != null &&
+                                      media.speed != 1)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 4),
+                                      child: Text(
+                                        editingSpeedLabel(media.speed),
+                                        style: typo.uiTiny.copyWith(color: ink),
+                                      ),
+                                    ),
                                   if (width > 64 &&
                                       visual &&
                                       !track.main &&

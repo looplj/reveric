@@ -346,6 +346,54 @@ abstract final class EditingCommands {
         : _change(doc, [old], [clip]);
   }
 
+  /// 改倍速保持源区间：时长按倍速伸缩，主轨后面的片段随之前移或顺延。
+  static EditingDocument retime(EditingDocument doc, String id, double speed) {
+    const min = EditingSourceContent.minSpeed;
+    const max = EditingSourceContent.maxSpeed;
+    if (!(speed >= min && speed <= max)) {
+      throw FormatException('Invalid speed $speed: must be within $min..$max');
+    }
+    final c = _clip(doc, id);
+    final media = c.media;
+    if (media == null) {
+      throw StateError('Text clip');
+    }
+    if (media.source.mediaType == 'image') {
+      throw StateError('Image clips have no speed');
+    }
+    final content = media.copyWith(speed: speed);
+    final duration = math.min(
+      math.max(1, (c.durationFrames * media.speed / speed).round()),
+      content.framesToSourceEnd,
+    );
+    if (duration < 1) {
+      throw StateError('No source left after the clip start');
+    }
+    if (!_onMain(doc, c)) {
+      final blocker = doc.clips.firstWhereOrNull(
+        (o) =>
+            o.trackId == c.trackId &&
+            o.id != c.id &&
+            o.startFrame < c.startFrame + duration &&
+            o.endFrame > c.startFrame,
+      );
+      if (blocker != null) {
+        throw StateError(_occupied(c.trackId, blocker));
+      }
+    }
+    final fadeIn = math.min(media.fadeInFrames, duration);
+    return update(
+      doc,
+      c.copyWith(
+        durationFrames: duration,
+        content: content.copyWith(
+          fadeInFrames: fadeIn,
+          fadeOutFrames: math.min(media.fadeOutFrames, duration - fadeIn),
+        ),
+      ),
+    );
+  }
+
   /// 在非主轨的空处放片段，时长截到下一个片段开头。
   static EditingDocument place(EditingDocument doc, EditingClip clip) {
     final track = doc.track(clip.trackId);
@@ -390,7 +438,7 @@ abstract final class EditingCommands {
     ),
   );
 
-  /// 替换素材：从源头开始取，时长不超过原片段和新素材。
+  /// 替换素材：从源头开始取并沿用倍速，时长不超过原片段和新素材。
   static EditingDocument replace(
     EditingDocument doc,
     String id,
@@ -407,6 +455,7 @@ abstract final class EditingCommands {
       sourceInUs: 0,
       fadeInFrames: 0,
       fadeOutFrames: 0,
+      speed: source.mediaType == 'image' ? 1 : null,
     );
     if (content is EditingVideoContent) {
       content = content.copyWith(
@@ -423,7 +472,7 @@ abstract final class EditingCommands {
         origin: origin,
         durationFrames: source.mediaType == 'image'
             ? c.durationFrames
-            : math.min(c.durationFrames, editingFrames(source.durationUs)),
+            : math.min(c.durationFrames, content.framesToSourceEnd),
       ),
     );
   }
@@ -508,6 +557,7 @@ abstract final class EditingCommands {
             gainDb: content.gainDb,
             fadeInFrames: content.fadeInFrames,
             fadeOutFrames: content.fadeOutFrames,
+            speed: content.speed,
           ),
         ),
       ],

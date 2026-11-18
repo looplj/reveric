@@ -882,7 +882,7 @@ class EditingRenderService {
           path,
           '-filter_complex',
           '[1:a:0]asetpts=PTS-STARTPTS,aresample=$editingSampleRate,aformat=sample_fmts=flt:channel_layouts=stereo,'
-              'apad,atrim=end_sample=${frames * editingSamplesPerFrame},aeval=\'val(0)*$envelope|val(1)*$envelope\','
+              '${_tempo(media.speed)}apad,atrim=end_sample=${frames * editingSamplesPerFrame},aeval=\'val(0)*$envelope|val(1)*$envelope\','
               'adelay=${delay * editingSamplesPerFrame}S:all=1$tap[0:a][a]amix=inputs=2:duration=first:normalize=0,'
               'atrim=end_sample=${count * editingSamplesPerFrame}[out]',
           '-map',
@@ -991,7 +991,7 @@ class EditingRenderService {
           '-i',
           path,
           '-filter_complex',
-          '[1:v:0]setpts=PTS-STARTPTS,fps=$editingFps,trim=end_frame=$frames,'
+          '[1:v:0]setpts=(PTS-STARTPTS)/${media.speed},fps=$editingFps,trim=end_frame=$frames,'
               'scale=$w:$h:force_original_aspect_ratio=decrease,setsar=1,format=rgba,'
               '$alpha,setpts=PTS+$delay/$editingFps/TB[fg];'
               '[0:v][fg]overlay=$position:'
@@ -1021,6 +1021,24 @@ class EditingRenderService {
         throw const MediaException(MediaFailure.encoding_failed);
       }
     }
+  }
+
+  /// 变速不变调；atempo 单级只保证 0.5–2 倍，超出时串联。
+  static String _tempo(double speed) {
+    if (speed == 1) {
+      return '';
+    }
+    final stages = <double>[];
+    var rest = speed;
+    while (rest > 2) {
+      stages.add(2);
+      rest /= 2;
+    }
+    while (rest < .5) {
+      stages.add(.5);
+      rest /= .5;
+    }
+    return [...stages, rest].map((s) => 'atempo=$s,').join();
   }
 
   void _validate(

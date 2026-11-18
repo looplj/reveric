@@ -498,6 +498,7 @@
   "screenplay.editing.properties": "Properties",
   "screenplay.editing.duration": "Duration",
   "screenplay.editing.opacity": "Opacity",
+  "screenplay.editing.speed": "Speed",
   "screenplay.editing.fadeIn": "Fade in",
   "screenplay.editing.fadeOut": "Fade out",
   "screenplay.editing.lock": "Lock",

@@ -186,18 +186,46 @@ sealed class EditingSourceContent extends EditingContent {
     this.gainDb = 0,
     this.fadeInFrames = 0,
     this.fadeOutFrames = 0,
+    this.speed = 1,
   });
+  static const minSpeed = .25;
+  static const maxSpeed = 4.0;
   final EditingSource source;
   final int sourceInUs, fadeInFrames, fadeOutFrames;
   final double gainDb;
+
+  /// 时间线每过一帧消耗 speed 帧源素材；声音变速不变调。图片固定为 1。
+  final double speed;
   int sourceUsAt(int offsetFrames) =>
-      sourceInUs + editingMicroseconds(offsetFrames);
+      sourceInUs + (editingMicroseconds(offsetFrames) * speed).round();
+
+  /// 从入点往后，源素材还能铺满的时间线帧数。
+  int get framesToSourceEnd {
+    var frames = editingFrames(
+      ((source.durationUs - sourceInUs) / speed).floor(),
+    );
+    while (frames > 0 && sourceUsAt(frames) > source.durationUs + 1) {
+      frames--;
+    }
+    return frames;
+  }
+
+  /// 入点之前的源素材能往前铺的时间线帧数。
+  int get framesFromSourceStart {
+    var frames = editingFrames((sourceInUs / speed).floor());
+    while (frames > 0 && sourceUsAt(-frames) < 0) {
+      frames--;
+    }
+    return frames;
+  }
+
   EditingSourceContent copyWith({
     EditingSource? source,
     int? sourceInUs,
     double? gainDb,
     int? fadeInFrames,
     int? fadeOutFrames,
+    double? speed,
   });
   @override
   Map<String, dynamic> toJson() => {
@@ -207,6 +235,7 @@ sealed class EditingSourceContent extends EditingContent {
     'gain_db': gainDb,
     'fade_in_frames': fadeInFrames,
     'fade_out_frames': fadeOutFrames,
+    'speed': speed,
   };
 }
 
@@ -217,6 +246,7 @@ final class EditingVideoContent extends EditingSourceContent {
     super.gainDb,
     super.fadeInFrames,
     super.fadeOutFrames,
+    super.speed,
     this.transform = const EditingTransform(),
     this.opacity = 1,
     this.audioDetached = false,
@@ -233,6 +263,7 @@ final class EditingVideoContent extends EditingSourceContent {
     double? gainDb,
     int? fadeInFrames,
     int? fadeOutFrames,
+    double? speed,
     EditingTransform? transform,
     double? opacity,
     bool? audioDetached,
@@ -242,6 +273,7 @@ final class EditingVideoContent extends EditingSourceContent {
     gainDb: gainDb ?? this.gainDb,
     fadeInFrames: fadeInFrames ?? this.fadeInFrames,
     fadeOutFrames: fadeOutFrames ?? this.fadeOutFrames,
+    speed: speed ?? this.speed,
     transform: transform ?? this.transform,
     opacity: opacity ?? this.opacity,
     audioDetached: audioDetached ?? this.audioDetached,
@@ -260,6 +292,7 @@ final class EditingVideoContent extends EditingSourceContent {
         gainDb: (j['gain_db'] as num).toDouble(),
         fadeInFrames: j['fade_in_frames'] as int,
         fadeOutFrames: j['fade_out_frames'] as int,
+        speed: _speedFromJson(j),
         transform: EditingTransform.fromJson(
           j['transform'] as Map<String, dynamic>,
         ),
@@ -275,6 +308,7 @@ final class EditingAudioContent extends EditingSourceContent {
     super.gainDb,
     super.fadeInFrames,
     super.fadeOutFrames,
+    super.speed,
   });
   @override
   String get kind => 'audio';
@@ -285,12 +319,14 @@ final class EditingAudioContent extends EditingSourceContent {
     double? gainDb,
     int? fadeInFrames,
     int? fadeOutFrames,
+    double? speed,
   }) => EditingAudioContent(
     source: source ?? this.source,
     sourceInUs: sourceInUs ?? this.sourceInUs,
     gainDb: gainDb ?? this.gainDb,
     fadeInFrames: fadeInFrames ?? this.fadeInFrames,
     fadeOutFrames: fadeOutFrames ?? this.fadeOutFrames,
+    speed: speed ?? this.speed,
   );
   factory EditingAudioContent.fromJson(Map<String, dynamic> j) =>
       EditingAudioContent(
@@ -299,8 +335,13 @@ final class EditingAudioContent extends EditingSourceContent {
         gainDb: (j['gain_db'] as num).toDouble(),
         fadeInFrames: j['fade_in_frames'] as int,
         fadeOutFrames: j['fade_out_frames'] as int,
+        speed: _speedFromJson(j),
       );
 }
+
+/// 加倍速之前保存的工程没有 speed，按原速读取。
+double _speedFromJson(Map<String, dynamic> j) =>
+    (j['speed'] as num? ?? 1).toDouble();
 
 final class EditingTextContent extends EditingContent {
   const EditingTextContent({
@@ -586,6 +627,14 @@ class EditingDocument {
         'Invalid source interval',
       );
       require(media.gainDb.isFinite, 'Invalid gain');
+      require(
+        media.speed >= EditingSourceContent.minSpeed &&
+            media.speed <= EditingSourceContent.maxSpeed &&
+            (source.mediaType != 'image' || media.speed == 1),
+        'Invalid speed ${media.speed}: must be within '
+        '${EditingSourceContent.minSpeed}..${EditingSourceContent.maxSpeed}, '
+        'and 1 for images',
+      );
       require(
         media.fadeInFrames >= 0 &&
             media.fadeOutFrames >= 0 &&

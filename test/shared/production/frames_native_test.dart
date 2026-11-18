@@ -878,4 +878,172 @@ void main() {
         : false,
     timeout: const Timeout(Duration(minutes: 2)),
   );
+  test(
+    'speed changes picture and sound timing without shifting pitch',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'reveric-editing-speed-',
+      );
+      final app = AppDatabase.forTest(NativeDatabase.memory());
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      final runner = _NativeRunner();
+      final service = EditingService(
+        db,
+        MediaLibraryService(app, MediaService(runner), root),
+      );
+      final renderer = EditingRenderService(service, runner);
+      Future<String> run(List<String> args) =>
+          runner.execute(args, probe: false, cancellation: MediaCancellation());
+      EncodedMedia? output;
+      try {
+        await Directory(
+          '${root.path}/file_workspaces/work',
+        ).create(recursive: true);
+        // 前 2 秒红色无声，后 2 秒蓝色带 440 Hz 正弦。
+        const relative = 'file_workspaces/work/source.mp4';
+        await run([
+          '-y',
+          '-f',
+          'lavfi',
+          '-i',
+          'color=c=red:s=160x90:r=24:d=2',
+          '-f',
+          'lavfi',
+          '-i',
+          'color=c=blue:s=160x90:r=24:d=2',
+          '-f',
+          'lavfi',
+          '-i',
+          r'aevalsrc=if(lt(t\,2)\,0\,0.3*sin(2*PI*440*t)):s=48000:d=4',
+          '-filter_complex',
+          '[0:v][1:v]concat=n=2:v=1:a=0[v]',
+          '-map',
+          '[v]',
+          '-map',
+          '2:a',
+          '-c:v',
+          'libx264',
+          '-pix_fmt',
+          'yuv420p',
+          '-c:a',
+          'aac',
+          '${root.path}/$relative',
+        ]);
+        await app.assetDao.insertAsset(
+          AssetsCompanion.insert(
+            id: 'source',
+            type: 'video',
+            purpose: 'general',
+            path: const Value(relative),
+            content: const Value(VideoAssetContent(mimeType: 'video/mp4')),
+          ),
+        );
+        final source = await service.source('source');
+        // 2 倍速 0–4 秒铺满时间线 0–2 秒；0.5 倍速 1.5–2.5 秒铺满 2–4 秒。
+        final doc = EditingDocument.empty('16:9').copyWith(
+          clips: [
+            EditingClip(
+              id: 'fast',
+              trackId: 'V1',
+              startFrame: 0,
+              durationFrames: 48,
+              content: EditingVideoContent(source: source, speed: 2),
+            ),
+            EditingClip(
+              id: 'slow',
+              trackId: 'V1',
+              startFrame: 48,
+              durationFrames: 48,
+              content: EditingVideoContent(
+                source: source,
+                sourceInUs: 1500000,
+                speed: .5,
+              ),
+            ),
+          ],
+        );
+        doc.validate();
+        output = await renderer.render(
+          doc,
+          resolution: '480p',
+          cancellation: MediaCancellation(),
+          progress: (_, _) {},
+        );
+        for (final (frame, blue) in [
+          (22, false),
+          (25, true),
+          (70, false),
+          (73, true),
+        ]) {
+          final still = '${root.path}/frame-$frame.png';
+          await run([
+            '-y',
+            '-i',
+            output.file.path,
+            '-vf',
+            "select='eq(n,$frame)'",
+            '-frames:v',
+            '1',
+            still,
+          ]);
+          final image = img.decodePng(await File(still).readAsBytes())!;
+          final pixel = image.getPixel(image.width ~/ 2, image.height ~/ 2);
+          expect(pixel.b > 200, blue, reason: 'frame $frame blue');
+          expect(pixel.r > 200, !blue, reason: 'frame $frame red');
+        }
+        final pcm = '${root.path}/audio.f32';
+        await run([
+          '-y',
+          '-i',
+          output.file.path,
+          '-vn',
+          '-ac',
+          '1',
+          '-ar',
+          '48000',
+          '-f',
+          'f32le',
+          pcm,
+        ]);
+        final data = ByteData.sublistView(await File(pcm).readAsBytes());
+        ({double rms, double hz}) window(double from, double to) {
+          final first = (from * 48000).round(), last = (to * 48000).round();
+          var energy = 0.0;
+          var crossings = 0;
+          var previous = 0.0;
+          for (var i = first; i < last; i++) {
+            final value = data.getFloat32(i * 4, Endian.little);
+            energy += value * value;
+            if (i > first && (previous < 0) != (value < 0)) {
+              crossings++;
+            }
+            previous = value;
+          }
+          return (
+            rms: math.sqrt(energy / (last - first)),
+            hz: crossings / 2 / (to - from),
+          );
+        }
+
+        expect(window(.1, .9).rms, lessThan(.01));
+        final fast = window(1.1, 1.9);
+        expect(fast.rms, greaterThan(.1));
+        expect(fast.hz, closeTo(440, 15), reason: 'pitch must not double');
+        expect(window(2.1, 2.9).rms, lessThan(.01));
+        final slow = window(3.1, 3.9);
+        expect(slow.rms, greaterThan(.1));
+        expect(slow.hz, closeTo(440, 15), reason: 'pitch must not halve');
+      } finally {
+        await output?.dispose();
+        await renderer.dispose();
+        await db.close();
+        await app.close();
+        await root.delete(recursive: true);
+      }
+    },
+    skip: _binary.isEmpty
+        ? 'Set FFMPEG_TEST_BIN for native editing checks.'
+        : false,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 }

@@ -85,6 +85,7 @@ class EditingAgentCommands {
             'end_frame': clip.endFrame,
             'source_in_us': clip.media?.sourceInUs ?? 0,
             'duration_frames': clip.durationFrames,
+            if (clip.media != null) 'speed': clip.media!.speed,
           };
   }
 
@@ -360,11 +361,15 @@ class EditingAgentCommands {
             'anchor_x',
             'anchor_y',
           };
-          const source = {'gain_db', 'fade_in_frames', 'fade_out_frames'};
-          var content = clip!.content;
+          const source = {
+            'gain_db',
+            'fade_in_frames',
+            'fade_out_frames',
+            'speed',
+          };
           final f = fields({
             'name',
-            ...switch (content) {
+            ...switch (clip!.content) {
               EditingVideoContent() => {...placement, ...source},
               EditingAudioContent() => source,
               EditingTextContent() => {...placement, 'text', 'text_style'},
@@ -385,6 +390,13 @@ class EditingAgentCommands {
                 anchorX: number('anchor_x'),
                 anchorY: number('anchor_y'),
               );
+          // 先按倍速伸缩时长，淡入淡出再按新时长校验。
+          final speed = number('speed');
+          if (speed != null) {
+            doc = EditingCommands.retime(doc, clip.id, speed);
+          }
+          final current = doc.clips.firstWhere((c) => c.id == clip.id);
+          var content = current.content;
           if (content is EditingSourceContent) {
             content = content.copyWith(
               gainDb: number('gain_db'),
@@ -411,7 +423,7 @@ class EditingAgentCommands {
           }
           doc = EditingCommands.update(
             doc,
-            clip.copyWith(name: f['name'] as String?, content: content),
+            current.copyWith(name: f['name'] as String?, content: content),
           );
         case 'extract_audio':
           keys(command, {'op', 'clip_id', 'track_id'});

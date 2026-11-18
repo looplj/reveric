@@ -1779,6 +1779,7 @@ abstract final class LocaleKeys {
   static const editingProperties = 'screenplay.editing.properties';
   static const editingDuration = 'screenplay.editing.duration';
   static const editingOpacity = 'screenplay.editing.opacity';
+  static const editingSpeed = 'screenplay.editing.speed';
   static const editingFadeIn = 'screenplay.editing.fadeIn';
   static const editingFadeOut = 'screenplay.editing.fadeOut';
   static const editingLock = 'screenplay.editing.lock';

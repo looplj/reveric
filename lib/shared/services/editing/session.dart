@@ -109,6 +109,7 @@ class EditingSession extends ChangeNotifier {
               replacement.media?.source.toJson(),
             ) &&
             old.media?.sourceInUs == replacement.media?.sourceInUs &&
+            old.media?.speed == replacement.media?.speed &&
             old.durationFrames == replacement.durationFrames;
       }).toList();
       sourceProblem = remaining.isEmpty

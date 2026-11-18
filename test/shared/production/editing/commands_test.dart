@@ -908,4 +908,198 @@ void main() {
       }
     },
   );
+
+  test(
+    'speed keeps the source range, ripples the main track and caps by source',
+    () {
+      final doc = fixture();
+      final fast = EditingCommands.retime(doc, 'm2', 2);
+      expect(mainLayout(fast), [
+        ('m1', 0, 96),
+        ('m2', 96, 60),
+        ('m3', 156, 120),
+      ]);
+      final m2 = fast.clips.singleWhere((c) => c.id == 'm2');
+      expect(
+        (m2.media!.sourceInUs, m2.sourceEndUs, m2.media!.speed),
+        (1000000, 6000000, 2.0),
+      );
+      expect(m2.media!.framesFromSourceStart, 12);
+      expect(m2.media!.framesToSourceEnd, 108);
+      fast.validate();
+      final slow = EditingCommands.retime(doc, 'm2', .5);
+      expect(mainLayout(slow)[1], ('m2', 96, 240));
+      expect(slow.clips.singleWhere((c) => c.id == 'm2').sourceEndUs, 6000000);
+      final back = EditingCommands.retime(fast, 'm2', 1);
+      expect(mainLayout(back), mainLayout(doc));
+      expect(
+        back.clips.singleWhere((c) => c.id == 'm2').toJson(),
+        doc.clips.singleWhere((c) => c.id == 'm2').toJson(),
+      );
+
+      final split = EditingCommands.split(fast, 'm2', 126);
+      final halves = split.mainClips.where((c) => c.media!.speed == 2).toList();
+      expect(halves.map((c) => (c.media!.sourceInUs, c.sourceEndUs)), [
+        (1000000, 3500000),
+        (3500000, 6000000),
+      ]);
+      split.validate();
+      expect(
+        () => EditingCommands.trim(fast, 'm2', 96, 96 + 108).validate(),
+        returnsNormally,
+      );
+      expect(
+        () => EditingCommands.trim(fast, 'm2', 96, 96 + 109).validate(),
+        throwsFormatException,
+      );
+      expect(
+        EditingCommands.trim(
+          fast,
+          'm2',
+          96 - 12,
+          156,
+        ).clips.singleWhere((c) => c.id == 'm2').media!.sourceInUs,
+        0,
+      );
+
+      final faded = EditingCommands.update(
+        doc,
+        doc.clips
+            .singleWhere((c) => c.id == 'm2')
+            .copyWith(
+              content: doc.clips
+                  .singleWhere((c) => c.id == 'm2')
+                  .media!
+                  .copyWith(fadeInFrames: 48, fadeOutFrames: 48),
+            ),
+      );
+      final quick = EditingCommands.retime(faded, 'm2', 4);
+      final q = quick.clips.singleWhere((c) => c.id == 'm2');
+      expect(
+        (q.durationFrames, q.media!.fadeInFrames, q.media!.fadeOutFrames),
+        (30, 30, 0),
+      );
+      quick.validate();
+
+      final audio = EditingCommands.extractAudio(fast, 'm2').clips.last;
+      expect((audio.durationFrames, audio.media!.speed), (60, 2.0));
+
+      final replaced = EditingCommands.replace(fast, 'm2', videoSource);
+      expect(replaced.clips.singleWhere((c) => c.id == 'm2').media!.speed, 2.0);
+      const short = EditingSource(
+        assetId: 'short',
+        mediaType: 'video',
+        durationUs: 1000000,
+      );
+      expect(
+        EditingCommands.replace(
+          fast,
+          'm2',
+          short,
+        ).clips.singleWhere((c) => c.id == 'm2').durationFrames,
+        12,
+      );
+      const image = EditingSource(
+        assetId: 'image',
+        mediaType: 'image',
+        durationUs: 0,
+      );
+      final still = EditingCommands.replace(fast, 'm2', image);
+      expect(still.clips.singleWhere((c) => c.id == 'm2').media!.speed, 1.0);
+      expect(() => EditingCommands.retime(still, 'm2', 2), throwsStateError);
+    },
+  );
+
+  test(
+    'speed rejects bad values, overlaps and stays compatible with old JSON',
+    () {
+      final doc = fixture();
+      for (final speed in [.2, 4.5, double.nan]) {
+        expect(
+          () => EditingCommands.retime(doc, 'm2', speed),
+          throwsFormatException,
+        );
+      }
+      expect(() => EditingCommands.retime(doc, 'sub', 2), throwsStateError);
+      final crowded = EditingCommands.place(
+        doc,
+        const EditingClip(
+          id: 'sfx',
+          trackId: 'A3',
+          startFrame: 270,
+          durationFrames: 24,
+          content: EditingAudioContent(source: audioSource),
+        ),
+      );
+      expect(
+        () => EditingCommands.retime(crowded, 'music', .5),
+        throwsStateError,
+      );
+      final music = EditingCommands.retime(
+        crowded,
+        'music',
+        2,
+      ).clips.singleWhere((c) => c.id == 'music');
+      expect(
+        (music.startFrame, music.durationFrames, music.sourceEndUs),
+        (24, 120, 10000000),
+      );
+
+      final m2 = doc.clips.singleWhere((c) => c.id == 'm2');
+      expect(
+        () => doc
+            .copyWith(
+              clips: [
+                for (final c in doc.clips)
+                  c.id == 'm2'
+                      ? c.copyWith(content: m2.media!.copyWith(speed: 4.5))
+                      : c,
+              ],
+            )
+            .validate(),
+        throwsFormatException,
+      );
+      expect(
+        () => EditingDocument.empty('16:9')
+            .copyWith(
+              clips: const [
+                EditingClip(
+                  id: 'still',
+                  trackId: 'V1',
+                  startFrame: 0,
+                  durationFrames: 24,
+                  content: EditingVideoContent(
+                    source: EditingSource(
+                      assetId: 'image',
+                      mediaType: 'image',
+                      durationUs: 0,
+                    ),
+                    speed: 2,
+                  ),
+                ),
+              ],
+            )
+            .validate(),
+        throwsFormatException,
+      );
+
+      final json = EditingCommands.retime(doc, 'm2', 1.5).toJson();
+      final clips = (json['clips'] as List).cast<Map<String, dynamic>>();
+      expect(
+        clips.singleWhere((c) => c['id'] == 'm2')['content']['speed'],
+        1.5,
+      );
+      expect(EditingDocument.fromJson(json).toJson(), json);
+      for (final clip in clips) {
+        (clip['content'] as Map).remove('speed');
+      }
+      final legacy = EditingDocument.fromJson(json);
+      expect(legacy.clips.map((c) => c.media?.speed).whereType<double>(), [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+      ]);
+    },
+  );
 }

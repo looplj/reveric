@@ -1,4 +1,4 @@
-// 职责: 右栏「属性」：未选中时显示工程概况，选中片段时按轨道类型编辑文字、音量、不透明度、大小、位置与淡入淡出。
+// 职责: 右栏「属性」：未选中时显示工程概况，选中片段时按轨道类型编辑文字、倍速、音量、不透明度、大小、位置与淡入淡出。
 // 关联文件:
 //   lib/desktop/features/editing/controller.dart
 //   lib/shared/services/editing/commands.dart
@@ -362,10 +362,35 @@ class EditingInspector extends StatelessWidget {
       name: c.name.isEmpty ? controller.sourceName(source) : c.name,
       detail: used,
     );
+    final speed = source.mediaType == 'image'
+        ? null
+        : _Row(
+            label: context.t(LocaleKeys.editingSpeed),
+            child: _Range(
+              value: media.speed,
+              min: EditingSourceContent.minSpeed,
+              max: EditingSourceContent.maxSpeed,
+              step: .05,
+              format: editingSpeedLabel,
+              onCommit: locked
+                  ? null
+                  : (v) => editingRun(
+                      context,
+                      () => controller.session.commit(
+                        EditingCommands.retime(
+                          doc,
+                          c.id,
+                          (v * 100).round() / 100,
+                        ),
+                      ),
+                    ),
+            ),
+          );
     if (media is EditingAudioContent) {
       return [
         head,
         sourceRow,
+        ?speed,
         volume,
         fade(
           context.t(LocaleKeys.editingFadeIn),
@@ -385,6 +410,7 @@ class EditingInspector extends StatelessWidget {
     return [
       head,
       sourceRow,
+      ?speed,
       if (!track.main) ...[
         opacity(video.opacity, (v) => setContent(video.copyWith(opacity: v))),
         _Row(

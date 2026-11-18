@@ -1,4 +1,4 @@
-// 职责: 验证原声分离按钮的锁定、内容类型、持久化与单步撤销，以及文字锚点九宫格的定位提交。
+// 职责: 验证原声分离按钮的锁定、内容类型、持久化与单步撤销，文字锚点九宫格的定位提交，以及倍速滑块的提交。
 // 关联文件:
 //   lib/desktop/features/editing/inspector.dart
 //   lib/shared/services/editing/session.dart
@@ -171,6 +171,33 @@ void main() {
             'anchor_x': 1.0,
             'anchor_y': 0.0,
           });
+          expect(
+            (await db.editingDao.get('editing'))!.document.toJson(),
+            session.document!.toJson(),
+          );
+          session.select('m2');
+          await tester.pumpAndSettle();
+          final speedRow = find
+              .ancestor(
+                of: find.text(locale.languageCode == 'en' ? 'Speed' : '倍速'),
+                matching: find.byType(Row),
+              )
+              .first;
+          final speed = find.descendant(
+            of: speedRow,
+            matching: find.byType(Slider),
+          );
+          expect(tester.widget<Slider>(speed).value, 1);
+          tester.widget<Slider>(speed).onChangeEnd!(2);
+          await tester.pumpAndSettle();
+          final retimed = session.document!.clips.singleWhere(
+            (c) => c.id == 'm2',
+          );
+          expect((retimed.media!.speed, retimed.durationFrames), (2.0, 60));
+          expect(
+            find.descendant(of: speedRow, matching: find.text('2x')),
+            findsOneWidget,
+          );
           expect(
             (await db.editingDao.get('editing'))!.document.toJson(),
             session.document!.toJson(),
