@@ -24,12 +24,15 @@ import 'package:reveric/shared/components/reveric_dialog.dart';
 import 'package:reveric/desktop/features/production/node_title.dart';
 import 'package:reveric/shared/widgets/md/reveric_markdown_editor.dart';
 import 'package:reveric/desktop/widgets/ai/chat/panel.dart';
+import 'package:reveric/desktop/widgets/ai/chat/composer.dart';
 import 'package:reveric/shared/widgets/ai/chat/attachment_input.dart';
 import 'package:reveric/shared/widgets/ai/chat/composer_controller.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
 import 'package:reveric/shared/services/ai/prompt_template.dart';
+import 'package:reveric/shared/services/ai/chat_prompt_builder.dart';
 import 'package:reveric/desktop/features/production/canvas_empty.dart';
 import 'package:reveric/desktop/features/production/board.dart';
+import 'package:reveric/desktop/features/production/node_card.dart';
 import 'package:reveric/desktop/features/production/prompt_field.dart';
 import 'package:reveric/desktop/features/editing/region.dart';
 import 'package:reveric/desktop/features/editing/export_dialog.dart';
@@ -164,6 +167,125 @@ void main() {
     await db.close();
     await app.close();
   });
+  testWidgets(
+    'adds the selected node to the current chat as a tool reference',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final app = AppDatabase.forTest(NativeDatabase.memory());
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      await ScreenplayService(db).createCanvasStructure();
+      await app.novelDao.create(
+        id: 'canvas',
+        title: 'Canvas work',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: db.filePath,
+      );
+      await app
+          .into(app.aiProviders)
+          .insert(
+            AiProvidersCompanion.insert(
+              id: 'test',
+              name: 'Test',
+              type: 'openai',
+              enabled: const Value(true),
+              apiKey: const Value('test-only'),
+              baseUrl: const Value('http://127.0.0.1:9'),
+              models: const Value(['test-model']),
+            ),
+          );
+      try {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appDatabaseProvider.overrideWithValue(app),
+              appSettingsDatabaseProvider.overrideWithValue(app),
+              novelContentDatabaseProvider(db.filePath).overrideWithValue(db),
+            ],
+            child: directorTestApp(
+              const WorkspaceEditorPage(novelId: 'canvas'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Add node'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Text'));
+        await tester.pumpAndSettle();
+        final node = (await db.select(db.canvasNodes).get()).single;
+        expect(find.byType(AiChatPanel), findsNothing);
+        final addToChat = find.byTooltip('Add to chat');
+        await tester.tap(addToChat);
+        await tester.pumpAndSettle();
+        final panel = tester.widget<AiChatPanel>(find.byType(AiChatPanel));
+        final composer = tester.widget<ChatComposer>(find.byType(ChatComposer));
+        final reference = composer.state.attachedReferences.value.single;
+        expect(reference.itemId, node.id);
+        expect(reference.path, '/production/canvas/nodes/${node.id}');
+        final chip = find.descendant(
+          of: find.byType(ChatComposer),
+          matching: find.text(reference.label),
+        );
+        expect(chip, findsOneWidget);
+
+        const instruction = 'Rewrite the last paragraph';
+        final controller = composer.state.composerController;
+        controller.value = const TextEditingValue(
+          text: instruction,
+          selection: TextSelection.collapsed(offset: 7),
+        );
+        await tester.pump();
+        await tester.tapAt(
+          tester.getCenter(find.byType(ProductionNodeCard)),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Add to chat'));
+        await tester.pumpAndSettle();
+        expect(controller.text, instruction);
+        expect(controller.selection.baseOffset, 7);
+        expect(composer.state.attachedReferences.value, [reference]);
+        expect(
+          ChatPromptBuilder().buildAgentTextWithReferences(
+            controller.text,
+            composer.state.attachedReferences.value,
+          ),
+          allOf(
+            contains("path='/production/canvas/nodes/${node.id}'"),
+            endsWith(instruction),
+          ),
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(AiChatPanel)),
+        );
+        expect(
+          container.read(aiChatSessionProvider(panel.activeSessionId)).messages,
+          isEmpty,
+        );
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ChatComposer),
+            matching: find.byTooltip('Remove'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(chip, findsNothing);
+        expect(controller.text, instruction);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await tester.runAsync(() async {
+          await db.close();
+          await app.close();
+        });
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 45)),
+  );
+
   testWidgets('text node composer sends the request to chat on submit', (
     tester,
   ) async {
@@ -657,12 +779,12 @@ void main() {
           await tester.tap(find.byTooltip('Add node'));
           await tester.pumpAndSettle();
           await tester.tap(find.text('3D Director').last);
-          // Only filesystem initialization runs here; the supplied viewport owns no GPU resources.
-          for (
-            var i = 0;
-            i < 20 && find.byType(DirectorHeader).evaluate().isEmpty;
-            i++
-          ) {
+          // The viewport avoids GPU initialization, but the director still
+          // loads its document and opens its preview directory asynchronously.
+          final director = find.byType(ScreenplayDirectorWorkspace);
+          final waitingForDirector = Stopwatch()..start();
+          while (director.evaluate().isEmpty &&
+              waitingForDirector.elapsed < const Duration(seconds: 5)) {
             await tester.runAsync(
               () async =>
                   Future<void>.delayed(const Duration(milliseconds: 20)),
@@ -670,7 +792,7 @@ void main() {
             await tester.pump();
           }
           await tester.pumpAndSettle();
-          expect(find.byType(ScreenplayDirectorWorkspace), findsOneWidget);
+          expect(director, findsOneWidget);
           final directorBack = find.descendant(
             of: find.byType(DirectorHeader),
             matching: find.byTooltip('Back'),

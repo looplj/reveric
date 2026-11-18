@@ -19,6 +19,7 @@ editing 负责组织素材并剪辑成片，FFmpeg 负责素材加工。需要�
 | `undo` / `redo` | `editing_id`、`expected_revision` | 与当前应用界面共用撤销历史 |
 | `frames` | `editing_id`、`expected_revision`、`frames` | 返回合成时间线的画面拼图 |
 | `preview` | `editing_id`、`expected_revision` | 返回 480p MP4 |
+| `export` | `editing_id`、`expected_revision`，可选 `resolution` | 导出画布作品的剪辑工程为关联视频节点 |
 | `cleanup` | `run_id` | 清理已结束预览任务的会话输出，重复执行安全 |
 
 ## 定位与读取
@@ -125,4 +126,4 @@ frames 必须包含 1..12 个整数帧号，范围是 0 到 total_frames - 1，�
 
 cleanup 只删除该已结束预览任务记录的会话视频及其副本；不接受任意文件路径，不删除原素材、已采用资产、其他任务的输出或时间线。重复清理安全，removed 列出本次删除的文件，missing 列出已不存在的文件；失败时如实说明并重试清理，不声称文件已删除。
 
-正式成片由用户在剪辑界面导出；Agent 用预览完成检查，不调用 editing export。
+需要把成片留在画布继续使用时，用 `Run editing export`，传剪辑工程的 `editing_id` 和最新 `expected_revision`。可选 `resolution` 为 `720p`（默认）或 `1080p`，字幕烧录进视频。读取本附件的后台任务流程，用返回的 `run_id` 等待完成，并用终态 `result.output.node_id` 或 `result.output.node_path` 引用新节点。按集剪辑的本地文件导出从剪辑界面操作。

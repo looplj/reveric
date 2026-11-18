@@ -1980,6 +1980,7 @@ abstract final class LocaleKeys {
   static const commonRename = 'common.rename';
   static const commonGenerate = 'common.generate';
   static const productionImageMethod = 'production.imageMethod';
+  static const productionAddToChat = 'production.addToChat';
   static const productionImagePresets = 'production.imagePresets';
   static const productionGridPresets = 'production.gridPresets';
   static const productionImagePresetGroups = 'production.imagePresetGroups';

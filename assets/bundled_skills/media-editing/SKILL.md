@@ -17,7 +17,7 @@ FFmpeg 的拼接、叠加、混音等能力也可用于制作中间素材，不�
 |---|---|
 | 读取本地文件、列出或清理管控文件、检查音视频元数据 | [文件读取与管理](references/files.md) |
 | 提帧、转码、滤镜、音轨与字幕文件处理、序列和素材分段 | [媒体加工](references/ffmpeg.md) |
-| 创建或编辑时间线、轨道、字幕，撤销、预览检查和清理 | [剪辑工程](references/editing.md) |
+| 创建或编辑时间线、轨道、字幕，预览检查、清理和导出为视频节点 | [剪辑工程](references/editing.md) |
 | 查询进度、等待结果、取消生成或导出 | [后台任务](references/operations.md) |
 
 正文已有准确附件路径时直接用 `reference-get` 读取选中文件，未知路径时再用 `<skill_resources>` 的 `reference-list` 列目录；`name` 使用「媒体处理与剪辑」，路径从正文或目录复制。按需读取，已读且仍在上下文中的不重复加载。

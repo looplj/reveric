@@ -20,6 +20,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/editing/document.dart';
+import 'package:reveric/shared/models/director/document.dart';
+import 'package:reveric/shared/services/director/renderer.dart';
+import 'package:reveric/shared/services/screenplay/staging_edit.dart';
+import 'package:flutter/services.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 import 'package:reveric/shared/models/tool_permission.dart';
 import 'package:reveric/shared/services/ai/media/editing.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
@@ -44,6 +49,9 @@ import 'package:reveric/shared/services/storyboard/service.dart';
 class _FrameRunner extends FfmpegRunner {
   bool unsupported = false;
   bool withAudio = false;
+  int width = 854;
+  int height = 480;
+  int frameCount = 1;
   @override
   Future<String> execute(
     List<String> args, {
@@ -60,16 +68,29 @@ class _FrameRunner extends FfmpegRunner {
           {
             'codec_type': 'video',
             'codec_name': 'h264',
-            'width': 854,
-            'height': 480,
+            'width': width,
+            'height': height,
             'avg_frame_rate': '24/1',
-            'nb_frames': '1',
+            'nb_frames': '$frameCount',
             'time_base': '1/24000',
             'pix_fmt': 'yuv420p',
           },
         ],
-        'format': {'duration': '0.041667', 'format_name': 'mp4'},
+        'format': {'duration': '${frameCount / 24}', 'format_name': 'mp4'},
       });
+    }
+    if (args.last == '-') {
+      return '';
+    }
+    if (args.last.endsWith('.f32')) {
+      final samples = int.parse(
+        args
+            .firstWhere((arg) => arg.startsWith('atrim=end_sample='))
+            .split('=')
+            .last,
+      );
+      await File(args.last).writeAsBytes(Uint8List(samples * 8));
+      return '';
     }
     await File(args.last).writeAsBytes(
       args.last.endsWith('.png')
@@ -271,7 +292,7 @@ void main() {
   );
 
   test(
-    'export is unavailable and preview still requires the latest revision',
+    'editing export rejects file destinations and preview requires the latest revision',
     () async {
       final created = await run('create', {
         'title': 'Preview',
@@ -285,13 +306,7 @@ void main() {
           'output_path': 'export.mp4',
           'request_id': 'export',
         }),
-        throwsA(
-          isA<ToolOperationException>().having(
-            (e) => e.code,
-            'code',
-            'unsupported',
-          ),
-        ),
+        throwsFormatException,
       );
       await expectLater(
         run('preview', {'editing_id': id}),
@@ -315,6 +330,159 @@ void main() {
         ),
       );
       expect(registry.records, isEmpty);
+    },
+  );
+
+  test(
+    'Run exports both saved projects as linked, reusable video nodes',
+    () async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const paths = MethodChannel('plugins.flutter.io/path_provider');
+      const directorStorage = MethodChannel('ai.reveric.director/storage');
+      messenger.setMockMethodCallHandler(paths, (_) async => root.path);
+      messenger.setMockMethodCallHandler(directorStorage, (_) async => 1 << 40);
+      addTearDown(() => messenger.setMockMethodCallHandler(paths, null));
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(directorStorage, null),
+      );
+      await RevericPaths.initialize();
+      await ScreenplayService(db).createCanvasStructure();
+      await app.novelDao.create(
+        id: 'work',
+        title: 'Canvas',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: db.filePath,
+      );
+      final canvas = ProductionCanvasService(
+        StoryboardService(db, contentKind: contentKindCanvas),
+        host.production.canvas.library,
+        'work',
+      );
+      final production = ProductionToolHost(
+        canvas: canvas,
+        images: _Images(),
+        audio: _Audio(),
+        video: () => throw StateError('No video generation'),
+        results: _Results(),
+        editingSessions: sessions,
+      );
+      // Give the real Run dispatcher a frame renderer with no GPU dependency.
+      final content = _StagingContent(db);
+      final manager = AiToolManager(
+        content,
+        workingOverlayService: WorkingOverlayService(
+          db,
+          content,
+          novelActionsService: NovelActionsService(app),
+        ),
+        contentKind: contentKindCanvas,
+        workId: 'work',
+        sessionId: 'session',
+        operationHost: ToolOperationHost(
+          operations,
+          production: () async => production,
+        ),
+      )..registerAllTools();
+      Future<Map<String, dynamic>> dispatch(
+        String command,
+        Map<String, dynamic> options,
+      ) => manager.executeTool(
+        name: 'Run',
+        input: {'command': command, 'subcommand': 'export', 'options': options},
+        context: context,
+        callId: 'export-$command',
+      );
+      Future<void> expectOutput(
+        Future<Map<String, dynamic>> request,
+        CanvasNode source,
+        String edgeType,
+      ) async {
+        final started = await request;
+        expect(started['run_id'], isA<String>(), reason: '$started');
+        final finished = await operations.wait(
+          started['run_id'] as String,
+          context,
+        );
+        expect(finished['status'], 'completed', reason: '$finished');
+        final output = finished['result']['output'] as Map;
+        final id = output['node_id'] as String;
+        expect(output['node_path'], '/production/canvas/nodes/$id');
+        final node = await canvas.requireNode(id);
+        expect(node.canvasId, source.canvasId);
+        final asset = await canvas.videoSource(id);
+        expect(output['asset_id'], asset.id);
+        expect(await File(canvas.library.resolve(asset)).exists(), isTrue);
+        final edges = await db.canvasDao.getEdgesByCanvas(source.canvasId);
+        expect(
+          edges
+              .where(
+                (edge) =>
+                    edge.sourceNodeId == source.id && edge.targetNodeId == id,
+              )
+              .single
+              .type,
+          edgeType,
+        );
+      }
+
+      final board = await canvas.ensureCanvas('');
+      final director = await canvas.addDirector(board.id, 'Director');
+      final row = (await db.screenplayDao.getStaging(director.stagingId!))!;
+      final document = DirectorDocument.fromJson(row.document!);
+      runner
+        ..width = document.width
+        ..height = document.height
+        ..frameCount = document.durationFrames;
+      final stale = await dispatch('stagings', {
+        'staging_id': row.id,
+        'expected_version': row.version + 1,
+      });
+      expect(stale['error_code'], 'conflict', reason: '$stale');
+      await expectOutput(
+        dispatch('stagings', {
+          'staging_id': row.id,
+          'expected_version': row.version,
+        }),
+        director,
+        canvasEdgeTypeStagingOutput,
+      );
+
+      host = EditingToolHost(production, runner: runner);
+      final created = await run('create', {'title': 'Cut', 'ratio': '16:9'});
+      final id = created['editing_id'] as String;
+      final changed = await run('apply', {
+        'editing_id': id,
+        'expected_revision': 0,
+        'commands': [
+          {
+            'op': 'add_text',
+            'track_id': 'T1',
+            'start_frame': 0,
+            'text': 'Title',
+          },
+        ],
+      });
+      final editing = await canvas.requireNode(created['node_id'] as String);
+      final staleEditing = await dispatch('editing', {
+        'editing_id': id,
+        'expected_revision': 0,
+      });
+      expect(staleEditing['error_code'], 'conflict', reason: '$staleEditing');
+      runner
+        ..width = 1280
+        ..height = 720
+        ..frameCount = changed['total_frames'] as int
+        ..withAudio = true;
+      await expectOutput(
+        run('export', {
+          'editing_id': id,
+          'expected_revision': changed['revision'],
+        }),
+        editing,
+        canvasEdgeTypeDerivedOutput,
+      );
     },
   );
 
@@ -1201,6 +1369,30 @@ void main() {
       }
     },
   );
+}
+
+class _StagingContent extends NovelContentService {
+  _StagingContent(super.db);
+
+  late final _staging = StagingEditService(
+    database,
+    previewRenderer: _DirectorFrames.new,
+  );
+
+  @override
+  StagingEditService get stagingEditService => _staging;
+}
+
+class _DirectorFrames implements FrameRenderer {
+  @override
+  Future<Uint8List> capture(
+    DirectorDocument document,
+    int frame,
+    String cameraId,
+  ) async => Uint8List.fromList([137, 80, 78, 71]);
+
+  @override
+  void dispose() {}
 }
 
 class _Images implements ImageTaskService {

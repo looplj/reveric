@@ -1,4 +1,5 @@
 {
+  "production.addToChat": "添加到对话",
   "production.image_wait_cancelled": "已停止等待，供应商可能仍在处理。你可以稍后重新获取结果。",
   "production.reference_upload_failed": "参考素材上传失败，请检查渠道凭据、文件格式和网络后重试。",
   "production.reference_storage_invalid": "对象存储配置无效，请在设置中修复后再上传参考素材。",

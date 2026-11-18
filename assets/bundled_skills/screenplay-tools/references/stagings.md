@@ -32,6 +32,7 @@
 | `sample` | `staging_id`、`frames` | 1–12 个整数帧，可以包含可编辑终点 |
 | `frames` | `staging_id`、`frames` | 1–12 个整数帧；`camera_mode=sequence` 默认按切镜，fixed 必须传 `camera_id` |
 | `preview` | `staging_id` | 刷新画布预览 |
+| `export` | `node_id` 或 `staging_id` 二选一，可选 `expected_version` | 按切镜序列导出整段预演为关联视频节点 |
 
 `read` 的返回结构随读取范围区分：
 
@@ -219,6 +220,6 @@ collection 可选 `objects/cameras/tracks/motion_paths/camera_moves/camera_cuts`
 
 ## 交付
 
-Agent 完成编辑、画面检查和预览刷新后，说明修改内容与待确认之处。由用户在导演台界面确认效果，再输出图片或视频到制作画布；不通过 AI 命令导出独立文件。
+用户要求把预演导出到画布时，用 `Run stagings export`。从制作画布读取导演台的 `node_id`，或从导演台上下文取得 `staging_id`。同一个调度关联多个节点时，指定 `node_id`。需要锁定当前所读版本时，将 `read` 返回的 `version` 填入 `expected_version`。用返回的 `run_id` 调用 `Run operations wait` 等待终态，成功后用 `result.output.node_id` 或 `result.output.node_path` 引用新节点。
 
 独立文档用 `remove` 删除；仍被制作节点引用时需先处理引用。

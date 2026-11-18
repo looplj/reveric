@@ -26,6 +26,9 @@ import '../tool_operations.dart';
 import 'production.dart';
 import 'frames.dart';
 import '../../production/contact_sheet.dart';
+import '../../production/editing_output_orchestrator.dart';
+import '../../storyboard/service.dart' show StoryboardException;
+import 'nodes.dart' show outputSummary;
 
 final _log = AppLogger.forModule('EditingPreview');
 
@@ -159,6 +162,7 @@ class EditingToolHost {
       'undo',
       'redo',
       'preview',
+      'export',
       'frames',
     }.contains(action)) {
       throw const ToolOperationException(
@@ -170,10 +174,18 @@ class EditingToolHost {
       'read' => {'editing_id', 'track_id', 'start_frame', 'end_frame'},
       'frames' => {'editing_id', 'expected_revision', 'frames'},
       'apply' => {'editing_id', 'expected_revision', 'commands'},
+      'export' => {'editing_id', 'expected_revision', 'resolution'},
       _ => {'editing_id', 'expected_revision'},
     });
     final id = text(options, 'editing_id');
-    if (await canvas.shots.isCanvasWork) {
+    final canvasWork = await canvas.shots.isCanvasWork;
+    if (action == 'export' && !canvasWork) {
+      throw const ToolOperationException(
+        'failed_precondition',
+        'Export as a video node requires an editing project on a canvas work.',
+      );
+    }
+    if (canvasWork) {
       await service.canvasForEditing(id);
     }
 
@@ -314,6 +326,18 @@ class EditingToolHost {
         };
       }
       final frozen = session.document!;
+      final exporting = action == 'export';
+      final resolution = options['resolution'] ?? '720p';
+      if (exporting && !{'720p', '1080p'}.contains(resolution)) {
+        throw const FormatException('resolution must be 720p or 1080p.');
+      }
+      if (exporting && frozen.totalFrames == 0) {
+        throw const ToolOperationException(
+          'failed_precondition',
+          'The editing timeline is empty.',
+        );
+      }
+      final title = session.title;
       final positions = action == 'frames'
           ? contactSheetPositions(
               options['frames'],
@@ -332,11 +356,22 @@ class EditingToolHost {
         kind: 'editing.$action',
         targetPath: '/editings/$id',
         toolName: 'Run',
-        targetLabel: session.title,
+        targetLabel: title,
         // 预览要渲染整条时间线，固定后台；抽帧很快且结果要立即查看。
-        background: action == 'preview',
+        background: action != 'frames',
         input: options,
-        verifyTarget: () async {},
+        verifyTarget: () async {
+          if (exporting) {
+            try {
+              await service.canvasForEditing(id);
+            } on StateError catch (error) {
+              throw ToolOperationException(
+                'failed_precondition',
+                error.message,
+              );
+            }
+          }
+        },
         execute: (operation) async {
           final renderer = EditingRenderService(service, runner);
           final token = MediaCancellation();
@@ -377,9 +412,27 @@ class EditingToolHost {
               progress: (stage, progress) => operation.report(
                 progress: {'stage': stage, 'progress': progress},
               ),
-              preview: true,
+              resolution: resolution as String,
+              preview: !exporting,
             );
             try {
+              if (exporting) {
+                operation.checkCancelled();
+                operation.report(progress: {'stage': 'add_to_canvas'});
+                final node = await EditingOutputOrchestrator().run(
+                  service: canvas,
+                  editingId: id,
+                  file: encoded.file,
+                  name: '$title.mp4',
+                  cancellation: token,
+                );
+                return {
+                  'ok': true,
+                  'editing_id': id,
+                  'revision': expected,
+                  'output': await outputSummary(canvas, node, ''),
+                };
+              }
               final snapshot = await files.copy(
                 context.sessionId!,
                 encoded.file,
@@ -409,11 +462,20 @@ class EditingToolHost {
             } finally {
               await encoded.dispose();
             }
-          } on EditingSourceProblem {
-            throw const ToolOperationException(
+          } on EditingSourceProblem catch (error) {
+            throw ToolOperationException(
               'failed_precondition',
-              'One or more editing sources are unavailable or exceed their media range.',
+              'Unavailable or out-of-range editing sources: ${error.ids.join(', ')}.',
             );
+          } on EditingInsufficientSpace {
+            throw const ToolOperationException(
+              'storage_full',
+              'There is not enough disk space to render the editing project.',
+            );
+          } on StoryboardException catch (error) {
+            throw ToolOperationException('failed_precondition', error.reason);
+          } on StateError catch (error) {
+            throw ToolOperationException('failed_precondition', error.message);
           } on FormatException catch (error) {
             throw ToolOperationException('invalid_argument', error.message);
           } on UnsupportedError {

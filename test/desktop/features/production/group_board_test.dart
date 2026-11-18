@@ -102,6 +102,7 @@ void main() {
       var deletePreparations = 0;
       (String, bool)? creation;
       (String, String)? connection;
+      String? cellMenuNode;
       final selected = ValueNotifier<String?>(null);
       addTearDown(selected.dispose);
       try {
@@ -138,6 +139,8 @@ void main() {
                             sceneLabels: const {},
                             camera: ProductionBoardCamera(),
                             onSelect: (node) => selected.value = node.id,
+                            onStoryboardCellContextMenu: (node, _) =>
+                                cellMenuNode = node.id,
                             onClear: () => selected.value = null,
                             beforeRemoveSelection: () async {
                               deletePreparations++;
@@ -223,6 +226,13 @@ void main() {
           isTrue,
         );
         expect(find.byType(ProductionGroupBar), findsNothing);
+        await tester.tapAt(
+          const Offset(200, 210),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pumpAndSettle();
+        expect(cellMenuNode, first.id);
         expect(
           controller.getNode(first.id)!.ports.every((p) => !p.isConnectable),
           isTrue,

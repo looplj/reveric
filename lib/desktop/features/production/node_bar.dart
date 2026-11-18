@@ -8,6 +8,8 @@
 //   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/design-system.md
@@ -77,6 +79,7 @@ class ProductionNodeBar extends HookConsumerWidget {
     this.placeDerived,
     this.openResults = false,
     this.menuRequest,
+    this.onAttachToChat,
   });
   final ProductionCanvasService service;
   final String path;
@@ -94,6 +97,7 @@ class ProductionNodeBar extends HookConsumerWidget {
   final VoidCallback? onToSegments;
   final VoidCallback? onCopy;
   final VoidCallback onDelete;
+  final ValueChanged<CanvasNode>? onAttachToChat;
 
   /// 打开某个导演台节点对应的调度。
   final ValueChanged<CanvasNode> onOpenDirector;
@@ -119,6 +123,9 @@ class ProductionNodeBar extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ProductionViewNode.maybeOf(context) ?? this.node;
+    final attachToChat = onAttachToChat == null
+        ? null
+        : () => onAttachToChat!(node);
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final video = node.isGenerationNode;
@@ -254,6 +261,12 @@ class ProductionNodeBar extends HookConsumerWidget {
       context: context,
       position: position,
       entries: [
+        if (attachToChat != null)
+          RevericMenuItem(
+            icon: RevericIcons.chat_bubble_outline,
+            label: context.t(LocaleKeys.productionAddToChat),
+            onTap: attachToChat,
+          ),
         if (copyImage != null)
           RevericMenuItem(
             icon: RevericIcons.copy,
@@ -442,6 +455,7 @@ class ProductionNodeBar extends HookConsumerWidget {
         service: service,
         node: node,
         onCreated: onSelectNode,
+        onAttachToChat: attachToChat,
         place: placeDerived == null
             ? null
             : (size) => placeDerived!(node.id, audio: false, size: size)!,
@@ -938,6 +952,12 @@ class ProductionNodeBar extends HookConsumerWidget {
                   if (index > 0) separator(),
                   ...group,
                 ],
+              if (attachToChat != null)
+                RevericIconButton(
+                  icon: RevericIcons.chat_bubble_outline,
+                  tooltip: context.t(LocaleKeys.productionAddToChat),
+                  onPressed: attachToChat,
+                ),
               Builder(
                 builder: (context) => RevericIconButton(
                   icon: RevericIcons.more_horiz,

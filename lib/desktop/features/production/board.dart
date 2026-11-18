@@ -114,6 +114,7 @@ class ProductionBoard extends HookConsumerWidget {
     this.onAddSegment,
     required this.onSelect,
     this.onContextMenu,
+    this.onStoryboardCellContextMenu,
     required this.onClear,
     this.beforeRemoveSelection,
     required this.onConnect,
@@ -153,6 +154,7 @@ class ProductionBoard extends HookConsumerWidget {
 
   /// 节点右键：节点已选中，[at] 是全局坐标。
   final void Function(CanvasNode node, Offset at)? onContextMenu;
+  final void Function(CanvasNode node, Offset at)? onStoryboardCellContextMenu;
 
   /// 点画布空白处。
   final VoidCallback onClear;
@@ -414,7 +416,8 @@ class ProductionBoard extends HookConsumerWidget {
     );
     nodeWidgets.removeWhere((id, _) => !byId.containsKey(id));
     final latestOnOpenDirector = useRef(onOpenDirector)..value = onOpenDirector;
-    final latestOnContextMenu = useRef(onContextMenu)..value = onContextMenu;
+    final contextMenus = useRef((onContextMenu, onStoryboardCellContextMenu))
+      ..value = (onContextMenu, onStoryboardCellContextMenu);
     final latestTaskActions = useRef(taskActions)..value = taskActions;
     final hasTaskActions = taskActions != null;
     // 上层每次 build 都会新建 taskActions；卡片只拿转发到最新值的稳定实例，缓存才能命中。
@@ -809,13 +812,17 @@ class ProductionBoard extends HookConsumerWidget {
             }
           },
           // 按下任意键时 flow 已按点选处理过；只有多选里右键时才收成单选。
-          // 分镜格没有工具条，不响应。
           onContextMenu: (node, position) {
             final row = latest.value[node.id];
-            final open = latestOnContextMenu.value;
-            if (row == null ||
-                open == null ||
-                interaction.storyboardParents.containsKey(row.id)) {
+            if (row == null) {
+              return;
+            }
+            final (open, openCell) = contextMenus.value;
+            if (interaction.storyboardParents.containsKey(row.id)) {
+              openCell?.call(row, position.offset);
+              return;
+            }
+            if (open == null) {
               return;
             }
             if (controller.selectedNodeIds.length != 1 ||

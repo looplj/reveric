@@ -122,8 +122,7 @@ String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
 
 const _runActionKeys = <(String, String), String>{
   ('settings', 'open'): LocaleKeys.commonOpen,
-  ('production', 'canvas-preview'):
-      LocaleKeys.toolRunProductionCanvasPreview,
+  ('production', 'canvas-preview'): LocaleKeys.toolRunProductionCanvasPreview,
   ('production', 'capture-panorama'):
       LocaleKeys.toolRunProductionCapturePanorama,
   ('production', 'derive-view'): LocaleKeys.toolRunProductionDeriveView,
@@ -179,6 +178,7 @@ const _runActionKeys = <(String, String), String>{
   ('stagings', 'remove'): LocaleKeys.toolRunDirectorRemove,
   ('stagings', 'preview'): LocaleKeys.toolRunDirectorPreview,
   ('stagings', 'output'): LocaleKeys.toolRunDirectorOutput,
+  ('stagings', 'export'): LocaleKeys.productionExportMotion,
   ('stagings', 'frames'): LocaleKeys.toolRunDirectorFrames,
 
   ('themes', 'list'): LocaleKeys.toolRunThemesList,

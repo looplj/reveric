@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../shared/database/novel_content_database.dart';
+import '../../../shared/models/novel_workspace.dart';
 import '../../../shared/widgets/screenplay/director_shell.dart';
 
 class ProductionEditSession {
@@ -33,11 +34,13 @@ class ProductionSceneActions {
     required this.openDirector,
     this.openEditing,
     this.uploadScript,
+    this.attachReference,
   });
   final void Function(String prompt)? ask;
   final ScreenplayDirectorOpen openDirector;
   final void Function()? openEditing;
   final Future<void> Function()? uploadScript;
+  final ValueChanged<AiContextReference>? attachReference;
 }
 
 String _draftKey(ProductionClipRow clip) => jsonEncode([

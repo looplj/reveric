@@ -317,7 +317,7 @@
   "screenplay.production.directorName": "导演台 {n}",
   "screenplay.production.directorOutputs": "输出 {count}",
   "screenplay.production.exportStill": "导出图片",
-  "screenplay.production.exportMotion": "导出视频",
+  "screenplay.production.exportMotion": "导出为视频节点",
   "screenplay.production.videoTools": "视频处理",
   "screenplay.production.mute": "静音",
   "screenplay.production.trim": "裁剪时长",

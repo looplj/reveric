@@ -317,7 +317,7 @@
   "screenplay.production.directorName": "Director {n}",
   "screenplay.production.directorOutputs": "Outputs {count}",
   "screenplay.production.exportStill": "Export image",
-  "screenplay.production.exportMotion": "Export video",
+  "screenplay.production.exportMotion": "Export as video node",
   "screenplay.production.videoTools": "Video tools",
   "screenplay.production.mute": "Mute",
   "screenplay.production.trim": "Trim",

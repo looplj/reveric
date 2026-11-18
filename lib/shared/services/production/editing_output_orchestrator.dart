@@ -6,6 +6,7 @@
 import 'dart:io';
 import '../../database/novel_content_database.dart';
 import '../../models/asset_purpose.dart';
+import '../../models/production/media.dart';
 import '../editing/service.dart';
 import 'canvas_service.dart';
 import 'ffmpeg_runner.dart';
@@ -16,7 +17,9 @@ class EditingOutputOrchestrator {
     required String editingId,
     required File file,
     required String name,
+    MediaCancellation? cancellation,
   }) async {
+    final token = cancellation ?? MediaCancellation();
     final canvasId = await EditingService(
       service.db,
       service.library,
@@ -29,8 +32,11 @@ class EditingOutputOrchestrator {
       name: name,
       novelId: service.novelId,
       purpose: AssetPurpose.production_output,
-      cancellation: MediaCancellation(),
+      cancellation: token,
     );
+    if (token.cancelled) {
+      throw const MediaException(MediaFailure.cancelled);
+    }
     return service.addDerivedOutput(source.id, asset.id, title: name);
   }
 }

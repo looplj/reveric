@@ -231,6 +231,14 @@ class CanvasWorkPage extends HookConsumerWidget {
                                       await openDirector(id, canvas: canvas);
                                     },
                                     uploadScript: uploadScript,
+                                    attachReference: (reference) {
+                                      chatState.setOpen(true);
+                                      shortcut.value = AiChatShortcutDraft(
+                                        id: 'production_${DateTime.now().microsecondsSinceEpoch}',
+                                        text: '',
+                                        references: [reference],
+                                      );
+                                    },
                                   ),
                                 ),
                               ),

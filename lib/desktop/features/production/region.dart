@@ -9,6 +9,8 @@
 //   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/file-access.md
@@ -51,6 +53,7 @@ import '../../../shared/components/reveric_context_menu.dart';
 import '../../../shared/providers/screenplay_providers.dart';
 import '../../../shared/providers/screenplay_workspace_state_provider.dart';
 import '../../../shared/services/ai/chat_attachments.dart' show NamedChatFile;
+import '../../../shared/services/ai/media/nodes.dart' show productionNodePath;
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/services/production/staging_export_orchestrator.dart';
 import '../../../shared/services/production/ffmpeg_runner.dart';
@@ -96,6 +99,7 @@ typedef ProductionAsk =
       bool send,
       AiModelOption? model,
       String? effort,
+      List<AiContextReference> references,
     });
 
 class ProductionRegion extends HookConsumerWidget {
@@ -141,12 +145,14 @@ class ProductionRegion extends HookConsumerWidget {
                 bool send = false,
                 AiModelOption? model,
                 String? effort,
+                List<AiContextReference> references = const [],
               }) => askRef.value?.call(
                 prompt,
                 files: files,
                 send: send,
                 model: model,
                 effort: effort,
+                references: references,
               );
         Future<void> recognize(
           BuildContext context, {
@@ -217,6 +223,9 @@ class ProductionRegion extends HookConsumerWidget {
                   selectedClipId: selectedClipId,
                   sceneActions: ProductionSceneActions(
                     ask: ask,
+                    attachReference: ask == null
+                        ? null
+                        : (reference) => ask('', references: [reference]),
                     openDirector: open,
                     openEditing: openEditing,
                   ),
@@ -587,6 +596,25 @@ class ProductionCanvasRegion extends HookConsumerWidget {
         namedArgs: {'number': '${sceneNumbers[clip.sceneId] ?? '?'}-$n'},
       );
     }
+    void attachToChat(CanvasNode node) {
+      final clipId = node.clipId;
+      final clip = clipId == selectedClip?.id
+          ? selectedClip
+          : clips.where((clip) => clip.id == clipId).firstOrNull;
+      final title = (clip?.title ?? node.title).trim();
+      final label = title.isNotEmpty
+          ? title
+          : segmentLabels[node.clipId] ?? context.t(LocaleKeys.commonUntitled);
+      sceneActions.attachReference!(
+        AiContextReference(
+          section: NovelWorkspaceSection.storyboard,
+          itemId: node.id,
+          label: label,
+          path: productionNodePath(episodeId, node.id),
+        ),
+      );
+    }
+
     final openingResults =
         selected.value != null &&
         resultsRequest.value?.nodeId == selected.value!.id;
@@ -1120,6 +1148,22 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                               ? null
                               : (sceneId) => run(() => addSegment(sceneId)),
                           onSelect: select,
+                          onStoryboardCellContextMenu:
+                              sceneActions.attachReference == null
+                              ? null
+                              : (node, at) => showRevericContextMenu(
+                                  context: context,
+                                  position: at,
+                                  entries: [
+                                    RevericMenuItem(
+                                      icon: RevericIcons.chat_bubble_outline,
+                                      label: context.t(
+                                        LocaleKeys.productionAddToChat,
+                                      ),
+                                      onTap: () => attachToChat(node),
+                                    ),
+                                  ],
+                                ),
                           onContextMenu: (node, at) async {
                             await select(node);
                             if (context.mounted &&
@@ -1208,6 +1252,10 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                                   node: selected.value!,
                                   clip: selectedClip,
                                   segmentLabels: segmentLabels,
+                                  onAttachToChat:
+                                      sceneActions.attachReference == null
+                                      ? null
+                                      : attachToChat,
                                   onPreview: previewTarget == null
                                       ? null
                                       : () => productionRun(

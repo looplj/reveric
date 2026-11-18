@@ -185,6 +185,7 @@ mixin _AiToolManagerRunMixin
         'restore': _RunCodemodeAccess.write(),
         'remove': _RunCodemodeAccess.write(),
         'preview': _RunCodemodeAccess.write(),
+        'export': _RunCodemodeAccess.write(),
         'frames': _RunCodemodeAccess.denied(
           'Frame images must be viewed through a direct Run call.',
         ),
@@ -203,6 +204,7 @@ mixin _AiToolManagerRunMixin
         'restore': RunPermission.none(),
         'remove': RunPermission.none(),
         'preview': RunPermission.none(),
+        'export': RunPermission.none(),
       },
       (spec, options, _) => _runStagingsCommand(spec.subcommand, options),
     ),
@@ -344,6 +346,7 @@ mixin _AiToolManagerRunMixin
         'undo': _RunCodemodeAccess.write(),
         'redo': _RunCodemodeAccess.write(),
         'preview': _RunCodemodeAccess.write(),
+        'export': _RunCodemodeAccess.write(),
         'cleanup': _RunCodemodeAccess.write(),
         'frames': _RunCodemodeAccess.denied(
           'Frame images must be viewed through a direct Run call.',
@@ -358,6 +361,7 @@ mixin _AiToolManagerRunMixin
         'undo': RunPermission.none(),
         'redo': RunPermission.none(),
         'preview': RunPermission.none(),
+        'export': RunPermission.none(),
         'frames': RunPermission.none(),
         'cleanup': RunPermission.none(),
       },

@@ -4429,6 +4429,7 @@ class NovelEditorPage extends HookConsumerWidget {
                         send = false,
                         model,
                         effort,
+                        references = const [],
                       }) {
                         if (isChatFloating) {
                           productionChatNotifier.setOpen(true);
@@ -4448,6 +4449,7 @@ class NovelEditorPage extends HookConsumerWidget {
                             reasoningEffort: effort,
                             autoSend: true,
                             files: files,
+                            references: references,
                           );
                           return;
                         }
@@ -4456,6 +4458,7 @@ class NovelEditorPage extends HookConsumerWidget {
                             id: 'production_${DateTime.now().microsecondsSinceEpoch}',
                             text: prompt,
                             autoSend: send,
+                            references: references,
                           );
                           return;
                         }
@@ -4471,6 +4474,7 @@ class NovelEditorPage extends HookConsumerWidget {
                           initialText: prompt,
                           autoSend: true,
                           files: files,
+                          references: references,
                         );
                       },
                   onRegisterScreenplaySceneFlush: (flush) {

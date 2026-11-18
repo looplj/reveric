@@ -983,10 +983,12 @@ class AiChatPanel extends HookConsumerWidget {
             : '$currentText\n\n${draft.text}';
         // 这里保持即时计算：下面 autoSend 分支要用同一个 nextText 发送，发送语义不能变。
         // 仅把「赋值」做成组词安全的，避免清空 composing 触发 discardMarkedText。
-        writeControllerTextAfterComposing(
-          s.composerController,
-          (_) => nextText,
-        );
+        if (nextText != currentText) {
+          writeControllerTextAfterComposing(
+            s.composerController,
+            (_) => nextText,
+          );
+        }
         if (draft.references.isNotEmpty) {
           final references = <AiContextReference>[
             ...s.attachedReferences.value,

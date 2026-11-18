@@ -57,6 +57,7 @@ void main() {
         ('stagings', 'remove', '删除导演文档', 'Delete director document'),
         ('stagings', 'preview', '刷新导演预览', 'Refresh director preview'),
         ('stagings', 'output', '导出导演画面', 'Export director output'),
+        ('stagings', 'export', '导出为视频节点', 'Export as video node'),
       ];
       await tester.pumpWidget(
         EasyLocalization(

@@ -62,11 +62,13 @@ class ProductionGroupBar extends HookWidget {
     required this.node,
     this.onCreated,
     this.place,
+    this.onAttachToChat,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
   final ValueChanged<CanvasNode>? onCreated;
   final ProductionNodePlacement Function(Size)? place;
+  final VoidCallback? onAttachToChat;
   @override
   Widget build(BuildContext context) {
     final history = ProductionHistoryScope.maybeOf(context)?.history;
@@ -306,6 +308,12 @@ class ProductionGroupBar extends HookWidget {
                           }
                         }),
                 ),
+              if (onAttachToChat != null)
+                RevericIconButton(
+                  icon: RevericIcons.chat_bubble_outline,
+                  tooltip: context.t(LocaleKeys.productionAddToChat),
+                  onPressed: onAttachToChat,
+                ),
               Builder(
                 builder: (anchor) => RevericIconButton(
                   icon: RevericIcons.more_horiz,
@@ -320,6 +328,14 @@ class ProductionGroupBar extends HookWidget {
                               Offset(0, box.size.height),
                             ),
                             entries: [
+                              if (onAttachToChat != null)
+                                RevericMenuItem(
+                                  label: context.t(
+                                    LocaleKeys.productionAddToChat,
+                                  ),
+                                  icon: RevericIcons.chat_bubble_outline,
+                                  onTap: onAttachToChat,
+                                ),
                               RevericMenuItem(
                                 label: context.t(LocaleKeys.commonDelete),
                                 icon: RevericIcons.delete,
