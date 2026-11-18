@@ -151,6 +151,21 @@ void main() {
         final denied = await frames(options);
         expect(denied['error_code'], 'permission_denied', reason: '$denied');
         expect(denied['kind'], 'ffmpeg.frames');
+        final deniedAudio = await toolManager.executeTool(
+          name: 'Run',
+          context: context,
+          callId: 'inspect_audio',
+          input: {
+            'command': 'ffmpeg',
+            'subcommand': 'inspect_audio',
+            'options': {'path': source.path, 'start_ms': 0, 'end_ms': 100},
+          },
+        );
+        expect(
+          deniedAudio['error_code'],
+          'permission_denied',
+          reason: '$deniedAudio',
+        );
         final subtitle = File('${root.path}/caption.srt');
         await subtitle.writeAsString(
           '1\n00:00:00,000 --> 00:00:01,000\nCaption\n',

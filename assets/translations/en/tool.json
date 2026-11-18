@@ -267,6 +267,7 @@
   "tool.run_editing_apply": "Edit timeline",
   "tool.run_editing_preview": "Preview video",
   "tool.run_editing_frames": "View timeline frames",
+  "tool.run_editing_inspect_audio": "Inspect timeline audio",
   "tool.run_editing_export": "Export video",
   "tool.run_operations": "Background tasks",
   "tool.run_operations_list": "List background tasks",
@@ -275,6 +276,7 @@
   "tool.run_ffmpeg": "Media processing",
   "tool.run_ffmpeg_capabilities": "View media capabilities",
   "tool.run_ffmpeg_probe": "Inspect media",
+  "tool.run_ffmpeg_inspect_audio": "Inspect source audio",
   "tool.run_ffmpeg_frames": "Extract video frames",
   "tool.run_ffmpeg_execute": "Process media"
 }

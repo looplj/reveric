@@ -15,6 +15,8 @@ import '../../../models/tool_permission.dart';
 import '../../../models/production/media.dart';
 import '../../production/ffmpeg_runner.dart';
 import '../../production/contact_sheet.dart';
+import '../../production/audio_inspection.dart';
+import '../../../models/editing/document.dart' show editingSampleRate;
 import '../../production/frame_capture.dart';
 import '../media/frames.dart';
 import '../files/session_files.dart';
@@ -32,6 +34,82 @@ class FfmpegCommand {
   final Duration executionTimeout;
   final SessionFiles files;
   final FfmpegRunner runner;
+
+  Future<Map<String, dynamic>> inspectAudio(
+    String path,
+    Map<String, dynamic> options,
+    MediaCancellation cancellation,
+  ) async {
+    final start = options['start_ms'], end = options['end_ms'];
+    final window = options['window_ms'] ?? 100;
+    if (start is! int ||
+        end is! int ||
+        start < 0 ||
+        end <= start ||
+        end - start > audioInspectionMaxSeconds * 1000 ||
+        window is! int ||
+        window < 10 ||
+        window > 1000) {
+      throw const FormatException(
+        'Use a positive interval of up to 10000 ms and window_ms from 10 to 1000.',
+      );
+    }
+    final source = await CommandPaths(files).resolve(path);
+    final dir = await Directory.systemTemp.createTemp('reveric_ffmpeg_audio_');
+    try {
+      final output = File('${dir.path}/source.f32');
+      await runner.execute(
+        [
+          '-v',
+          'error',
+          '-protocol_whitelist',
+          'file',
+          '-format_whitelist',
+          ffmpegFileDemuxers,
+          '-ss',
+          '${start}ms',
+          '-i',
+          source.path,
+          '-t',
+          '${end - start}ms',
+          '-map',
+          '0:a:0',
+          '-ar',
+          '$editingSampleRate',
+          '-ac',
+          '2',
+          '-f',
+          'f32le',
+          output.path,
+        ],
+        probe: false,
+        cancellation: cancellation,
+      );
+      final bytes = await output.readAsBytes();
+      const samplesPerMs = editingSampleRate ~/ 1000;
+      if (bytes.length != (end - start) * samplesPerMs * 8) {
+        throw const FormatException(
+          'The audio stream does not cover the full requested interval.',
+        );
+      }
+      final audio = InspectionAudio(bytes);
+      return {
+        'ok': true,
+        'source_file_path': path,
+        'start_ms': start,
+        'end_ms': end,
+        'window_ms': window,
+        ...audio.levels(
+          origin: start,
+          samplesPerUnit: samplesPerMs,
+          window: window,
+          unit: 'ms',
+        ),
+      };
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  }
 
   Future<Map<String, dynamic>> frames(
     String sessionId,

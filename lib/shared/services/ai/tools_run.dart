@@ -291,6 +291,7 @@ mixin _AiToolManagerRunMixin
         'capabilities': _RunCodemodeAccess.read(),
         'probe': _RunCodemodeAccess.read(),
         'execute': _RunCodemodeAccess.write(),
+        'inspect_audio': _RunCodemodeAccess.read(),
         'frames': _RunCodemodeAccess.denied(
           'Frame images must be viewed through a direct Run call.',
         ),
@@ -299,6 +300,7 @@ mixin _AiToolManagerRunMixin
       subcommands: const {
         'capabilities': RunPermission.none(),
         'probe': RunPermission.required('files.read'),
+        'inspect_audio': RunPermission.required('files.read'),
         'frames': RunPermission.required('files.read'),
         'execute': RunPermission.required('files.read'),
       },
@@ -351,6 +353,7 @@ mixin _AiToolManagerRunMixin
         'preview': _RunCodemodeAccess.write(),
         'export': _RunCodemodeAccess.write(),
         'cleanup': _RunCodemodeAccess.write(),
+        'inspect_audio': _RunCodemodeAccess.read(),
         'frames': _RunCodemodeAccess.denied(
           'Frame images must be viewed through a direct Run call.',
         ),
@@ -366,6 +369,7 @@ mixin _AiToolManagerRunMixin
         'redo': RunPermission.none(),
         'preview': RunPermission.none(),
         'export': RunPermission.none(),
+        'inspect_audio': RunPermission.none(),
         'frames': RunPermission.none(),
         'cleanup': RunPermission.none(),
       },
@@ -790,17 +794,23 @@ mixin _AiToolManagerRunMixin
       }
     }
     final extracting = subcommand == 'frames';
-    final allowed = extracting ? {'path', 'timestamps_ms'} : {'args'};
+    final inspectingAudio = subcommand == 'inspect_audio';
+    final fileInput = extracting || inspectingAudio;
+    final allowed = switch (subcommand) {
+      'frames' => {'path', 'timestamps_ms'},
+      'inspect_audio' => {'path', 'start_ms', 'end_ms', 'window_ms'},
+      _ => {'args'},
+    };
     if (options.keys.any((key) => !allowed.contains(key))) {
       throw const FormatException('Unsupported FFmpeg option');
     }
     final timestamps = extracting
         ? contactSheetPositions(options['timestamps_ms'], 'timestamps_ms')
         : null;
-    final source = extracting ? _productionCommandText(options, 'path') : null;
+    final source = fileInput ? _productionCommandText(options, 'path') : null;
     final parsed = FfmpegArguments.parse(
-      extracting ? [source!] : options['args'],
-      probe: extracting || subcommand == 'probe',
+      fileInput ? [source!] : options['args'],
+      probe: fileInput || subcommand == 'probe',
     );
     final context = _currentToolExecutionContext;
     final manager = operationHost?.operations;
@@ -858,6 +868,12 @@ mixin _AiToolManagerRunMixin
           );
           await plan.verify();
           operation.checkCancelled();
+          if (inspectingAudio) {
+            return commandFileResult(
+              await command.inspectAudio(source!, options, cancellation),
+              command.files,
+            );
+          }
           return extracting
               ? commandFileResult(
                   await command.frames(id, source!, timestamps!, cancellation),

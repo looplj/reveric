@@ -267,6 +267,7 @@
   "tool.run_editing_apply": "调整剪辑",
   "tool.run_editing_preview": "预览视频",
   "tool.run_editing_frames": "查看剪辑画面",
+  "tool.run_editing_inspect_audio": "检查时间线音频",
   "tool.run_editing_export": "导出视频",
   "tool.run_operations": "后台任务",
   "tool.run_operations_list": "查看后台任务",
@@ -275,6 +276,7 @@
   "tool.run_ffmpeg": "媒体处理",
   "tool.run_ffmpeg_capabilities": "查看媒体处理能力",
   "tool.run_ffmpeg_probe": "检查媒体信息",
+  "tool.run_ffmpeg_inspect_audio": "检查源音频",
   "tool.run_ffmpeg_frames": "提取视频帧",
   "tool.run_ffmpeg_execute": "处理媒体"
 }

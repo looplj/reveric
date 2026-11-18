@@ -5435,6 +5435,7 @@ abstract final class LocaleKeys {
   static const toolRunEditingApply = 'tool.run_editing_apply';
   static const toolRunEditingPreview = 'tool.run_editing_preview';
   static const toolRunEditingFrames = 'tool.run_editing_frames';
+  static const toolRunEditingInspectAudio = 'tool.run_editing_inspect_audio';
   static const toolRunEditingExport = 'tool.run_editing_export';
   static const toolRunOperations = 'tool.run_operations';
   static const toolRunOperationsList = 'tool.run_operations_list';
@@ -5443,6 +5444,7 @@ abstract final class LocaleKeys {
   static const toolRunFfmpeg = 'tool.run_ffmpeg';
   static const toolRunFfmpegCapabilities = 'tool.run_ffmpeg_capabilities';
   static const toolRunFfmpegProbe = 'tool.run_ffmpeg_probe';
+  static const toolRunFfmpegInspectAudio = 'tool.run_ffmpeg_inspect_audio';
   static const toolRunFfmpegFrames = 'tool.run_ffmpeg_frames';
   static const toolRunFfmpegExecute = 'tool.run_ffmpeg_execute';
 

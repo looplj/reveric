@@ -85,6 +85,130 @@ class _NativeRunner extends FfmpegRunner {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
+    'inspect_audio measures a one-frame cut over music without writing session files',
+    () async {
+      final root = await Directory.systemTemp.createTemp('audio-inspect-');
+      final app = AppDatabase.forTest(NativeDatabase.memory());
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      final runner = _NativeRunner();
+      final library = MediaLibraryService(app, MediaService(runner), root);
+      final service = EditingService(db, library);
+      final renderer = EditingRenderService(service, runner);
+      addTearDown(() async {
+        await renderer.dispose();
+        await db.close();
+        await app.close();
+        await root.delete(recursive: true);
+      });
+      final dir = await Directory(
+        '${root.path}/file_workspaces/work/audio',
+      ).create(recursive: true);
+      final path = '${dir.path}/tone.wav';
+      await runner.execute(
+        [
+          '-f',
+          'lavfi',
+          '-i',
+          "aevalsrc=if(lt(t\\,0.5)\\,0\\,0.3):s=48000:d=1",
+          '-ac',
+          '2',
+          path,
+        ],
+        probe: false,
+        cancellation: MediaCancellation(),
+      );
+      await app.assetDao.insertAsset(
+        AssetsCompanion.insert(
+          id: 'tone',
+          type: 'audio',
+          purpose: 'general',
+          path: const Value('file_workspaces/work/audio/tone.wav'),
+          content: const Value(AudioAssetContent(mimeType: 'audio/wav')),
+        ),
+      );
+      final files = SessionFiles(root: root.path, novelId: 'work');
+      final command = FfmpegCommand(files, runner);
+      final source = await command.inspectAudio('audio/tone.wav', {
+        'start_ms': 400,
+        'end_ms': 700,
+        'window_ms': 100,
+      }, MediaCancellation());
+      expect(source['silence_ranges'], [
+        {'start_ms': 400, 'end_ms': 500},
+      ]);
+      expect(source['windows'][1]['peak_dbfs'], isA<double>());
+      expect(source.containsKey('files'), isFalse);
+      expect(
+        await Directory('${root.path}/${files.sessionsPath}').exists(),
+        isFalse,
+      );
+      expect(jsonEncode(source), isNotEmpty);
+      await expectLater(
+        command.inspectAudio('audio/tone.wav', {
+          'start_ms': 999,
+          'end_ms': 1100,
+        }, MediaCancellation()),
+        throwsFormatException,
+      );
+      final asset = await service.source('tone');
+      final doc = EditingDocument.empty('16:9').copyWith(
+        clips: [
+          EditingClip(
+            id: 'music',
+            trackId: 'A3',
+            startFrame: 0,
+            durationFrames: 8,
+            content: EditingAudioContent(
+              source: asset,
+              sourceInUs: 500000,
+              gainDb: -20,
+            ),
+          ),
+          EditingClip(
+            id: 'burst',
+            trackId: 'A2',
+            startFrame: 4,
+            durationFrames: 1,
+            content: EditingAudioContent(source: asset, sourceInUs: 500000),
+          ),
+        ],
+      );
+      final audio = await renderer.inspectAudio(
+        doc,
+        2,
+        7,
+        clipId: 'burst',
+        cancellation: MediaCancellation(),
+      );
+      expect(audio.mix.samples, 5 * editingSamplesPerFrame);
+      expect(audio.clips.single['clip_id'], 'burst');
+      final mix = audio.mix.levels(
+        origin: 2,
+        samplesPerUnit: editingSamplesPerFrame,
+        window: 1,
+        unit: 'frame',
+      )['windows'];
+      expect(
+        mix[2]['rms_dbfs'] as double,
+        greaterThan((mix[1]['rms_dbfs'] as double) + 15),
+      );
+      expect(
+        audio.clips.singleWhere(
+          (clip) => clip['clip_id'] == 'burst',
+        )['windows'],
+        hasLength(1),
+      );
+      await expectLater(
+        renderer.inspectAudio(doc, 2, 9, cancellation: MediaCancellation()),
+        throwsFormatException,
+      );
+    },
+    skip: _binary.isEmpty
+        ? 'Set FFMPEG_TEST_BIN for native audio checks.'
+        : false,
+  );
+
+  test(
     'native frames preserves single-frame detail and fits 16 samples in four rows',
     () async {
       final root = await Directory.systemTemp.createTemp('reveric-frames-');
@@ -645,5 +769,113 @@ void main() {
         ? 'Set FFMPEG_TEST_BIN for native editing checks.'
         : false,
     timeout: const Timeout(Duration(minutes: 3)),
+  );
+  test(
+    'a clip cut in mid-chunk shows its first frame over the black base',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'reveric-editing-cut-',
+      );
+      final app = AppDatabase.forTest(NativeDatabase.memory());
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      final runner = _NativeRunner();
+      final service = EditingService(
+        db,
+        MediaLibraryService(app, MediaService(runner), root),
+      );
+      final renderer = EditingRenderService(service, runner);
+      Future<String> run(List<String> args) =>
+          runner.execute(args, probe: false, cancellation: MediaCancellation());
+      EncodedMedia? output;
+      try {
+        await Directory(
+          '${root.path}/file_workspaces/work',
+        ).create(recursive: true);
+        for (final color in ['red', 'blue']) {
+          final relative = 'file_workspaces/work/$color.mp4';
+          await run([
+            '-y',
+            '-f',
+            'lavfi',
+            '-i',
+            'color=c=$color:s=160x90:r=24:d=3',
+            '-c:v',
+            'libx264',
+            '-pix_fmt',
+            'yuv420p',
+            '${root.path}/$relative',
+          ]);
+          await app.assetDao.insertAsset(
+            AssetsCompanion.insert(
+              id: color,
+              type: 'video',
+              purpose: 'general',
+              path: Value(relative),
+              content: const Value(VideoAssetContent(mimeType: 'video/mp4')),
+            ),
+          );
+        }
+        // 56 / 24 as a double is slightly above the time FFmpeg derives from
+        // the frame's timestamp, which used to drop the first frame of the cut.
+        const cut = 56;
+        final doc = EditingDocument.empty('16:9').copyWith(
+          clips: [
+            EditingClip(
+              id: 'red',
+              trackId: 'V1',
+              startFrame: 0,
+              durationFrames: cut,
+              content: EditingVideoContent(source: await service.source('red')),
+            ),
+            EditingClip(
+              id: 'blue',
+              trackId: 'V1',
+              startFrame: cut,
+              durationFrames: 24,
+              content: EditingVideoContent(
+                source: await service.source('blue'),
+              ),
+            ),
+          ],
+        );
+        output = await renderer.render(
+          doc,
+          resolution: '480p',
+          cancellation: MediaCancellation(),
+          progress: (_, _) {},
+        );
+        for (final (frame, red, blue) in [
+          (cut - 1, true, false),
+          (cut, false, true),
+          (cut + 1, false, true),
+        ]) {
+          final still = '${root.path}/frame-$frame.png';
+          await run([
+            '-y',
+            '-i',
+            output.file.path,
+            '-vf',
+            "select='eq(n,$frame)'",
+            '-frames:v',
+            '1',
+            still,
+          ]);
+          final image = img.decodePng(await File(still).readAsBytes())!;
+          final pixel = image.getPixel(image.width ~/ 2, image.height ~/ 2);
+          expect(pixel.r > 200, red, reason: 'frame $frame red');
+          expect(pixel.b > 200, blue, reason: 'frame $frame blue');
+        }
+      } finally {
+        await output?.dispose();
+        await renderer.dispose();
+        await db.close();
+        await app.close();
+        await root.delete(recursive: true);
+      }
+    },
+    skip: _binary.isEmpty
+        ? 'Set FFMPEG_TEST_BIN for native editing checks.'
+        : false,
+    timeout: const Timeout(Duration(minutes: 2)),
   );
 }

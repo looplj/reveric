@@ -165,6 +165,7 @@ class EditingToolHost {
       'preview',
       'export',
       'frames',
+      'inspect_audio',
     }.contains(action)) {
       throw const ToolOperationException(
         'unsupported',
@@ -174,6 +175,13 @@ class EditingToolHost {
     keys(options, switch (action) {
       'read' => {'editing_id', 'track_id', 'start_frame', 'end_frame'},
       'duplicate' => {'editing_id', 'title', 'expected_revision'},
+      'inspect_audio' => {
+        'editing_id',
+        'expected_revision',
+        'start_frame',
+        'end_frame',
+        'clip_id',
+      },
       'frames' => {'editing_id', 'expected_revision', 'frames'},
       'apply' => {'editing_id', 'expected_revision', 'commands'},
       'export' => {'editing_id', 'expected_revision', 'resolution'},
@@ -414,7 +422,7 @@ class EditingToolHost {
         toolName: 'Run',
         targetLabel: title,
         // 预览要渲染整条时间线，固定后台；抽帧很快且结果要立即查看。
-        background: action != 'frames',
+        background: action != 'frames' && action != 'inspect_audio',
         input: options,
         verifyTarget: () async {
           if (exporting) {
@@ -436,6 +444,35 @@ class EditingToolHost {
           );
           try {
             operation.checkCancelled();
+            if (action == 'inspect_audio') {
+              final first = number(options, 'start_frame');
+              final end = number(options, 'end_frame');
+              final clipId = options.containsKey('clip_id')
+                  ? text(options, 'clip_id')
+                  : null;
+              final audio = await renderer.inspectAudio(
+                frozen,
+                first,
+                end,
+                clipId: clipId,
+                cancellation: token,
+              );
+              return {
+                'ok': true,
+                'editing_id': id,
+                'revision': expected,
+                'fps': editingFps,
+                'start_frame': first,
+                'end_frame': end,
+                'clips': audio.clips,
+                'mix': audio.mix.levels(
+                  origin: first,
+                  samplesPerUnit: editingSamplesPerFrame,
+                  window: 1,
+                  unit: 'frame',
+                ),
+              };
+            }
             if (positions != null) {
               if (!Platform.isMacOS && !Platform.isWindows) {
                 throw UnsupportedError(

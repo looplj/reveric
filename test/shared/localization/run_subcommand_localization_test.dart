@@ -5,8 +5,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 //   .agents/rules/i18n.md
@@ -44,7 +44,9 @@ const _commands = <String, List<String>>{
     'export',
     'cleanup',
     'frames',
+    'inspect_audio',
   ],
+  'ffmpeg': ['inspect_audio'],
   'agent-skills': [
     'list',
     'create',

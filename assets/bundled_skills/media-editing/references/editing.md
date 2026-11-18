@@ -14,15 +14,19 @@ editing 负责组织素材并剪辑成片，FFmpeg 负责素材加工。需要�
 |---|---|---|
 | `list` | 无 | `offset=0`、`limit=50`，limit 为 1..200 |
 | `create` | `title`、`ratio` | ratio 为 21:9、16:9、4:3、1:1、3:4 或 9:16 |
+| `duplicate` | `editing_id` | 可选 `title`、`expected_revision`；克隆整份时间线到独立新工程（画布作品同步建节点） |
 | `read` | `editing_id` | `track_id` 或 `start_frame` + `end_frame`，两种过滤互斥 |
 | `apply` | `editing_id`、`expected_revision`、`commands` | commands 为 1..100 条且不超过 256 KiB |
 | `undo` / `redo` | `editing_id`、`expected_revision` | 与当前应用界面共用撤销历史 |
+| `inspect_audio` | `editing_id`、`expected_revision`、`start_frame`、`end_frame` | 检查左闭右开区间（最多 10 秒），返回逐帧混音、各发声片段的峰值与 RMS（dBFS）、低电平区间。传 `clip_id` 只列出该片段的统计，混音统计仍包含全部发声片段。 |
 | `frames` | `editing_id`、`expected_revision`、`frames` | 返回合成时间线的画面拼图 |
 | `preview` | `editing_id`、`expected_revision` | 返回 480p MP4 |
 | `export` | `editing_id`、`expected_revision`，可选 `resolution` | 导出画布作品的剪辑工程为关联视频节点 |
 | `cleanup` | `run_id` | 清理已结束预览任务的会话输出，重复执行安全 |
 
 ## 定位与读取
+
+检查接缝声音时先对切点前后取一个短区间。电平用于定位突变；判断台词、声源或异常是否消失需要实际试听。改动后使用新 revision 对同一区间复查。
 
 用 `Run editing list` 查当前作品工程，再用 read 取得真实 editing_id、revision、轨道与片段 ID。新工程用 create，提供 title 和 ratio。已有工程局部调整不另建工程。
 

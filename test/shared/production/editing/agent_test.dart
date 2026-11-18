@@ -82,6 +82,10 @@ class _FrameRunner extends FfmpegRunner {
     if (args.last == '-') {
       return '';
     }
+    if (args.last.endsWith('/limited.f32')) {
+      await File(args[args.indexOf('-i') + 1]).copy(args.last);
+      return '';
+    }
     if (args.last.endsWith('.f32')) {
       final samples = int.parse(
         args
@@ -229,6 +233,59 @@ void main() {
       runner.unsupported = true;
       final unsupported = await run('frames', options);
       expect(unsupported['error_code'], 'unsupported');
+    },
+  );
+
+  test(
+    'inspect_audio delivers the requested revision and leaves the timeline unchanged',
+    () async {
+      final created = await run('create', {'title': 'Audio', 'ratio': '16:9'});
+      final id = created['id'] as String;
+      await run('apply', {
+        'editing_id': id,
+        'expected_revision': 0,
+        'commands': [
+          {
+            'op': 'add_text',
+            'track_id': 'T1',
+            'start_frame': 0,
+            'text': 'Caption',
+          },
+        ],
+      });
+      final options = {
+        'editing_id': id,
+        'expected_revision': 1,
+        'start_frame': 10,
+        'end_frame': 12,
+      };
+      await expectLater(
+        run('inspect_audio', {...options, 'expected_revision': 0}),
+        throwsA(
+          isA<ToolOperationException>().having(
+            (e) => e.code,
+            'code',
+            'conflict',
+          ),
+        ),
+      );
+      final response = await run('inspect_audio', options);
+      expect(response['ok'], true, reason: '$response');
+      final result = response['result'];
+      expect(result['mix']['silence_ranges'], [
+        {'start_frame': 10, 'end_frame': 12},
+      ]);
+      expect(result['clips'], isEmpty);
+      expect(resultFilePaths(response), isEmpty);
+      expect(result.containsKey('files'), isFalse);
+      expect(
+        await root
+            .list(recursive: true)
+            .where((e) => e.path.endsWith('.wav'))
+            .isEmpty,
+        isTrue,
+      );
+      expect((await db.editingDao.get(id))!.revision, 1);
     },
   );
 

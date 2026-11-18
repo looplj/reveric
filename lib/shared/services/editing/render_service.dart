@@ -22,6 +22,7 @@ import '../production/bundled_font.dart';
 import '../production/ffmpeg_runner.dart';
 import '../production/media_service.dart';
 import '../production/contact_sheet.dart';
+import '../production/audio_inspection.dart';
 import '../production/frame_capture.dart';
 import 'service.dart';
 import 'disk_space.dart';
@@ -64,6 +65,8 @@ class EditingRenderService {
   Future<void> get whenIdle => _tail;
   MediaCancellation? _preview;
   Future<Directory>? _cache;
+  static const _masterLimiter =
+      'alimiter=limit=0.95:attack=5:release=50:level=false:latency=true';
   static const chunkFrames = 120;
   static const cacheLimit = 2 * 1024 * 1024 * 1024;
 
@@ -181,6 +184,108 @@ class EditingRenderService {
     });
     _tail = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return result;
+  }
+
+  /// Render only the requested interval. Capture each participating clip during
+  /// the same mix pass, after its source offset, gain and fades are applied.
+  Future<({InspectionAudio mix, List<Map<String, dynamic>> clips})>
+  inspectAudio(
+    EditingDocument document,
+    int start,
+    int end, {
+    String? clipId,
+    required MediaCancellation cancellation,
+  }) async {
+    if (start < 0 ||
+        end <= start ||
+        end > document.totalFrames ||
+        end - start > audioInspectionMaxSeconds * editingFps) {
+      throw const FormatException(
+        'Expected a timeline interval of at most 10 seconds.',
+      );
+    }
+    if (clipId != null &&
+        !document.clips.any(
+          (clip) =>
+              clip.id == clipId &&
+              clip.startFrame < end &&
+              clip.endFrame > start &&
+              _hasAudio(document.track(clip.trackId), clip.content),
+        )) {
+      throw const FormatException(
+        'clip_id must contribute audio in the selected interval.',
+      );
+    }
+    _check(cancellation);
+    final dir = await Directory.systemTemp.createTemp('reveric_editing_audio_');
+    final clips = <Map<String, dynamic>>[];
+    try {
+      await _block(
+        document,
+        (
+          start: start,
+          count: end - start,
+          size: (0, 0),
+          subtitles: EditingSubtitles.none,
+        ),
+        dir,
+        cancellation,
+        (_, _) {},
+        part: EditingRenderPart.audio,
+        inspectClip: (clip, file) async {
+          if (clipId != null && clip.id != clipId) {
+            return;
+          }
+          final bytes = await file.readAsBytes();
+          final first = math.max(start, clip.startFrame);
+          final last = math.min(end, clip.endFrame);
+          final bytesPerFrame = editingSamplesPerFrame * 8;
+          final interval = InspectionAudio(
+            Uint8List.sublistView(
+              bytes,
+              (first - start) * bytesPerFrame,
+              (last - start) * bytesPerFrame,
+            ),
+          );
+          clips.add({
+            'clip_id': clip.id,
+            'track_id': clip.trackId,
+            'asset_id': clip.media!.source.assetId,
+            ...interval.levels(
+              origin: first,
+              samplesPerUnit: editingSamplesPerFrame,
+              window: 1,
+              unit: 'frame',
+            ),
+          });
+        },
+      );
+      final limited = File('${dir.path}/limited.f32');
+      await runner.execute(
+        [
+          '-f',
+          'f32le',
+          '-ar',
+          '$editingSampleRate',
+          '-ac',
+          '2',
+          '-i',
+          '${dir.path}/audio.f32',
+          '-af',
+          _masterLimiter,
+          '-f',
+          'f32le',
+          limited.path,
+        ],
+        probe: false,
+        cancellation: cancellation,
+      );
+      _check(cancellation);
+      return (mix: InspectionAudio(await limited.readAsBytes()), clips: clips);
+    } finally {
+      cancellation.onProgress = null;
+      await dir.delete(recursive: true);
+    }
   }
 
   Future<ContactSheet> frames(
@@ -516,7 +621,7 @@ class EditingRenderService {
           '-c:v',
           'copy',
           '-af',
-          'alimiter=limit=0.95:attack=5:release=50:level=false:latency=true',
+          _masterLimiter,
           '-c:a',
           'aac',
           '-b:a',
@@ -667,6 +772,7 @@ class EditingRenderService {
     EditingProgress progress, {
     EditingRenderPart? part,
     bool preview = false,
+    Future<void> Function(EditingClip clip, File pcm)? inspectClip,
   }) async {
     final (:start, :count, :size, :subtitles) = range;
     final includeVideo = part != EditingRenderPart.audio;
@@ -752,6 +858,10 @@ class EditingRenderService {
 
       Future<void> mix(String path, double inputStart) async {
         final next = '${dir.path}/mix-$i.f32';
+        final stem = File('${dir.path}/stem-$i.f32');
+        final tap = inspectClip == null
+            ? '[a];'
+            : ',asplit[a][tap];[tap]apad,atrim=end_sample=${count * editingSamplesPerFrame}[stem];';
         final envelope =
             '${math.pow(10, media!.gainDb / 20)}*${fade('n', editingSamplesPerFrame)}';
         await run([
@@ -771,14 +881,25 @@ class EditingRenderService {
           '-filter_complex',
           '[1:a:0]asetpts=PTS-STARTPTS,aresample=$editingSampleRate,aformat=sample_fmts=flt:channel_layouts=stereo,'
               'apad,atrim=end_sample=${frames * editingSamplesPerFrame},aeval=\'val(0)*$envelope|val(1)*$envelope\','
-              'adelay=${delay * editingSamplesPerFrame}S:all=1[a];[0:a][a]amix=inputs=2:duration=first:normalize=0,'
+              'adelay=${delay * editingSamplesPerFrame}S:all=1$tap[0:a][a]amix=inputs=2:duration=first:normalize=0,'
               'atrim=end_sample=${count * editingSamplesPerFrame}[out]',
           '-map',
           '[out]',
           '-f',
           'f32le',
           next,
+          if (inspectClip != null) ...[
+            '-map',
+            '[stem]',
+            '-f',
+            'f32le',
+            stem.path,
+          ],
         ]);
+        if (inspectClip != null) {
+          await inspectClip(c, stem);
+          await stem.delete();
+        }
         await File(audio).delete();
         audio = next;
       }

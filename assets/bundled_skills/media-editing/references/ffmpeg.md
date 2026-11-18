@@ -16,6 +16,7 @@ usable_filters 是当前引擎已提供且入口允许的滤镜；其他能力�
 |---|---|---|
 | `capabilities` | 无 | 按需传 component 查询组件帮助，如 encoder=libx264、filter=loudnorm、demuxer=image2；空 options 返回完整能力清单，筛选后再输出所需信息 |
 | `probe` | `args` | 只检查一个输入文件 |
+| `inspect_audio` | `path`、`start_ms`、`end_ms` | 检查第一条音频流的左闭右开区间（最多 10 秒）；`window_ms` 默认 100，范围 10–1000。一次返回分窗峰值与 RMS（dBFS，数字零电平返回 null）、峰值不高于 −60 dBFS 的连续窗口。 |
 | `frames` | `path`、`timestamps_ms` | 返回带时间标注的画面拼图 |
 | `execute` | `args` | 加工显式输入并生成新输出文件 |
 
