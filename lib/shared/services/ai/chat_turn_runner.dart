@@ -2485,6 +2485,11 @@ class ChatTurnRunner {
               }
               toolExecutionContext.sourceTurnId = queuedUserMessage.id;
               processingCompletion = false;
+              // 新占位从空内容开始。下一次 AgentMessageStart 应复用它，
+              // 避免用上一轮的正文状态把它当作已完成消息落库。
+              currentMessageHasVisibleText = false;
+              currentMessageHasVisibleBlock = false;
+              currentMessageHasToolCall = false;
               startUiAssistantMessage();
               // 排队消息开启的新一轮同样先进入等待态，与 AgentMessageStart 语义一致。
               sessionNotifier.setWaitingForResponse(true);

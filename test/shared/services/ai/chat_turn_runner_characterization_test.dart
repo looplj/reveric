@@ -2012,7 +2012,7 @@ void main() {
             responses: const [
               FakeProviderClientResponse.toolCalls([
                 ToolCall(callId: 't1', toolName: 'T1', arguments: {}),
-              ]),
+              ], text: 'First reply'),
               FakeProviderClientResponse.toolCalls([
                 ToolCall(callId: 't2', toolName: 'T2', arguments: {}),
               ]),
@@ -2057,14 +2057,35 @@ void main() {
           userMessageId: firstUser.id,
         );
 
-        final secondUser = container
+        final messages = container
             .read(aiChatSessionProvider(sessionId))
-            .messages
-            .firstWhere(
-              (message) =>
-                  message.role == AiMessageRole.user &&
-                  message.content == 'second turn',
-            );
+            .messages;
+        final secondUser = messages.firstWhere(
+          (message) =>
+              message.role == AiMessageRole.user &&
+              message.content == 'second turn',
+        );
+        final uiMessages = groupMessagesForUi(messages);
+        final queuedIndex = uiMessages.indexWhere(
+          (message) => message.id == secondUser.id,
+        );
+        expect(queuedIndex, greaterThan(0));
+        expect(
+          uiMessages[queuedIndex - 1].blocks.whereType<AiTextBlock>().map(
+            (block) => block.text,
+          ),
+          ['First reply'],
+        );
+        final queuedReplies = uiMessages.skip(queuedIndex + 1);
+        expect(queuedReplies, hasLength(1));
+        final queuedReply = queuedReplies.single;
+        expect(queuedReply.role, AiMessageRole.assistant);
+        expect(
+          queuedReply.blocks.whereType<AiTextBlock>().map(
+            (block) => block.text,
+          ),
+          ['done'],
+        );
 
         expect(
           dispatcher.capturedTurnIds['T1'],
