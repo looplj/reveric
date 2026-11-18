@@ -28,6 +28,13 @@ import 'disk_space.dart';
 
 final _log = AppLogger.forModule('EditingRender');
 
+typedef _BlockRange = ({
+  int start,
+  int count,
+  (int, int) size,
+  String subtitles,
+});
+
 typedef EditingProgress = void Function(String stage, double progress);
 
 /// 字幕轨的导出方式：烧录进画面、另存 SRT（标题仍烧录）、不导出。普通文字轨总是烧录。
@@ -35,6 +42,14 @@ abstract final class EditingSubtitles {
   static const burn = 'burn';
   static const srt = 'srt';
   static const none = 'none';
+}
+
+enum EditingRenderPart {
+  video('video.mp4'),
+  audio('audio.f32');
+
+  const EditingRenderPart(this.filename);
+  final String filename;
 }
 
 class EditingInsufficientSpace implements Exception {
@@ -53,7 +68,7 @@ class EditingRenderService {
   static const cacheLimit = 2 * 1024 * 1024 * 1024;
 
   /// 预览块缓存放在 App 私有目录里跨启动复用，所有实例共用一份；
-  /// 块的最后使用时间记在 video.mp4 的修改时间上，按它统一淘汰。
+  /// 按缓存媒体文件的最后使用时间统一淘汰。
   Future<Directory> _cacheDirectory() => _cache ??= () async {
     final dir = Directory(
       p.join(projects.library.root.path, 'cache', 'editing_preview'),
@@ -146,7 +161,7 @@ class EditingRenderService {
           temporary,
           cancellation,
           (_, _) {},
-          includeAudio: false,
+          part: EditingRenderPart.video,
         );
         return await captureMediaFrame(
           runner,
@@ -206,7 +221,7 @@ class EditingRenderService {
             block,
             cancellation,
             (stage, value) => progress(stage, (i + value) / positions.length),
-            includeAudio: false,
+            part: EditingRenderPart.video,
           );
           captures.add(
             await captureMediaFrame(
@@ -289,44 +304,81 @@ class EditingRenderService {
     (int, int) size, {
     String subtitles = EditingSubtitles.burn,
     Map<String, String> sourceFingerprints = const {},
+    EditingRenderPart? part,
   }) {
+    final clips = <Map<String, dynamic>>[];
     final active =
         doc.clips
             .where((c) => c.startFrame < start + count && c.endFrame > start)
             .toList()
           ..sort((a, b) => a.id.compareTo(b.id));
+    for (final clip in active) {
+      final track = doc.track(clip.trackId);
+      final content = clip.content;
+      if (part == EditingRenderPart.video &&
+          (track.hidden ||
+              content is EditingAudioContent ||
+              (content is EditingTextContent &&
+                  !burns(track, clip, subtitles)))) {
+        continue;
+      }
+      if (part == EditingRenderPart.audio && !_hasAudio(track, content)) {
+        continue;
+      }
+      final properties = content.toJson();
+      if (part == EditingRenderPart.video) {
+        properties.remove('gain_db');
+        properties.remove('audio_detached');
+      } else if (part == EditingRenderPart.audio) {
+        properties.remove('transform');
+        properties.remove('opacity');
+      }
+      clips.add({
+        'id': clip.id,
+        'start': clip.startFrame,
+        'duration': clip.durationFrames,
+        'content': properties,
+        if (clip.media != null)
+          'sourceFingerprint': sourceFingerprints[clip.media!.source.assetId],
+        'track': {
+          'id': track.id,
+          'kind': track.kind,
+          'role': track.role,
+          'order': track.order,
+          if (part == null) 'hidden': track.hidden,
+          if (part == null) 'muted': track.muted,
+        },
+      });
+    }
     return sha256
         .convert(
           utf8.encode(
             jsonEncode({
-              'renderer': 5,
-              'subtitles': subtitles,
+              'renderer': 6,
+              'part': part?.name,
               'start': start,
               'count': count,
-              'size': [size.$1, size.$2],
-              'clips': [
-                for (final c in active)
-                  {
-                    ...(c.toJson()
-                      ..remove('name')
-                      ..remove('origin')),
-                    if (c.media != null)
-                      'sourceFingerprint':
-                          sourceFingerprints[c.media!.source.assetId],
-                    'track': {
-                      'kind': doc.track(c.trackId).kind,
-                      'role': doc.track(c.trackId).role,
-                      'order': doc.track(c.trackId).order,
-                      'hidden': doc.track(c.trackId).hidden,
-                      'muted': doc.track(c.trackId).muted,
-                    },
-                  },
-              ],
+              if (part != EditingRenderPart.audio) ...{
+                'size': [size.$1, size.$2],
+                'subtitles': subtitles,
+              },
+              'clips': clips,
             }),
           ),
         )
         .toString();
   }
+
+  static bool _hasAudio(EditingTrack track, EditingContent content) =>
+      switch (content) {
+        EditingVideoContent() =>
+          !track.hidden &&
+              content.source.mediaType == 'video' &&
+              content.source.hasAudio &&
+              !content.audioDetached,
+        EditingAudioContent() => !track.muted,
+        EditingTextContent() => false,
+      };
 
   Future<EncodedMedia> _render(
     EditingDocument doc,
@@ -341,7 +393,9 @@ class EditingRenderService {
     }
     progress('verify', 0);
     await projects.verify(doc, token);
-    final fingerprints = await projects.fingerprints(doc, token);
+    final fingerprints = preview
+        ? await projects.fingerprints(doc, token)
+        : const <String, String>{};
     _check(token);
     final size = ProductionSettings.dimensions(
       doc.ratio,
@@ -369,56 +423,49 @@ class EditingRenderService {
         for (var start = 0; start < doc.totalFrames; start += chunkFrames) {
           _check(token);
           final count = math.min(chunkFrames, doc.totalFrames - start);
-          final key = cacheKey(
-            doc,
-            start,
-            count,
-            size,
+          final range = (
+            start: start,
+            count: count,
+            size: size,
             subtitles: subtitles,
-            sourceFingerprints: fingerprints,
           );
-          final cached = cache == null ? null : Directory('${cache.path}/$key');
-          final hit = cached != null && await cached.exists();
-          // 预览块直接建在缓存目录里，完成后同卷改名即可入缓存。
-          final block = hit
-              ? cached
-              : await (cache ?? temporary).createTemp(
-                  cache == null ? 'block-' : '.block-',
-                );
-          if (!hit) {
-            progress('render', start / doc.totalFrames * .85);
-            try {
-              await _block(
-                doc,
-                (start: start, count: count, size: size, subtitles: subtitles),
-                block,
-                token,
-                (stage, value) => progress(
-                  stage,
-                  (start + count * value) / doc.totalFrames * .85,
-                ),
-                preview: preview,
-              );
-            } catch (_) {
-              if (cache != null) {
-                await block.delete(recursive: true);
-              }
-              rethrow;
-            }
-          }
           final video = File('${temporary.path}/part-${videos.length}.mp4');
-          await File('${block.path}/video.mp4').copy(video.path);
-          videos.add(video);
-          await sink.addStream(File('${block.path}/audio.f32').openRead());
-          if (cached != null) {
-            if (hit) {
-              await File(
-                '${cached.path}/video.mp4',
-              ).setLastModified(DateTime.now());
-            } else {
-              await _store(block, cached);
+          void report(String stage, double fraction) => progress(
+            stage,
+            (start + count * fraction) / doc.totalFrames * .85,
+          );
+          if (cache == null) {
+            final block = await temporary.createTemp('block-');
+            await _block(doc, range, block, token, report);
+            await File('${block.path}/video.mp4').rename(video.path);
+            await sink.addStream(File('${block.path}/audio.f32').openRead());
+          } else {
+            final pcm = File('${temporary.path}/part.f32');
+            for (final part in EditingRenderPart.values) {
+              final key = cacheKey(
+                doc,
+                start,
+                count,
+                size,
+                subtitles: subtitles,
+                sourceFingerprints: fingerprints,
+                part: part,
+              );
+              await _previewPart(
+                doc,
+                range,
+                cache,
+                key,
+                part,
+                part == EditingRenderPart.video ? video : pcm,
+                token,
+                (stage, fraction) => report(stage, (part.index + fraction) / 2),
+              );
             }
+            await sink.addStream(pcm.openRead());
+            await pcm.delete();
           }
+          videos.add(video);
           progress('render', (start + count) / doc.totalFrames * .85);
         }
         await sink.flush();
@@ -507,7 +554,52 @@ class EditingRenderService {
     }
   }
 
-  /// 预览块用最快档编码，只供播放器预览，并保留在 App 私有缓存中复用。
+  Future<void> _previewPart(
+    EditingDocument doc,
+    _BlockRange range,
+    Directory cache,
+    String key,
+    EditingRenderPart part,
+    File destination,
+    MediaCancellation token,
+    EditingProgress progress,
+  ) async {
+    _check(token);
+    final cached = Directory('${cache.path}/$key');
+    final file = File('${cached.path}/${part.filename}');
+    if (await file.exists()) {
+      try {
+        await file.setLastModified(DateTime.now());
+        await file.copy(destination.path);
+        return;
+      } on PathNotFoundException {
+        // 另一个实例可能在命中后淘汰了这一块。
+        if (await file.exists()) {
+          rethrow;
+        }
+      }
+    }
+    final block = await cache.createTemp('.block-');
+    try {
+      await _block(
+        doc,
+        range,
+        block,
+        token,
+        progress,
+        part: part,
+        preview: true,
+      );
+      await File('${block.path}/${part.filename}').copy(destination.path);
+      await _store(block, cached);
+    } finally {
+      if (await block.exists()) {
+        await block.delete(recursive: true);
+      }
+    }
+  }
+
+  /// 预览块使用最快档编码。
   List<String> _videoOutput(
     (int, int) size,
     int count,
@@ -569,27 +661,31 @@ class EditingRenderService {
 
   Future<void> _block(
     EditingDocument doc,
-    ({int start, int count, (int, int) size, String subtitles}) range,
+    _BlockRange range,
     Directory dir,
     MediaCancellation token,
     EditingProgress progress, {
-    bool includeAudio = true,
+    EditingRenderPart? part,
     bool preview = false,
   }) async {
     final (:start, :count, :size, :subtitles) = range;
+    final includeVideo = part != EditingRenderPart.audio;
+    final includeAudio = part != EditingRenderPart.video;
     final seconds = editingSeconds(count);
     var video = '${dir.path}/base.mp4';
     var audio = '${dir.path}/base.f32';
     Future<void> run(List<String> args) =>
         runner.execute(args, probe: false, cancellation: token);
-    await run([
-      '-y',
-      '-f',
-      'lavfi',
-      '-i',
-      'color=c=black:s=${size.$1}x${size.$2}:r=$editingFps:d=$seconds',
-      ..._videoOutput(size, count, video, preview: preview),
-    ]);
+    if (includeVideo) {
+      await run([
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=black:s=${size.$1}x${size.$2}:r=$editingFps:d=$seconds',
+        ..._videoOutput(size, count, video, preview: preview),
+      ]);
+    }
     if (includeAudio) {
       await run([
         '-y',
@@ -625,7 +721,10 @@ class EditingRenderService {
       final content = c.content;
       final media = c.media;
       final track = doc.track(c.trackId);
-      if (!includeAudio && track.kind == 'audio') {
+      final mixAudio = includeAudio && _hasAudio(track, content);
+      final drawVideo =
+          includeVideo && !track.hidden && content is! EditingAudioContent;
+      if (!mixAudio && !drawVideo) {
         continue;
       }
       final first = math.max(start, c.startFrame);
@@ -685,7 +784,7 @@ class EditingRenderService {
       }
 
       if (content is EditingTextContent) {
-        if (track.hidden || !burns(track, c, subtitles)) {
+        if (!burns(track, c, subtitles)) {
           continue;
         }
         final title = content.style == 'title';
@@ -736,7 +835,7 @@ class EditingRenderService {
         await projects.sourcePath(source.assetId),
       );
       final inputStart = media.sourceUsAt(elapsed) / 1000000;
-      if (content is EditingVideoContent && !track.hidden) {
+      if (drawVideo && content is EditingVideoContent) {
         final next = '${dir.path}/layer-$i.mp4';
         final w = math.max(
           2,
@@ -780,29 +879,24 @@ class EditingRenderService {
         ]);
         await File(video).delete();
         video = next;
-        if (includeAudio &&
-            source.mediaType == 'video' &&
-            source.hasAudio &&
-            !content.audioDetached) {
-          await mix(path, inputStart);
-        }
-      } else if (track.kind == 'audio' && !track.muted) {
+      }
+      if (mixAudio) {
         await mix(path, inputStart);
       }
     }
-    await File(video).rename('${dir.path}/video.mp4');
-    if (includeAudio) {
-      await File(audio).rename('${dir.path}/audio.f32');
+    if (includeVideo) {
+      final output = await File(video).rename('${dir.path}/video.mp4');
+      final info = await projects.library.media.probe(
+        output.path,
+        cancellation: token,
+      );
+      _validate(info, size, count, audio: false);
     }
-    final info = await projects.library.media.probe(
-      '${dir.path}/video.mp4',
-      cancellation: token,
-    );
-    _validate(info, size, count, audio: false);
-    if (includeAudio &&
-        await File('${dir.path}/audio.f32').length() !=
-            count * editingSamplesPerFrame * 2 * 4) {
-      throw const MediaException(MediaFailure.encoding_failed);
+    if (includeAudio) {
+      final output = await File(audio).rename('${dir.path}/audio.f32');
+      if (await output.length() != count * editingSamplesPerFrame * 2 * 4) {
+        throw const MediaException(MediaFailure.encoding_failed);
+      }
     }
   }
 
@@ -852,7 +946,7 @@ class EditingRenderService {
           if (file is File) {
             final stat = await file.stat();
             bytes += stat.size;
-            if (p.basename(file.path) == 'video.mp4') {
+            if (stat.modified.isAfter(used)) {
               used = stat.modified;
             }
           }

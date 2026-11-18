@@ -8,6 +8,7 @@ import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -24,6 +25,7 @@ import 'package:reveric/shared/services/production/media_service.dart';
 
 class CountingRunner extends FfmpegRunner {
   int encodes = 0;
+  int videoEncodes = 0;
   @override
   Future<String> execute(
     List<String> args, {
@@ -32,6 +34,9 @@ class CountingRunner extends FfmpegRunner {
   }) {
     if (!probe) {
       encodes++;
+      if (args.contains('libx264')) {
+        videoEncodes++;
+      }
     }
     return super.execute(args, probe: probe, cancellation: cancellation);
   }
@@ -341,6 +346,55 @@ void main() {
             await cached.dispose();
             // 分块全部命中缓存时只剩最终封装与限幅一次编码，校验走 probe。
             expect(runner.encodes - before, 1);
+            final music = doc.clips.singleWhere((c) => c.id == 'a');
+            final quieter = EditingCommands.update(
+              doc,
+              music.copyWith(content: music.media!.copyWith(gainDb: -7)),
+            );
+            final videoEncodes = runner.videoEncodes;
+            final clock = Stopwatch()..start();
+            final remixed = await renderer.render(
+              quieter,
+              preview: true,
+              cancellation: MediaCancellation(),
+              progress: (_, _) {},
+            );
+            try {
+              final encodedVideo = runner.videoEncodes - videoEncodes;
+              debugPrint(
+                'Music gain edit: ${clock.elapsedMilliseconds} ms, '
+                '$encodedVideo video encodes',
+              );
+              expect(encodedVideo, 0);
+              expect(remixed.info.frameCount, 144);
+              final quieterPcm = '${dir.path}/quieter.f32';
+              await run([
+                '-y',
+                '-i',
+                remixed.file.path,
+                '-vn',
+                '-ar',
+                '48000',
+                '-ac',
+                '2',
+                '-f',
+                'f32le',
+                quieterPcm,
+              ]);
+              final decoded = ByteData.sublistView(
+                await File(quieterPcm).readAsBytes(),
+              );
+              // 主轨原声为 -60 dB，音乐降低 10 dB 后两个块的振幅都应约为原先的 0.316 倍。
+              for (final frame in [60, 125]) {
+                var total = 0.0;
+                for (var n = frame * 2000; n < (frame + 1) * 2000; n++) {
+                  total += decoded.getFloat32(n * 8, Endian.little).abs();
+                }
+                expect(total / 2000 / energy(frame), closeTo(.316, .02));
+              }
+            } finally {
+              await remixed.dispose();
+            }
             final token = MediaCancellation();
             await token.cancel();
             await expectLater(

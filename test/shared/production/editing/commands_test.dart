@@ -451,6 +451,34 @@ void main() {
       );
     },
   );
+  test('preview invalidates only the streams affected by video edits', () {
+    final doc = fixture();
+    final clip = doc.mainClips.first;
+    final video = clip.content as EditingVideoContent;
+    String key(EditingDocument project, EditingRenderPart part) =>
+        EditingRenderService.cacheKey(project, 0, 96, (854, 480), part: part);
+    for (final (change, redraw, remix) in [
+      (video.copyWith(gainDb: -10), false, true),
+      (video.copyWith(audioDetached: true), false, true),
+      (video.copyWith(opacity: .5), true, false),
+      (video.copyWith(fadeOutFrames: 12), true, true),
+    ]) {
+      final edited = EditingCommands.update(
+        doc,
+        clip.copyWith(content: change),
+      );
+      expect(
+        key(edited, EditingRenderPart.video) !=
+            key(doc, EditingRenderPart.video),
+        redraw,
+      );
+      expect(
+        key(edited, EditingRenderPart.audio) !=
+            key(doc, EditingRenderPart.audio),
+        remix,
+      );
+    }
+  });
   test('source endpoints preserve microsecond rounding tolerance', () {
     const source = EditingSource(
       assetId: 'boundary',
