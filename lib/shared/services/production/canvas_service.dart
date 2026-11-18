@@ -394,6 +394,9 @@ class ProductionCanvasService {
     String canvasId, {
     required String title,
     String? ratio,
+    EditingDocument? document,
+    double x = 360,
+    double y = 80,
     CanvasHistory? history,
   }) => withCanvasHistory(
     history,
@@ -410,7 +413,7 @@ class ProductionCanvasService {
       await db.editingDao.create(
         editingId,
         title,
-        EditingDocument.empty(ratio ?? settings.ratio),
+        document ?? EditingDocument.empty(ratio ?? settings.ratio),
       );
       return _insertNode(
         canvasId,
@@ -418,6 +421,8 @@ class ProductionCanvasService {
         title: title,
         refType: canvasNodeRefTypeEditing,
         refId: editingId,
+        x: x,
+        y: y,
       );
     }),
   );

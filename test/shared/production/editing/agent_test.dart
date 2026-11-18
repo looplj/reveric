@@ -1441,6 +1441,113 @@ void main() {
       }
     },
   );
+
+  test(
+    'duplicate clones timeline tracks and clips independently and checks expected_revision',
+    () async {
+      runner.withAudio = true;
+      final created = await run('create', {
+        'title': 'Master Cut',
+        'ratio': '16:9',
+      });
+      final sourceId = created['id'] as String;
+      final sourceFile = File('${root.path}/file_workspaces/work/clip.mp4');
+      await sourceFile.parent.create(recursive: true);
+      await sourceFile.writeAsBytes([1, 2, 3]);
+      final applied = await run('apply', {
+        'editing_id': sourceId,
+        'expected_revision': created['revision'],
+        'commands': [
+          {
+            'op': 'add_media',
+            'id': 'v1',
+            'track_id': 'V1',
+            'index': 0,
+            'path': 'clip.mp4',
+          },
+          {'op': 'add_text_track', 'id': 'T2'},
+          {
+            'op': 'add_text',
+            'id': 'txt1',
+            'track_id': 'T2',
+            'start_frame': 0,
+            'text': 'Watermark',
+          },
+          {
+            'op': 'add_text',
+            'id': 'sub1',
+            'track_id': 'T1',
+            'start_frame': 0,
+            'text': 'Subtitle line',
+          },
+          {'op': 'extract_audio', 'clip_id': 'v1', 'track_id': 'A2'},
+        ],
+      });
+      expect(applied['ok'], true, reason: '$applied');
+      final rev = applied['revision'] as int;
+
+      await expectLater(
+        run('duplicate', {
+          'editing_id': sourceId,
+          'expected_revision': rev - 1,
+        }),
+        throwsA(
+          isA<ToolOperationException>().having(
+            (e) => e.code,
+            'code',
+            'conflict',
+          ),
+        ),
+      );
+
+      final defaultCopy = await run('duplicate', {'editing_id': sourceId});
+      expect(defaultCopy['ok'], true, reason: '$defaultCopy');
+      expect(defaultCopy['id'], isNot(sourceId));
+      expect(defaultCopy['editing_id'], defaultCopy['id']);
+      expect(defaultCopy['source_editing_id'], sourceId);
+      expect(defaultCopy['title'], 'Master Cut Copy');
+      expect(defaultCopy['ratio'], '16:9');
+      expect(defaultCopy['revision'], 0);
+
+      final customCopy = await run('duplicate', {
+        'editing_id': sourceId,
+        'title': 'Experiment Cut',
+        'expected_revision': rev,
+      });
+      expect(customCopy['ok'], true, reason: '$customCopy');
+      final cloneId = customCopy['id'] as String;
+      expect(customCopy['title'], 'Experiment Cut');
+
+      final sourceRead = await run('read', {'editing_id': sourceId});
+      final cloneRead = await run('read', {'editing_id': cloneId});
+      expect(cloneRead['tracks'], sourceRead['tracks']);
+      expect(cloneRead['clips'], sourceRead['clips']);
+      expect(cloneRead['total_frames'], sourceRead['total_frames']);
+
+      final mutated = await run('apply', {
+        'editing_id': cloneId,
+        'expected_revision': customCopy['revision'],
+        'commands': [
+          {'op': 'rename', 'title': 'Mutated Experiment'},
+          {'op': 'remove_clip', 'clip_id': 'txt1'},
+        ],
+      });
+      expect(mutated['ok'], true, reason: '$mutated');
+
+      final sourceAfter = await run('read', {'editing_id': sourceId});
+      final cloneAfter = await run('read', {'editing_id': cloneId});
+      expect(sourceAfter['title'], 'Master Cut');
+      expect(
+        (sourceAfter['clips'] as List).map((c) => c['id']),
+        contains('txt1'),
+      );
+      expect(cloneAfter['title'], 'Mutated Experiment');
+      expect(
+        (cloneAfter['clips'] as List).map((c) => c['id']),
+        isNot(contains('txt1')),
+      );
+    },
+  );
 }
 
 class _StagingContent extends NovelContentService {

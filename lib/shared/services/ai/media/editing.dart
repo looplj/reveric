@@ -158,6 +158,7 @@ class EditingToolHost {
     }
     if (!{
       'read',
+      'duplicate',
       'apply',
       'undo',
       'redo',
@@ -172,6 +173,7 @@ class EditingToolHost {
     }
     keys(options, switch (action) {
       'read' => {'editing_id', 'track_id', 'start_frame', 'end_frame'},
+      'duplicate' => {'editing_id', 'title', 'expected_revision'},
       'frames' => {'editing_id', 'expected_revision', 'frames'},
       'apply' => {'editing_id', 'expected_revision', 'commands'},
       'export' => {'editing_id', 'expected_revision', 'resolution'},
@@ -185,9 +187,7 @@ class EditingToolHost {
         'Export as a video node requires an editing project on a canvas work.',
       );
     }
-    if (canvasWork) {
-      await service.canvasForEditing(id);
-    }
+    final canvasId = canvasWork ? await service.canvasForEditing(id) : null;
 
     if (await canvas.db.editingDao.get(id) == null) {
       throw const ToolOperationException(
@@ -265,6 +265,62 @@ class EditingToolHost {
               .toList();
         }
         return {...result, 'clips': clips.map((c) => c.toJson()).toList()};
+      }
+      if (action == 'duplicate') {
+        if (options.containsKey('expected_revision')) {
+          final expected = number(options, 'expected_revision');
+          if (session.revision != expected) {
+            throw const EditingConflict();
+          }
+        }
+        final copyDoc = EditingDocument.fromJson(session.document!.toJson());
+        final baseTitle = session.title.trim();
+        final nextTitle = options.containsKey('title')
+            ? text(options, 'title')
+            : (baseTitle.isEmpty ? 'Editing Copy' : '$baseTitle Copy');
+        final String newId;
+        String? nodeId;
+        if (canvasWork) {
+          final sourceNode =
+              await (canvas.db.select(canvas.db.canvasNodes)..where(
+                    (t) =>
+                        t.canvasId.equals(canvasId!) &
+                        t.type.equals(canvasNodeTypeEditing) &
+                        t.refType.equals(canvasNodeRefTypeEditing) &
+                        t.refId.equals(id) &
+                        t.deletedAt.equals(notDeletedSentinel),
+                  ))
+                  .getSingleOrNull();
+          final node = await canvas.addEditing(
+            canvasId!,
+            title: nextTitle,
+            ratio: copyDoc.ratio,
+            document: copyDoc,
+            x: sourceNode?.x ?? 360,
+            y: sourceNode == null
+                ? 80
+                : sourceNode.y + (sourceNode.height ?? 220) + 40,
+          );
+          newId = node.editingId!;
+          nodeId = node.id;
+        } else {
+          newId = const Uuid().v4();
+          await canvas.db.editingDao.create(newId, nextTitle, copyDoc);
+        }
+        return {
+          'ok': true,
+          'id': newId,
+          'editing_id': newId,
+          'source_editing_id': id,
+          'title': nextTitle,
+          'node_id': ?nodeId,
+          if (nodeId != null) 'node_path': '/production/canvas/nodes/$nodeId',
+          'revision': (await canvas.db.editingDao.get(newId))!.revision,
+          'fps': editingFps,
+          'ratio': copyDoc.ratio,
+          'total_frames': copyDoc.totalFrames,
+          'document': copyDoc.toJson(),
+        };
       }
       final expected = number(options, 'expected_revision');
       if (session.revision != expected) {

@@ -797,6 +797,77 @@ void main() {
   );
 
   test(
+    'editing duplicate on canvas work creates an independent project and canvas node',
+    () async {
+      final created = await run('editing', 'create', {
+        'title': 'Base Timeline',
+        'ratio': '16:9',
+      });
+      expect(created['ok'], true, reason: '$created');
+      final sourceId = created['editing_id'] as String;
+      final sourceNodeId = created['node_id'] as String;
+
+      final applied = await run('editing', 'apply', {
+        'editing_id': sourceId,
+        'expected_revision': created['revision'],
+        'commands': [
+          {'op': 'add_text_track', 'id': 'T2'},
+          {
+            'op': 'add_text',
+            'id': 'wm',
+            'track_id': 'T2',
+            'start_frame': 0,
+            'text': 'Brand',
+          },
+        ],
+      });
+      expect(applied['ok'], true, reason: '$applied');
+
+      final duplicated = await run('editing', 'duplicate', {
+        'editing_id': sourceId,
+        'title': 'Variant Timeline',
+      });
+      expect(duplicated['ok'], true, reason: '$duplicated');
+      final cloneId = duplicated['editing_id'] as String;
+      final cloneNodeId = duplicated['node_id'] as String;
+      expect(cloneId, isNot(sourceId));
+      expect(cloneNodeId, isNot(sourceNodeId));
+      expect(duplicated['node_path'], '/production/canvas/nodes/$cloneNodeId');
+      expect(duplicated['source_editing_id'], sourceId);
+      expect(duplicated['title'], 'Variant Timeline');
+
+      final nodes = await db.canvasDao.getNodesByCanvas(
+        (await canvas.ensureCanvas('')).id,
+      );
+      final editingNodes = nodes
+          .where((node) => node.type == canvasNodeTypeEditing)
+          .toList();
+      expect(editingNodes, hasLength(2));
+      expect(
+        editingNodes.map((n) => n.refId),
+        containsAll([sourceId, cloneId]),
+      );
+
+      final mutated = await run('editing', 'apply', {
+        'editing_id': cloneId,
+        'expected_revision': duplicated['revision'],
+        'commands': [
+          {'op': 'remove_clip', 'clip_id': 'wm'},
+        ],
+      });
+      expect(mutated['ok'], true, reason: '$mutated');
+
+      final sourceRead = await run('editing', 'read', {'editing_id': sourceId});
+      final cloneRead = await run('editing', 'read', {'editing_id': cloneId});
+      expect((sourceRead['clips'] as List).map((c) => c['id']), contains('wm'));
+      expect(
+        (cloneRead['clips'] as List).map((c) => c['id']),
+        isNot(contains('wm')),
+      );
+    },
+  );
+
+  test(
     'canvas Run help and invalid subcommands route to the canvas skill',
     () async {
       for (final command in ['production', 'styles', 'stagings']) {

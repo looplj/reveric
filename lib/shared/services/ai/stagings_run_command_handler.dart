@@ -74,6 +74,7 @@ extension _StagingsCommands on _AiToolManagerBase {
       'sample' => {'staging_id', 'frames'},
       'frames' => {'staging_id', 'frames', 'camera_mode', 'camera_id'},
       'create' => {'title', 'document'},
+      'duplicate' => {'staging_id', 'title', 'expected_version'},
       'read' => {'staging_id', 'collection', 'id', 'frame'},
       'apply' => {'staging_id', 'edits', 'commands'},
       'write' => {'staging_id', 'document'},
@@ -170,6 +171,25 @@ extension _StagingsCommands on _AiToolManagerBase {
         );
       }
       final id = _stagingId(options);
+      if (action == 'duplicate') {
+        final expectedVersion = options.containsKey('expected_version')
+            ? _productionCommandInteger(options, 'expected_version')
+            : null;
+        final row = await db.screenplayDao.getStaging(id);
+        if (row == null) {
+          throw _stagingNotFound(id);
+        }
+        final duplicated = await service.duplicate(
+          id,
+          title: options['title'] as String?,
+          expectedVersion: expectedVersion,
+        );
+        return {
+          ...data(duplicated),
+          'staging_id': duplicated.id,
+          'source_staging_id': id,
+        };
+      }
       final row = await db.screenplayDao.getStaging(id);
       if (row == null) {
         throw _stagingNotFound(id);

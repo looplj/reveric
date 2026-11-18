@@ -5184,6 +5184,7 @@ abstract final class LocaleKeys {
   static const toolRunDirectorList = 'tool.run_director_list';
   static const toolRunDirectorRead = 'tool.run_director_read';
   static const toolRunDirectorCreate = 'tool.run_director_create';
+  static const toolRunDirectorDuplicate = 'tool.run_director_duplicate';
   static const toolRunDirectorApply = 'tool.run_director_apply';
   static const toolRunDirectorRestore = 'tool.run_director_restore';
   static const toolRunDirectorRemove = 'tool.run_director_remove';
@@ -5430,6 +5431,7 @@ abstract final class LocaleKeys {
   static const toolNameStopAgent = 'tool.name_stop_agent';
   static const toolRunEditingList = 'tool.run_editing_list';
   static const toolRunEditingRead = 'tool.run_editing_read';
+  static const toolRunEditingDuplicate = 'tool.run_editing_duplicate';
   static const toolRunEditingApply = 'tool.run_editing_apply';
   static const toolRunEditingPreview = 'tool.run_editing_preview';
   static const toolRunEditingFrames = 'tool.run_editing_frames';
