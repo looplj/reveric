@@ -275,10 +275,11 @@ void main() {
 
   test('production keeps its name and neutral tool-skill routing', () async {
     final skill = await loader.get(bundle, '剧本制片');
-    expect(skill.version, 6);
+    expect(skill.version, 7);
     expect(skill.name, '剧本制片');
     expect(skill.prompt, contains('画布作品工具'));
-    expect(skill.whenToUse, contains('把剧本做成视频'));
+    expect(skill.whenToUse, contains('适用于剧本和画布作品'));
+    expect(skill.whenToUse, isNot(contains('音频')));
     for (final ref in skill.references) {
       expect(ref.content, isNot(contains('剧本工具使用规范')), reason: ref.path);
     }

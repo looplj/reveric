@@ -31,11 +31,11 @@ usable_filters 是当前引擎已提供且入口允许的滤镜；其他能力�
 {"command":"ffmpeg","subcommand":"frames","options":{"path":"{file_path}","timestamps_ms":[0,1000,3000]}}
 ```
 
-`path` 是待提帧的输入视频路径，输出位置由系统管理。timestamps_ms 是从视频开始计算的毫秒位置，必须包含 1..12 个非负整数，且严格小于视频时长；顺序与重复位置原样保留。提取指定位置处或之后的首个可解码画面，不用平均帧率换算帧号。位置处没有画面时返回错误，不静默改取末帧。只接受本地视频；无视频轨或无法确定正时长时拒绝。
+`path` 是待提帧的输入视频路径，输出位置由系统管理。timestamps_ms 是从视频开始计算的毫秒位置，必须包含 1..16 个非负整数，且严格小于视频时长；顺序与重复位置原样保留。提取指定位置处或之后的首个可解码画面，不用平均帧率换算帧号。位置处没有画面时返回错误，不静默改取末帧。只接受本地视频；无视频轨或无法确定正时长时拒绝。
 
-成功结果包含 file_path、width、height、cells 和可直接查看的图片 content；cells 按请求顺序记录 label 与 timestamp_ms（请求位置）。拼图最长边不超过 2048 像素，保存为会话 JPEG，无需自定输出名称，也不修改原视频。拼图随会话文件管理，不使用 editing cleanup 删除。
+成功结果包含 file_path、width、height、cells 和可直接查看的图片 content；cells 按请求顺序记录 label 与 timestamp_ms（请求位置）。单取一个时间点时保留源画面细节，最长边超过 2048 像素才缩小。16 帧按 4×4 排列，拼图最长边不超过 2048 像素，保存为会话 JPEG，无需自定输出名称，也不修改原视频。拼图随会话文件管理，不使用 editing cleanup 删除。
 
-从视频第 1 秒提取一帧：
+从视频第 1 秒提取一帧并保存为独立 PNG 文件：
 
 ```json
 {"command":"ffmpeg","subcommand":"execute","options":{"args":["-ss","1","-i","{file_path}","-frames:v","1","frame-001.png"]}}

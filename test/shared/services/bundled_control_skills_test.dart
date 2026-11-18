@@ -377,6 +377,8 @@ void main() {
         final text = skill.references
             .singleWhere((ref) => ref.path == 'references/production-canvas.md')
             .content;
+        expect(text, contains('"fields":{"type":"media","path":"images/cover.png"}'));
+        expect(text, contains('fields.asset_id'));
         expect(text, contains('remove_types=["text"]'));
         expect(text, contains('输入连线和被此次删除清理的标签'));
         expect(text, contains('不覆盖新内容'));
@@ -789,7 +791,15 @@ void main() {
               );
             }
           }
-          for (final match in refTag.allMatches(entry.value)) {
+          // JSON 示例中的提示词要先解码，再按实际传给工具的文本校验引用。
+          final refText = entry.value.replaceAllMapped(
+            RegExp(r'```json\s*\n([\s\S]*?)\n```'),
+            (block) => block[1]!.replaceAllMapped(
+              RegExp(r'"(?:[^"\\]|\\.)*"'),
+              (literal) => jsonDecode(literal[0]!) as String,
+            ),
+          );
+          for (final match in refTag.allMatches(refText)) {
             final tag = match.group(0)!;
             if (tag == '<ref>') {
               continue;

@@ -175,8 +175,6 @@ abstract final class PromptFragments {
     );
     buffer.writeln('若当前上下文已有同名技能的完整指令，直接遵循，不要重复加载。');
     buffer.writeln();
-    buffer.writeln('### Available skills');
-    buffer.writeln();
     buffer.writeln('<available_agent_skills>');
     for (final skill in skills) {
       buffer.writeln('  <agent_skill>');

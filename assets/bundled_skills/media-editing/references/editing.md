@@ -111,9 +111,9 @@ undo / redo 同样需要最新 expected_revision，历史与当前运行应用�
 {"command":"editing","subcommand":"frames","options":{"editing_id":"{editing_id}","expected_revision":0,"frames":[0,23,24,47]}}
 ```
 
-frames 必须包含 1..12 个整数帧号，范围是 0 到 total_frames - 1，按 read 返回的 fps 换算；空时间线不能检查。示例中的 revision 和帧号必须换成实际值。顺序与重复帧原样保留。命令固定读取该 revision 的时间线，合成主轨、可见叠加和字幕，保留缩放、透明度、淡入淡出效果；不修改工程或创建完整预览视频。
+frames 必须包含 1..16 个整数帧号，范围是 0 到 total_frames - 1，按 read 返回的 fps 换算；空时间线不能检查。示例中的 revision 和帧号必须换成实际值。顺序与重复帧原样保留。命令固定读取该 revision 的时间线，合成主轨、可见叠加和字幕，保留缩放、透明度、淡入淡出效果；不修改工程或创建完整预览视频。
 
-成功结果包含 editing_id、revision、fps、file_path、width、height、cells 和可直接查看的图片 content；cells 记录 label、frame 和 timestamp_ms。拼图最长边不超过 2048 像素，保存为会话 JPEG。拼图随会话文件管理，不使用 cleanup 删除。抽帧不包含音频，也不能证明动作连续、对白正确或音画同步。
+成功结果包含 editing_id、revision、fps、file_path、width、height、cells 和可直接查看的图片 content；cells 记录 label、frame 和 timestamp_ms。单取一帧时按 1080p 合成时间线；多帧使用预览规格。16 帧按 4×4 排列，拼图最长边不超过 2048 像素，保存为会话 JPEG。拼图随会话文件管理，不使用 cleanup 删除。抽帧不包含音频，也不能证明动作连续、对白正确或音画同步。
 
 需要完整视频预览时使用 preview 检查实际结果是否符合用户预期，提供 editing_id 和最新 expected_revision。它生成 480p MP4；保存时间线和渲染成功都不代表剪辑质量达标。
 
