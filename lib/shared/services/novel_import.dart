@@ -94,7 +94,7 @@ class NovelImportService {
     return normalizedTitle
         .replaceFirst(
           RegExp(
-            r'^第\s*[0-9零〇一二两三四五六七八九十百千万]+\s*[章节回]\s*[:：]?\s*',
+            r'^第\s*[0-9零〇一二两三四五六七八九十百千万]+\s*[章节回]\s*[:：、]?\s*',
             caseSensitive: false,
           ),
           '',
@@ -283,7 +283,7 @@ class NovelImportService {
       return false;
     }
     return RegExp(
-          r'^((正文\s+)?第\s*[0-9零〇一二两三四五六七八九十百千万]+\s*[章节回]|番外|序章|楔子)(\s|[:：]|$)',
+          r'^((正文\s+)?第\s*[0-9零〇一二两三四五六七八九十百千万]+\s*[章节回]|番外|序章|楔子)(\s|[:：、]|$)',
           caseSensitive: false,
         ).hasMatch(line) ||
         RegExp(

@@ -253,11 +253,14 @@ void main() {
 
       final txtFile = File('${tempDir.path}${Platform.pathSeparator}novel.txt');
       await txtFile.writeAsString('''
-第一章 初见
-少年走入山门。
+第一章、最受欺负的男生
+　　你可以将它看作自传、回忆、小说。
 
-第二章 夜雨
-灯火未眠。
+第二章、挥之不去的噩梦
+　　终于到了开学的日子。
+
+第三章、呼风唤雨的邹阳
+　　“好，那大家就这么说定了！”
 ''');
 
       final service = NovelImportService(actions: NovelActionsService(appDb));
@@ -279,9 +282,17 @@ void main() {
       final contentService = NovelContentService(contentDb);
       final chapters = await contentService.getChapters();
 
-      expect(chapters, hasLength(2));
-      expect(chapters.map((chapter) => chapter.title), ['初见', '夜雨']);
-      expect(chapters.first.content, contains('少年走入山门'));
+      expect(result.chapterCount, 3);
+      expect(chapters.map((chapter) => chapter.title), [
+        '最受欺负的男生',
+        '挥之不去的噩梦',
+        '呼风唤雨的邹阳',
+      ]);
+      expect(chapters.map((chapter) => chapter.content), [
+        '　　你可以将它看作自传、回忆、小说。',
+        '　　终于到了开学的日子。',
+        '　　“好，那大家就这么说定了！”',
+      ]);
       expect(chapters.every((chapter) => chapter.wordCount > 0), isTrue);
       expect(
         novel.wordCount,
