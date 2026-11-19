@@ -432,6 +432,8 @@
   "settings.debug_close_section": "隐藏调试",
   "settings.debug_mode": "调试模式",
   "settings.debug_mode_description": "显示普通用户界面会隐藏的工具调用错误和诊断信息。",
+  "settings.debug_force_guide": "强制触发使用引导",
+  "settings.debug_force_guide_description": "开启后忽略已配置供应商和已看过引导记录，每次进入引导页面都会自动触发，且不修改真实引导记录。",
   "settings.debug_reset_onboarding": "重置引导记录",
   "settings.debug_reset_onboarding_description": "清除已完成引导标记和所有功能使用记录，让引导提示可以重新出现。",
   "settings.debug_reset_onboarding_button": "清除记录",

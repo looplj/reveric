@@ -16,6 +16,7 @@ import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/settings/ai_providers_section.dart';
+import 'agent_model_settings_page.dart';
 
 Future<void> openMobileAiProvidersSettingsPage(BuildContext context) {
   return Navigator.of(context).push<void>(
@@ -47,7 +48,9 @@ class MobileAiProvidersSettingsPage extends StatelessWidget {
           onPressed: () => Navigator.of(context).maybePop(),
         ),
       ),
-      body: const AiProvidersSection(),
+      body: AiProvidersSection(
+        onOpenModelSettings: () => openMobileAgentModelSettingsPage(context),
+      ),
     );
   }
 }

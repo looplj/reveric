@@ -35,6 +35,7 @@ import '../../providers/novel_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/update_providers.dart';
 import '../../services/app_initialization.dart';
+import '../../services/debug/guide_force_show.dart';
 import '../../services/debug/sqlite_schema_repair_orchestrator.dart';
 import '../../theme/theme.dart';
 import '../a2ui/preview/preview_panel.dart';
@@ -54,6 +55,7 @@ class DebugSettingsSection extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final debugMode = ref.watch(appDebugModeProvider);
+    final forceGuideShow = useValueListenable(guideDebugForceShowNotifier);
     final notifier = ref.read(appSettingsProvider.notifier);
     final isRepairingSchema = useState(false);
     final isRefreshingDeviceId = useState(false);
@@ -74,6 +76,7 @@ class DebugSettingsSection extends HookConsumerWidget {
               const SizedBox(width: RevericSpacing.lg),
               TextButton.icon(
                 onPressed: () async {
+                  setGuideDebugForceShow(false);
                   await notifier.setDebugMode(false);
                   await notifier.setDebugPageUnlocked(false);
                   onClose();
@@ -98,6 +101,17 @@ class DebugSettingsSection extends HookConsumerWidget {
             description: context.t(LocaleKeys.settingsDebugModeDescription),
             value: debugMode,
             onChanged: notifier.setDebugMode,
+            colors: colors,
+            typo: typo,
+          ),
+          const SizedBox(height: RevericSpacing.xl),
+          _DebugToggleCard(
+            title: context.t(LocaleKeys.settingsDebugForceGuide),
+            description: context.t(
+              LocaleKeys.settingsDebugForceGuideDescription,
+            ),
+            value: forceGuideShow,
+            onChanged: (value) async => setGuideDebugForceShow(value),
             colors: colors,
             typo: typo,
           ),

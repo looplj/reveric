@@ -18,6 +18,7 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/provider_brand.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:reveric/shared/widgets/settings/ai_providers_section.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
 import 'package:reveric/shared/widgets/settings/provider_draft.dart';
@@ -362,13 +363,9 @@ void main() {
           final token91 = aiProviderBuiltinById('token91')!;
           await tester.pumpWidget(
             ProviderScope(
-              overrides: [
-                appSettingsProvider.overrideWith(() => _Settings()),
-              ],
+              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
               child: _wrap(
-                SingleChildScrollView(
-                  child: ProviderOverview(config: token91),
-                ),
+                SingleChildScrollView(child: ProviderOverview(config: token91)),
                 locale.languageCode == 'zh',
                 locale: locale,
               ),
@@ -382,10 +379,7 @@ void main() {
             find.text(locale.languageCode == 'zh' ? '推广' : 'Sponsored'),
             findsOneWidget,
           );
-          expect(
-            find.text('GPT · Claude · Gemini · DeepSeek'),
-            findsOneWidget,
-          );
+          expect(find.text('GPT · Claude · Gemini · DeepSeek'), findsOneWidget);
           final button = find.byType(RevericButton);
           expect(button, findsOneWidget);
           await tester.ensureVisible(button);
@@ -524,6 +518,7 @@ void main() {
           await tester.pumpWidget(
             ProviderScope(
               overrides: [
+                guideTourAutoTriggerProvider.overrideWithValue(false),
                 appSettingsProvider.overrideWith(() => settings),
                 aiSettingsProvider.overrideWithValue(
                   AiSettings(providers: _configs),
@@ -600,6 +595,7 @@ Future<_Settings> _pumpSection(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        guideTourAutoTriggerProvider.overrideWithValue(false),
         appSettingsProvider.overrideWith(() => settings),
         aiSettingsProvider.overrideWithValue(AiSettings(providers: _configs)),
       ],

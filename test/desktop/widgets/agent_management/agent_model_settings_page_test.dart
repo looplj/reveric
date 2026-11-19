@@ -24,6 +24,7 @@ import 'package:reveric/shared/models/subagent.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/providers/subagent_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _writer = SubAgent(
@@ -143,6 +144,7 @@ void main() {
         child: Builder(
           builder: (context) => ProviderScope(
             overrides: [
+              guideTourAutoTriggerProvider.overrideWithValue(false),
               appSettingsProvider.overrideWith(_TestAppSettingsNotifier.new),
               globalSubAgentsProvider.overrideWith(_TestGlobalSubAgents.new),
             ],
@@ -151,13 +153,14 @@ void main() {
               supportedLocales: context.supportedLocales,
               locale: context.locale,
               theme: RevericThemeData.reveric.toThemeData(),
-              home: RevericTheme(
+              builder: (_, routeChild) => RevericTheme(
                 data: RevericThemeData.reveric,
-                child: Scaffold(
-                  body: AgentModelSettingsPage(
-                    headerGestureExclusionKey: GlobalKey(),
-                    onEditPrompt: (agent) => editedAgent = agent,
-                  ),
+                child: routeChild!,
+              ),
+              home: Scaffold(
+                body: AgentModelSettingsPage(
+                  headerGestureExclusionKey: GlobalKey(),
+                  onEditPrompt: (agent) => editedAgent = agent,
                 ),
               ),
             ),

@@ -432,6 +432,8 @@
   "settings.debug_close_section": "Hide Debug",
   "settings.debug_mode": "Debug Mode",
   "settings.debug_mode_description": "Show tool call errors and other diagnostic UI that is hidden from normal users.",
+  "settings.debug_force_guide": "Force show guided tours",
+  "settings.debug_force_guide_description": "Bypass configured-provider checks and seen records so guided tours always trigger when entering pages without modifying saved records.",
   "settings.debug_reset_onboarding": "Reset onboarding records",
   "settings.debug_reset_onboarding_description": "Clear the completed onboarding flag and all feature usage records so onboarding prompts can appear again.",
   "settings.debug_reset_onboarding_button": "Clear records",

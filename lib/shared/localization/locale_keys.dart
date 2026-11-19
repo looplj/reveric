@@ -3485,6 +3485,77 @@ abstract final class LocaleKeys {
   static const onboardingModelDefaultsTitle = 'onboarding.model_defaults_title';
   static const onboardingModelDefaultsDescription =
       'onboarding.model_defaults_description';
+  static const onboardingGuideReplayTooltip = 'onboarding.guide.replay_tooltip';
+  static const onboardingGuideDone = 'onboarding.guide.done';
+  static const onboardingGuideGoProviders = 'onboarding.guide.go_providers';
+  static const onboardingGuideGoModelSettings =
+      'onboarding.guide.go_model_settings';
+  static const onboardingGuideProvidersListTitle =
+      'onboarding.guide.providers.list_title';
+  static const onboardingGuideProvidersListBody =
+      'onboarding.guide.providers.list_body';
+  static const onboardingGuideProvidersAddTitle =
+      'onboarding.guide.providers.add_title';
+  static const onboardingGuideProvidersAddBody =
+      'onboarding.guide.providers.add_body';
+  static const onboardingGuideProvidersCredentialsTitle =
+      'onboarding.guide.providers.credentials_title';
+  static const onboardingGuideProvidersCredentialsBody =
+      'onboarding.guide.providers.credentials_body';
+  static const onboardingGuideProvidersModelsTitle =
+      'onboarding.guide.providers.models_title';
+  static const onboardingGuideProvidersModelsBody =
+      'onboarding.guide.providers.models_body';
+  static const onboardingGuideProvidersEnableTitle =
+      'onboarding.guide.providers.enable_title';
+  static const onboardingGuideProvidersEnableBody =
+      'onboarding.guide.providers.enable_body';
+  static const onboardingGuideProvidersMobileDetailTitle =
+      'onboarding.guide.providers.mobile_detail_title';
+  static const onboardingGuideProvidersMobileDetailBody =
+      'onboarding.guide.providers.mobile_detail_body';
+  static const onboardingGuideProvidersMobileModelsTitle =
+      'onboarding.guide.providers.mobile_models_title';
+  static const onboardingGuideProvidersMobileModelsBody =
+      'onboarding.guide.providers.mobile_models_body';
+  static const onboardingGuideModelSettingsChatTitle =
+      'onboarding.guide.model_settings.chat_title';
+  static const onboardingGuideModelSettingsChatBody =
+      'onboarding.guide.model_settings.chat_body';
+  static const onboardingGuideModelSettingsImageTitle =
+      'onboarding.guide.model_settings.image_title';
+  static const onboardingGuideModelSettingsImageBody =
+      'onboarding.guide.model_settings.image_body';
+  static const onboardingGuideModelSettingsAgentsTitle =
+      'onboarding.guide.model_settings.agents_title';
+  static const onboardingGuideModelSettingsAgentsBody =
+      'onboarding.guide.model_settings.agents_body';
+  static const onboardingGuideHomeNovelTitle =
+      'onboarding.guide.home.novel_title';
+  static const onboardingGuideHomeNovelBody =
+      'onboarding.guide.home.novel_body';
+  static const onboardingGuideHomeScreenplayTitle =
+      'onboarding.guide.home.screenplay_title';
+  static const onboardingGuideHomeScreenplayBody =
+      'onboarding.guide.home.screenplay_body';
+  static const onboardingGuideHomeCanvasTitle =
+      'onboarding.guide.home.canvas_title';
+  static const onboardingGuideHomeCanvasBody =
+      'onboarding.guide.home.canvas_body';
+  static const onboardingGuideHomeModelsTitle =
+      'onboarding.guide.home.models_title';
+  static const onboardingGuideHomeModelsBody =
+      'onboarding.guide.home.models_body';
+  static const onboardingGuideHomeMobileScreenplayBody =
+      'onboarding.guide.home.mobile_screenplay_body';
+  static const onboardingGuideHomeMobileAssistantTitle =
+      'onboarding.guide.home.mobile_assistant_title';
+  static const onboardingGuideHomeMobileAssistantBody =
+      'onboarding.guide.home.mobile_assistant_body';
+  static const onboardingGuideHomeMobileSettingsTitle =
+      'onboarding.guide.home.mobile_settings_title';
+  static const onboardingGuideHomeMobileSettingsBody =
+      'onboarding.guide.home.mobile_settings_body';
   // ── plugin ────────────────────────────────────────
   static const pluginDescription = 'plugin.description';
   static const pluginEmpty = 'plugin.empty';
@@ -4917,6 +4988,9 @@ abstract final class LocaleKeys {
   static const settingsDebugCloseSection = 'settings.debug_close_section';
   static const settingsDebugMode = 'settings.debug_mode';
   static const settingsDebugModeDescription = 'settings.debug_mode_description';
+  static const settingsDebugForceGuide = 'settings.debug_force_guide';
+  static const settingsDebugForceGuideDescription =
+      'settings.debug_force_guide_description';
   static const settingsDebugResetOnboarding = 'settings.debug_reset_onboarding';
   static const settingsDebugResetOnboardingDescription =
       'settings.debug_reset_onboarding_description';

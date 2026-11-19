@@ -12,6 +12,7 @@ import 'dart:async';
 import '../logger/app_logger.dart';
 import '../logger/startup_failure_reporter.dart';
 import '../database/app_database.dart';
+import '../widgets/guide/tour.dart';
 import 'demo_novel.dart';
 import 'initialization/agent_seeds.dart';
 import 'initialization/collection_seeds.dart';
@@ -151,6 +152,7 @@ Future<void> clearOnboardingAndFeatureUsageRecords(AppDatabase database) async {
     await database.transaction(() async {
       await database.appStateDao.remove(appStateKeyOnboardingCompleted);
       await database.appStateDao.remove(appStateKeyChatOnboardingShown);
+      await clearGuideTourRecords(database);
       await database.delete(database.featureUsages).go();
     });
   } catch (error, stackTrace) {

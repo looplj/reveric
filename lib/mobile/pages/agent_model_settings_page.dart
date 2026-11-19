@@ -18,9 +18,11 @@
 //   .agents/rules/icons.md
 //   .agents/rules/state-management.md
 //   .agents/rules/i18n.md
+//   .agents/rules/hooks.md
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../shared/localization/app_localization.dart';
@@ -32,6 +34,8 @@ import '../../shared/providers/settings_providers.dart';
 import '../../shared/providers/subagent_providers.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/agent_avatar.dart';
+import '../../shared/widgets/guide/tour.dart';
+import '../../shared/widgets/guide/trigger.dart';
 import 'subagent_prompt_edit_page.dart';
 import '../widgets/agent_edit_scaffold.dart';
 import '../widgets/model_effort_sheet.dart';
@@ -142,16 +146,52 @@ Future<void> openMobileAgentModelSettingsPage(BuildContext context) {
   );
 }
 
-class MobileAgentModelSettingsPage extends ConsumerWidget {
+class MobileAgentModelSettingsPage extends HookConsumerWidget {
   const MobileAgentModelSettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(appSettingsProvider);
     final agentsAsync = ref.watch(globalSubAgentsProvider);
+    final chatRowKey = useMemoized(GlobalKey.new);
+    final imageRowKey = useMemoized(GlobalKey.new);
+    final agentsRowKey = useMemoized(GlobalKey.new);
+    final ready = settingsAsync.hasValue && agentsAsync.hasValue;
+    final guide = useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.modelSettings,
+      ready: ready,
+      keys: [ready],
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'mobile_model_settings_chat',
+          targetKey: chatRowKey,
+          icon: RevericIcons.chat_bubble_outline,
+          title: ctx.t(LocaleKeys.onboardingGuideModelSettingsChatTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideModelSettingsChatBody),
+        ),
+        GuideStep(
+          id: 'mobile_model_settings_image',
+          targetKey: imageRowKey,
+          icon: RevericIcons.image_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideModelSettingsImageTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideModelSettingsImageBody),
+        ),
+        GuideStep(
+          id: 'mobile_model_settings_agents',
+          targetKey: agentsRowKey,
+          icon: RevericIcons.smart_toy_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideModelSettingsAgentsTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideModelSettingsAgentsBody),
+        ),
+      ],
+    );
 
     return MobileManageScaffold(
       title: context.t(LocaleKeys.agentStudioModelSettings),
+      onSecondaryAction: () => unawaited(guide.replay()),
+      secondaryActionIcon: RevericIcons.help_outline,
+      secondaryActionLabel: context.t(LocaleKeys.onboardingGuideReplayTooltip),
       child: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) =>
@@ -163,6 +203,9 @@ class MobileAgentModelSettingsPage extends ConsumerWidget {
           data: (agents) => _MobileAgentModelSettingsContent(
             settings: settings,
             agents: agents,
+            chatRowKey: chatRowKey,
+            imageRowKey: imageRowKey,
+            agentsRowKey: agentsRowKey,
 
             onDefaultChanged: (kind, optionId) =>
                 _updateDefaultModel(context, ref, kind, optionId),
@@ -309,6 +352,9 @@ class _MobileAgentModelSettingsContent extends StatelessWidget {
   const _MobileAgentModelSettingsContent({
     required this.settings,
     required this.agents,
+    this.chatRowKey,
+    this.imageRowKey,
+    this.agentsRowKey,
 
     required this.onDefaultChanged,
     required this.onChatEffortChanged,
@@ -318,6 +364,9 @@ class _MobileAgentModelSettingsContent extends StatelessWidget {
 
   final AppSettings settings;
   final List<SubAgent> agents;
+  final GlobalKey? chatRowKey;
+  final GlobalKey? imageRowKey;
+  final GlobalKey? agentsRowKey;
   final Future<void> Function(AiModelKind kind, String? optionId)
   onDefaultChanged;
   final Future<void> Function(AiModelOption option, String effort)
@@ -397,10 +446,20 @@ class _MobileAgentModelSettingsContent extends StatelessWidget {
             ),
           );
         }
-        return _MobileModelSettingCard(
-          item: items[index - 1],
+        final itemIndex = index - 1;
+        final guideKey = switch (itemIndex) {
+          0 => chatRowKey,
+          1 => imageRowKey,
+          2 => agentsRowKey,
+          _ => null,
+        };
+        final card = _MobileModelSettingCard(
+          item: items[itemIndex],
           aiSettings: settings.aiSettings,
         );
+        return guideKey != null
+            ? KeyedSubtree(key: guideKey, child: card)
+            : card;
       },
     );
   }

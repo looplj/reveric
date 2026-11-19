@@ -71,17 +71,32 @@ import '../../components/reveric_button.dart';
 
 final _log = AppLogger.forModule('ProviderModels');
 
+/// 供应商配置面板引导锚点：凭证区（Base URL / API Key）、多模态模型区与启用开关。
+class ProviderConfigGuideKeys {
+  const ProviderConfigGuideKeys({
+    required this.credentials,
+    required this.models,
+    required this.enableSwitch,
+  });
+
+  final GlobalKey credentials;
+  final GlobalKey models;
+  final GlobalKey enableSwitch;
+}
+
 /// 已保存供应商的配置面板：读取持久化配置，修改即时写回，头部提供启用开关与删除。
 class ProviderConfigPanel extends ConsumerWidget {
   final String providerId;
 
   final VoidCallback? onDeleted;
+  final ProviderConfigGuideKeys? guideKeys;
 
   const ProviderConfigPanel({
     super.key,
     required this.providerId,
 
     this.onDeleted,
+    this.guideKeys,
   });
 
   @override
@@ -97,43 +112,49 @@ class ProviderConfigPanel extends ConsumerWidget {
       config: config,
       onChanged: settingsNotifier.setAiProviderConfig,
       badge: StatusBadge(isValid: config.isValid),
+      guideKeys: guideKeys,
       headerActions: [
-        RevericSwitch(
-          value: config.enabled,
-          onChanged:
-              (!config.isTypeSupported && !config.isPluginProvider) ||
-                  !config.isPlatformSupported
-              ? null
-              : (v) async {
-                  final validationMessage = config.enableValidationMessage;
-                  if (v &&
-                      !config.isPluginProvider &&
-                      validationMessage != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: DialogToast(
-                          variant: DialogToastVariant.warning,
-                          child: Text(validationMessage),
-                        ),
-                      ),
-                    );
-                    return;
-                  }
-                  try {
-                    await settingsNotifier.toggleAiProviderEnabled(
-                      config.id,
-                      v,
-                    );
-                  } catch (_) {
-                    if (context.mounted) {
+        KeyedSubtree(
+          key: guideKeys?.enableSwitch,
+          child: RevericSwitch(
+            value: config.enabled,
+            onChanged:
+                (!config.isTypeSupported && !config.isPluginProvider) ||
+                    !config.isPlatformSupported
+                ? null
+                : (v) async {
+                    final validationMessage = config.enableValidationMessage;
+                    if (v &&
+                        !config.isPluginProvider &&
+                        validationMessage != null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(context.t(LocaleKeys.commonSaveFailed)),
+                          content: DialogToast(
+                            variant: DialogToastVariant.warning,
+                            child: Text(validationMessage),
+                          ),
                         ),
                       );
+                      return;
                     }
-                  }
-                },
+                    try {
+                      await settingsNotifier.toggleAiProviderEnabled(
+                        config.id,
+                        v,
+                      );
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              context.t(LocaleKeys.commonSaveFailed),
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+          ),
         ),
         ProviderActionsMenu(
           config: config,
@@ -172,6 +193,7 @@ class ProviderConfigForm extends HookWidget {
     required this.headerActions,
     this.isDraft = false,
     this.pluginDraftController,
+    this.guideKeys,
   });
 
   final AiProvider config;
@@ -180,6 +202,7 @@ class ProviderConfigForm extends HookWidget {
   final List<Widget> headerActions;
   final bool isDraft;
   final PluginConfigDraftController? pluginDraftController;
+  final ProviderConfigGuideKeys? guideKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -474,136 +497,149 @@ class ProviderConfigForm extends HookWidget {
         else ...[
           ProviderOverview(config: config),
           const SizedBox(height: RevericSpacing.x4l),
-          if (config.hasFixedBaseUrl)
-            _buildReadOnlyField(
-              context: context,
-              label: context.t(LocaleKeys.settingsAiBaseUrl),
-              value: config.effectiveBaseUrl,
-            )
-          else
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: baseUrlController,
-              builder: (context, value, _) {
-                final suggested = _baseUrlWithoutEndpoint(value.text);
-                return RevericTextField(
+          Column(
+            key: guideKeys?.credentials,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (config.hasFixedBaseUrl)
+                _buildReadOnlyField(
+                  context: context,
                   label: context.t(LocaleKeys.settingsAiBaseUrl),
-                  hintText: config.isBuiltin
-                      ? (builtinBaseUrl ?? '')
-                      : 'https://api.example.com/v1',
-                  controller: baseUrlController,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  inputFormatters: const [ProviderBaseUrlInputFormatter()],
-                  errorText: suggested == value.text.trim()
-                      ? null
-                      : context.t(
-                          LocaleKeys.providerBaseUrlEndpointHint,
-                          namedArgs: {'url': suggested},
-                        ),
-                  errorMaxLines: 4,
-                  onChanged: (_) => saveConfig(baseUrl: baseUrlController.text),
-                );
-              },
-            ),
-          if (!config.hasBaseUrl) ...[
-            const SizedBox(height: RevericSpacing.xs),
-            Text(
-              context.t(LocaleKeys.providerConfigNeedBaseUrl),
-              style: typo.uiSmall.copyWith(color: colors.textMuted),
-            ),
-          ],
+                  value: config.effectiveBaseUrl,
+                )
+              else
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: baseUrlController,
+                  builder: (context, value, _) {
+                    final suggested = _baseUrlWithoutEndpoint(value.text);
+                    return RevericTextField(
+                      label: context.t(LocaleKeys.settingsAiBaseUrl),
+                      hintText: config.isBuiltin
+                          ? (builtinBaseUrl ?? '')
+                          : 'https://api.example.com/v1',
+                      controller: baseUrlController,
+                      keyboardType: TextInputType.url,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      inputFormatters: const [ProviderBaseUrlInputFormatter()],
+                      errorText: suggested == value.text.trim()
+                          ? null
+                          : context.t(
+                              LocaleKeys.providerBaseUrlEndpointHint,
+                              namedArgs: {'url': suggested},
+                            ),
+                      errorMaxLines: 4,
+                      onChanged: (_) =>
+                          saveConfig(baseUrl: baseUrlController.text),
+                    );
+                  },
+                ),
+              if (!config.hasBaseUrl) ...[
+                const SizedBox(height: RevericSpacing.xs),
+                Text(
+                  context.t(LocaleKeys.providerConfigNeedBaseUrl),
+                  style: typo.uiSmall.copyWith(color: colors.textMuted),
+                ),
+              ],
+              const SizedBox(height: RevericSpacing.lg),
+              if (config.isCodex)
+                CodexConnection(config: config)
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
+                        context: context,
+                        label: context.t(LocaleKeys.settingsAiApiKey),
+                        hint: context.t(LocaleKeys.settingsAiApiKeyHint),
+                        controller: apiKeyController,
+                        obscureText: true,
+                        onChanged: () => saveConfig(),
+                      ),
+                    ),
+                  ],
+                ),
+              if (!config.isCodex && !config.hasApiKey) ...[
+                const SizedBox(height: RevericSpacing.xs),
+                Text(
+                  context.t(LocaleKeys.providerConfigNeedApiKey),
+                  style: typo.uiSmall.copyWith(color: colors.textMuted),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: RevericSpacing.lg),
-          if (config.isCodex)
-            CodexConnection(config: config)
-          else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    context: context,
-                    label: context.t(LocaleKeys.settingsAiApiKey),
-                    hint: context.t(LocaleKeys.settingsAiApiKeyHint),
-                    controller: apiKeyController,
-                    obscureText: true,
-                    onChanged: () => saveConfig(),
+          Column(
+            key: guideKeys?.models,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (config.supportsModelKind(AiModelKind.chat))
+                ProviderModelsEditor(
+                  label: context.t(LocaleKeys.providerChatModelsLabel),
+                  hint: context.t(LocaleKeys.providerChatModelsHint),
+                  models: config.availableModels,
+                  onChanged: (models) => saveConfig(models: models),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableModels,
+                    (models) => saveConfig(models: models),
+                  ),
+                ),
+              if (!config.hasModels) ...[
+                const SizedBox(height: RevericSpacing.xs),
+                Text(
+                  context.t(LocaleKeys.providerConfigNeedModels),
+                  style: typo.uiSmall.copyWith(color: colors.textMuted),
+                ),
+              ],
+              if (config.supportsModelKind(AiModelKind.video)) ...[
+                const SizedBox(height: RevericSpacing.lg),
+                ProviderVideoModels(
+                  config: config,
+                  onChanged: (models) => saveConfig(videoModels: models),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableVideoModels,
+                    (models) => saveConfig(videoModels: models),
+                    kind: AiModelKind.video,
                   ),
                 ),
               ],
-            ),
-          if (!config.isCodex && !config.hasApiKey) ...[
-            const SizedBox(height: RevericSpacing.xs),
-            Text(
-              context.t(LocaleKeys.providerConfigNeedApiKey),
-              style: typo.uiSmall.copyWith(color: colors.textMuted),
-            ),
-          ],
-          const SizedBox(height: RevericSpacing.lg),
-          if (config.supportsModelKind(AiModelKind.chat))
-            ProviderModelsEditor(
-              label: context.t(LocaleKeys.providerChatModelsLabel),
-              hint: context.t(LocaleKeys.providerChatModelsHint),
-              models: config.availableModels,
-              onChanged: (models) => saveConfig(models: models),
-              fetchButton: _buildFetchButton(
-                context,
-                config,
-                config.availableModels,
-                (models) => saveConfig(models: models),
-              ),
-            ),
-          if (!config.hasModels) ...[
-            const SizedBox(height: RevericSpacing.xs),
-            Text(
-              context.t(LocaleKeys.providerConfigNeedModels),
-              style: typo.uiSmall.copyWith(color: colors.textMuted),
-            ),
-          ],
-          if (config.supportsModelKind(AiModelKind.video)) ...[
-            const SizedBox(height: RevericSpacing.lg),
-            ProviderVideoModels(
-              config: config,
-              onChanged: (models) => saveConfig(videoModels: models),
-              fetchButton: _buildFetchButton(
-                context,
-                config,
-                config.availableVideoModels,
-                (models) => saveConfig(videoModels: models),
-                kind: AiModelKind.video,
-              ),
-            ),
-          ],
-          if (config.supportsModelKind(AiModelKind.audio)) ...[
-            const SizedBox(height: RevericSpacing.lg),
-            ProviderAudioModels(
-              config: config,
-              onChanged: (models) => saveConfig(audioModels: models),
-              fetchButton: _buildFetchButton(
-                context,
-                config,
-                config.availableAudioModels,
-                (models) => saveConfig(audioModels: models),
-                kind: AiModelKind.audio,
-              ),
-            ),
-          ],
-          if (config.supportsModelKind(AiModelKind.image)) ...[
-            const SizedBox(height: RevericSpacing.lg),
-            ProviderModelsEditor(
-              label: context.t(LocaleKeys.providerImageModelsLabel),
-              hint: context.t(LocaleKeys.providerImageModelsHint),
-              models: config.availableImageModels,
-              onChanged: (models) => saveConfig(imageModels: models),
-              fetchButton: _buildFetchButton(
-                context,
-                config,
-                config.availableImageModels,
-                (models) => saveConfig(imageModels: models),
-                kind: AiModelKind.image,
-              ),
-            ),
-          ],
+              if (config.supportsModelKind(AiModelKind.audio)) ...[
+                const SizedBox(height: RevericSpacing.lg),
+                ProviderAudioModels(
+                  config: config,
+                  onChanged: (models) => saveConfig(audioModels: models),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableAudioModels,
+                    (models) => saveConfig(audioModels: models),
+                    kind: AiModelKind.audio,
+                  ),
+                ),
+              ],
+              if (config.supportsModelKind(AiModelKind.image)) ...[
+                const SizedBox(height: RevericSpacing.lg),
+                ProviderModelsEditor(
+                  label: context.t(LocaleKeys.providerImageModelsLabel),
+                  hint: context.t(LocaleKeys.providerImageModelsHint),
+                  models: config.availableImageModels,
+                  onChanged: (models) => saveConfig(imageModels: models),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableImageModels,
+                    (models) => saveConfig(imageModels: models),
+                    kind: AiModelKind.image,
+                  ),
+                ),
+              ],
+            ],
+          ),
           if (!config.isCodex &&
               config.supportsModelKind(AiModelKind.chat)) ...[
             const SizedBox(height: RevericSpacing.lg),
