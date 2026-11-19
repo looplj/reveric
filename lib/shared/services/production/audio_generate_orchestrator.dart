@@ -19,6 +19,7 @@ import '../../models/audio/result.dart';
 import '../../models/audio/exception.dart';
 import '../../logger/app_logger.dart';
 export '../../models/audio/result.dart';
+import '../ai/media_diagnostics.dart';
 import '../storyboard/service.dart';
 import 'audio_service.dart';
 import 'canvas_service.dart';
@@ -103,6 +104,10 @@ class ProductionAudioGenerateOrchestrator {
   ) async {
     final node = await service.requireNode(nodeId);
     if (node.type != canvasNodeTypeAudio || node.clipId == null) {
+      _log.warning(
+        'Audio preview rejected nodeId=$nodeId '
+        'code=invalid_config reason=invalid_audio_node',
+      );
       throw const StoryboardException('invalid_config');
     }
     final clip = (await service.shots.getShot(node.clipId!))!;
@@ -111,10 +116,30 @@ class ProductionAudioGenerateOrchestrator {
         : await service.library.database.aiProviderDao.getById(
             clip.providerId!,
           );
-    if (provider == null ||
-        !provider.enabled ||
-        !AudioCapabilities(clip.modelId ?? '').supportsProvider(provider) ||
-        !provider.availableAudioModels.contains(clip.modelId)) {
+    final modelId = clip.modelId ?? '';
+    final configurationFailure = switch (provider) {
+      null when clip.providerId == null => 'provider_not_selected',
+      null => 'provider_not_found',
+      AiProvider(enabled: false) => 'provider_disabled',
+      _ when modelId.isEmpty => 'model_not_selected',
+      final AiProvider config
+          when !AudioCapabilities(modelId).supportsProvider(config) =>
+        'model_not_recognized',
+      AiProvider(:final availableAudioModels)
+          when !availableAudioModels.contains(modelId) =>
+        'model_not_configured',
+      _ => null,
+    };
+    if (provider == null || configurationFailure != null) {
+      final model = safeMediaDiagnostic(
+        modelId,
+        provider?.effectiveApiKey ?? '',
+      );
+      _log.warning(
+        'Audio preview rejected clipId=${clip.id} providerId=${clip.providerId} '
+        'providerType=${provider?.type} modelId=$model '
+        'code=invalid_config reason=$configurationFailure',
+      );
       throw const StoryboardException('invalid_config');
     }
     final allInputs = await service.draftInputs(node.id);
@@ -131,11 +156,11 @@ class ProductionAudioGenerateOrchestrator {
     }
     final references = await resolveAudioReferences(
       service,
-      clip.modelId!,
+      modelId,
       inputs,
       providerId: provider.id,
     );
-    final capability = AudioCapabilities.forProvider(clip.modelId!, provider);
+    final capability = AudioCapabilities.forProvider(modelId, provider);
     final prompt = compileAudioPrompt(
       clip.prompt,
       references,
@@ -151,7 +176,7 @@ class ProductionAudioGenerateOrchestrator {
       provider.type,
       AudioRequest(
         providerId: provider.id,
-        modelId: clip.modelId!,
+        modelId: modelId,
         prompt: prompt,
         originalPrompt: StoryboardPrompt.parse(
           clip.prompt,

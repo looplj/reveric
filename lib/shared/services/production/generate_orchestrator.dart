@@ -7,16 +7,20 @@
 //   .agents/rules/service-naming.md
 import 'dart:io';
 import '../../database/novel_content_database.dart';
+import '../../logger/app_logger.dart';
 import '../../models/ai_provider.dart';
 import '../../models/provider_model.dart';
 import '../../models/storyboard/prompt.dart';
 import '../../models/video/request.dart';
 import '../../models/video/capabilities.dart';
 import '../../models/video/task_result.dart';
+import '../ai/media_diagnostics.dart';
 import '../ai/video/task_service.dart';
 import '../storyboard/service.dart';
 import 'canvas_service.dart';
 import 'voices.dart';
+
+final _log = AppLogger.forModule('ProductionVideo');
 
 VideoProtocol productionProtocol(String type) =>
     aiProviderTypeConfigFor(type)?.videoProtocol ??
@@ -308,6 +312,10 @@ class ProductionGenerateOrchestrator {
     final raw = shotVideoRequest(shot);
     final providerId = shot.providerId;
     if (providerId == null) {
+      _log.warning(
+        'Video preview rejected clipId=${shot.id} '
+        'code=invalid_config reason=provider_not_selected',
+      );
       throw const StoryboardException(
         'invalid_config',
         'provider_id and model_id are not set.',
@@ -324,10 +332,27 @@ class ProductionGenerateOrchestrator {
     final provider = await service.library.database.aiProviderDao.getById(
       providerId,
     );
-    if (provider == null ||
-        !provider.enabled ||
-        !provider.videoModels.contains(raw.modelId) ||
-        !productionSupportsVideoModel(provider, raw.modelId)) {
+    final configurationFailure = switch (provider) {
+      null => 'provider_not_found',
+      AiProvider(enabled: false) => 'provider_disabled',
+      _ when raw.modelId.isEmpty => 'model_not_selected',
+      AiProvider(:final videoModels) when !videoModels.contains(raw.modelId) =>
+        'model_not_configured',
+      final AiProvider config
+          when !productionSupportsVideoModel(config, raw.modelId) =>
+        'model_not_recognized',
+      _ => null,
+    };
+    if (provider == null || configurationFailure != null) {
+      final model = safeMediaDiagnostic(
+        raw.modelId,
+        provider?.effectiveApiKey ?? '',
+      );
+      _log.warning(
+        'Video preview rejected clipId=${shot.id} providerId=$providerId '
+        'providerType=${provider?.type} modelId=$model '
+        'code=configuration_required reason=$configurationFailure',
+      );
       throw const VideoException(VideoErrorCode.configuration_required);
     }
     if (draft &&

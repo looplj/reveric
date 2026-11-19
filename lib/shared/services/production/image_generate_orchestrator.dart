@@ -10,6 +10,7 @@
 import '../../models/provider_model.dart';
 import '../../agent/agent_tool_dispatcher.dart';
 import '../../database/novel_content_database.dart';
+import '../../logger/app_logger.dart';
 import '../../models/generation/task.dart';
 import '../../models/ai_provider.dart';
 import '../../models/production/image_request.dart';
@@ -17,9 +18,12 @@ import '../../models/production/view_presets.dart';
 import '../../models/storyboard/prompt.dart';
 import '../../models/video/request.dart';
 import '../ai/image.dart';
+import '../ai/media_diagnostics.dart';
 import '../storyboard/service.dart';
 import 'canvas_service.dart';
 import 'image_service.dart';
+
+final _log = AppLogger.forModule('ProductionImage');
 
 class ProductionImagePreview {
   const ProductionImagePreview(
@@ -59,6 +63,10 @@ class ProductionImageGenerateOrchestrator {
   ) async {
     final node = await service.requireNode(nodeId);
     if (node.type != canvasNodeTypeImage || node.clipId == null) {
+      _log.warning(
+        'Image preview rejected nodeId=$nodeId '
+        'code=invalid_config reason=invalid_image_node',
+      );
       throw const StoryboardException('invalid_config');
     }
     final clip = (await service.shots.getShot(node.clipId!))!;
@@ -67,7 +75,14 @@ class ProductionImageGenerateOrchestrator {
         : await service.library.database.aiProviderDao.getById(
             clip.providerId!,
           );
-    if (provider == null || clip.modelId == null) {
+    final modelId = clip.modelId;
+    if (provider == null || modelId == null) {
+      final reason = switch (provider) {
+        null when clip.providerId == null => 'provider_not_selected',
+        null => 'provider_not_found',
+        _ => 'model_not_selected',
+      };
+      _logPreviewRejection(clip, provider, reason);
       throw const StoryboardException('invalid_config');
     }
     final references = <ProductionImageReference>[];
@@ -94,6 +109,7 @@ class ProductionImageGenerateOrchestrator {
     final preset = ImageGenerationPreset.fromStyle(node.style);
     if (preset.method == ImageGenerationMethod.panorama &&
         clip.ratio != '2:1') {
+      _logPreviewRejection(clip, provider, 'invalid_panorama_ratio');
       throw const StoryboardException('invalid_config');
     }
     final originalPrompt = preset.assemble(clip.prompt, draft.firstOrNull?.id);
@@ -110,20 +126,34 @@ class ProductionImageGenerateOrchestrator {
     );
     final style = await service.effectiveStyle(clip);
     final prompt = style?.assemble(text) ?? text;
-    final capabilities = ProductionImageCapabilities(provider, clip.modelId!);
-    capabilities.validate(
-      prompt: prompt,
-      ratio: clip.ratio,
-      resolution: clip.resolution,
-      references: references.length,
-    );
+    final capabilities = ProductionImageCapabilities(provider, modelId);
+    try {
+      capabilities.validate(
+        prompt: prompt,
+        ratio: clip.ratio,
+        resolution: clip.resolution,
+        references: references.length,
+      );
+    } on FormatException {
+      final reason = switch (provider) {
+        AiProvider(enabled: false) => 'provider_disabled',
+        _ when modelId.isEmpty => 'model_not_selected',
+        _ when !capabilities.isSupported => 'model_not_supported',
+        _ when !provider.availableImageModels.contains(modelId) =>
+          'model_not_configured',
+        _ when prompt.trim().isEmpty => 'prompt_empty',
+        _ => 'invalid_image_parameters',
+      };
+      _logPreviewRejection(clip, provider, reason);
+      rethrow;
+    }
     return ProductionImagePreview(
       service.novelId,
       node.id,
       clip.id,
       ProductionImageRequest(
         providerId: provider.id,
-        modelId: clip.modelId!,
+        modelId: modelId,
         originalPrompt: parsed.render(
           textInputs: textInputs,
           reference: (part) => part.text,
@@ -136,8 +166,24 @@ class ProductionImageGenerateOrchestrator {
         references: references,
         capabilities: capabilities.effectiveCapabilities,
         requestDefaults:
-            resolveImageModel(provider, clip.modelId!)?.rawDefaults ?? {},
+            resolveImageModel(provider, modelId)?.rawDefaults ?? {},
       ),
+    );
+  }
+
+  void _logPreviewRejection(
+    ProductionClipRow clip,
+    AiProvider? provider,
+    String reason,
+  ) {
+    final model = safeMediaDiagnostic(
+      clip.modelId ?? '',
+      provider?.effectiveApiKey ?? '',
+    );
+    _log.warning(
+      'Image preview rejected clipId=${clip.id} providerId=${clip.providerId} '
+      'providerType=${provider?.type} modelId=$model '
+      'code=invalid_config reason=$reason',
     );
   }
 

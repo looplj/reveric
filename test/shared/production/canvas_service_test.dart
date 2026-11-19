@@ -22,6 +22,7 @@ import 'package:reveric/shared/models/audio/request.dart';
 import 'package:reveric/shared/services/production/audio_generate_orchestrator.dart';
 import 'package:reveric/shared/services/production/voices.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
@@ -166,6 +167,59 @@ void main() {
     await appDb.close();
     await root.delete(recursive: true);
   });
+
+  test('video preview logs why an 88API model cannot be used', () async {
+    const configuredModel = 'unrecognized-video-model';
+    const availableModel = 'doubao-seedance-2.0';
+    final provider = aiProviderBuiltinById('api88')!.copyWith(
+      enabled: true,
+      apiKey: 'test-api-key',
+      videoModels: const [configuredModel],
+    );
+    await appDb.aiProviderDao.upsert(provider);
+    final node = await service.ensureShotNode(shot.id);
+    final previousDebugPrint = debugPrint;
+    final messages = <String>[];
+    debugPrint = (message, {wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+
+    for (final (modelId, reason) in [
+      (availableModel, 'model_not_configured'),
+      (configuredModel, 'model_not_recognized'),
+    ]) {
+      await (db.update(
+        db.productionClips,
+      )..where((row) => row.id.equals(shot.id))).write(
+        ProductionClipsCompanion(
+          providerId: Value(provider.id),
+          modelId: Value(modelId),
+        ),
+      );
+      messages.clear();
+      await expectLater(
+        ProductionGenerateOrchestrator().preview(service, node.id),
+        throwsA(
+          isA<VideoException>().having(
+            (error) => error.code,
+            'code',
+            VideoErrorCode.configuration_required,
+          ),
+        ),
+      );
+      final diagnostic = messages.singleWhere(
+        (message) => message.contains('code=configuration_required'),
+      );
+      expect(diagnostic, contains('providerId=api88'));
+      expect(diagnostic, contains('modelId=$modelId'));
+      expect(diagnostic, contains('reason=$reason'));
+      expect(diagnostic, isNot(contains(provider.apiKey)));
+    }
+  });
+
   test(
     'draft save identifies invalid fields and accepts empty image prompts',
     () async {

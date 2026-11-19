@@ -28,6 +28,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
@@ -194,6 +195,40 @@ void main() {
         );
     await root.delete(recursive: true);
   });
+
+  test('audio preview logs why a disabled provider cannot be used', () async {
+    final provider = (await appDb.aiProviderDao.getById('audio'))!;
+    await appDb.aiProviderDao.upsert(
+      provider.copyWith(enabled: false, apiKey: 'sk-private-audio'),
+    );
+    final previousDebugPrint = debugPrint;
+    final messages = <String>[];
+    debugPrint = (message, {wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+
+    await expectLater(
+      preview(),
+      throwsA(
+        isA<StoryboardException>().having(
+          (error) => error.code,
+          'code',
+          'invalid_config',
+        ),
+      ),
+    );
+    final diagnostic = messages.singleWhere(
+      (message) => message.contains('Audio preview rejected'),
+    );
+    expect(diagnostic, contains('providerId=audio'));
+    expect(diagnostic, contains('modelId=seed-audio-1.0'));
+    expect(diagnostic, contains('reason=provider_disabled'));
+    expect(diagnostic, isNot(contains('sk-private-audio')));
+  });
+
   test(
     'saved audio uses the actual MIME and preserves returned bytes',
     () async {

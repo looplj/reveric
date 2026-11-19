@@ -19,6 +19,7 @@ import 'package:reveric/shared/models/video/request.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -170,6 +171,33 @@ void main() {
           null,
         );
     await root.delete(recursive: true);
+  });
+
+  test('image preview logs the missing model configuration', () async {
+    final provider = (await appDb.aiProviderDao.getById('image'))!;
+    await appDb.aiProviderDao.upsert(
+      provider.copyWith(imageModels: const [], apiKey: 'sk-private-image'),
+    );
+    final previousDebugPrint = debugPrint;
+    final messages = <String>[];
+    debugPrint = (message, {wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+
+    await expectLater(
+      ProductionImageGenerateOrchestrator().preview(canvas, node.id),
+      throwsFormatException,
+    );
+    final diagnostic = messages.singleWhere(
+      (message) => message.contains('Image preview rejected'),
+    );
+    expect(diagnostic, contains('providerId=image'));
+    expect(diagnostic, contains('modelId=gpt-image-2'));
+    expect(diagnostic, contains('reason=model_not_configured'));
+    expect(diagnostic, isNot(contains('sk-private-image')));
   });
 
   test(
