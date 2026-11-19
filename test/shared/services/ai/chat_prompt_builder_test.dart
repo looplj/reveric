@@ -409,18 +409,18 @@ void main() {
       },
     );
 
-    test('uses the canonical profile path for novel metadata references', () {
+    test('uses the work field path for novel description references', () {
       final builder = ChatPromptBuilder();
       final text = builder.buildAgentTextWithReferences('处理作品简介', const [
         AiContextReference(
           section: NovelWorkspaceSection.novel_description,
-          itemId: 'profile',
+          itemId: 'work',
           label: '作品简介',
         ),
       ]);
 
-      expect(text, contains("type='profile'"));
-      expect(text, contains("path='/profile'"));
+      expect(text, contains("type='works'"));
+      expect(text, contains("path='/works/work/description'"));
       expect(text, isNot(contains("path='/novel'")));
     });
 

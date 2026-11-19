@@ -83,12 +83,7 @@ void main() {
   test(
     'list includes children and every mode with literal titles and tie pagination',
     () async {
-      for (final mode in [
-        'council',
-        'monologue',
-        'theater',
-        'roleplay',
-      ]) {
+      for (final mode in ['council', 'monologue', 'theater', 'roleplay']) {
         await app.aiChatSessionDao.upsert(
           id: mode,
           novelId: 'w1',

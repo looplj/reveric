@@ -35,6 +35,13 @@ class NovelTitleConflictException implements Exception {
   String toString() => 'Novel title conflict: "$title"';
 }
 
+class NovelDraftReversionException implements Exception {
+  const NovelDraftReversionException();
+
+  @override
+  String toString() => 'A work on the bookshelf cannot be moved back to draft.';
+}
+
 class NovelActionsService {
   NovelActionsService(
     this._database, {
@@ -298,7 +305,7 @@ class NovelActionsService {
   }
 
   /// 「加入书架」：清除快速开书占位标记，让作品正式进入书库。
-  /// 由编辑器「加入书架」按钮或 Run 的 add-to-library 命令显式触发，不耦合写入动作。
+  /// 供界面「加入书架」入口调用。
   Future<void> clearNovelDraft(String novelId) async {
     try {
       await _database.transaction(() async {
@@ -416,22 +423,40 @@ class NovelActionsService {
     String? description,
     List<String>? tags,
     String? category,
+    String? status,
+    bool? draft,
   }) async {
-    if (title == null &&
-        authorName == null &&
-        description == null &&
-        tags == null &&
-        category == null) {
+    final addToShelf = draft == false;
+    final hasMetadata =
+        title != null ||
+        authorName != null ||
+        description != null ||
+        tags != null ||
+        category != null ||
+        status != null;
+    if (!hasMetadata && draft == null) {
       return;
     }
     await _database.transaction(() async {
-      if (title != null) {
+      if (title != null || draft != null) {
         final novel = await _database.novelDao.get(novelId);
         if (novel == null) {
           throw StateError('Novel not found: $novelId');
         }
-        if (!novel.draft) {
-          await _ensureShelfTitleAvailable(title, excludingId: novelId);
+        if (draft == true && !novel.draft) {
+          throw const NovelDraftReversionException();
+        }
+        if (addToShelf || !novel.draft) {
+          await _ensureShelfTitleAvailable(
+            title ?? novel.title,
+            excludingId: novelId,
+          );
+        }
+        if (!hasMetadata) {
+          if (addToShelf && novel.draft) {
+            await _database.novelDao.updateDraft(id: novelId, draft: false);
+          }
+          return;
         }
       }
       final updated = await _database.novelDao.updateMetadata(
@@ -441,6 +466,8 @@ class NovelActionsService {
         description: description,
         tags: tags,
         category: category,
+        status: status,
+        draft: addToShelf ? false : null,
       );
       if (updated == 0) {
         throw StateError('Novel not found: $novelId');

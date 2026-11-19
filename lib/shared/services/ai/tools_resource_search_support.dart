@@ -147,10 +147,15 @@ mixin _AiToolManagerResourceSearchSupportMixin
       }
     }
 
-    // 给了 path 时，模式也按相对 path 的子路径匹配，与在该目录下执行 glob 一致。
-    final relativeBase = root.isRoot
+    final workId = root.isRoot && novelReader != null
+        ? root.targetWorkId
+        : null;
+    final workPath = workId == null ? null : '/works/$workId';
+    // 主目录的元数据用绝对路径返回，glob 也能按相对作品根的字段名匹配。
+    final basePath = root.isRoot ? workPath : root.displayPath;
+    final relativeBase = basePath == null
         ? null
-        : '${_normalizeResourceMatchPath(root.displayPath)}/';
+        : '${_normalizeResourceMatchPath(basePath)}/';
     bool globMatches(String path) {
       if (glob!.matches(path)) {
         return true;
@@ -170,6 +175,7 @@ mixin _AiToolManagerResourceSearchSupportMixin
     Future<void> visit(
       ParsedPath parsed, {
       bool isLeaf = false,
+      bool collectSelf = true,
       Map<String, dynamic>? resource,
     }) async {
       if (scanError != null || truncated) {
@@ -185,18 +191,7 @@ mixin _AiToolManagerResourceSearchSupportMixin
         return;
       }
       // relations 有独立图查询，不展开关系树；作品发现也不属于本作品搜索。
-      if (parsed.collection == 'relations' || parsed.collection == 'works') {
-        return;
-      }
-      // profile reader 是可选会话能力；根搜索只枚举当前可提供的资料。
-      // 显式 profile 路径仍通过读取返回 session_unavailable。
-      if (root.isRoot &&
-          parsed.collection == 'profile' &&
-          novelReader == null &&
-          (glob == null ||
-              _resourceDefinitions.keys.any(
-                (name) => name != 'profile' && targets(name),
-              ))) {
+      if (parsed.collection == 'relations' || parsed.isWorksListing) {
         return;
       }
       final queryError = _validateResourceQuery(parsed);
@@ -220,7 +215,7 @@ mixin _AiToolManagerResourceSearchSupportMixin
           return;
         }
       }
-      if (glob == null || globMatches(normalized)) {
+      if (collectSelf && (glob == null || globMatches(normalized))) {
         if (budget != null && out.length >= budget) {
           truncated = true;
           return;
@@ -231,6 +226,14 @@ mixin _AiToolManagerResourceSearchSupportMixin
         return;
       }
       if (parsed.isRoot) {
+        if (workPath != null &&
+            (glob == null ||
+                _worksDefinition.readFields.any(
+                  (field) => globMatches('$workPath/$field'),
+                ))) {
+          // 扫描起点已代表作品根，直接展开元数据字段，避免重复返回同一个根。
+          await visit(parseAiToolPath(workPath), collectSelf: false);
+        }
         for (final entry in (result!['entries'] as List)) {
           final path = _collectionPathFromRootEntry(entry);
           if (path == null) {

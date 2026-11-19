@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../database/novel_content_database.dart';
+import '../database/novel_content_daos/working_change_dao.dart';
 import '../database/type_converters.dart';
 import '../models/outline.dart';
 import '../models/screenplay_element.dart';
@@ -338,7 +339,11 @@ class WorkingOverlayService {
         value: newText,
       );
     }
-    resourcePath = canonicalResourcePath(resourcePath);
+    resourcePath = canonicalWorkingChangePath(
+      resourcePath,
+      resourceType: resourceType,
+      resourceId: resourceId,
+    );
     final now = DateTime.now();
     final prior = !allowCoalescing
         ? null
@@ -350,6 +355,7 @@ class WorkingOverlayService {
           );
     if (prior != null) {
       final nextPatch = prior.copyWith(
+        resourcePath: resourcePath,
         oldText: Value(prior.oldText),
         newText: Value(newText),
         sourceSessionId: sourceSessionId == null
@@ -378,6 +384,7 @@ class WorkingOverlayService {
             _contentDatabase.workingChanges,
           )..where((table) => table.id.equals(prior.id))).write(
             WorkingChangesCompanion(
+              resourcePath: Value(resourcePath),
               oldText: Value(prior.oldText),
               newText: Value(newText),
               sourceSessionId: sourceSessionId == null
@@ -402,7 +409,7 @@ class WorkingOverlayService {
         });
       } catch (error, stackTrace) {
         _log.error(
-          'UPDATE working_changes id=${prior.id} error=$error',
+          '[DB] UPDATE working_changes id=${prior.id}',
           error: error,
           stackTrace: stackTrace,
         );
@@ -840,7 +847,7 @@ class WorkingOverlayService {
                 id: buildRandomId('commit_item'),
                 commitId: commitId,
                 workingChangeId: row.id,
-                resourcePath: row.resourcePath,
+                resourcePath: _workingChangePath(row),
                 resourceType: row.resourceType,
                 resourceId: Value(row.resourceId),
                 field: Value(row.field),
@@ -888,7 +895,7 @@ class WorkingOverlayService {
           (change) =>
               change.status == workingChangeStatusActive &&
               change.source == workingChangeSourceAi &&
-              _resourcePathInScopes(change.resourcePath, scopes),
+              _resourcePathInScopes(_workingChangePath(change), scopes),
         )
         .map((change) => change.id)
         .toList();
@@ -913,8 +920,11 @@ class WorkingOverlayService {
     final latest =
         await (_contentDatabase.select(_contentDatabase.workingChanges)
               ..where(
-                (table) => table.resourcePath.equals(
-                  canonicalResourcePath(resourcePath),
+                (table) => matchesWorkingChangePath(
+                  resourcePath,
+                  resourcePath: table.resourcePath,
+                  resourceType: table.resourceType,
+                  resourceId: table.resourceId,
                 ),
               )
               ..orderBy([(table) => OrderingTerm.desc(table.rowId)])
@@ -1520,7 +1530,7 @@ class WorkingOverlayService {
 
     final targetByPath = <String, ChangeCommitItem>{};
     for (final item in orderedItems.take(lastSelectedItemIndex + 1)) {
-      targetByPath[canonicalResourcePath(item.resourcePath)] = item;
+      targetByPath[_commitItemPath(item)] = item;
     }
     if (targetByPath.isEmpty) {
       return RestoreResourceResult.failed;
@@ -1687,10 +1697,7 @@ class WorkingOverlayService {
 
     final rollbackByPath = <String, ChangeCommitItem>{};
     for (final item in orderedItems) {
-      rollbackByPath.putIfAbsent(
-        canonicalResourcePath(item.resourcePath),
-        () => item,
-      );
+      rollbackByPath.putIfAbsent(_commitItemPath(item), () => item);
     }
 
     // 缺失目标只跳过对应字段，保留它的历史状态供后续处理。
@@ -1703,7 +1710,7 @@ class WorkingOverlayService {
             text: item.oldText,
           )) {
         skipped = true;
-        rollbackByPath.remove(canonicalResourcePath(item.resourcePath));
+        rollbackByPath.remove(_commitItemPath(item));
         _log.warning(
           'Rollback skipped missing target/history path=${item.resourcePath}',
         );
@@ -1780,9 +1787,7 @@ class WorkingOverlayService {
     }
 
     for (final item in orderedItems) {
-      if (rollbackByPath.containsKey(
-        canonicalResourcePath(item.resourcePath),
-      )) {
+      if (rollbackByPath.containsKey(_commitItemPath(item))) {
         await _markChangeRejected(item.workingChangeId);
       }
     }
@@ -1895,7 +1900,12 @@ class WorkingOverlayService {
       final earlierQuery = _contentDatabase.selectOnly(table)
         ..addColumns([table.id])
         ..where(
-          table.resourcePath.equals(canonicalResourcePath(first.resourcePath)) &
+          matchesWorkingChangePath(
+                _workingChangePath(first),
+                resourcePath: table.resourcePath,
+                resourceType: table.resourceType,
+                resourceId: table.resourceId,
+              ) &
               table.status.equals(workingChangeStatusActive) &
               table.rowId.isSmallerThanValue(order[first.id]!),
         );
@@ -2366,7 +2376,7 @@ class WorkingOverlayService {
   String _resourceScopeForItem(ChangeCommitItem item) {
     final resourcePath = item.resourcePath.trim();
     if (resourcePath.isNotEmpty) {
-      return resourcePath;
+      return _commitItemPath(item);
     }
     final resourceId = item.resourceId?.trim();
     if (resourceId == null || resourceId.isEmpty) {
@@ -2374,6 +2384,18 @@ class WorkingOverlayService {
     }
     return '/${item.resourceType}/$resourceId';
   }
+
+  String _workingChangePath(WorkingChange change) => canonicalWorkingChangePath(
+    change.resourcePath,
+    resourceType: change.resourceType,
+    resourceId: change.resourceId,
+  );
+
+  String _commitItemPath(ChangeCommitItem item) => canonicalWorkingChangePath(
+    item.resourcePath,
+    resourceType: item.resourceType,
+    resourceId: item.resourceId,
+  );
 
   String? _resourceKeyForItem(ChangeCommitItem item) {
     final resourceId = item.resourceId?.trim();

@@ -185,8 +185,8 @@ mixin _AiToolManagerEditMixin
       return _handleEditOutline(parsed, oldText, newText, replaceAll);
     }
 
-    if (parsed.collection == 'profile') {
-      return _editProfile(parsed, oldText, newText, replaceAll);
+    if (parsed._isWorkMetadata) {
+      return _editWork(parsed, oldText, newText, replaceAll);
     }
 
     if (parsed.collection == 'story_state') {
@@ -334,7 +334,7 @@ mixin _AiToolManagerEditMixin
     };
   }
 
-  Future<Map<String, dynamic>> _editProfile(
+  Future<Map<String, dynamic>> _editWork(
     ParsedPath parsed,
     String oldText,
     String newText,
@@ -343,9 +343,9 @@ mixin _AiToolManagerEditMixin
     final field = parsed.field!;
     if (novelReader == null || novelWriter == null) {
       return AiToolManager._structuredWriteError(
-        path: 'profile/$field',
+        path: parsed.displayPath,
         errorCode: ToolErrorCode.unavailable,
-        message: 'Work profile is unavailable in this AI session',
+        message: 'Work metadata is unavailable in this AI session',
         operation: 'edit',
       );
     }
@@ -353,46 +353,52 @@ mixin _AiToolManagerEditMixin
     final novel = await novelReader!.call();
     if (novel == null) {
       return AiToolManager._structuredWriteError(
-        path: 'profile/$field',
+        path: parsed.displayPath,
         errorCode: ToolErrorCode.unavailable,
-        message: 'Work profile is unavailable in this AI session',
+        message: 'Work metadata is unavailable in this AI session',
         operation: 'edit',
       );
     }
 
-    final readResult = await _readProfile(parsed);
+    final readResult = await _readWork(parsed);
     if (readResult.containsKey('error')) {
       return readResult;
     }
     final currentValue = _coerceEditSourceText(readResult['value']);
     if (currentValue == null) {
-      return _editNotTextFieldError(path: 'profile/$field', field: field);
+      return _editNotTextFieldError(path: parsed.displayPath, field: field);
     }
 
     final updated = AiToolManager._replaceExactText(
       currentValue,
       oldText,
       newText,
-      path: 'profile/$field',
+      path: parsed.displayPath,
       replaceAll: replaceAll,
     );
     if (updated.error != null) {
       return AiToolManager._replaceTextErrorResult(updated);
     }
     // title/author_name/description/category/tags 属作品元数据，直写 DB，不产生可回滚 working change。
-    if (field == 'tags') {
-      await novelWriter!.call({
-        'tags': updated.value!
-            .split(',')
-            .map((t) => t.trim())
-            .where((t) => t.isNotEmpty)
-            .toList(),
-      });
-    } else {
-      await novelWriter!.call({field: updated.value!});
+    final value = updated.value!;
+    final nextValue = field == 'tags'
+        ? value
+              .split(',')
+              .map((tag) => tag.trim())
+              .where((tag) => tag.isNotEmpty)
+              .toList()
+        : value;
+    final error = await _persistWorkMetadata(
+      novelWriter!,
+      {field: nextValue},
+      path: parsed.displayPath,
+      operation: 'edit',
+    );
+    if (error != null) {
+      return error;
     }
     return {
-      'path': 'profile/$field',
+      'path': parsed.displayPath,
       'edited': updated.changed,
       'match_count': updated.matchCount,
     };

@@ -468,6 +468,22 @@ mixin _AiToolManagerReadMixin
     if (queryError != null) {
       return queryError;
     }
+    if (parsed._isWorkMetadata && !parsed.hasField) {
+      final work = novelReader == null
+          ? const <String, dynamic>{}
+          : await _readWork(parsed);
+      if (work.containsKey('error')) {
+        return work;
+      }
+      return {
+        ...work,
+        'id': parsed.workId!,
+        'path': parsed.displayPath,
+        'content_kind': _targetContentKind,
+        'type': 'directory',
+        'entries': _workspaceRootEntries(),
+      };
+    }
 
     // 画布执行器消费公共匹配的目标与操作；响应继续走公共结果适配。
     // listing（`/canvas`、nodes、edges）走与其他集合相同的 search 过滤；
@@ -547,8 +563,8 @@ mixin _AiToolManagerReadMixin
     switch (parsed.collection) {
       case 'story_state':
         return _readStoryState(parsed);
-      case 'profile':
-        return _readProfile(parsed);
+      case 'works':
+        return _readWork(parsed);
       case 'outlines':
         return _readOutline(parsed);
       case 'lore':
@@ -580,22 +596,22 @@ mixin _AiToolManagerReadMixin
     }
   }
 
-  Future<Map<String, dynamic>> _readProfile(ParsedPath parsed) async {
+  Future<Map<String, dynamic>> _readWork(ParsedPath parsed) async {
     final field = parsed.field;
     if (novelReader == null) {
       return AiToolManager._structuredWriteError(
-        path: 'profile',
+        path: parsed.displayPath,
         errorCode: ToolErrorCode.unavailable,
-        message: 'Work profile is unavailable in this AI session',
+        message: 'Work metadata is unavailable in this AI session',
         operation: 'read',
       );
     }
     final novel = await novelReader!.call();
     if (novel == null) {
       return AiToolManager._structuredWriteError(
-        path: 'profile',
+        path: parsed.displayPath,
         errorCode: ToolErrorCode.unavailable,
-        message: 'Work profile is unavailable in this AI session',
+        message: 'Work metadata is unavailable in this AI session',
         operation: 'read',
       );
     }
@@ -603,6 +619,8 @@ mixin _AiToolManagerReadMixin
     if (field != null) {
       final rawTags = novel['tags'];
       final value = switch (field) {
+        'id' => parsed.workId,
+        'content_kind' => _targetContentKind,
         'title' ||
         'author_name' ||
         'description' ||
@@ -610,14 +628,16 @@ mixin _AiToolManagerReadMixin
         'tags' => rawTags is List ? rawTags.join(', ') : rawTags as String?,
         _ => novel[field],
       };
-      return {'path': 'profile/$field', 'value': value};
+      return {'path': parsed.displayPath, 'value': value};
     }
 
     final rawTags = novel['tags'];
     final novelFields = Map<String, dynamic>.from(novel)..remove('word_count');
     return {
-      'path': 'profile',
+      'path': parsed.displayPath,
       ...novelFields,
+      'id': parsed.workId!,
+      'content_kind': _targetContentKind,
       'title': novel['title'] as String?,
       'author_name': novel['author_name'] as String? ?? '',
       'description': novel['description'] as String? ?? '',

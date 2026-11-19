@@ -106,7 +106,7 @@ class Novels extends Table {
   IntColumn get wordCount => integer().withDefault(const Constant(0))();
 
   /// 快速开书草稿标记：true = 尚未「加入书架」，书库不显示。
-  /// 仅由显式动作清除（编辑器「加入书架」按钮 / Run novel add-to-library），不自动清。
+  /// 由「加入书架」或显式写入作品草稿状态修改。
   BoolColumn get draft => boolean().withDefault(const Constant(false))();
 
   TextColumn get category => text().withDefault(const Constant(''))();

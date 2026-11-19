@@ -482,7 +482,6 @@ void main() {
         );
         expect(notes, contains('- skills（技能）\n  path: skills/{skill_id}'));
         for (final label in [
-          'profile（作品信息）',
           'story_state（故事状态）',
           'volumes（卷）',
           'characters（角色）',
@@ -505,7 +504,6 @@ void main() {
           notes,
           contains('path: lore/{title}；支持多级：lore/{folder}/{title}'),
         );
-        expect(notes, contains('  path: profile\n'));
         final grammar = pathSchema();
         for (final kind in ['novel', 'screenplay']) {
           final prompt = PromptFragments.pathSchemaBlock(kind: kind);

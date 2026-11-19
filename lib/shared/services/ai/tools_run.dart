@@ -433,10 +433,6 @@ mixin _AiToolManagerRunMixin
           _runSubagentsCommand(spec.subcommand, options, startedAt),
     ),
 
-    'novel': _RunCommandDefinition(
-      codemode: const {'add-to-library': _RunCodemodeAccess.write()},
-      (spec, _, startedAt) => _runNovelCommand(spec.subcommand, startedAt),
-    ),
     'agent-rules': _RunCommandDefinition(
       codemode: const {
         'list': _RunCodemodeAccess.read(),
@@ -494,7 +490,7 @@ mixin _AiToolManagerRunMixin
     var options =
         _parseMapArgument(input['options']) ?? const <String, dynamic>{};
     // 防呆：模型偶尔把 command/subcommand 误嵌进 options（实测出现过
-    // {"options":{"command":"novel","subcommand":"add-to-library"}}），导致顶层
+    // {"options":{"command":"providers","subcommand":"list"}}），导致顶层
     // command 为空、被误判成「Run requires command」而回退到通用 help。
     // 顶层缺失但 options 里有时，从 options 回捞，并把这两个键从 options 剥离，
     // 避免它们被后续 handler 当成真正的命令参数。
@@ -1393,75 +1389,6 @@ mixin _AiToolManagerRunMixin
     );
   }
 
-  /// `command=novel subcommand=add-to-library`：把当前「快速开书」占位作品正式加入书架
-  /// （清除 draft 标记）。仅供创作向导在与用户确认后调用，不耦合任何写入动作。
-  Future<Map<String, dynamic>> _runNovelCommand(
-    String subcommand,
-    DateTime startedAt,
-  ) async {
-    if (subcommand.isEmpty || subcommand == '--help') {
-      return _runTextResult(
-        stdout: _novelHelpText(),
-        exitCode: 0,
-        startedAt: startedAt,
-      );
-    }
-    if (subcommand != 'add-to-library') {
-      return _runTextResult(
-        stdout:
-            'Unknown novel command: $subcommand\n'
-            'Usage: command=novel subcommand=add-to-library',
-        exitCode: 127,
-        startedAt: startedAt,
-        error: 'unknown novel command: $subcommand',
-        errorCode: ToolErrorCode.invalid_argument.name,
-      );
-    }
-
-    final clearDraft = novelDraftClearer;
-    if (clearDraft == null) {
-      return _runTextResult(
-        stdout: '[error] Novel info is unavailable in this session',
-        exitCode: 1,
-        startedAt: startedAt,
-        error: 'novel unavailable',
-        errorCode: ToolErrorCode.unavailable.name,
-      );
-    }
-
-    try {
-      await clearDraft();
-      return _runTextResult(
-        stdout: 'Added to library.',
-        exitCode: 0,
-        startedAt: startedAt,
-      );
-    } on NovelTitleConflictException catch (error) {
-      return _runTextResult(
-        stdout:
-            '[error] A library novel named "${error.title}" already exists. '
-            'Rename this draft before adding it to the library.',
-        exitCode: 1,
-        startedAt: startedAt,
-        error: 'library title conflict',
-        errorCode: ToolErrorCode.already_exists.name,
-      );
-    } catch (error, stackTrace) {
-      _log.error(
-        'Run novel add-to-library failed',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      return _runTextResult(
-        stdout: '[error] Failed to add novel to library',
-        exitCode: 1,
-        startedAt: startedAt,
-        error: error.toString(),
-        errorCode: ToolErrorCode.internal.name,
-      );
-    }
-  }
-
   Future<Map<String, dynamic>> _runNotifyCommand(
     String subcommand,
     Map<String, dynamic> options,
@@ -2094,9 +2021,6 @@ String _helpFor(
   if (bundledControlRunCommandToCallName.containsKey(command)) {
     return _bundledSkillCommandGuidance(command, contentKind: contentKind);
   }
-  if (command == 'novel') {
-    return _novelHelpText();
-  }
   if (command == 'sessions') {
     return _sessionsHelpText();
   }
@@ -2149,7 +2073,6 @@ String _runHelpText({
 }) {
   return '''Available commands:
 ${operations ? _operationHelpLines(contentKind) : ''}${sessionOperations ? _sessionHelpLines : ''}  providers       List configured providers and inspect chat, image, video and audio models.
-  novel           Add the current quick-start draft novel to the library after user confirmation.
   sessions        List, read, and search saved AI conversations.
   map             Submit a map design draft for review in Cartographer.
   notify          Notify the Assistant with progress/question/complete/error.
@@ -2244,14 +2167,6 @@ String _usageForMapDraft() {
   return 'Usage: command=map subcommand=draft '
       'options={location, prompt, style?, custom_style?, resolution?, quality?, '
       'include_locations?, reference_current_image?}';
-}
-
-String _novelHelpText() {
-  return '''Novel commands:
-  command=novel subcommand=add-to-library options={}
-
-add-to-library: add the current quick-start draft novel to the library
-(clears the draft placeholder so it shows up on the shelf).''';
 }
 
 String _usageForAgentSkills(String subcommand) {

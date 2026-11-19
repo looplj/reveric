@@ -349,6 +349,8 @@ void main() {
         '画布作品工具',
         contentKind: contentKindCanvas,
       ))!;
+      expect(canvas.prompt, contains('`/works/{work_id}`'));
+      expect(canvas.prompt, isNot(contains('`profile`')));
       expect(canvas.references.map((ref) => ref.path), [
         'references/clips.md',
         'references/production-canvas.md',
@@ -377,7 +379,10 @@ void main() {
         final text = skill.references
             .singleWhere((ref) => ref.path == 'references/production-canvas.md')
             .content;
-        expect(text, contains('"fields":{"type":"media","path":"images/cover.png"}'));
+        expect(
+          text,
+          contains('"fields":{"type":"media","path":"images/cover.png"}'),
+        );
         expect(text, contains('fields.asset_id'));
         expect(text, contains('remove_types=["text"]'));
         expect(text, contains('输入连线和被此次删除清理的标签'));
@@ -501,8 +506,11 @@ void main() {
           expect(setup.prompt, contains('前置准备：先读，再问'));
           expect(setup.prompt, contains('当前作品」段中的 `type`'));
           expect(setup.prompt, isNot(contains('Novels.type')));
-          expect(setup.prompt, contains('Read {"path":"profile"}'));
-          expect(setup.prompt, contains('Write {"path":"profile/title"'));
+          expect(setup.prompt, contains('Read {"path":"/works/{work_id}"}'));
+          expect(
+            setup.prompt,
+            contains('Write {"path":"/works/{work_id}/title"'),
+          );
           expect(setup.prompt, isNot(contains('/novel')));
           expect(setup.prompt, isNot(contains('"path":"/profile')));
           expect(setup.references.map((reference) => reference.path), [

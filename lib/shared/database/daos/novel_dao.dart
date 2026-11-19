@@ -34,9 +34,15 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
         .watch();
   }
 
-  Future<List<Novel>> getAll() {
+  Future<List<Novel>> getAll({bool includeDrafts = true}) {
     return (select(novels)
-          ..where((table) => table.deletedAt.equals(notDeletedSentinel))
+          ..where(
+            (table) =>
+                table.deletedAt.equals(notDeletedSentinel) &
+                (includeDrafts
+                    ? const Constant(true)
+                    : table.draft.equals(false)),
+          )
           ..orderBy([
             (table) => OrderingTerm(
               expression: table.updatedAt,
@@ -324,6 +330,8 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
     String? description,
     List<String>? tags,
     String? category,
+    String? status,
+    bool? draft,
   }) async {
     try {
       return await (update(
@@ -339,6 +347,8 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
               : Value(description),
           tags: tags == null ? const Value.absent() : Value(tags),
           category: category == null ? const Value.absent() : Value(category),
+          status: status == null ? const Value.absent() : Value(status),
+          draft: draft == null ? const Value.absent() : Value(draft),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -383,7 +393,7 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
     );
   }
 
-  /// 清除快速开书占位标记。不更新 updatedAt，避免仅清标记就把空占位顶到「最近编辑」。
+  /// 单独切换草稿状态时保留最近编辑时间。
   Future<int> updateDraft({required String id, required bool draft}) async {
     try {
       return await (update(novels)..where((table) => table.id.equals(id)))

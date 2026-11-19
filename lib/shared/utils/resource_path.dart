@@ -22,3 +22,21 @@ bool resourcePathIsWithin(String path, String scope) {
   final parent = canonicalResourcePath(scope);
   return canonical == parent || canonical.startsWith('$parent/');
 }
+
+const legacyWorkDescriptionPath = 'profile/description';
+
+/// 将旧简介记录的存储路径映射到同一作品的现行地址。
+String canonicalWorkingChangePath(
+  String path, {
+  required String resourceType,
+  required String? resourceId,
+}) {
+  final canonical = canonicalResourcePath(path);
+  if (canonical == legacyWorkDescriptionPath &&
+      resourceType == 'novel' &&
+      resourceId != null &&
+      resourceId.isNotEmpty) {
+    return '/works/$resourceId/description';
+  }
+  return canonical;
+}

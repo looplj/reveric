@@ -10,6 +10,27 @@ import '../../utils/resource_path.dart';
 
 part 'working_change_dao.drift.dart';
 
+final _workDescriptionPathPattern = RegExp(r'^/works/([^/?]+)/description$');
+
+/// 查询现行简介地址时，同时命中同一作品的旧存储键。
+Expression<bool> matchesWorkingChangePath(
+  String path, {
+  required GeneratedColumn<String> resourcePath,
+  required GeneratedColumn<String> resourceType,
+  required GeneratedColumn<String> resourceId,
+}) {
+  final canonical = canonicalResourcePath(path);
+  final exact = resourcePath.equals(canonical);
+  final workId = _workDescriptionPathPattern.firstMatch(canonical)?.group(1);
+  if (workId == null) {
+    return exact;
+  }
+  return exact |
+      (resourcePath.equals(legacyWorkDescriptionPath) &
+          resourceType.equals('novel') &
+          resourceId.equals(workId));
+}
+
 @DriftAccessor(tables: [WorkingChanges])
 class WorkingChangeDao extends DatabaseAccessor<NovelContentDatabase>
     with _$WorkingChangeDaoMixin {
@@ -38,8 +59,12 @@ class WorkingChangeDao extends DatabaseAccessor<NovelContentDatabase>
   Future<List<WorkingChange>> getByResource(String resourcePath) {
     return (select(workingChanges)
           ..where(
-            (table) =>
-                table.resourcePath.equals(canonicalResourcePath(resourcePath)),
+            (table) => matchesWorkingChangePath(
+              resourcePath,
+              resourcePath: table.resourcePath,
+              resourceType: table.resourceType,
+              resourceId: table.resourceId,
+            ),
           )
           ..orderBy([
             (table) => OrderingTerm(

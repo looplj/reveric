@@ -40,7 +40,7 @@ Map<String, dynamic> _readSchemaContract(
       'type': 'listing',
       'path': '/_schema',
       'entries': [
-        for (final schema in _resourceDefinitions.values)
+        for (final schema in _toolResourceDefinitions.values)
           {
             'collection': schema.name,
             'group': schema.group,
@@ -57,12 +57,12 @@ Map<String, dynamic> _readSchemaContract(
       'path': parsed.displayPath,
       'group': parts[2],
       'contracts': [
-        for (final schema in _resourceDefinitions.values)
+        for (final schema in _toolResourceDefinitions.values)
           if (schema.group == parts[2]) render(schema),
       ],
     };
   }
-  final root = _resourceDefinitions[parts[1]];
+  final root = _toolResourceDefinition(parts[1]);
   if (root == null) {
     return _schemaError(
       ToolErrorCode.invalid_argument,
@@ -484,7 +484,10 @@ Map<String, dynamic> _operationContract(
 /// 参数与路径类错误才引导查契约；指向作品本身的访问错误与资源契约无关。
 bool _isContractValidationError(Map<String, dynamic> result) =>
     !toolResultIsSuccess(result) &&
-    !_isWorkLevelPath(result['path']) &&
+    (!_isWorkLevelPath(result['path']) ||
+        (result['path'] == '/works' && result['operation'] == 'create') ||
+        (result['operation'] == 'write' &&
+            parseAiToolPath(result['path'] as String)._isWorkMetadata)) &&
     (result['validation_errors'] is List ||
         {
           ToolErrorCode.invalid_argument.name,
@@ -495,7 +498,7 @@ bool _isWorkLevelPath(Object? path) =>
     path is String && RegExp(r'^/works(/[^/]+)?$').hasMatch(path);
 
 String _resourceContractPath(ParsedPath parsed) {
-  final root = _resourceDefinitions[parsed.collection];
+  final root = _toolResourceDefinition(parsed.collection);
   if (root == null) {
     return '/_schema';
   }
@@ -525,7 +528,7 @@ Map<String, dynamic> _withContractHint(
   if (parsed.collection == '_schema' || parsed.isRoot) {
     return result;
   }
-  final schema = _resourceDefinitions[parsed.collection];
+  final schema = _toolResourceDefinition(parsed.collection);
   final contract = _resourceContractPath(parsed);
   final rootContract = schema == null ? '/_schema' : '/_schema/${schema.name}';
   final hint = (result['hint'] as String? ?? '').replaceAll(

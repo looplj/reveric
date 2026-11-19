@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
@@ -23,6 +24,7 @@ import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 import 'package:reveric/shared/utils/short_entity_id.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 
 void main() {
   group('cross-work path contract', () {
@@ -45,9 +47,12 @@ void main() {
       expect(works.workId, isNull);
 
       final legacyProfile = parseAiToolPath('profile/title');
-      expect(legacyProfile.collection, 'profile');
-      expect(legacyProfile.field, 'title');
-      expect(legacyProfile.displayPath, 'profile/title');
+      expect(legacyProfile.isValidResourcePath, isFalse);
+      final workTitle = parseAiToolPath('/works/work_1/title');
+      expect(workTitle.collection, 'works');
+      expect(workTitle.field, 'title');
+      expect(workTitle.id, 'work_1');
+      expect(workTitle.displayPath, '/works/work_1/title');
 
       final legacyState = parseAiToolPath('/works/work_1/story_state');
       expect(legacyState.collection, 'story_state');
@@ -58,7 +63,7 @@ void main() {
       final schema = '${pathSchema()}\n${pathSchemaFieldNotes()}';
 
       expect(schema, contains('/works/{work_id}'));
-      expect(schema, contains('profile'));
+      expect(schema, isNot(contains('profile')));
       expect(schema, contains('story_state'));
       expect(schema, isNot(contains('/novel')));
       expect(schema, contains('chapters/{chapter_id}'));
@@ -74,7 +79,10 @@ void main() {
       expect(schema, contains('绝对路径：以 /works/{work_id} 为起点'));
       expect(schema, contains('用户未明确要求引用、比较或改编其他作品时，不要读取 /works'));
       expect(schema, contains('每项至少返回 id、title、path'));
-      expect(schema, contains('Create、Write、Edit、Replace、Remove 只能修改当前作品'));
+      expect(
+        schema,
+        contains('对已有作品，Create、Write、Edit、Replace、Remove 只能修改当前作品'),
+      );
     });
   });
 
@@ -402,10 +410,10 @@ void main() {
         expect(body['value'], text);
         final profile = await manager.executeTool(
           name: 'Read',
-          input: {'path': '/works/work_target/profile'},
+          input: {'path': '/works/work_target'},
         );
         expect(profile['payload'], payload);
-        expect(profile['path'], '/works/work_target/profile');
+        expect(profile['path'], '/works/work_target');
         expect(profile['work_id'], 'work_target');
       },
     );
@@ -487,10 +495,10 @@ void main() {
 
       final profile = await manager.executeTool(
         name: 'Read',
-        input: {'path': '/works/work_target/profile/title'},
+        input: {'path': '/works/work_target/title'},
       );
       expect(profile['value'], '目标作品');
-      expect(profile['path'], '/works/work_target/profile/title');
+      expect(profile['path'], '/works/work_target/title');
 
       final storyState = await manager.executeTool(
         name: 'Read',
@@ -815,6 +823,103 @@ void main() {
     });
 
     test(
+      'whole-work search and replace previews include work metadata',
+      () async {
+        const marker = '校验标记';
+        const chapterText = '$marker 正文';
+        const workPath = '/works/work_current';
+        const metadataFields = [
+          'title',
+          'author_name',
+          'description',
+          'category',
+          'tags',
+        ];
+        final overlay = WorkingOverlayService(
+          currentDatabase,
+          currentService,
+          novelActionsService: NovelActionsService(appDatabase),
+        );
+        final tools = AiToolManager(
+          currentService,
+          workingOverlayService: overlay,
+          crossWorkAccess: access,
+          novelReader: () async => {
+            for (final field in metadataFields) field: '$marker$field',
+            'draft': false,
+          },
+        )..registerAllTools();
+        addTearDown(tools.dispose);
+        await currentService.updateChapterContent(
+          chapterId: currentChapterId,
+          title: '当前作品第一章',
+          outline: '',
+          content: chapterText,
+        );
+
+        for (final scope in [
+          <String, String>{},
+          {'path': workPath},
+        ]) {
+          final grep = await tools.executeTool(
+            name: 'Grep',
+            input: {
+              'pattern': marker,
+              'output_mode': 'files_with_matches',
+              ...scope,
+            },
+          );
+          expect(grep['text'], contains('chapters/$currentChapterId/content'));
+          for (final field in metadataFields) {
+            expect(
+              grep['text'],
+              contains('$workPath/$field'),
+              reason: '$scope',
+            );
+          }
+        }
+
+        final chapterOnly = await tools.executeTool(
+          name: 'Grep',
+          input: {'pattern': marker, 'path': workPath, 'glob': 'chapters/**'},
+        );
+        expect(
+          chapterOnly['text'],
+          '$workPath/chapters/$currentChapterId/content:1:$chapterText\n',
+        );
+        final other = await tools.executeTool(
+          name: 'Grep',
+          input: {'pattern': '目标作品', 'path': '/works/work_target'},
+        );
+        expect(other['text'], '/works/work_target/title:1:目标作品\n');
+
+        final glob = await tools.executeTool(
+          name: 'Glob',
+          input: {'pattern': '$workPath/*', 'path': workPath},
+        );
+        expect(
+          glob['matches'],
+          containsAll(metadataFields.map((field) => '$workPath/$field')),
+        );
+
+        final replace = await tools.executeTool(
+          name: 'Replace',
+          input: {'pattern': marker, 'replacement': '替换', 'path': workPath},
+        );
+        expect(replace['matched_fields'], metadataFields.length + 1);
+        final replaceDescription = await tools.executeTool(
+          name: 'Replace',
+          input: {
+            'pattern': marker,
+            'replacement': '替换',
+            'glob': '$workPath/description',
+          },
+        );
+        expect(replaceDescription['matched_fields'], 1);
+      },
+    );
+
+    test(
       'relation history paths stay in the target work and all mutations remain denied',
       () async {
         final id = await targetService.entityRelationsService.createRelation(
@@ -1075,6 +1180,7 @@ void main() {
             'value': '不能覆盖',
           },
         ),
+        ('Write', {'path': '/works/work_target/draft', 'value': true}),
         (
           'Edit',
           {
@@ -1248,6 +1354,136 @@ void main() {
   });
 
   group('CrossWorkResolver', () {
+    test(
+      'Create /works creates a discoverable adaptation of a novel',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        final temp = await Directory.systemTemp.createTemp(
+          'reveric_create_work_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        const channel = MethodChannel('plugins.flutter.io/path_provider');
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(channel, (_) async => temp.path);
+        addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+        await RevericPaths.initialize();
+
+        final app = AppDatabase.forTest(NativeDatabase.memory());
+        addTearDown(app.close);
+        final current = NovelContentDatabase.forTest(NativeDatabase.memory());
+        addTearDown(current.close);
+        final actions = NovelActionsService(app);
+        final service = NovelContentService(current);
+        final sourcePath = '${temp.path}/source.sqlite';
+        await File(sourcePath).writeAsBytes([]);
+        await app.novelDao.create(
+          id: 'work_source',
+          title: '原作',
+          description: '',
+          contentDatabasePath: sourcePath,
+        );
+        await app.novelDao.create(
+          id: 'work_draft',
+          title: '草稿',
+          description: '',
+          contentDatabasePath: sourcePath,
+          draft: true,
+        );
+        final manager =
+            AiToolManager(
+                service,
+                workingOverlayService: WorkingOverlayService(
+                  current,
+                  service,
+                  novelActionsService: actions,
+                ),
+                crossWorkAccess: CrossWorkResolver(
+                  appDatabase: app,
+                  currentDatabasePath: sourcePath,
+                  currentContentService: service,
+                  currentWorkId: 'work_source',
+                ),
+              )
+              ..workCreationService = actions
+              ..registerAllTools();
+        addTearDown(manager.dispose);
+
+        final contract = await manager.executeTool(
+          name: 'Read',
+          input: {'path': '/_schema/works'},
+        );
+        expect(contract['listing_path'], '/works');
+        expect(contract['query'], isEmpty);
+        expect(contract['contract'], contains('source_novel_id'));
+
+        final fields = {
+          'title': '原作改编',
+          'content_kind': contentKindScreenplay,
+          'type': novelTypeAdaptation,
+        };
+        final missingSource = await manager.executeTool(
+          name: 'Create',
+          input: {'path': '/works', 'fields': fields},
+        );
+        expect(missingSource['error_code'], 'invalid_argument');
+        expect(missingSource['hint'], contains('/_schema/works'));
+
+        final input = {
+          'path': '/works',
+          'fields': {...fields, 'source_novel_id': 'work_source'},
+        };
+        final created = await manager.executeTool(name: 'Create', input: input);
+        expect(created['ok'], isTrue, reason: '$created');
+        final id = created['id'] as String;
+        final work = (await actions.getNovel(id))!;
+        expect(work.type, novelTypeAdaptation);
+        expect(work.sourceNovelId, 'work_source');
+        expect(work.draft, isFalse);
+        expect(created['path'], '/works/$id');
+
+        final listed = await manager.executeTool(
+          name: 'Read',
+          input: {'path': '/works'},
+        );
+        final entries = (listed['entries'] as List)
+            .cast<Map<String, dynamic>>();
+        expect(
+          entries.map((entry) => entry['id']),
+          unorderedEquals(['work_source', id]),
+        );
+        expect(entries.map((entry) => entry['draft']), everyElement(false));
+        for (final draft in [true, false]) {
+          final filtered = await manager.executeTool(
+            name: 'Read',
+            input: {'path': '/works?draft=$draft'},
+          );
+          expect(filtered['error_code'], 'unsupported');
+          expect(filtered['entries'], isNull);
+        }
+        final paged = await manager.executeTool(
+          name: 'Read',
+          input: {'path': '/works?limit=1'},
+        );
+        expect(paged['entries'], hasLength(1));
+        expect(paged['has_more'], isTrue);
+        final duplicate = await manager.executeTool(
+          name: 'Create',
+          input: input,
+        );
+        expect(duplicate['error_code'], 'already_exists');
+
+        final crossWrite = await manager.executeTool(
+          name: 'Create',
+          input: {
+            'path': '/works/$id/scenes',
+            'fields': {'title': '不在当前作品'},
+          },
+        );
+        expect(crossWrite['error_code'], 'permission_denied');
+      },
+    );
+
     test(
       'resolver failures retain their classification through the complete Read chain',
       () async {

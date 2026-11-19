@@ -29,7 +29,7 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
 
   @override
   Map<String, dynamic>? _contentKindGate(ParsedPath parsed) {
-    final schema = _resourceDefinitions[parsed.collection];
+    final schema = _getCollectionSchema(parsed.collection);
     if (parsed.collection.isNotEmpty && schema == null) {
       return _resourceError(
         parsed.displayPath,

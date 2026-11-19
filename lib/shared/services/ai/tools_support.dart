@@ -122,8 +122,9 @@ ${_buildPathGrammarReference(kind: kind)}
         : kind == contentKindScreenplay
         ? 'scenes/{scene_id}'
         : 'chapters/{chapter_id}'}。
-- Read /works 发现本地作品（包括当前作品），每项至少返回 id、title、path；Read、Glob、Grep 跨作品读取时，单次调用必须明确一个 work_id
-- 跨作品只读；Create、Write、Edit、Replace、Remove 只能修改当前作品。读取其他作品不改变写入目标；按读取结果中的作品类型选择资源与契约。
+- Read /works 发现书架中可读取的作品，每项至少返回 id、title、path、draft。Read、Glob、Grep 跨作品读取时，单次调用必须明确一个 work_id。
+- 作品元数据用 /works/{work_id} 或 /works/{work_id}/{field} 寻址，字段见 Read /_schema/works。
+- 对已有作品，Create、Write、Edit、Replace、Remove 只能修改当前作品。读取其他作品不改变写入目标；按读取结果中的作品类型选择资源与契约。
 - 已有资源优先使用工具返回的 `path`；引用已有资源的 ID 或定位名称时，从工具结果原样复制，不得自行构造或修改。新建或重命名时填写的新名称不受此限制。
 - 实体自身标识统一为 id（只读），关联字段和查询作用域保留各自名称；允许保留身份的数组整体写入可原样携带已有 id。
 - 契约发现：已有说明足够时直接操作；不确定时用 Read /_schema/{collection}/{子资源层级} 查询目标字段与能力（如 /_schema/production/clips，无需资源 ID）；省略子资源时查询集合本身。返回的 contract 是字段与操作说明，subresources 提供下级契约路径。Read /_schema 查询集合索引，Read /_schema/groups/{shared|novel|screenplay|canvas} 查询该组根资源契约；子资源契约按需沿 subresources[].path 读取。
@@ -734,10 +735,10 @@ class _ResourceDefinition {
       address.kind == _AddressKind.name ||
       address.kind == _AddressKind.hierarchical_name;
 
-  /// 画布作品开放 canvas 组，以及共用的作品 profile 和角色资源。
+  /// 画布作品开放 canvas 组，以及共用的作品元数据和角色资源。
   bool supports(String kind) {
     if (kind == contentKindCanvas) {
-      return group == kind || segment == 'profile' || segment == 'characters';
+      return group == kind || segment == 'works' || segment == 'characters';
     }
     return group == _collectionGroupShared || group == kind;
   }
@@ -2171,6 +2172,9 @@ class ParsedPath {
   /// 是否为本地作品发现入口。
   bool get isWorksListing => collection == 'works' && workId == null;
 
+  bool get _isWorkMetadata =>
+      collection == 'works' && workId != null && _resource != null;
+
   /// 是否包含资源 ID 或名称路径
   bool get hasId => id != null || namePath.isNotEmpty;
 
@@ -2249,8 +2253,12 @@ class ParsedPath {
 
     if (segments.firstOrNull == 'works') {
       if (segments.length == 1) {
+        final schema = schemaLookup('works');
         return ParsedPath._(
           collection: 'works',
+          resource: schema == null
+              ? null
+              : _resolveResourcePath(segments, schema),
           id: null,
           namePath: const [],
           field: null,
@@ -2260,6 +2268,21 @@ class ParsedPath {
       }
 
       final workId = segments[1];
+      if (segments.length == 2 ||
+          (segments.length == 3 &&
+              _worksDefinition.fields.containsKey(segments[2]))) {
+        final resource = _resolveResourcePath(segments, _worksDefinition)!;
+        return ParsedPath._(
+          workId: workId,
+          resource: resource,
+          collection: 'works',
+          id: workId,
+          namePath: const [],
+          field: resource.field,
+          queryParameters: queryParams,
+          originalPath: normalized,
+        );
+      }
       final inner = ParsedPath.parse(
         segments.skip(2).join('/'),
         schemaLookup: schemaLookup,
@@ -2269,7 +2292,7 @@ class ParsedPath {
           : 'works/$workId/${inner.originalPath}';
       return ParsedPath._(
         workId: workId,
-        resource: inner._resource,
+        resource: inner.collection == 'works' ? null : inner._resource,
         collection: inner.collection,
         id: inner.id,
         namePath: inner.namePath,
@@ -2581,9 +2604,9 @@ const _createEnumHiddenCollections = {'relations'};
 String _pathKeyToken(_ResourceDefinition schema) =>
     '{${schema.address.itemToken!}}';
 
-/// 单个资源的路径模板：`profile`、`chapters/{chapter_id}`、`lore/{title}`。
+/// 单个资源的路径模板，如 `chapters/{chapter_id}`、`lore/{title}`。
 String _resourcePathTemplate(_ResourceDefinition schema) {
-  final root = schema.name;
+  final root = canonicalResourcePath(schema.name);
   if (schema.isSingleton) {
     return root;
   }

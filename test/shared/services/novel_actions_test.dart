@@ -239,6 +239,42 @@ void main() {
 
         final draft = await appDb.novelDao.get('draft_novel');
         expect(draft?.draft, isTrue);
+
+        await expectLater(
+          service.updateNovelMetadata(
+            novelId: 'draft_novel',
+            title: '同名作品',
+            description: '不应保存',
+            draft: false,
+          ),
+          throwsA(isA<NovelTitleConflictException>()),
+        );
+        final afterConflict = (await service.getNovel('draft_novel'))!;
+        expect(afterConflict.draft, isTrue);
+        expect(afterConflict.description, isEmpty);
+
+        await service.updateNovelMetadata(
+          novelId: 'draft_novel',
+          title: '新书名',
+          description: '新简介',
+          draft: false,
+        );
+        final published = (await service.getNovel('draft_novel'))!;
+        expect(published.draft, isFalse);
+        expect(published.title, '新书名');
+        expect(published.description, '新简介');
+        await expectLater(
+          service.updateNovelMetadata(
+            novelId: 'draft_novel',
+            title: '不应保存',
+            draft: true,
+          ),
+          throwsA(isA<NovelDraftReversionException>()),
+        );
+        final afterRejection = (await service.getNovel('draft_novel'))!;
+        expect(afterRejection.draft, isFalse);
+        expect(afterRejection.title, published.title);
+        expect(afterRejection.updatedAt, published.updatedAt);
       },
     );
 

@@ -178,6 +178,8 @@ Map<String, dynamic> _novelToolSnapshot(Novel n) {
     'description': n.description,
     'category': n.category,
     'status': n.status,
+    'source_novel_id': ?n.sourceNovelId,
+    'draft': n.draft,
     'word_count': n.wordCount,
     'tags': n.tags,
   };
@@ -631,6 +633,7 @@ class ChatTurnRunner {
   }
 
   void _configureChatToolCallbacks({required AiToolManager toolManager}) {
+    toolManager.workCreationService = container.read(novelActionsProvider);
     final operationRuntime = container.read(
       aiChatRuntimeProvider(
         toolManager.sourceSessionId ?? toolManager.sessionId,
@@ -1090,9 +1093,6 @@ class ChatTurnRunner {
         return _novelToolSnapshot(n);
       },
       novelWriter: (fields) async {
-        // 封面不在工具字段里（AI 读不到也写不了），封面只由 UI 的
-        // 「设为封面」落库。Metadata writes patch only supplied fields,
-        // so consecutive tool calls cannot overwrite siblings from a stale snapshot.
         final actions = container.read(novelActionsProvider);
         await actions.updateNovelMetadata(
           novelId: novel.id,
@@ -1101,16 +1101,10 @@ class ChatTurnRunner {
           description: fields['description'] as String?,
           category: fields['category'] as String?,
           tags: _coerceNovelTagsField(fields['tags']),
+          status: fields['status'] as String?,
+          draft: fields['draft'] as bool?,
         );
-        // status 不属于 metadata patch，novelDao 是分开的 updateStatus；
-        // 漏掉它会让 profile/status 报成功却不落库。
-        final status = fields['status'] as String?;
-        if (status != null) {
-          await actions.updateNovelStatus(novelId: novel.id, status: status);
-        }
       },
-      novelDraftClearer: () =>
-          container.read(novelActionsProvider).clearNovelDraft(novel.id),
 
       shouldExecuteTool: () {
         final currentRequestId = requestId;
@@ -1376,15 +1370,10 @@ class ChatTurnRunner {
           description: fields['description'] as String?,
           category: fields['category'] as String?,
           tags: _coerceNovelTagsField(fields['tags']),
+          status: fields['status'] as String?,
+          draft: fields['draft'] as bool?,
         );
-        // 同上：status 走 novelDao 的 updateStatus，不在 metadata patch 里。
-        final status = fields['status'] as String?;
-        if (status != null) {
-          await actions.updateNovelStatus(novelId: novel.id, status: status);
-        }
       },
-      novelDraftClearer: () =>
-          container.read(novelActionsProvider).clearNovelDraft(novel.id),
       onToolCallRequested: (callId, toolName, args) {
         _syncRunToolCallBlock(
           sessionNotifier,

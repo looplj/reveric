@@ -1662,8 +1662,10 @@ class NovelEditorPage extends HookConsumerWidget {
 
       isSavingEntry.value = true;
       try {
+        final resourcePath = NovelWorkspaceSection.novel_description
+            .aiResourcePath(itemId: currentNovel.id)!;
         final change = await overlay.stageTextChange(
-          resourcePath: '/profile/description',
+          resourcePath: resourcePath,
           resourceType: 'novel',
           resourceId: currentNovel.id,
           field: 'description',
@@ -1674,7 +1676,7 @@ class NovelEditorPage extends HookConsumerWidget {
         );
         await overlay.commitManualSave(
           manualChangeIds: [change.id],
-          resourceScopes: const ['/profile/description'],
+          resourceScopes: [resourcePath],
           manualMessage: 'history.commit_message.manual_novel_description_save',
         );
         if (showSuccess) {

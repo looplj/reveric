@@ -200,7 +200,7 @@ final toolResolvedResourceProvider =
         return null;
       }
 
-      if (parsed.collection == 'profile') {
+      if (parsed.collection == 'works' && parsed.target.workId != null) {
         return AiToolResolvedResource(
           collection: parsed.collection,
           resourceTitle: '',
@@ -875,7 +875,7 @@ String _localizedCollection(
     'clips' => LocaleKeys.productionClips,
     'production' => LocaleKeys.toolPathProduction,
     'beats' => LocaleKeys.screenplayBeats,
-    'profile' => LocaleKeys.workspaceNovelOverview,
+    'profile' || 'works' => LocaleKeys.workspaceNovelOverview,
     'canvas' => LocaleKeys.workspaceCanvas,
     'chapters' => LocaleKeys.workspaceChapters,
     'volumes' => LocaleKeys.workspaceVolume,

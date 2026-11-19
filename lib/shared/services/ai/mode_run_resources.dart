@@ -167,6 +167,8 @@ final aiModeClientFactoryProvider = Provider<AiModeClientFactory>((ref) {
                 'description': novel.description,
                 'category': novel.category,
                 'status': novel.status,
+                'source_novel_id': ?novel.sourceNovelId,
+                'draft': novel.draft,
                 'word_count': novel.wordCount,
                 'tags': novel.tags,
               };

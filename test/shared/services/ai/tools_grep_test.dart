@@ -34,6 +34,7 @@ void main() {
       toolManager = AiToolManager(
         contentService,
         workingOverlayService: overlay,
+        workId: 'current',
       )..registerAllTools();
     });
 
@@ -309,11 +310,11 @@ void main() {
     );
 
     test(
-      'explicit profile searches report unavailable optional reader',
+      'explicit work field searches report unavailable optional reader',
       () async {
         for (final input in [
-          {'path': 'profile', 'pattern': 'title'},
-          {'glob': 'profile/*', 'pattern': 'title'},
+          {'path': '/works/current/title', 'pattern': 'title'},
+          {'path': '/works/current/description', 'pattern': 'title'},
         ]) {
           final result = await toolManager.executeTool(
             name: 'Grep',

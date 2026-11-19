@@ -2076,7 +2076,7 @@ class ChatSessionController {
     if (section == NovelWorkspaceSection.novel_description) {
       return CurrentWorkspaceContext(
         section: section,
-        path: '/profile',
+        path: section.aiResourcePath(itemId: scope.novel.id),
         title: scope.workspaceTitle?.trim().isNotEmpty == true
             ? scope.workspaceTitle!.trim()
             : scope.novel.title.trim(),

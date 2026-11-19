@@ -799,6 +799,19 @@ void main() {
       expect(await read(managers.last, '/_schema'), index);
       final entries = (index['entries'] as List).cast<Map>();
       expect(
+        entries,
+        contains(
+          allOf(
+            containsPair('collection', 'works'),
+            containsPair('group', 'shared'),
+            containsPair('path', '/_schema/works'),
+          ),
+        ),
+      );
+      final works = await read(managers.first, '/_schema/works');
+      expect(works['resource_path'], '/works/{work_id}');
+      expect(works['listing_path'], '/works');
+      expect(
         entries.where((entry) => entry['collection'] == 'clips'),
         hasLength(1),
       );

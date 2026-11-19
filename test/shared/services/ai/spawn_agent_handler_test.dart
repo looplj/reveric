@@ -2470,7 +2470,7 @@ void main() {
                 toolName: 'Codemode',
                 arguments: {
                   'code':
-                      'const r = await tools.Read({path: "profile/title"}); return await tools.Write({path: "profile/title", value: r.value});',
+                      'const r = await tools.Read({path: "/works/work/title"}); return await tools.Write({path: "/works/work/title", value: r.value});',
                 },
               ),
             ]),
@@ -3431,9 +3431,9 @@ class _SubAgentCodemodeRuntime extends FjsRuntime {
     CodemodeRuntimeLimits limits = const CodemodeRuntimeLimits(),
   }) async {
     toolNames = tools.map((tool) => tool.name).toList();
-    final read = await executeTool('Read', {'path': 'profile/title'});
+    final read = await executeTool('Read', {'path': '/works/work/title'});
     final write = await executeTool('Write', {
-      'path': 'profile/title',
+      'path': '/works/work/title',
       'value': read['value'],
     });
     return CodemodeRuntimeResult(

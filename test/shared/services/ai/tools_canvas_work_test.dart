@@ -461,15 +461,14 @@ void main() {
   );
 
   test(
-    'root paths expose characters, profile and production, and reject unrelated collections',
+    'work root exposes metadata, characters and production, and reject unrelated collections',
     () async {
       final root = await call('Read', '/works/work');
       expect((root['entries'] as List).map((entry) => entry['path']), [
         '/works/work/production',
-        '/works/work/profile',
         '/works/work/characters',
       ]);
-      final profile = await call('Read', 'profile');
+      final profile = root;
       expect(profile['title'], 'Canvas');
       expect(profile['author_name'], 'Ada');
       expect(profile.containsKey('word_count'), isFalse);
@@ -498,7 +497,7 @@ void main() {
       }
       expect(
         pathSchemaFieldNotes(kind: contentKindCanvas),
-        contains('profile'),
+        isNot(contains('profile')),
       );
       expect(
         pathSchemaFieldNotes(kind: contentKindCanvas),

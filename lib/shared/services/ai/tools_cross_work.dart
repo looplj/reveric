@@ -93,6 +93,7 @@ class CrossWorkDescriptor {
     required this.databasePath,
     required this.contentKind,
     required this.novelMetadata,
+    this.draft = false,
   });
 
   final String workId;
@@ -100,14 +101,20 @@ class CrossWorkDescriptor {
   final String databasePath;
   final String contentKind;
   final Map<String, dynamic> novelMetadata;
+  final bool draft;
 
   AiNovelReader get novelReader =>
-      () async => {...novelMetadata, 'content_kind': contentKind};
+      () async => {
+        ...novelMetadata,
+        'content_kind': contentKind,
+        'draft': draft,
+      };
 
   Map<String, dynamic> toListingEntry() {
     return {
       ...novelMetadata,
       'content_kind': contentKind,
+      'draft': draft,
       'id': workId,
       'path': '/works/$workId',
     };
@@ -178,14 +185,14 @@ class CrossWorkResolver implements CrossWorkAccess {
 
   @override
   Future<List<CrossWorkDescriptor>> listWorks() async {
-    final novels = await _appDatabase.novelDao.getAll();
-    final current = novels
-        .where((novel) => novel.id == _currentWorkId)
-        .firstOrNull;
+    final novels = await _appDatabase.novelDao.getAll(includeDrafts: false);
+    final current =
+        novels.where((novel) => novel.id == _currentWorkId).firstOrNull ??
+        await _appDatabase.novelDao.get(_currentWorkId);
     final works = <CrossWorkDescriptor>[];
     for (final novel in novels) {
       final storedPath = novel.contentDatabasePath?.trim();
-      if (novel.draft || storedPath == null || storedPath.isEmpty) {
+      if (storedPath == null || storedPath.isEmpty) {
         continue;
       }
       final resolvedPath = RevericPaths.resolveDatabasePath(storedPath);
@@ -342,6 +349,7 @@ class CrossWorkResolver implements CrossWorkAccess {
       title: novel.title,
       databasePath: databasePath,
       contentKind: novel.contentKind,
+      draft: novel.draft,
       novelMetadata: {
         'title': novel.title,
         'author_name': novel.authorName,
@@ -408,8 +416,6 @@ mixin _AiToolManagerCrossWorkMixin
       return _readSchemaContract(parseAiToolPath(rawPath));
     }
 
-    // `ParsedPath.isRoot` 对 `/works/{work_id}` 也为 true，因为它表示目标作品内的
-    // 空资源路径；只有没有 workId 的 `/` 才是文件系统全局根。
     if (parsed.isRoot && parsed.workId == null) {
       return _applyReadOptions(
         {
@@ -426,13 +432,9 @@ mixin _AiToolManagerCrossWorkMixin
     }
 
     if (parsed.isWorksListing) {
-      if (parsed.hasQuery) {
-        return {
-          'ok': false,
-          'error': 'Query parameters are not supported for /works.',
-          'error_code': ToolErrorCode.unsupported.name,
-          'path': '/works',
-        };
+      final queryError = _validateResourceQuery(parsed);
+      if (queryError != null) {
+        return queryError;
       }
       return _readWorksListing(input, options);
     }
@@ -442,7 +444,9 @@ mixin _AiToolManagerCrossWorkMixin
     }
 
     final localInput = Map<String, dynamic>.from(input);
-    localInput['path'] = _stripWorkPrefix(rawPath, workId);
+    if (parsed.collection != 'works') {
+      localInput['path'] = _stripWorkPrefix(rawPath, workId);
+    }
     return _withCrossWork(
       workId,
       'Read',
@@ -506,7 +510,10 @@ mixin _AiToolManagerCrossWorkMixin
     for (final key in const ['path', 'pattern']) {
       final value = _parseStringArgument(localInput[key], trim: true);
       if (_pathWorkScope(value).workId == workId) {
-        localInput[key] = _stripWorkPrefix(value, workId);
+        final target = parseAiToolPath(value);
+        if (!target._isWorkMetadata || !target.hasField) {
+          localInput[key] = _stripWorkPrefix(value, workId);
+        }
       }
     }
     return _withCrossWork(workId, 'Glob', () => _handleGlob(localInput));
@@ -530,7 +537,10 @@ mixin _AiToolManagerCrossWorkMixin
     for (final key in const ['path', 'glob']) {
       final value = _parseStringArgument(localInput[key], trim: true);
       if (_pathWorkScope(value).workId == workId) {
-        localInput[key] = _stripWorkPrefix(value, workId);
+        final target = parseAiToolPath(value);
+        if (!target._isWorkMetadata || !target.hasField) {
+          localInput[key] = _stripWorkPrefix(value, workId);
+        }
       }
     }
     return _withCrossWork(workId, 'Grep', () => _handleGrep(localInput));
@@ -563,10 +573,8 @@ mixin _AiToolManagerCrossWorkMixin
     )
     run,
   }) async {
-    final collection = parseAiToolPath(
-      _parseStringArgument(input['path']),
-    ).collection;
-    if (collection == '_schema') {
+    final parsed = parseAiToolPath(_parseStringArgument(input['path']));
+    if (parsed.collection == '_schema') {
       return _schemaError(
         ToolErrorCode.permission_denied,
         'Resource contracts are read-only.',
@@ -607,6 +615,13 @@ mixin _AiToolManagerCrossWorkMixin
     for (final key in const ['path', 'glob']) {
       final value = _parseStringArgument(localInput[key], trim: true);
       if (_pathWorkScope(value).workId == localWorkId) {
+        final target = key == 'path' ? parsed : parseAiToolPath(value);
+        if (target.collection == 'works' &&
+            (toolName != 'Replace' ||
+                target.hasField ||
+                !target._isWorkMetadata)) {
+          continue;
+        }
         localInput[key] = _stripWorkPrefix(value, localWorkId);
       }
     }
@@ -842,6 +857,9 @@ String _stripWorkPrefix(String rawPath, String workId) {
   if (segments.length < 2 || segments[0] != 'works' || segments[1] != workId) {
     return rawPath;
   }
+  if (segments.length > 2 && segments[2] == 'works') {
+    return rawPath;
+  }
   final localPath = segments.length == 2 ? '/' : segments.skip(2).join('/');
   return '$localPath$query';
 }
@@ -882,6 +900,7 @@ Map<String, dynamic> _serializeCallResult(
   final entries = result['entries'];
   if (entries is List &&
       (resultTarget?.isRoot == true ||
+          result['type'] == 'directory' ||
           resultTarget?.isResourceListing == true ||
           result['type'] == 'listing' ||
           result['is_folder'] == true)) {

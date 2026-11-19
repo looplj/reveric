@@ -20,7 +20,7 @@ final _writeDescription =
 - 数组写入（value 和 fields）提交完整的目标列表，未保留的项从列表中移除，空数组清空列表。实体对象逐项按 id 保留身份，省略 id 的项新建；引用 ID 列表只调整引用，不删除被引用实体。追加或局部修改时，先 Read，再合并后提交。
 - 已发布章节不可写 ${_publishedLockedChapterFields.join('、')}；其余可写字段照常。
 
-示例：{"path": "profile/description", "value": "新简介"}
+示例：{"path": "/works/{work_id}/description", "value": "新简介"}
 ''';
 
 /// Write 的 input schema。顶层只有 path / value / fields 三个键。
@@ -205,6 +205,33 @@ class _PreparedWrite extends _WritePayloadResult {
   final List<String> ignoredFields;
 }
 
+Future<Map<String, dynamic>?> _persistWorkMetadata(
+  AiNovelWriter writer,
+  Map<String, dynamic> fields, {
+  required String path,
+  required String operation,
+}) async {
+  try {
+    await writer(fields);
+    return null;
+  } on NovelTitleConflictException catch (error) {
+    return AiToolManager._structuredWriteError(
+      path: path,
+      errorCode: ToolErrorCode.already_exists,
+      message: 'A library work named "${error.title}" already exists.',
+      hint: 'Choose a title that is available on the bookshelf.',
+      operation: operation,
+    );
+  } on NovelDraftReversionException catch (error) {
+    return AiToolManager._structuredWriteError(
+      path: path,
+      errorCode: ToolErrorCode.permission_denied,
+      message: error.toString(),
+      operation: operation,
+    );
+  }
+}
+
 mixin _AiToolManagerWriteMixin
     on
         _AiToolManagerBase,
@@ -306,10 +333,10 @@ mixin _AiToolManagerWriteMixin
         await _writeStoryState(parsed, fields),
       );
     }
-    if (parsed.collection == 'profile') {
+    if (parsed._isWorkMetadata) {
       return _attachMutationResourcePath(
         parsed,
-        await _writeProfile(parsed, fields),
+        await _writeWork(parsed, fields),
       );
     }
     if (parsed._resource!.schema.isItemCollection) {
@@ -370,36 +397,40 @@ mixin _AiToolManagerWriteMixin
     );
   }
 
-  Future<Map<String, dynamic>> _writeProfile(
+  Future<Map<String, dynamic>> _writeWork(
     ParsedPath parsed,
     Map<String, dynamic> fields,
   ) async {
     if (novelWriter == null) {
       return AiToolManager._structuredWriteError(
-        path: 'profile',
+        path: parsed.displayPath,
         errorCode: ToolErrorCode.unavailable,
-        message: 'Work profile is unavailable in this AI session',
+        message: 'Work metadata is unavailable in this AI session',
       );
     }
 
     if (fields.isEmpty) {
-      return {'path': 'profile', 'updated': false, 'fields': const <String>[]};
+      return {
+        'path': parsed.displayPath,
+        'updated': false,
+        'fields': const <String>[],
+      };
     }
     // 作品元数据由宿主一次保存，避免逐字段更新覆盖同批次的其他字段。
     // tags 的逗号分隔文本在持久化边界转换为标签列表。
-    final current = await _readProfile(parseAiToolPath('profile'));
+    final current = await _readWork(parseAiToolPath('/works/${parsed.workId}'));
     if (current.containsKey('error')) {
       return current;
     }
     final directWrites = <String, dynamic>{};
     final changedFields = <String>[];
     for (final entry in fields.entries) {
-      final nextValue = entry.value as String;
+      final nextValue = entry.value;
       if (entry.key != 'tags' && current[entry.key] == nextValue) {
         continue;
       }
       final normalized = entry.key == 'tags'
-          ? nextValue
+          ? (nextValue as String)
                 .split(',')
                 .map((tag) => tag.trim())
                 .where((tag) => tag.isNotEmpty)
@@ -419,7 +450,15 @@ mixin _AiToolManagerWriteMixin
       changedFields.add(entry.key);
     }
     if (directWrites.isNotEmpty) {
-      await novelWriter!.call(directWrites);
+      final error = await _persistWorkMetadata(
+        novelWriter!,
+        directWrites,
+        path: parsed.displayPath,
+        operation: 'write',
+      );
+      if (error != null) {
+        return error;
+      }
     }
     return {
       'path': parsed.displayPath,
