@@ -278,6 +278,15 @@ Future<void> _initializeAppData() async {
       tasks: defaultAppInitializationTasks(),
     );
     _log.checkpoint('App initialization tasks COMPLETE');
+  } catch (error, stackTrace) {
+    unawaited(
+      StartupFailureReporter().report(
+        phase: 'app_data_initialization',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+    rethrow;
   } finally {
     await database.close();
   }

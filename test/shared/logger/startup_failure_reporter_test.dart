@@ -9,9 +9,35 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:reveric/shared/logger/startup_failure_reporter.dart';
+import 'package:reveric/shared/services/anonymous_reporting_consent_service.dart';
 import 'package:reveric/shared/services/crash_reporting/crash_sentinel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test(
+    'sends startup failures to the anonymous error endpoint by default',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final client = _RecordingClient();
+      final reporter = StartupFailureReporter(
+        httpClient: client,
+        getDeviceId: () async => 'device-123',
+      );
+
+      final outcome = await reporter.reportWithOutcome(
+        phase: 'application_startup',
+        error: StateError('startup failed'),
+        stackTrace: StackTrace.current,
+      );
+
+      expect(outcome, StartupFailureReportOutcome.reported);
+      expect(
+        client.requests.single.url,
+        'https://anonymous-api.reveric.app/v1/analysis/request-errors',
+      );
+    },
+  );
+
   test('early lifecycle failures send redacted reasons', () async {
     final client = _RecordingClient();
     final reporter = StartupFailureReporter(
@@ -200,12 +226,12 @@ void main() {
   });
 
   test('does not send when anonymous reporting is disabled', () async {
+    SharedPreferences.setMockInitialValues({});
+    await const AnonymousReportingConsentService().setGranted(false);
     final client = _RecordingClient();
     final reporter = StartupFailureReporter(
       httpClient: client,
       getDeviceId: () async => 'device-123',
-      getBaseUrl: () => 'https://anonymous.example',
-      getEnabled: () async => false,
     );
 
     final outcome = await reporter.reportWithOutcome(

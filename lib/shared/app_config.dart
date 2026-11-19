@@ -16,7 +16,8 @@ const appVersion = '0.10.1';
 const anonymousReportingBaseUrl = 'https://anonymous-api.reveric.app';
 
 /// 绕过 Outbox 的启动、崩溃诊断接收地址。为空时仅保留本地诊断。
-const startupFailureReportingUrl = '';
+const startupFailureReportingUrl =
+    '$anonymousReportingBaseUrl/v1/analysis/request-errors';
 
 /// 公开仓库地址，供关于页展示项目主页。
 const revericGitHubRepoUrl = 'https://github.com/looplj/reveric';
