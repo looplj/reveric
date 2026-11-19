@@ -27,12 +27,14 @@ class ProductionImageNode extends HookWidget {
     required this.clip,
     this.taskActions,
     this.selected = false,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
   final ProductionClipRow? clip;
   final ProductionTaskActions? taskActions;
   final bool selected;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) {
     final clip = this.clip;
@@ -71,7 +73,8 @@ class ProductionImageNode extends HookWidget {
         borderRadius: 0,
         playing: selected,
         well: true,
-        badge: uploaded
+        readOnly: readOnly,
+        badge: uploaded && !readOnly
             ? context.t(LocaleKeys.commonImport)
             : candidates > 1
             ? context.t(

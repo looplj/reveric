@@ -34,16 +34,17 @@ class ProductionPromptField extends StatelessWidget {
   const ProductionPromptField({
     super.key,
     required this.controller,
-    required this.onReference,
+    this.onReference,
     this.maxLines = 6,
     this.actions = const [],
     this.footer = true,
     this.contentPadding,
     this.hintText,
     this.autofocus = false,
+    this.readOnly = false,
   });
   final ProductionPromptController controller;
-  final VoidCallback onReference;
+  final VoidCallback? onReference;
 
   /// 片段列表传 null 让提示词完整展开；画布浮层保持限高。
   final int? maxLines;
@@ -58,6 +59,7 @@ class ProductionPromptField extends StatelessWidget {
   final EdgeInsetsGeometry? contentPadding;
   final String? hintText;
   final bool autofocus;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) {
     Future<void> copy({bool cut = false}) async {
@@ -70,7 +72,7 @@ class ProductionPromptField extends StatelessWidget {
           text: controller.decode(selected.textInside(controller.text)),
         ),
       );
-      if (cut && context.mounted) {
+      if (cut && !readOnly && context.mounted) {
         controller.value = TextEditingValue(
           text: controller.text.replaceRange(selected.start, selected.end, ''),
           selection: TextSelection.collapsed(offset: selected.start),
@@ -79,6 +81,9 @@ class ProductionPromptField extends StatelessWidget {
     }
 
     Future<void> paste() async {
+      if (readOnly) {
+        return;
+      }
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       if (!context.mounted || data?.text == null) {
         return;
@@ -116,26 +121,29 @@ class ProductionPromptField extends StatelessWidget {
               ): () {
                 copy();
               },
-              SingleActivator(
-                LogicalKeyboardKey.keyX,
-                control: !modifier,
-                meta: modifier,
-              ): () {
-                copy(cut: true);
-              },
-              SingleActivator(
-                LogicalKeyboardKey.keyV,
-                control: !modifier,
-                meta: modifier,
-              ): () {
-                paste();
+              if (!readOnly) ...{
+                SingleActivator(
+                  LogicalKeyboardKey.keyX,
+                  control: !modifier,
+                  meta: modifier,
+                ): () {
+                  copy(cut: true);
+                },
+                SingleActivator(
+                  LogicalKeyboardKey.keyV,
+                  control: !modifier,
+                  meta: modifier,
+                ): () {
+                  paste();
+                },
               },
             },
           },
           child: TextField(
             // Inline media spans and protocol-aware clipboard need the native editor surface.
             controller: controller,
-            autofocus: autofocus,
+            readOnly: readOnly,
+            autofocus: autofocus && !readOnly,
             minLines: maxLines == null ? 1 : 3,
             maxLines: maxLines,
             style: RevericTheme.typographyOf(
@@ -146,14 +154,16 @@ class ProductionPromptField extends StatelessWidget {
               contentPadding: contentPadding,
               hintText: hintText ?? context.t(LocaleKeys.productionPrompt),
             ),
-            onChanged: (text) {
-              final cursor = controller.selection.baseOffset;
-              if (controller.value.composing.isCollapsed &&
-                  cursor > 0 &&
-                  text[cursor - 1] == '@') {
-                onReference();
-              }
-            },
+            onChanged: readOnly
+                ? null
+                : (text) {
+                    final cursor = controller.selection.baseOffset;
+                    if (controller.value.composing.isCollapsed &&
+                        cursor > 0 &&
+                        text[cursor - 1] == '@') {
+                      onReference?.call();
+                    }
+                  },
             contextMenuBuilder: (ctx, state) =>
                 AdaptiveTextSelectionToolbar.buttonItems(
                   anchors: state.contextMenuAnchors,
@@ -165,25 +175,27 @@ class ProductionPromptField extends StatelessWidget {
                         state.hideToolbar();
                       },
                     ),
-                    ContextMenuButtonItem(
-                      label: context.t(LocaleKeys.commonCut),
-                      onPressed: () {
-                        copy(cut: true);
-                        state.hideToolbar();
-                      },
-                    ),
-                    ContextMenuButtonItem(
-                      label: context.t(LocaleKeys.commonPaste),
-                      onPressed: () {
-                        paste();
-                        state.hideToolbar();
-                      },
-                    ),
+                    if (!readOnly) ...[
+                      ContextMenuButtonItem(
+                        label: context.t(LocaleKeys.commonCut),
+                        onPressed: () {
+                          copy(cut: true);
+                          state.hideToolbar();
+                        },
+                      ),
+                      ContextMenuButtonItem(
+                        label: context.t(LocaleKeys.commonPaste),
+                        onPressed: () {
+                          paste();
+                          state.hideToolbar();
+                        },
+                      ),
+                    ],
                   ],
                 ),
           ),
         ),
-        if (footer)
+        if (footer && !readOnly)
           Row(
             children: [
               RevericButton.text(

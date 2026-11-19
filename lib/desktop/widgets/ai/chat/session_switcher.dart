@@ -36,6 +36,21 @@ final _log = AppLogger.forModule('ChatSessionSwitcher');
 /// 下拉浮层最多展示的最近会话数；更早的会话走侧边栏「聊天记录」分页加载。
 const _sessionSwitcherLimit = 50;
 
+/// 只读会话切换项（供画布画廊等不访问真实会话库的场景复用切换浮层）。
+class ReadOnlyChatSessionItem {
+  const ReadOnlyChatSessionItem({
+    required this.id,
+    required this.title,
+    required this.updatedAt,
+    this.subtitle,
+  });
+
+  final String id;
+  final String title;
+  final DateTime updatedAt;
+  final String? subtitle;
+}
+
 /// 会话切换触发器 + 下拉浮层。
 ///
 /// 包裹 header 的标题区（[child]），在标题旁渲染 caret；点击弹出最近
@@ -50,10 +65,25 @@ class ChatSessionSwitcher extends HookConsumerWidget {
     required this.onSelectSession,
     this.onContinueSession,
     required this.child,
-  });
+  }) : readOnlySessions = null;
+
+  /// 只读静态会话列表入口：不查询数据库，隐藏删除与右键菜单。
+  const ChatSessionSwitcher.readOnly({
+    super.key,
+    required List<ReadOnlyChatSessionItem> sessions,
+    required this.activeSessionId,
+    required this.onSelectSession,
+    required this.child,
+  }) : novelId = '',
+       databasePath = '',
+       onContinueSession = null,
+       readOnlySessions = sessions;
 
   final String novelId;
   final String databasePath;
+
+  /// 只读模式下直接传入的静态会话列表；非空时不订阅数据库 provider。
+  final List<ReadOnlyChatSessionItem>? readOnlySessions;
 
   /// 当前正在查看的会话 id，用于高亮与删除后的回退切换。
   final String? activeSessionId;
@@ -71,15 +101,19 @@ class ChatSessionSwitcher extends HookConsumerWidget {
     final overlayController = useOverlayPortalController();
     final link = useMemoized(() => LayerLink(), []);
     final isOpen = useState(false);
-    final sessionsAsync = ref.watch(
-      aiChatSessionsPageProvider(
-        novelId: novelId,
-        databasePath: databasePath,
-        limit: _sessionSwitcherLimit,
-      ),
-    );
+    final staticSessions = readOnlySessions;
+    final isReadOnly = staticSessions != null;
+    final sessionsAsync = isReadOnly
+        ? null
+        : ref.watch(
+            aiChatSessionsPageProvider(
+              novelId: novelId,
+              databasePath: databasePath,
+              limit: _sessionSwitcherLimit,
+            ),
+          );
     final sessions =
-        sessionsAsync.asData?.value.sessions ?? const <AiChatSession>[];
+        sessionsAsync?.asData?.value.sessions ?? const <AiChatSession>[];
 
     void closeMenu() {
       if (!isOpen.value) {
@@ -145,27 +179,38 @@ class ChatSessionSwitcher extends HookConsumerWidget {
               offset: const Offset(0, RevericSpacing.xs),
               child: Align(
                 alignment: Alignment.topLeft,
-                child: _SessionSwitcherMenu(
-                  sessions: sessions,
-                  databasePath: databasePath,
-                  onContinue: onContinueSession == null
-                      ? null
-                      : (session) {
+                child: isReadOnly
+                    ? _ReadOnlySessionSwitcherMenu(
+                        sessions: staticSessions,
+                        activeSessionId: activeSessionId,
+                        onSelect: (session) {
                           closeMenu();
-                          onContinueSession!(session.id);
+                          if (session.id != activeSessionId) {
+                            unawaited(onSelectSession?.call(session.id));
+                          }
                         },
-                  isLoading: sessionsAsync.isLoading,
-                  activeSessionId: activeSessionId,
-                  onSelect: (session) {
-                    closeMenu();
-                    if (session.id != activeSessionId) {
-                      unawaited(onSelectSession?.call(session.id));
-                    }
-                  },
-                  onDelete: (session) {
-                    unawaited(deleteSession(session));
-                  },
-                ),
+                      )
+                    : _SessionSwitcherMenu(
+                        sessions: sessions,
+                        databasePath: databasePath,
+                        onContinue: onContinueSession == null
+                            ? null
+                            : (session) {
+                                closeMenu();
+                                onContinueSession!(session.id);
+                              },
+                        isLoading: sessionsAsync!.isLoading,
+                        activeSessionId: activeSessionId,
+                        onSelect: (session) {
+                          closeMenu();
+                          if (session.id != activeSessionId) {
+                            unawaited(onSelectSession?.call(session.id));
+                          }
+                        },
+                        onDelete: (session) {
+                          unawaited(deleteSession(session));
+                        },
+                      ),
               ),
             ),
           ],
@@ -450,6 +495,178 @@ class _SessionSwitcherRow extends ConsumerWidget {
                 ],
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadOnlySessionSwitcherMenu extends StatelessWidget {
+  const _ReadOnlySessionSwitcherMenu({
+    required this.sessions,
+    required this.activeSessionId,
+    required this.onSelect,
+  });
+
+  final List<ReadOnlyChatSessionItem> sessions;
+  final String? activeSessionId;
+  final ValueChanged<ReadOnlyChatSessionItem> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+
+    return Material(
+      type: MaterialType.transparency,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        builder: (context, t, child) {
+          return Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, (1 - t) * 4),
+              child: child,
+            ),
+          );
+        },
+        child: Container(
+          width: 300,
+          constraints: const BoxConstraints(maxHeight: 360),
+          padding: const EdgeInsets.all(RevericSpacing.xs),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(RevericRadius.large),
+            border: Border.all(color: colors.border),
+            boxShadow: [
+              BoxShadow(
+                color: colors.textPrimary.withValues(alpha: 0.16),
+                blurRadius: 40,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  RevericSpacing.sm,
+                  RevericSpacing.xxs,
+                  RevericSpacing.sm,
+                  RevericSpacing.xs,
+                ),
+                child: Text(
+                  context.t(LocaleKeys.aiChatHistory),
+                  style: typo.uiTinySemibold.copyWith(
+                    color: colors.textSubtle,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              if (sessions.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(RevericSpacing.x2l),
+                  child: Text(
+                    context.t(LocaleKeys.aiSessionListEmpty),
+                    style: typo.uiSmall.copyWith(color: colors.textMuted),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    clipBehavior: Clip.antiAlias,
+                    itemCount: sessions.length,
+                    itemBuilder: (context, index) {
+                      final session = sessions[index];
+                      final isActive = session.id == activeSessionId;
+                      final title = session.title.trim().isEmpty
+                          ? context.t(LocaleKeys.aiSessionTitleDefault)
+                          : session.title;
+                      final subtitle =
+                          session.subtitle ??
+                          _formatSessionTime(context, session.updatedAt);
+                      return Material(
+                        key: ValueKey(session.id),
+                        color: isActive ? colors.selected : Colors.transparent,
+                        borderRadius: BorderRadius.circular(
+                          RevericRadius.medium,
+                        ),
+                        child: InkWell(
+                          onTap: () => onSelect(session),
+                          hoverColor: colors.hover,
+                          borderRadius: BorderRadius.circular(
+                            RevericRadius.medium,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: RevericSpacing.sm,
+                              vertical: RevericSpacing.sm,
+                            ),
+                            child: Row(
+                              children: [
+                                RevericIcon(
+                                  RevericIcons.chat_bubble_outline,
+                                  size: 14,
+                                  color: isActive
+                                      ? colors.accent
+                                      : colors.textSubtle,
+                                ),
+                                const SizedBox(width: RevericSpacing.sm),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        style:
+                                            (isActive
+                                                    ? typo.uiSmallSemibold
+                                                    : typo.uiSmall)
+                                                .copyWith(
+                                                  color: isActive
+                                                      ? colors.textPrimary
+                                                      : colors.textSecondary,
+                                                ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                      Text(
+                                        subtitle,
+                                        style: typo.uiTiny.copyWith(
+                                          color: colors.textSubtle,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (isActive) ...[
+                                  const SizedBox(width: RevericSpacing.sm),
+                                  RevericIcon(
+                                    RevericIcons.check,
+                                    size: 14,
+                                    color: colors.accent,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
           ),
         ),
       ),

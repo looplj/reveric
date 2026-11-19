@@ -44,6 +44,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
     required this.onCreateNovel,
     required this.onImportNovel,
     required this.onImportScreenplay,
+    this.onOpenCanvasGallery,
     required this.onCreateDemoNovel,
     required this.onDeleteNovel,
     required this.onAdaptNovel,
@@ -63,6 +64,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
   final VoidCallback onCreateNovel;
   final VoidCallback onImportNovel;
   final VoidCallback onImportScreenplay;
+  final VoidCallback? onOpenCanvasGallery;
   final VoidCallback onCreateDemoNovel;
   final ValueSetter<Novel> onDeleteNovel;
   final ValueSetter<Novel> onAdaptNovel;
@@ -167,6 +169,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
                             ? LocaleKeys.libraryImportScreenplay
                             : LocaleKeys.libraryImportTxt,
                       ),
+                      onOpenCanvasGallery: onOpenCanvasGallery,
                       username: username,
                       featuredTitle: recent.firstOrNull?.title,
                       headerGestureExclusionKey: headerGestureExclusionKey,

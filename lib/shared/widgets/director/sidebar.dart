@@ -42,6 +42,15 @@ class DirectorSidebar extends HookWidget {
   Widget build(BuildContext context) {
     useListenable(session);
     final colors = RevericTheme.colorsOf(context);
+    if (session.readOnly) {
+      return ColoredBox(
+        color: colors.surfaceDim,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(RevericSpacing.lg),
+          child: DirectorObjectsPanel(session: session),
+        ),
+      );
+    }
     final categories = [
       ('objects', RevericIcons.account_tree),
       ('actors', RevericIcons.person),

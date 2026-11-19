@@ -39,7 +39,7 @@ class PropertyKeyControl extends StatelessWidget {
         .firstOrNull;
     final block = session.history.editBlock(id, property, frame);
     final timeline = session.history.timelineVisible;
-    final button = timeline
+    final button = timeline && !session.readOnly
         ? KeyButton(
             key: ValueKey('director-key:camera:$property'),
             state: keyState(session, id, property),
@@ -58,7 +58,7 @@ class PropertyKeyControl extends StatelessWidget {
             key: ValueKey('director-easing:$property'),
             value: key['easing'],
             height: RevericSizes.fieldHeightSm,
-            enabled: !session.playing,
+            enabled: !session.readOnly && !session.playing,
             items: [
               for (final e
                   in property == 'visible'

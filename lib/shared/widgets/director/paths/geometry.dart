@@ -75,18 +75,24 @@ class PathGeometryEditor extends StatelessWidget {
           PathCheck(
             label: tr(context, 'path_clockwise'),
             value: g['clockwise'],
-            onChanged: (value) => session.attempt(
-              () => editor.update((p) => p['geometry']['clockwise'] = value),
-            ),
+            onChanged: session.readOnly
+                ? null
+                : (value) => session.attempt(
+                    () => editor.update(
+                      (p) => p['geometry']['clockwise'] = value,
+                    ),
+                  ),
           ),
         ],
         if (kind == 'pencil' || kind == 'pen')
           PathCheck(
             label: tr(context, 'path_closed'),
             value: g['closed'],
-            onChanged: (value) => session.attempt(
-              () => editor.update((p) => p['geometry']['closed'] = value),
-            ),
+            onChanged: session.readOnly
+                ? null
+                : (value) => session.attempt(
+                    () => editor.update((p) => p['geometry']['closed'] = value),
+                  ),
           ),
         for (final handle in editor.handles()) ...[
           LabeledField(
@@ -114,28 +120,31 @@ class PathGeometryEditor extends StatelessWidget {
             PathCheck(
               label: tr(context, 'path_smooth'),
               value: g['nodes'][handle.index]['smooth'],
-              onChanged: (value) => session.attempt(
-                () => editor.update((p) {
-                  final node = p['geometry']['nodes'][handle.index];
-                  node['smooth'] = value;
-                  if (value) {
-                    final out =
-                        node['out_handle'] ??
-                        [
-                          node['position'][0] + .5,
-                          node['position'][1],
-                          node['position'][2],
-                        ];
-                    node['out_handle'] = out;
-                    node['in_handle'] = [
-                      for (var i = 0; i < 3; i++)
-                        2 * node['position'][i] - out[i],
-                    ];
-                  }
-                }),
-              ),
+              onChanged: session.readOnly
+                  ? null
+                  : (value) => session.attempt(
+                      () => editor.update((p) {
+                        final node = p['geometry']['nodes'][handle.index];
+                        node['smooth'] = value;
+                        if (value) {
+                          final out =
+                              node['out_handle'] ??
+                              [
+                                node['position'][0] + .5,
+                                node['position'][1],
+                                node['position'][2],
+                              ];
+                          node['out_handle'] = out;
+                          node['in_handle'] = [
+                            for (var i = 0; i < 3; i++)
+                              2 * node['position'][i] - out[i],
+                          ];
+                        }
+                      }),
+                    ),
             ),
-            if (g['nodes'][handle.index]['out_handle'] == null)
+            if (!session.readOnly &&
+                g['nodes'][handle.index]['out_handle'] == null)
               RevericButton.text(
                 label: tr(context, 'path_add_handles'),
                 size: RevericButtonSize.compact,
@@ -158,8 +167,9 @@ class PathGeometryEditor extends StatelessWidget {
                 ),
               ),
           ],
-          if ((kind == 'pencil' && handle.field == 'point') ||
-              (kind == 'pen' && handle.field == 'position'))
+          if (!session.readOnly &&
+              ((kind == 'pencil' && handle.field == 'point') ||
+                  (kind == 'pen' && handle.field == 'position')))
             RevericButton.text(
               key: ValueKey('director-path-remove-point:${handle.index}'),
               label: tr(context, 'delete'),
@@ -174,7 +184,7 @@ class PathGeometryEditor extends StatelessWidget {
               ),
             ),
         ],
-        if (kind == 'pencil' || kind == 'pen')
+        if (!session.readOnly && (kind == 'pencil' || kind == 'pen'))
           RevericButton.text(
             key: const ValueKey('director-path-add-point'),
             label: tr(context, 'path_add_point'),

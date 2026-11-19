@@ -12,13 +12,19 @@ import '../widgets/production/panorama/controller.dart';
 typedef ProductionPanoramaKey = ({
   ProductionCanvasService service,
   String nodeId,
+  bool readOnly,
 });
 final productionPanoramaProvider = Provider.autoDispose
     .family<PanoramaController, ProductionPanoramaKey>((ref, key) {
       final controller = PanoramaController(
         initial: const PanoramaView(),
-        save: (view) =>
-            key.service.setPanoramaView(key.nodeId, view, onlyIfActive: true),
+        save: key.readOnly
+            ? (_) async {}
+            : (view) => key.service.setPanoramaView(
+                key.nodeId,
+                view,
+                onlyIfActive: true,
+              ),
       );
       ref.onDispose(controller.dispose);
       return controller;

@@ -57,9 +57,7 @@ class DirectorTimelineBar extends StatelessWidget {
             label: tr(context, 'show_timeline'),
             selected: open,
             trailing: RevericIcon(
-              open
-                  ? RevericIcons.caret_down
-                  : RevericIcons.expand_less_rounded,
+              open ? RevericIcons.caret_down : RevericIcons.expand_less_rounded,
               size: RevericSizes.directorSmallIcon,
               color: colors.textMuted,
             ),
@@ -111,35 +109,36 @@ class DirectorTimelineBar extends StatelessWidget {
             ),
           const Spacer(),
           if (open) ...[
-            _BarToggle(
-              key: const ValueKey('director-auto-key'),
-              label: tr(context, 'auto_key'),
-              selected: session.history.autoKey,
-              leading: Transform.rotate(
-                angle: math.pi / 4,
-                child: Container(
-                  width: RevericSpacing.xs,
-                  height: RevericSpacing.xs,
-                  decoration: BoxDecoration(
-                    color: session.history.autoKey
-                        ? colors.accent
-                        : Colors.transparent,
-                    border: Border.all(
+            if (!session.readOnly)
+              _BarToggle(
+                key: const ValueKey('director-auto-key'),
+                label: tr(context, 'auto_key'),
+                selected: session.history.autoKey,
+                leading: Transform.rotate(
+                  angle: math.pi / 4,
+                  child: Container(
+                    width: RevericSpacing.xs,
+                    height: RevericSpacing.xs,
+                    decoration: BoxDecoration(
                       color: session.history.autoKey
                           ? colors.accent
-                          : colors.textMuted,
-                      width: 1.5,
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: session.history.autoKey
+                            ? colors.accent
+                            : colors.textMuted,
+                        width: 1.5,
+                      ),
                     ),
                   ),
                 ),
+                onPressed: () {
+                  session.history.autoKey = !session.history.autoKey;
+                  session.refresh();
+                },
               ),
-              onPressed: () {
-                session.history.autoKey = !session.history.autoKey;
-                session.refresh();
-              },
-            ),
             if (!compact) ...[
-              divider(),
+              if (!session.readOnly) divider(),
               RevericIconButton(
                 icon: RevericIcons.remove,
                 tooltip: tr(context, 'zoom_out'),

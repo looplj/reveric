@@ -5,6 +5,8 @@
 //   lib/shared/services/production/library_service.dart
 //   lib/shared/services/ai/media/production.dart
 //   lib/desktop/features/production/board.dart
+// 遵循的 Rules:
+//   .agents/rules/file-access.md
 
 import 'dart:async';
 import 'dart:io';
@@ -93,10 +95,7 @@ class _PreviewSnapshot {
 }
 
 class _DecodedThumbs {
-  const _DecodedThumbs({
-    required this.byAssetId,
-    required this.missingNodes,
-  });
+  const _DecodedThumbs({required this.byAssetId, required this.missingNodes});
 
   final Map<String, ui.Image> byAssetId;
   final Set<String> missingNodes;
@@ -117,6 +116,58 @@ Future<ProductionCanvasPreviewResult> renderProductionCanvasPreview({
   ui.Rect? bounds,
 }) async {
   final snapshot = await _loadSnapshot(canvas, canvasId);
+  return _renderPreview(
+    canvas: canvas,
+    snapshot: snapshot,
+    scope: scope,
+    nodeIds: nodeIds,
+    bounds: bounds,
+  );
+}
+
+/// 从已经归档的媒体与画布记录渲染公开 JPEG 封面。
+Future<ProductionCanvasPreviewResult> renderProductionCanvasCover({
+  required ProductionCanvasService canvas,
+  required List<CanvasNode> nodes,
+  required List<ProductionConnection> edges,
+  required Map<String, ProductionClipRow> clips,
+  required Map<String, ({AssetRow asset, File file})> assets,
+}) {
+  final snapshot = _buildSnapshot(
+    nodes: nodes,
+    edges: edges,
+    clips: clips,
+    assets: {
+      for (final node in nodes)
+        node.id:
+            assets[node.mediaAssetId ?? clips[node.id]?.adoptedAssetId]?.asset,
+    },
+    stagings: const {},
+    editings: const {},
+    segments: const [],
+    sceneTitles: const {},
+  );
+  return _renderPreview(
+    canvas: canvas,
+    snapshot: snapshot,
+    scope: 'all',
+    nodeIds: null,
+    bounds: null,
+    stagedFiles: {
+      for (final asset in assets.values) asset.asset.id: asset.file,
+    },
+  );
+}
+
+Future<ProductionCanvasPreviewResult> _renderPreview({
+  required ProductionCanvasService canvas,
+  required _PreviewSnapshot snapshot,
+  required String scope,
+  required List<String>? nodeIds,
+  required ui.Rect? bounds,
+  Map<String, File>? stagedFiles,
+}) async {
+  final galleryCover = stagedFiles != null;
   final rawBounds = _resolveBounds(
     snapshot,
     scope: scope,
@@ -125,12 +176,16 @@ Future<ProductionCanvasPreviewResult> renderProductionCanvasPreview({
   );
   final viewBounds = bounds != null ? rawBounds : _normalizeAspect(rawBounds);
   final (pixelWidth, pixelHeight, scale) = _computeOutputDimensions(viewBounds);
-  final overlappingIds = _findOverlappingNodeIds(snapshot);
+  final overlappingIds = galleryCover
+      ? const <String>{}
+      : _findOverlappingNodeIds(snapshot);
   final visibleNodes = [
     for (final node in snapshot.nodes)
       if (node.sceneId == null &&
-          _nodeBoundsWithHeader(node, snapshot.cardRects[node.id]!)
-              .overlaps(viewBounds))
+          _nodeBoundsWithHeader(
+            node,
+            snapshot.cardRects[node.id]!,
+          ).overlaps(viewBounds))
         node,
   ];
   final thumbs = await _decodeVisibleThumbnails(
@@ -138,6 +193,7 @@ Future<ProductionCanvasPreviewResult> renderProductionCanvasPreview({
     snapshot: snapshot,
     visibleNodes: visibleNodes,
     scale: scale,
+    stagedFiles: stagedFiles,
   );
 
   ui.Picture? picture;
@@ -158,23 +214,27 @@ Future<ProductionCanvasPreviewResult> renderProductionCanvasPreview({
       pixelWidth: pixelWidth,
       pixelHeight: pixelHeight,
       scale: scale,
+      showGrid: !galleryCover,
     );
     picture = recorder.endRecording();
     rendered = await picture.toImage(pixelWidth, pixelHeight);
-    final rawRgba = await rendered.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final rawRgba = await rendered.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
     if (rawRgba == null) {
       throw StateError('Failed to extract canvas preview RGBA bytes.');
     }
     final rgbaBytes = Uint8List.fromList(
       rawRgba.buffer.asUint8List(rawRgba.offsetInBytes, rawRgba.lengthInBytes),
     );
-    final jpeg = await Isolate.run(
-      () => _encodeJpegFromRgba(rgbaBytes, pixelWidth, pixelHeight),
+    final (jpeg, width, height) = await Isolate.run(
+      () =>
+          _encodeJpegFromRgba(rgbaBytes, pixelWidth, pixelHeight, galleryCover),
     );
     return ProductionCanvasPreviewResult(
       jpeg: jpeg,
-      width: pixelWidth,
-      height: pixelHeight,
+      width: width,
+      height: height,
       bounds: viewBounds,
     );
   } finally {
@@ -184,7 +244,25 @@ Future<ProductionCanvasPreviewResult> renderProductionCanvasPreview({
   }
 }
 
-Uint8List _encodeJpegFromRgba(Uint8List rgba, int width, int height) {
+/// 把一张已有图片压成画廊封面。长边先收到 1600，再沿用封面的质量和尺寸回退。
+Future<Uint8List> encodeProductionGalleryCover(Uint8List bytes) {
+  return Isolate.run(() => _encodeGalleryCoverBytes(bytes));
+}
+
+Uint8List _encodeGalleryCoverBytes(Uint8List bytes) {
+  final image = img.decodeImage(bytes);
+  if (image == null) {
+    throw StateError('Canvas cover image is unreadable.');
+  }
+  return _encodeGalleryCoverJpeg(image).$1;
+}
+
+(Uint8List, int, int) _encodeJpegFromRgba(
+  Uint8List rgba,
+  int width,
+  int height,
+  bool galleryCover,
+) {
   final image = img.Image.fromBytes(
     width: width,
     height: height,
@@ -192,7 +270,47 @@ Uint8List _encodeJpegFromRgba(Uint8List rgba, int width, int height) {
     numChannels: 4,
     order: img.ChannelOrder.rgba,
   );
-  return Uint8List.fromList(img.encodeJpg(image, quality: 85));
+  if (!galleryCover) {
+    return (
+      Uint8List.fromList(img.encodeJpg(image, quality: 85)),
+      width,
+      height,
+    );
+  }
+  return _encodeGalleryCoverJpeg(image);
+}
+
+(Uint8List, int, int) _encodeGalleryCoverJpeg(img.Image source) {
+  final image = _limitCoverSide(source, _maxOutputLongSide);
+  const maxCoverBytes = 2 * 1024 * 1024;
+  Uint8List encode(img.Image value, int quality) =>
+      Uint8List.fromList(img.encodeJpg(value, quality: quality));
+  for (final quality in [85, 70, 55]) {
+    final encoded = encode(image, quality);
+    if (encoded.length <= maxCoverBytes) {
+      return (encoded, image.width, image.height);
+    }
+  }
+  for (final limit in [1024, 768]) {
+    if (math.max(image.width, image.height) <= limit) {
+      continue;
+    }
+    final reduced = _limitCoverSide(image, limit);
+    final encoded = encode(reduced, 55);
+    if (encoded.length <= maxCoverBytes) {
+      return (encoded, reduced.width, reduced.height);
+    }
+  }
+  throw StateError('Canvas cover exceeds the upload size limit.');
+}
+
+img.Image _limitCoverSide(img.Image image, int limit) {
+  if (math.max(image.width, image.height) <= limit) {
+    return image;
+  }
+  return image.width >= image.height
+      ? img.copyResize(image, width: limit)
+      : img.copyResize(image, height: limit);
 }
 
 Future<_PreviewSnapshot> _loadSnapshot(
@@ -208,7 +326,6 @@ Future<_PreviewSnapshot> _loadSnapshot(
   final sceneRows = episodeId.isEmpty
       ? const <ScreenplaySceneRecord>[]
       : await db.screenplayDao.getSceneRows(episodeId);
-  final liveScenes = {for (final scene in sceneRows) scene.id};
   final sceneTitles = {for (final scene in sceneRows) scene.id: scene.title};
 
   final clips = <String, ProductionClipRow?>{};
@@ -226,8 +343,9 @@ Future<_PreviewSnapshot> _loadSnapshot(
     final assetId = node.mediaAssetId ?? clip?.adoptedAssetId;
     if (assetId != null) {
       if (!assetCache.containsKey(assetId)) {
-        assetCache[assetId] =
-            await canvas.library.database.assetDao.getAsset(assetId);
+        assetCache[assetId] = await canvas.library.database.assetDao.getAsset(
+          assetId,
+        );
       }
       assets[node.id] = assetCache[assetId];
     }
@@ -239,10 +357,31 @@ Future<_PreviewSnapshot> _loadSnapshot(
     }
   }
 
-  final nodes = [
-    for (final node in content.nodes)
-      if (node.sceneId == null || liveScenes.contains(node.sceneId)) node,
-  ];
+  return _buildSnapshot(
+    nodes: [
+      for (final node in content.nodes)
+        if (node.sceneId == null || sceneTitles.containsKey(node.sceneId)) node,
+    ],
+    edges: content.edges,
+    clips: clips,
+    assets: assets,
+    stagings: stagings,
+    editings: editings,
+    segments: segments,
+    sceneTitles: sceneTitles,
+  );
+}
+
+_PreviewSnapshot _buildSnapshot({
+  required List<CanvasNode> nodes,
+  required List<ProductionConnection> edges,
+  required Map<String, ProductionClipRow?> clips,
+  required Map<String, AssetRow?> assets,
+  required Map<String, VideoStagingRow?> stagings,
+  required Map<String, VideoEditingRow?> editings,
+  required List<ProductionClipRow> segments,
+  required Map<String, String> sceneTitles,
+}) {
   final byId = {for (final node in nodes) node.id: node};
 
   ui.Size sizeOf(CanvasNode node) {
@@ -274,7 +413,7 @@ Future<_PreviewSnapshot> _loadSnapshot(
   final sceneUnion = <String, ui.Rect>{};
   for (final node in nodes) {
     final sceneId = node.sceneId ?? clips[node.id]?.sceneId;
-    if (sceneId == null || !liveScenes.contains(sceneId)) {
+    if (sceneId == null || !sceneTitles.containsKey(sceneId)) {
       continue;
     }
     final rect = cardRects[node.id];
@@ -282,7 +421,9 @@ Future<_PreviewSnapshot> _loadSnapshot(
       continue;
     }
     final current = sceneUnion[sceneId];
-    sceneUnion[sceneId] = current == null ? rect : current.expandToInclude(rect);
+    sceneUnion[sceneId] = current == null
+        ? rect
+        : current.expandToInclude(rect);
   }
   final sceneBands = {
     for (final entry in sceneUnion.entries)
@@ -291,7 +432,7 @@ Future<_PreviewSnapshot> _loadSnapshot(
 
   return _PreviewSnapshot(
     nodes: nodes,
-    edges: content.edges,
+    edges: edges,
     clips: clips,
     assets: assets,
     stagings: stagings,
@@ -344,7 +485,8 @@ ui.Rect _resolveBounds(
     return combined.inflate(_boundsPadding);
   }
 
-  final hasVisibleContent = snapshot.nodes.any((n) => n.sceneId == null) ||
+  final hasVisibleContent =
+      snapshot.nodes.any((n) => n.sceneId == null) ||
       snapshot.sceneBands.isNotEmpty;
   if (!hasVisibleContent) {
     return _emptyCanvasBounds;
@@ -392,8 +534,7 @@ ui.Rect _resolveBounds(
       final b = candidates[j];
       final rectB = snapshot.cardRects[b.id]!;
       final sceneB = snapshot.clips[b.id]?.sceneId;
-      final sameGroup =
-          a.parentId != null && a.parentId == b.parentId;
+      final sameGroup = a.parentId != null && a.parentId == b.parentId;
       final sameScene = sceneA != null && sceneA == sceneB;
       if (sameGroup ||
           sameScene ||
@@ -427,7 +568,9 @@ ui.Rect _resolveBounds(
   final mainScenes = <String>{};
   for (final node in mainCluster) {
     final rect = _nodeBoundsWithHeader(node, snapshot.cardRects[node.id]!);
-    clusterRect = clusterRect == null ? rect : clusterRect.expandToInclude(rect);
+    clusterRect = clusterRect == null
+        ? rect
+        : clusterRect.expandToInclude(rect);
     if (node.parentId != null) {
       mainParents.add(node.parentId!);
     }
@@ -481,11 +624,7 @@ ui.Rect _normalizeAspect(ui.Rect rect) {
   } else if (height / width > maxAspect) {
     width = height / maxAspect;
   }
-  return ui.Rect.fromCenter(
-    center: rect.center,
-    width: width,
-    height: height,
-  );
+  return ui.Rect.fromCenter(center: rect.center, width: width, height: height);
 }
 
 (int, int, double) _computeOutputDimensions(ui.Rect bounds) {
@@ -509,8 +648,10 @@ Set<String> _findOverlappingNodeIds(_PreviewSnapshot snapshot) {
   ];
   final hitRects = {
     for (final node in checkNodes)
-      node.id: _nodeBoundsWithHeader(node, snapshot.cardRects[node.id]!)
-          .deflate(1.0),
+      node.id: _nodeBoundsWithHeader(
+        node,
+        snapshot.cardRects[node.id]!,
+      ).deflate(1.0),
   };
   final overlapping = <String>{};
   for (var i = 0; i < checkNodes.length; i += 1) {
@@ -539,6 +680,7 @@ Future<_DecodedThumbs> _decodeVisibleThumbnails({
   required _PreviewSnapshot snapshot,
   required List<CanvasNode> visibleNodes,
   required double scale,
+  required Map<String, File>? stagedFiles,
 }) async {
   final jobs = <(String nodeId, AssetRow asset, int decodeW, int decodeH)>[];
   final missingNodes = <String>{};
@@ -553,16 +695,18 @@ Future<_DecodedThumbs> _decodeVisibleThumbnails({
       continue;
     }
     final cardRect = snapshot.cardRects[node.id]!;
-    final decodeW = (cardRect.width * scale * 1.4)
-        .round()
-        .clamp(64, _maxThumbnailDecodeSide);
-    final decodeH = (cardRect.height * scale * 1.4)
-        .round()
-        .clamp(64, _maxThumbnailDecodeSide);
+    final decodeW = (cardRect.width * scale * 1.4).round().clamp(
+      64,
+      _maxThumbnailDecodeSide,
+    );
+    final decodeH = (cardRect.height * scale * 1.4).round().clamp(
+      64,
+      _maxThumbnailDecodeSide,
+    );
     jobs.add((node.id, asset, decodeW, decodeH));
   }
 
-  if (jobs.length > _maxThumbnailNodes) {
+  if (stagedFiles == null && jobs.length > _maxThumbnailNodes) {
     return _DecodedThumbs(byAssetId: const {}, missingNodes: missingNodes);
   }
 
@@ -583,26 +727,48 @@ Future<_DecodedThumbs> _decodeVisibleThumbnails({
     }
   }
 
-  final entries = uniqueAssets.entries.toList();
-  for (var i = 0; i < entries.length; i += _thumbnailConcurrency) {
-    final batch = entries.skip(i).take(_thumbnailConcurrency);
-    await Future.wait([
-      for (final entry in batch)
-        _decodeAssetThumb(
-          canvas: canvas,
-          asset: entry.value.$1,
-          targetWidth: entry.value.$2,
-          targetHeight: entry.value.$3,
-        ).then((result) {
-          if (result.image != null) {
-            byAssetId[entry.key] = result.image!;
-          } else if (result.missing) {
-            missingNodes.addAll(assetToNodeIds[entry.key] ?? const []);
-          }
-        }),
-    ]);
+  final entries = uniqueAssets.entries.take(_maxThumbnailNodes).toList();
+  // 封面截帧只写在本次渲染独占的临时目录，失败时也不碰视频旁边的同名文件。
+  final needsCoverScratch =
+      stagedFiles != null &&
+      entries.any((entry) {
+        final path = entry.value.$1.path;
+        return path != null && productionMediaFormat(path)?.$1 == 'video';
+      });
+  final scratch = needsCoverScratch
+      ? await Directory.systemTemp.createTemp('reveric_canvas_cover_')
+      : null;
+  try {
+    for (var i = 0; i < entries.length; i += _thumbnailConcurrency) {
+      final batch = entries.skip(i).take(_thumbnailConcurrency);
+      await Future.wait([
+        for (final entry in batch)
+          _decodeAssetThumb(
+            canvas: canvas,
+            asset: entry.value.$1,
+            targetWidth: entry.value.$2,
+            targetHeight: entry.value.$3,
+            stagedFile: stagedFiles?[entry.key],
+            coverScratch: scratch,
+          ).then((result) {
+            if (result.image != null) {
+              byAssetId[entry.key] = result.image!;
+            } else if (result.missing) {
+              missingNodes.addAll(assetToNodeIds[entry.key] ?? const []);
+            }
+          }),
+      ]);
+    }
+    return _DecodedThumbs(byAssetId: byAssetId, missingNodes: missingNodes);
+  } finally {
+    if (scratch != null && await scratch.exists()) {
+      try {
+        await scratch.delete(recursive: true);
+      } on FileSystemException catch (error) {
+        _log.warning('cover scratch cleanup failed: $error');
+      }
+    }
   }
-  return _DecodedThumbs(byAssetId: byAssetId, missingNodes: missingNodes);
 }
 
 Future<({ui.Image? image, bool missing})> _decodeAssetThumb({
@@ -610,6 +776,8 @@ Future<({ui.Image? image, bool missing})> _decodeAssetThumb({
   required AssetRow asset,
   required int targetWidth,
   required int targetHeight,
+  required File? stagedFile,
+  Directory? coverScratch,
 }) async {
   final assetPath = asset.path;
   if (assetPath == null) {
@@ -617,8 +785,27 @@ Future<({ui.Image? image, bool missing})> _decodeAssetThumb({
   }
   final kind = productionMediaFormat(assetPath)?.$1;
   File? sourceFile;
+  File? temporaryThumbnail;
   try {
-    if (kind == 'image') {
+    if (stagedFile != null) {
+      if (kind == 'image') {
+        sourceFile = stagedFile;
+      } else if (kind == 'video') {
+        final scratch = coverScratch;
+        if (scratch == null) {
+          return (image: null, missing: false);
+        }
+        final safe = asset.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+        temporaryThumbnail = File(
+          '${scratch.path}${Platform.pathSeparator}$safe.png',
+        );
+        await canvas.library.media.captureThumbnail(
+          stagedFile.path,
+          temporaryThumbnail,
+        );
+        sourceFile = temporaryThumbnail;
+      }
+    } else if (kind == 'image') {
       final resolved = File(canvas.library.resolvePath(assetPath));
       if (!await resolved.exists()) {
         return (image: null, missing: true);
@@ -631,15 +818,36 @@ Future<({ui.Image? image, bool missing})> _decodeAssetThumb({
       }
       sourceFile = await canvas.library.cachedVideoThumbnail(assetPath);
     }
+    if (sourceFile == null) {
+      return (image: null, missing: false);
+    }
+    return await _decodeThumbnail(
+      sourceFile,
+      asset.id,
+      targetWidth,
+      targetHeight,
+    );
   } on MediaException catch (error) {
-    _log.warning('invalid asset path skipped asset=${asset.id}: $error');
-    return (image: null, missing: true);
+    _log.warning('asset thumbnail skipped asset=${asset.id}: $error');
+    return (image: null, missing: stagedFile == null);
+  } finally {
+    final thumb = temporaryThumbnail;
+    final scratchPath = coverScratch?.path;
+    if (thumb != null &&
+        scratchPath != null &&
+        thumb.path.startsWith('$scratchPath${Platform.pathSeparator}') &&
+        await thumb.exists()) {
+      await thumb.delete();
+    }
   }
+}
 
-  if (sourceFile == null) {
-    return (image: null, missing: false);
-  }
-
+Future<({ui.Image? image, bool missing})> _decodeThumbnail(
+  File sourceFile,
+  String assetId,
+  int targetWidth,
+  int targetHeight,
+) async {
   ui.Codec? codec;
   try {
     final bytes = await sourceFile.readAsBytes();
@@ -654,7 +862,7 @@ Future<({ui.Image? image, bool missing})> _decodeAssetThumb({
     final frame = await codec.getNextFrame();
     return (image: frame.image, missing: false);
   } catch (error) {
-    _log.warning('thumbnail decode skipped asset=${asset.id}: $error');
+    _log.warning('thumbnail decode skipped asset=$assetId: $error');
     return (image: null, missing: false);
   } finally {
     codec?.dispose();
@@ -671,6 +879,7 @@ void _paintPreview({
   required int pixelWidth,
   required int pixelHeight,
   required double scale,
+  required bool showGrid,
 }) {
   final bgPaint = ui.Paint()..color = _bgColor;
   drawCanvas.drawRect(
@@ -682,7 +891,9 @@ void _paintPreview({
   drawCanvas.scale(scale, scale);
   drawCanvas.translate(-bounds.left, -bounds.top);
 
-  _paintGrid(drawCanvas, bounds, scale);
+  if (showGrid) {
+    _paintGrid(drawCanvas, bounds, scale);
+  }
   _paintSceneBands(drawCanvas, snapshot, bounds, scale);
   _paintGroupFrames(drawCanvas, snapshot, bounds, scale);
   _paintEdges(drawCanvas, snapshot, bounds, scale);
@@ -766,7 +977,10 @@ void _paintSceneBands(
     if (!rect.overlaps(bounds)) {
       continue;
     }
-    final rrect = ui.RRect.fromRectAndRadius(rect, const ui.Radius.circular(14));
+    final rrect = ui.RRect.fromRectAndRadius(
+      rect,
+      const ui.Radius.circular(14),
+    );
     drawCanvas.drawRRect(rrect, fill);
     drawCanvas.drawRRect(rrect, stroke);
     final title = snapshot.sceneTitles[entry.key] ?? entry.key;
@@ -801,14 +1015,20 @@ void _paintGroupFrames(
     if (!rect.overlaps(bounds)) {
       continue;
     }
-    final rrect = ui.RRect.fromRectAndRadius(rect, const ui.Radius.circular(12));
+    final rrect = ui.RRect.fromRectAndRadius(
+      rect,
+      const ui.Radius.circular(12),
+    );
     drawCanvas.drawRRect(rrect, fill);
     drawCanvas.drawRRect(rrect, stroke);
     final label = _nodeHeaderLabel(node, snapshot);
     _drawText(
       drawCanvas,
       label,
-      offset: ui.Offset(rect.left + 10, rect.top - (18 / scale).clamp(16.0, 28.0)),
+      offset: ui.Offset(
+        rect.left + 10,
+        rect.top - (18 / scale).clamp(16.0, 28.0),
+      ),
       maxWidth: math.max(160, rect.width),
       fontSize: (11.5 / scale).clamp(11.0, 24.0),
       color: _textMuted,
@@ -840,7 +1060,10 @@ void _paintEdges(
     if (source == null || target == null) {
       continue;
     }
-    final edgeBounds = ui.Rect.fromPoints(source.center, target.center).inflate(120);
+    final edgeBounds = ui.Rect.fromPoints(
+      source.center,
+      target.center,
+    ).inflate(120);
     if (!edgeBounds.overlaps(bounds)) {
       continue;
     }
@@ -849,15 +1072,9 @@ void _paintEdges(
     final dx = math.max(56.0, (end.dx - start.dx).abs() * 0.45);
     final path = ui.Path()
       ..moveTo(start.dx, start.dy)
-      ..cubicTo(
-        start.dx + dx,
-        start.dy,
-        end.dx - dx,
-        end.dy,
-        end.dx,
-        end.dy,
-      );
-    final isSolid = edge.type == canvasEdgeTypeDerivedOutput ||
+      ..cubicTo(start.dx + dx, start.dy, end.dx - dx, end.dy, end.dx, end.dy);
+    final isSolid =
+        edge.type == canvasEdgeTypeDerivedOutput ||
         edge.type == canvasEdgeTypeStagingOutput;
     if (isSolid) {
       drawCanvas.drawPath(path, solidPaint);
@@ -936,7 +1153,10 @@ void _paintCards(
     }
     final rect = snapshot.cardRects[node.id]!;
     final accent = _accentForNode(node, snapshot.assets[node.id]);
-    final rrect = ui.RRect.fromRectAndRadius(rect, const ui.Radius.circular(10));
+    final rrect = ui.RRect.fromRectAndRadius(
+      rect,
+      const ui.Radius.circular(10),
+    );
 
     drawCanvas.drawRRect(rrect, ui.Paint()..color = _cardFillColor);
 
@@ -1086,7 +1306,8 @@ void _paintCardPlaceholder(
     color: accent,
     weight: ui.FontWeight.w700,
   );
-  final subtitle = snapshot.stagings[node.id]?.title ??
+  final subtitle =
+      snapshot.stagings[node.id]?.title ??
       snapshot.editings[node.id]?.title ??
       snapshot.clips[node.id]?.title ??
       node.title;
@@ -1163,33 +1384,35 @@ String _nodeHeaderLabel(CanvasNode node, _PreviewSnapshot snapshot) {
     },
     _ => node.type.toUpperCase(),
   };
-  final rawTitle = (snapshot.editings[node.id]?.title ??
-          snapshot.stagings[node.id]?.title ??
-          snapshot.clips[node.id]?.title ??
-          node.title)
-      .trim()
-      .replaceAll('\n', ' ');
+  final rawTitle =
+      (snapshot.editings[node.id]?.title ??
+              snapshot.stagings[node.id]?.title ??
+              snapshot.clips[node.id]?.title ??
+              node.title)
+          .trim()
+          .replaceAll('\n', ' ');
   if (rawTitle.isEmpty) {
     return '[$kind] ${node.id}';
   }
   return '[$kind] ${node.id} · ${truncateUtf16Safe(rawTitle, 22)}';
 }
 
-ui.Color _accentForNode(CanvasNode node, AssetRow? asset) => switch (node.type) {
-  canvasNodeTypeText => const ui.Color(0xFFF59E0B),
-  canvasNodeTypeImage => const ui.Color(0xFF10B981),
-  canvasNodeTypeVideo => const ui.Color(0xFF3B82F6),
-  canvasNodeTypeAudio => const ui.Color(0xFFA855F7),
-  canvasNodeTypeEditing => const ui.Color(0xFFEC4899),
-  canvasNodeTypeStaging => const ui.Color(0xFF6366F1),
-  canvasNodeTypeMedia => switch (asset?.type) {
-    'image' => const ui.Color(0xFF06B6D4),
-    'video' => const ui.Color(0xFF38BDF8),
-    'audio' => const ui.Color(0xFFA855F7),
-    _ => const ui.Color(0xFF64748B),
-  },
-  _ => const ui.Color(0xFF64748B),
-};
+ui.Color _accentForNode(CanvasNode node, AssetRow? asset) =>
+    switch (node.type) {
+      canvasNodeTypeText => const ui.Color(0xFFF59E0B),
+      canvasNodeTypeImage => const ui.Color(0xFF10B981),
+      canvasNodeTypeVideo => const ui.Color(0xFF3B82F6),
+      canvasNodeTypeAudio => const ui.Color(0xFFA855F7),
+      canvasNodeTypeEditing => const ui.Color(0xFFEC4899),
+      canvasNodeTypeStaging => const ui.Color(0xFF6366F1),
+      canvasNodeTypeMedia => switch (asset?.type) {
+        'image' => const ui.Color(0xFF06B6D4),
+        'video' => const ui.Color(0xFF38BDF8),
+        'audio' => const ui.Color(0xFFA855F7),
+        _ => const ui.Color(0xFF64748B),
+      },
+      _ => const ui.Color(0xFF64748B),
+    };
 
 void _drawText(
   ui.Canvas drawCanvas,
@@ -1201,22 +1424,19 @@ void _drawText(
   ui.FontWeight weight = ui.FontWeight.w400,
   int maxLines = 1,
 }) {
-  final builder = ui.ParagraphBuilder(
-    ui.ParagraphStyle(
-      fontSize: fontSize,
-      fontWeight: weight,
-      maxLines: maxLines,
-      ellipsis: '…',
-    ),
-  )
-    ..pushStyle(
-      ui.TextStyle(
-        color: color,
-        fontSize: fontSize,
-        fontWeight: weight,
-      ),
-    )
-    ..addText(_sanitizeUtf16(text));
+  final builder =
+      ui.ParagraphBuilder(
+          ui.ParagraphStyle(
+            fontSize: fontSize,
+            fontWeight: weight,
+            maxLines: maxLines,
+            ellipsis: '…',
+          ),
+        )
+        ..pushStyle(
+          ui.TextStyle(color: color, fontSize: fontSize, fontWeight: weight),
+        )
+        ..addText(_sanitizeUtf16(text));
   final paragraph = builder.build();
   try {
     paragraph.layout(ui.ParagraphConstraints(width: math.max(10.0, maxWidth)));

@@ -1606,6 +1606,11 @@ class NovelContentDatabase extends _$NovelContentDatabase {
     : contentDatabasePath = ':memory:',
       filePath = ':memory:';
 
+  /// 供画廊只读预览等短期沙箱使用的临时内存库，不参与路径缓存。
+  NovelContentDatabase.ephemeral(super.executor)
+    : contentDatabasePath = ':memory:',
+      filePath = ':memory:';
+
   static final Map<String, _CachedNovelContentDatabase> _databaseCache = {};
 
   /// 打开内容库时传入的路径，保留平台转换前的值。
@@ -1762,7 +1767,7 @@ class NovelContentDatabase extends _$NovelContentDatabase {
   @override
   Future<void> close() async {
     final cachedDatabase = _databaseCache[filePath];
-    if (cachedDatabase == null) {
+    if (cachedDatabase == null || !identical(cachedDatabase.database, this)) {
       return super.close();
     }
 

@@ -2059,6 +2059,76 @@ abstract final class LocaleKeys {
   static const productionViewBrightness = 'production.brightness';
   static const productionViewTexture = 'production.texture';
   static const productionViewTemperature = 'production.temperature';
+  static const productionCanvasGallery = 'production.canvas_gallery';
+  static const productionGalleryPublish = 'production.gallery_publish';
+  static const productionGalleryPublishNow = 'production.gallery_publish_now';
+  static const productionGalleryPublished = 'production.gallery_published';
+  static const productionGalleryConfirmation =
+      'production.gallery_confirmation';
+  static const productionGalleryTitleInvalid =
+      'production.gallery_title_invalid';
+  static const productionGalleryDescriptionInvalid =
+      'production.gallery_description_invalid';
+  static const productionGalleryCoverCanvas = 'production.gallery_cover_canvas';
+  static const productionGalleryChooseConversations =
+      'production.gallery_choose_conversations';
+  static const productionGalleryConversationsNone =
+      'production.gallery_conversations_none';
+  static const productionGalleryConversationContents =
+      'production.gallery_conversation_contents';
+  static const productionGalleryConversationCount =
+      'production.gallery_conversation_count';
+  static const productionGalleryNodeCount = 'production.gallery_node_count';
+  static const productionGalleryAssetCount = 'production.gallery_asset_count';
+  static const productionGalleryPinned = 'production.gallery_pinned';
+  static const productionGalleryLatest = 'production.gallery_latest';
+  static const productionGalleryMore = 'production.gallery_more';
+  static const productionGalleryEmpty = 'production.gallery_empty';
+  static const productionGalleryLoadFailed = 'production.gallery_load_failed';
+  static const productionGallerySessionsFailed =
+      'production.gallery_sessions_failed';
+  static const productionGalleryLoadMore = 'production.gallery_load_more';
+  static const productionGalleryCopy = 'production.gallery_copy';
+  static const productionGalleryOpenConversations =
+      'production.gallery_open_conversations';
+  static const productionGalleryGenerations = 'production.gallery_generations';
+  static const productionGalleryPreparing = 'production.gallery_preparing';
+  static const productionGalleryUploading = 'production.gallery_uploading';
+  static const productionGalleryFinalizing = 'production.gallery_finalizing';
+  static const productionGalleryDownloading = 'production.gallery_downloading';
+  static const productionGalleryDownloadFailed =
+      'production.gallery_download_failed';
+  static const productionGalleryPreviewFailed =
+      'production.gallery_preview_failed';
+  static const productionGalleryPublishFailed =
+      'production.gallery_publish_failed';
+  static const productionGalleryUploadExpired =
+      'production.gallery_upload_expired';
+  static const productionGalleryUploadPaused =
+      'production.gallery_upload_paused';
+  static const productionGalleryUploadBusy = 'production.gallery_upload_busy';
+  static const productionGalleryUploadRejected =
+      'production.gallery_upload_rejected';
+  static const productionGalleryPackageTooLarge =
+      'production.gallery_package_too_large';
+  static const productionGalleryCoverFailed = 'production.gallery_cover_failed';
+  static const productionGalleryMissingMedia =
+      'production.gallery_missing_media';
+  static const productionGalleryMissingConversationFile =
+      'production.gallery_missing_conversation_file';
+  static const productionGalleryInvalidConversation =
+      'production.gallery_invalid_conversation';
+  static const productionGalleryMissingStyle =
+      'production.gallery_missing_style';
+  static const productionGalleryImportUpgrade =
+      'production.gallery_import_upgrade';
+  static const productionGalleryPreviewEstimate =
+      'production.gallery_preview_estimate';
+  static const productionGalleryModel = 'production.gallery_model';
+  static const productionGalleryAgent = 'production.gallery_agent';
+  static const productionGalleryOpening = 'production.gallery_opening';
+  static const productionGalleryComposerReadOnly =
+      'production.gallery_composer_read_only';
   static const productionViewDescription = 'production.description';
   static const productionViewPanoramaExit = 'production.panoramaExit';
   static const productionViewPanoramaReset = 'production.panoramaReset';
@@ -2099,6 +2169,7 @@ abstract final class LocaleKeys {
   static const commonSearchCharacters = 'common.search_characters';
   static const commonSearchLocations = 'common.search_locations';
   static const commonSelectAll = 'common.select_all';
+  static const commonDeselectAll = 'common.deselect_all';
   static const commonClearSelection = 'common.clear_selection';
   static const commonNoResults = 'common.no_results';
   static const commonFilterAll = 'common.filter_all';

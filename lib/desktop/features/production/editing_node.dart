@@ -251,6 +251,7 @@ Future<void> previewProductionEditing(
         path: result!.file.path,
         type: 'video',
         name: row.title,
+        pathResolver: service.library,
         autoplay: true,
         temporary: true,
       ),

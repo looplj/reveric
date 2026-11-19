@@ -7,6 +7,8 @@
 //   assets/translations/zh-CN/home.json
 //   assets/translations/en/library.json
 //   assets/translations/zh-CN/library.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 
 import 'package:flutter/material.dart';
 
@@ -38,6 +40,7 @@ class GreetingHeader extends StatelessWidget {
     required this.createLabel,
     required this.onImport,
     required this.importLabel,
+    this.onOpenCanvasGallery,
     required this.username,
     required this.featuredTitle,
     required this.headerGestureExclusionKey,
@@ -51,6 +54,7 @@ class GreetingHeader extends StatelessWidget {
   /// 小说库导入 TXT，剧本库导入后交给 AI 改编。
   final VoidCallback? onImport;
   final String importLabel;
+  final VoidCallback? onOpenCanvasGallery;
   final String? username;
   final String? featuredTitle;
   final GlobalKey headerGestureExclusionKey;
@@ -127,6 +131,12 @@ class GreetingHeader extends StatelessWidget {
               spacing: RevericSpacing.sm,
               runSpacing: RevericSpacing.sm,
               children: [
+                if (onOpenCanvasGallery case final openGallery?)
+                  RevericButton.secondary(
+                    label: context.t(LocaleKeys.productionCanvasGallery),
+                    icon: RevericIcons.public,
+                    onPressed: openGallery,
+                  ),
                 if (onImport != null)
                   OutlinedButton.icon(
                     onPressed: onImport,

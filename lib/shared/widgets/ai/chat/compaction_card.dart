@@ -54,12 +54,14 @@ class CompactionCard extends StatefulWidget {
   final String summary;
   final Map<String, dynamic>? metadata;
   final bool initiallyExpanded;
+  final bool loadInlineImages;
 
   const CompactionCard({
     super.key,
     required this.summary,
     this.metadata,
     this.initiallyExpanded = false,
+    this.loadInlineImages = true,
   });
 
   @override
@@ -163,6 +165,7 @@ class _CompactionCardState extends State<CompactionCard> {
               ),
               child: AiMarkdownText(
                 widget.summary,
+                loadInlineImages: widget.loadInlineImages,
                 style: typo.uiSmall.copyWith(
                   color: colors.textSecondary,
                   height: 1.55,

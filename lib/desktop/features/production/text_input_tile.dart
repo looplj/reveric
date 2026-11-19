@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../shared/components/reveric_context_menu.dart';
+import '../../../shared/database/novel_content_database.dart' show CanvasNode;
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/services/production/canvas_service.dart';
@@ -25,11 +26,15 @@ class ProductionTextInputTile extends HookWidget {
     required this.input,
     required this.onMove,
     required this.onRemove,
+    this.readOnly = false,
+    this.onPreview,
   });
   final ProductionCanvasService service;
   final ProductionInput input;
   final ValueChanged<int>? onMove;
-  final VoidCallback onRemove;
+  final VoidCallback? onRemove;
+  final bool readOnly;
+  final ValueChanged<CanvasNode>? onPreview;
   @override
   Widget build(BuildContext context) {
     final node = useStream(
@@ -40,39 +45,45 @@ class ProductionTextInputTile extends HookWidget {
     );
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    final data = node.data;
     return Tooltip(
-      message: node.data?.title ?? input.refId,
+      message: data?.title ?? input.refId,
       child: Material(
         color: colors.surfaceDim,
         borderRadius: BorderRadius.circular(RevericRadius.xl),
         child: InkWell(
           borderRadius: BorderRadius.circular(RevericRadius.xl),
-          onTap: () {
-            final box = context.findRenderObject()! as RenderBox;
-            showRevericContextMenu(
-              context: context,
-              position: box.localToGlobal(Offset.zero),
-              entries: [
-                RevericMenuItem(
-                  icon: RevericIcons.arrow_upward_rounded,
-                  label: context.t(LocaleKeys.storyboardUp),
-                  enabled: onMove != null,
-                  onTap: () => onMove?.call(-1),
-                ),
-                RevericMenuItem(
-                  icon: RevericIcons.arrow_downward_rounded,
-                  label: context.t(LocaleKeys.storyboardDown),
-                  enabled: onMove != null,
-                  onTap: () => onMove?.call(1),
-                ),
-                RevericMenuItem(
-                  icon: RevericIcons.link_off,
-                  label: context.t(LocaleKeys.productionUnlink),
-                  onTap: onRemove,
-                ),
-              ],
-            );
-          },
+          onTap: readOnly
+              ? (data == null || onPreview == null
+                    ? null
+                    : () => onPreview!(data))
+              : () {
+                  final box = context.findRenderObject()! as RenderBox;
+                  showRevericContextMenu(
+                    context: context,
+                    position: box.localToGlobal(Offset.zero),
+                    entries: [
+                      RevericMenuItem(
+                        icon: RevericIcons.arrow_upward_rounded,
+                        label: context.t(LocaleKeys.storyboardUp),
+                        enabled: onMove != null,
+                        onTap: () => onMove?.call(-1),
+                      ),
+                      RevericMenuItem(
+                        icon: RevericIcons.arrow_downward_rounded,
+                        label: context.t(LocaleKeys.storyboardDown),
+                        enabled: onMove != null,
+                        onTap: () => onMove?.call(1),
+                      ),
+                      if (onRemove != null)
+                        RevericMenuItem(
+                          icon: RevericIcons.link_off,
+                          label: context.t(LocaleKeys.productionUnlink),
+                          onTap: onRemove!,
+                        ),
+                    ],
+                  );
+                },
           child: SizedBox(
             width: RevericSizes.productionTextInputWidth,
             height: RevericSizes.productionInputTileSize,

@@ -19,12 +19,14 @@ class ProductionAudioNode extends StatelessWidget {
     required this.clip,
     required this.selected,
     this.taskActions,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
   final ProductionClipRow? clip;
   final bool selected;
   final ProductionTaskActions? taskActions;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) => ProductionNodeFrame(
     service: service,
@@ -39,6 +41,7 @@ class ProductionAudioNode extends StatelessWidget {
       well: true,
       borderRadius: 0,
       playing: selected,
+      readOnly: readOnly,
     ),
   );
 }

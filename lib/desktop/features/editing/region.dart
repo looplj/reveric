@@ -19,16 +19,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../../../shared/components/reveric_badge.dart';
 import '../../../shared/components/reveric_button.dart';
 import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_segmented_control.dart';
 import '../../../shared/components/reveric_surfaces.dart';
+import '../../../shared/database/app_database.dart' show AssetRow;
 import '../../../shared/hooks/use_production_subpage.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/editing/document.dart';
 import '../../../shared/providers/editing.dart';
-import '../../../shared/providers/production_media.dart';
+import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/providers/storyboard.dart';
 import '../../../shared/services/editing/service.dart';
 import '../../../shared/theme/theme.dart';
@@ -36,89 +38,176 @@ import '../screenplay/chrome.dart';
 import 'assets.dart';
 import 'controller.dart';
 import 'export_dialog.dart';
+import 'host.dart';
 import 'inspector.dart';
 import 'preview.dart';
 import 'session.dart';
 import 'support.dart';
 import 'timeline.dart';
 
-class EditingRegion extends HookConsumerWidget {
+class EditingRegion extends StatelessWidget {
   const EditingRegion({
     super.key,
+    required String this.novelId,
+    required ({String path, String? episodeId}) this.identity,
+    required this.editingId,
+    required this.onClose,
+    required ValueChanged<Future<void> Function()?> this.registerFlush,
+  }) : host = null;
+
+  const EditingRegion.hosted({
+    super.key,
+    required EditingWorkspaceHost this.host,
+    required this.editingId,
+    required this.onClose,
+    this.registerFlush,
+  }) : novelId = null,
+       identity = null;
+
+  final EditingWorkspaceHost? host;
+  final String? novelId;
+  final ({String path, String? episodeId})? identity;
+  final String editingId;
+  final VoidCallback onClose;
+  final ValueChanged<Future<void> Function()?>? registerFlush;
+
+  @override
+  Widget build(BuildContext context) {
+    if (host case final external?) {
+      return _EditingWorkspace(
+        host: external,
+        editingId: editingId,
+        onClose: onClose,
+        registerFlush: registerFlush,
+      );
+    }
+    return _WorkEditingRegion(
+      novelId: novelId!,
+      identity: identity!,
+      editingId: editingId,
+      onClose: onClose,
+      registerFlush: registerFlush!,
+    );
+  }
+}
+
+class _WorkEditingRegion extends HookConsumerWidget {
+  const _WorkEditingRegion({
     required this.novelId,
     required this.identity,
     required this.editingId,
     required this.onClose,
     required this.registerFlush,
   });
+
   final String novelId;
   final ({String path, String? episodeId}) identity;
   final String editingId;
   final VoidCallback onClose;
   final ValueChanged<Future<void> Function()?> registerFlush;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final work = (path: identity.path, novelId: novelId);
     final projects = ref.watch(editingServiceProvider(work));
     final renderer = ref.watch(editingRenderServiceProvider(work));
-    final settings = ref
-        .watch(
-          episodeProductionProvider(identity.path, identity.episodeId ?? ''),
-        )
-        .value;
     final sessions = ref.watch(editingSessionsProvider);
-    final session = useMemoized(() => sessions.get(projects, editingId), [
-      sessions,
-      projects,
+    final appDb = ref.watch(appDatabaseProvider);
+    final storyboard = ref.watch(storyboardServiceProvider(identity.path));
+    final host = useMemoized(
+      () => WorkEditingHost(
+        novelId: novelId,
+        databasePath: identity.path,
+        episodeId: identity.episodeId,
+        projects: projects,
+        renderer: renderer,
+        sessions: sessions,
+        appDb: appDb,
+        storyboard: storyboard,
+      ),
+      [
+        novelId,
+        identity.path,
+        identity.episodeId,
+        projects,
+        renderer,
+        sessions,
+        appDb,
+        storyboard,
+      ],
+    );
+    return _EditingWorkspace(
+      host: host,
+      editingId: editingId,
+      onClose: onClose,
+      registerFlush: registerFlush,
+    );
+  }
+}
+
+class _EditingWorkspace extends HookWidget {
+  const _EditingWorkspace({
+    required this.host,
+    required this.editingId,
+    required this.onClose,
+    required this.registerFlush,
+  });
+
+  final EditingWorkspaceHost host;
+  final String editingId;
+  final VoidCallback onClose;
+  final ValueChanged<Future<void> Function()?>? registerFlush;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = useMemoized(() => host.acquireSession(editingId), [
+      host,
       editingId,
     ]);
     final controller = useMemoized(() => EditingController(session), [session]);
-    final sources = ref.watch(mediaAssetsProvider).value ?? const [];
-    controller.sources = {for (final asset in sources) asset.id: asset};
-    useListenable(session);
-    useListenable(controller);
-    final ratio = settings?.ratio;
-    final load = useFuture(
-      useMemoized(() async {
-        if (identity.episodeId == null) {
-          await projects.canvasForEditing(editingId);
-        }
-        await session.ensureLoaded();
-      }, [session, identity]),
-    );
-    final timelineHeight = useState(368.0);
     final register = useRef(registerFlush)..value = registerFlush;
+    // 在 useListenable 之前注册清理，确保卸载时按逆序先摘除监听再释放 controller/session。
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) {
-          register.value(session.flush);
+          register.value?.call(session.flush);
         }
       });
       return () {
-        register.value(null);
+        register.value?.call(null);
         controller.dispose();
-        sessions.prune();
+        host.releaseSession(session);
       };
-    }, [session, sessions]);
+    }, [host, session, controller]);
+    useListenable(session);
+    useListenable(controller);
+    final sources =
+        useStream(useMemoized(host.watchSources, [host])).data ??
+        const <AssetRow>[];
+    controller.sources = {for (final asset in sources) asset.id: asset};
+    final settings = useStream(useMemoized(host.watchSpec, [host])).data;
+    final ratio = settings?.ratio;
+    final load = useFuture(
+      useMemoized(() async {
+        await host.verifyAccess(editingId);
+        await session.ensureLoaded();
+      }, [host, session, editingId]),
+    );
+    final timelineHeight = useState(368.0);
     final doc = session.document;
-    // 空时间线没有可看的属性，打开时直接落在素材页。
+    // 空时间线没有可看的属性，可写模式打开时直接落在素材页。
     useEffect(() {
-      if (doc != null && doc.clips.isEmpty) {
+      if (!host.readOnly && doc != null && doc.clips.isEmpty) {
         controller.showAssets(true);
       }
       return null;
-    }, [controller, doc != null]);
+    }, [host.readOnly, controller, doc != null]);
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final title = session.title;
-    useProductionSubpage(
-      ref,
-      identity.path,
-      '${context.t(LocaleKeys.editingTitle)} · $title',
-    );
     final spec = [
       ?(doc?.ratio ?? ratio),
-      ?settings?.resolution.toUpperCase(),
+      ?settings?.resolution?.toUpperCase(),
       '$editingFps fps',
     ].join(' · ');
 
@@ -130,11 +219,14 @@ class EditingRegion extends HookConsumerWidget {
     }
 
     Future<void> export() async {
+      if (host.readOnly) {
+        return;
+      }
       await session.flush();
-      final episodeId = identity.episodeId;
+      final episodeId = host.episodeId;
       final episode = episodeId == null
           ? null
-          : await projects.database.screenplayDao.getEpisode(episodeId);
+          : await host.projects.database.screenplayDao.getEpisode(episodeId);
       if (episodeId != null && episode == null) {
         throw StateError('The episode no longer exists.');
       }
@@ -143,7 +235,7 @@ class EditingRegion extends HookConsumerWidget {
       }
       await showEditingExport(
         context,
-        renderer: renderer,
+        renderer: host.renderer,
         document: session.document!,
         title: episode == null
             ? session.title
@@ -177,17 +269,19 @@ class EditingRegion extends HookConsumerWidget {
       if (event is KeyRepeatEvent && step == 0) {
         return KeyEventResult.ignored;
       }
-      if (command && key == LogicalKeyboardKey.keyZ) {
-        keyboard.isShiftPressed ? session.redo() : session.undo();
-      } else if (key == LogicalKeyboardKey.space) {
+      if (key == LogicalKeyboardKey.space) {
         controller.togglePlay?.call();
+      } else if (step != 0) {
+        controller.seek(controller.playhead.value + step);
+      } else if (host.readOnly) {
+        return KeyEventResult.ignored;
+      } else if (command && key == LogicalKeyboardKey.keyZ) {
+        keyboard.isShiftPressed ? session.redo() : session.undo();
       } else if (key == LogicalKeyboardKey.keyS && !command) {
         controller.split(context);
       } else if (key == LogicalKeyboardKey.backspace ||
           key == LogicalKeyboardKey.delete) {
         controller.remove(context);
-      } else if (step != 0) {
-        controller.seek(controller.playhead.value + step);
       } else {
         return KeyEventResult.ignored;
       }
@@ -208,44 +302,70 @@ class EditingRegion extends HookConsumerWidget {
         onKeyEvent: onKey,
         child: Column(
           children: [
+            if (host.subpageDatabasePath case final path?)
+              _SubpageReporter(
+                databasePath: path,
+                label: '${context.t(LocaleKeys.editingTitle)} · $title',
+              ),
             ScreenplayRegionToolbar(
               leading: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RevericIconButton(
-                    icon: identity.episodeId == null
+                    icon: host.isCanvasEditing
                         ? RevericIcons.arrow_back
                         : RevericIcons.close,
                     tooltip: context.t(
-                      identity.episodeId == null
+                      host.isCanvasEditing
                           ? LocaleKeys.productionBackToCanvas
                           : LocaleKeys.commonClose,
                     ),
                     onPressed: () => editingRun(context, close),
                   ),
                   const SizedBox(width: RevericSpacing.sm),
-                  RevericIcon(
-                    session.error != null
-                        ? RevericIcons.warning_circle
-                        : RevericIcons.check,
-                    size: 12,
-                    color: session.error != null
-                        ? colors.warningText
-                        : colors.textSubtle,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    saveLabel,
-                    style: typo.uiTiny.copyWith(
+                  if (host.readOnly) ...[
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 280),
+                      child: Text(
+                        title.trim().isEmpty
+                            ? context.t(LocaleKeys.editingTitle)
+                            : title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: typo.uiSmallSemibold.copyWith(
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: RevericSpacing.sm),
+                    RevericBadge(
+                      label: context.t(LocaleKeys.commonReadOnly),
+                      color: colors.textMuted,
+                    ),
+                  ] else ...[
+                    RevericIcon(
+                      session.error != null
+                          ? RevericIcons.warning_circle
+                          : RevericIcons.check,
+                      size: 12,
                       color: session.error != null
                           ? colors.warningText
                           : colors.textSubtle,
                     ),
-                  ),
+                    const SizedBox(width: 3),
+                    Text(
+                      saveLabel,
+                      style: typo.uiTiny.copyWith(
+                        color: session.error != null
+                            ? colors.warningText
+                            : colors.textSubtle,
+                      ),
+                    ),
+                  ],
                 ],
               ),
               trailing: [
-                if (doc != null && doc.clips.isEmpty)
+                if (!host.readOnly && doc != null && doc.clips.isEmpty)
                   RevericButton.text(
                     label: context.t(LocaleKeys.editingImportAdopted),
                     size: RevericButtonSize.compact,
@@ -255,7 +375,7 @@ class EditingRegion extends HookConsumerWidget {
                             context,
                             () => controller.importAdopted(
                               context,
-                              identity.episodeId,
+                              host.episodeId,
                             ),
                           ),
                   ),
@@ -285,18 +405,21 @@ class EditingRegion extends HookConsumerWidget {
                     ),
                   ),
                 ),
-                Container(width: 1, height: 18, color: colors.borderSubtle),
-                RevericButton.primary(
-                  icon: RevericIcons.download_simple,
-                  label: context.t(LocaleKeys.commonExport),
-                  size: RevericButtonSize.compact,
-                  onPressed: doc == null || doc.totalFrames == 0
-                      ? null
-                      : () => editingRun(context, export),
-                ),
+                if (!host.readOnly) ...[
+                  Container(width: 1, height: 18, color: colors.borderSubtle),
+                  RevericButton.primary(
+                    icon: RevericIcons.download_simple,
+                    label: context.t(LocaleKeys.commonExport),
+                    size: RevericButtonSize.compact,
+                    onPressed: doc == null || doc.totalFrames == 0
+                        ? null
+                        : () => editingRun(context, export),
+                  ),
+                ],
               ],
             ),
-            if (session.sourceProblem != null || session.error != null)
+            if (session.sourceProblem != null ||
+                (!host.readOnly && session.error != null))
               _Banner(session: session, controller: controller),
             Expanded(
               child: load.hasError
@@ -328,17 +451,40 @@ class EditingRegion extends HookConsumerWidget {
                                   Expanded(
                                     child: EditingPreview(
                                       controller: controller,
-                                      renderer: renderer,
+                                      renderer: host.renderer,
                                     ),
                                   ),
-                                  _Side(
-                                    controller: controller,
-                                    novelId: novelId,
-                                    path: identity.path,
-                                    episodeId: identity.episodeId,
-                                    title: title,
-                                    spec: spec,
-                                  ),
+                                  if (host.readOnly)
+                                    Container(
+                                      width: 288,
+                                      decoration: BoxDecoration(
+                                        color: colors.surface,
+                                        border: Border(
+                                          left: BorderSide(
+                                            color: colors.border,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(
+                                          top: RevericSpacing.sm,
+                                        ),
+                                        child: EditingInspector(
+                                          controller: controller,
+                                          title: title,
+                                          spec: spec,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    _Side(
+                                      controller: controller,
+                                      novelId: host.novelId!,
+                                      path: host.databasePath!,
+                                      episodeId: host.episodeId,
+                                      title: title,
+                                      spec: spec,
+                                    ),
                                 ],
                               ),
                             ),
@@ -388,6 +534,19 @@ class EditingRegion extends HookConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _SubpageReporter extends HookConsumerWidget {
+  const _SubpageReporter({required this.databasePath, required this.label});
+
+  final String databasePath;
+  final String label;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    useProductionSubpage(ref, databasePath, label);
+    return const SizedBox.shrink();
   }
 }
 

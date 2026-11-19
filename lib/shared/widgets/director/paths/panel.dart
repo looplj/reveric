@@ -107,7 +107,7 @@ class DirectorPathSection extends HookWidget {
               style: typo.uiTiny.copyWith(color: colors.textMuted),
             ),
           ),
-        if (!editor.creating) ...[
+        if (!session.readOnly && !editor.creating) ...[
           const SizedBox(height: RevericSpacing.xxs),
           Wrap(
             spacing: RevericSpacing.xxs,
@@ -184,6 +184,7 @@ class DirectorPathSection extends HookWidget {
                     key: const ValueKey('director-path-easing'),
                     value: path['easing'],
                     height: RevericSizes.fieldHeightSm,
+                    enabled: !session.readOnly,
                     items: [
                       for (final easing in ['linear', 'smoothstep', 'hold'])
                         RevericSelectItem(
@@ -199,21 +200,24 @@ class DirectorPathSection extends HookWidget {
                 PathCheck(
                   label: tr(context, 'path_orient'),
                   value: path['orient_to_path'],
-                  onChanged: (v) => session.attempt(
-                    () => editor.update((p) => p['orient_to_path'] = v),
+                  onChanged: session.readOnly
+                      ? null
+                      : (v) => session.attempt(
+                          () => editor.update((p) => p['orient_to_path'] = v),
+                        ),
+                ),
+                if (!session.readOnly)
+                  PathCheck(
+                    label: tr(context, 'path_replace'),
+                    value: editor.replace,
+                    onChanged: (v) {
+                      editor.replace = v;
+                      session.refresh();
+                    },
                   ),
-                ),
-                PathCheck(
-                  label: tr(context, 'path_replace'),
-                  value: editor.replace,
-                  onChanged: (v) {
-                    editor.replace = v;
-                    session.refresh();
-                  },
-                ),
                 const SizedBox(height: RevericSpacing.xs),
                 PathGeometryEditor(session: session),
-                if (editor.drawing)
+                if (!session.readOnly && editor.drawing)
                   LabeledField(
                     label: tr(context, 'path_height'),
                     child: CommitField(
@@ -237,7 +241,7 @@ class DirectorPathSection extends HookWidget {
                   spacing: RevericSpacing.xxs,
                   runSpacing: RevericSpacing.xxs,
                   children: [
-                    if (editor.creating)
+                    if (!session.readOnly && editor.creating)
                       RevericButton.primary(
                         key: const ValueKey('director-path-finish'),
                         label: tr(
@@ -247,22 +251,23 @@ class DirectorPathSection extends HookWidget {
                         size: RevericButtonSize.compact,
                         onPressed: () => session.attempt(editor.finish),
                       ),
-                    if (!editor.creating)
+                    if (!session.readOnly && !editor.creating)
                       RevericButton.secondary(
                         key: const ValueKey('director-path-bake'),
                         label: tr(context, 'bake'),
                         size: RevericButtonSize.compact,
                         onPressed: () => session.attempt(editor.bake),
                       ),
-                    RevericButton.text(
-                      key: const ValueKey('director-path-delete'),
-                      label: tr(context, 'delete'),
-                      size: RevericButtonSize.compact,
-                      onPressed: () => session.attempt(editor.remove),
-                    ),
+                    if (!session.readOnly)
+                      RevericButton.text(
+                        key: const ValueKey('director-path-delete'),
+                        label: tr(context, 'delete'),
+                        size: RevericButtonSize.compact,
+                        onPressed: () => session.attempt(editor.remove),
+                      ),
                     RevericButton.text(
                       key: const ValueKey('director-path-cancel'),
-                      label: tr(context, 'cancel'),
+                      label: tr(context, session.readOnly ? 'close' : 'cancel'),
                       size: RevericButtonSize.compact,
                       onPressed: editor.cancel,
                     ),
@@ -279,7 +284,7 @@ class DirectorPathSection extends HookWidget {
 class PathCheck extends StatelessWidget {
   final String label;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
   const PathCheck({
     super.key,
     required this.label,
@@ -296,10 +301,7 @@ class PathCheck extends StatelessWidget {
           semanticLabel: label,
         ),
         Expanded(
-          child: Text(
-            label,
-            style: RevericTheme.typographyOf(context).uiSmall,
-          ),
+          child: Text(label, style: RevericTheme.typographyOf(context).uiSmall),
         ),
       ],
     ),

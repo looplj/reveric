@@ -57,11 +57,11 @@ class ProductionComposerToolbar extends StatelessWidget {
   const ProductionComposerToolbar({
     super.key,
     required this.children,
-    required this.submit,
+    this.submit,
   });
 
   final List<Widget> children;
-  final Widget submit;
+  final Widget? submit;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -74,8 +74,10 @@ class ProductionComposerToolbar extends StatelessWidget {
           children: children,
         ),
       ),
-      const SizedBox(width: RevericSpacing.sm),
-      submit,
+      if (submit case final action?) ...[
+        const SizedBox(width: RevericSpacing.sm),
+        action,
+      ],
     ],
   );
 }

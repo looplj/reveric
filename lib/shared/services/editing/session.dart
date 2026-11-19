@@ -10,9 +10,10 @@ import 'service.dart';
 import '../production/ffmpeg_runner.dart';
 
 class EditingSession extends ChangeNotifier {
-  EditingSession(this.projects, this.editingId);
+  EditingSession(this.projects, this.editingId, {this.readOnly = false});
   final EditingService projects;
   final String editingId;
+  final bool readOnly;
   String title = '';
   EditingDocument? document;
   EditingDocument? _saved;
@@ -51,9 +52,10 @@ class EditingSession extends ChangeNotifier {
   Future<void>? _pending;
   final _past = <(EditingDocument, String)>[];
   final _future = <(EditingDocument, String)>[];
-  bool get dirty => !identical(document, _saved) || title != _savedTitle;
-  bool get canUndo => _past.isNotEmpty;
-  bool get canRedo => _future.isNotEmpty;
+  bool get dirty =>
+      !readOnly && (!identical(document, _saved) || title != _savedTitle);
+  bool get canUndo => !readOnly && _past.isNotEmpty;
+  bool get canRedo => !readOnly && _future.isNotEmpty;
   EditingClip? get selected =>
       document?.clips.where((c) => c.id == selectedId).firstOrNull;
   void _notify() {
@@ -87,6 +89,9 @@ class EditingSession extends ChangeNotifier {
   }
 
   void commit(EditingDocument next) {
+    if (readOnly) {
+      throw StateError('Editing session is read-only');
+    }
     if (commandBusy) {
       throw const EditingConflict();
     }
@@ -124,6 +129,9 @@ class EditingSession extends ChangeNotifier {
   }
 
   void undo() {
+    if (readOnly) {
+      return;
+    }
     if (commandBusy) {
       throw const EditingConflict();
     }
@@ -141,6 +149,9 @@ class EditingSession extends ChangeNotifier {
   }
 
   void redo() {
+    if (readOnly) {
+      return;
+    }
     if (commandBusy) {
       throw const EditingConflict();
     }
@@ -158,6 +169,9 @@ class EditingSession extends ChangeNotifier {
   }
 
   Future<void> flush() {
+    if (readOnly) {
+      return Future.value();
+    }
     if (_pending != null) {
       return _pending!;
     }
@@ -205,6 +219,9 @@ class EditingSession extends ChangeNotifier {
     action, {
     String? history,
   }) async {
+    if (readOnly) {
+      throw StateError('Editing session is read-only');
+    }
     await ensureLoaded();
     if (commandBusy) {
       throw const EditingConflict();

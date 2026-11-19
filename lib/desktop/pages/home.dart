@@ -89,6 +89,7 @@ import '../widgets/novel_import_dialog.dart';
 import '../../shared/services/screenplay_import.dart';
 import '../../shared/widgets/screenplay/import_dialog.dart';
 import '../features/production/package_actions.dart';
+import '../features/canvas_gallery/page.dart';
 import '../widgets/home/library_home_panel.dart';
 import '../widgets/settings/settings_dialog.dart';
 import '../widgets/agent_management/subagent_edit_panel.dart';
@@ -962,6 +963,13 @@ class NovelHomePage extends HookConsumerWidget {
         onImportNovel: contentKind == contentKindCanvas
             ? () => importCanvasFromShelf(context)
             : openImportNovelDialog,
+        onOpenCanvasGallery: contentKind == contentKindCanvas
+            ? () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CanvasGalleryPage(),
+                ),
+              )
+            : null,
         onImportScreenplay: importScreenplay,
         onCreateDemoNovel: () => createDemoNovelWithNavigation(context, ref),
         onDeleteNovel: (novel) => deleteNovel(novel),

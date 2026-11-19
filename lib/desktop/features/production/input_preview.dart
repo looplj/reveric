@@ -22,6 +22,7 @@ import 'node_card.dart';
 import 'support.dart';
 import 'text_input_tile.dart';
 import '../../../shared/database/app_database.dart' show AssetRow;
+import '../../../shared/database/novel_content_database.dart' show CanvasNode;
 
 /// 输入格边长。
 const double productionInputTileSize = RevericSizes.productionInputTileSize;
@@ -38,6 +39,8 @@ class ProductionInputTile extends HookWidget {
     required this.onRole,
     required this.onMove,
     required this.onRemove,
+    this.readOnly = false,
+    this.onPreviewText,
   });
   final ProductionCanvasService service;
   final ProductionInput input;
@@ -51,7 +54,9 @@ class ProductionInputTile extends HookWidget {
 
   /// -1 前移，1 后移；到头时为 null。
   final void Function(int delta)? onMove;
-  final VoidCallback onRemove;
+  final VoidCallback? onRemove;
+  final bool readOnly;
+  final ValueChanged<CanvasNode>? onPreviewText;
   @override
   Widget build(BuildContext context) {
     final asset = useStream(
@@ -75,10 +80,21 @@ class ProductionInputTile extends HookWidget {
         input: input,
         onMove: onMove,
         onRemove: onRemove,
+        readOnly: readOnly,
+        onPreview: onPreviewText,
       );
     }
 
     void menu() {
+      if (readOnly) {
+        if (assetId != null) {
+          productionRun(
+            context,
+            () => previewProductionAsset(context, service, assetId),
+          );
+        }
+        return;
+      }
       final box = context.findRenderObject()! as RenderBox;
       showRevericContextMenu(
         context: context,
@@ -127,18 +143,20 @@ class ProductionInputTile extends HookWidget {
             enabled: onMove != null,
             onTap: () => onMove?.call(1),
           ),
-          RevericMenuItem(
-            icon: RevericIcons.link_off,
-            label: context.t(LocaleKeys.productionUnlink),
-            description: context.t(LocaleKeys.productionUnlinkHint),
-            iconColor: colors.error,
-            labelColor: colors.error,
-            onTap: onRemove,
-          ),
+          if (onRemove != null)
+            RevericMenuItem(
+              icon: RevericIcons.link_off,
+              label: context.t(LocaleKeys.productionUnlink),
+              description: context.t(LocaleKeys.productionUnlinkHint),
+              iconColor: colors.error,
+              labelColor: colors.error,
+              onTap: onRemove!,
+            ),
         ],
       );
     }
 
+    final interactive = !readOnly || assetId != null;
     return Tooltip(
       message: [
         '$name · ${productionRole(context, input.role, mode: mode, middleFrameIndex: middleFrameIndex)}',
@@ -148,11 +166,13 @@ class ProductionInputTile extends HookWidget {
       ].join('\n'),
       constraints: const BoxConstraints(maxWidth: 320),
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+        cursor: interactive
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
         onEnter: (_) => hovered.value = true,
         onExit: (_) => hovered.value = false,
         child: GestureDetector(
-          onTap: menu,
+          onTap: interactive ? menu : null,
           child: Container(
             width: productionInputTileSize,
             height: productionInputTileSize,

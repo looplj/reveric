@@ -40,6 +40,25 @@ class DirectorAspectButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = session.history.document.aspectRatio;
+    if (session.readOnly) {
+      return compact
+          ? RevericIconButton(
+              key: const ValueKey('director-aspect-button'),
+              icon: RevericIcons.aspect_ratio,
+              tooltip: '${tr(context, 'aspect')} · ${_label(context, current)}',
+              onPressed: null,
+            )
+          : Tooltip(
+              message: tr(context, 'aspect'),
+              child: RevericButton.text(
+                key: const ValueKey('director-aspect-button'),
+                label: _label(context, current),
+                icon: RevericIcons.aspect_ratio,
+                size: RevericButtonSize.compact,
+                onPressed: null,
+              ),
+            );
+    }
     return RevericPopover(
       trigger: (context, open, toggle) => compact
           ? RevericIconButton(

@@ -1282,6 +1282,9 @@ class AppDatabase extends _$AppDatabase {
   /// 供受控维护操作在内存库中生成当前 schema 参考。
   AppDatabase.forSchemaRepair(super.executor);
 
+  /// 供画廊只读预览等短期沙箱使用的临时内存库，不参与全局单例缓存。
+  AppDatabase.ephemeral(super.executor);
+
   static _CachedAppDatabase? _cachedDatabase;
 
   static const currentSchemaVersion = 9;
@@ -1411,7 +1414,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   Future<void> close() async {
     final cachedDatabase = _cachedDatabase;
-    if (cachedDatabase == null) {
+    if (cachedDatabase == null || !identical(cachedDatabase.database, this)) {
       return super.close();
     }
 

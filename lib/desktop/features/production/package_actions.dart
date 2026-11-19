@@ -4,7 +4,7 @@
 //   lib/desktop/widgets/novel_list.dart
 //   lib/desktop/features/production/canvas_package_file.dart
 //   lib/shared/services/production/canvas_package.dart
-//   lib/desktop/pages/workspace_editor_page.dart
+//   lib/desktop/features/canvas_gallery/conversation_selection.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/production.json
 //   assets/translations/zh-CN/production.json
@@ -32,24 +32,42 @@ import '../../../shared/services/production/canvas_package.dart';
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/theme/theme.dart';
 import '../../pages/workspace_editor_page.dart';
+import '../canvas_gallery/conversation_selection.dart';
 import 'canvas_package_file.dart';
 
 final _log = AppLogger.forModule('ProductionCanvasPackageActions');
 
 Future<void> importCanvasFromShelf(BuildContext context) async {
-  final messenger = ScaffoldMessenger.of(context);
   final path = await pickProductionCanvasPackage();
   if (path == null || !context.mounted) {
     return;
   }
-  final container = ProviderScope.containerOf(context);
-  final fallbackTitle = context.t(LocaleKeys.libraryDefaultCanvasTitle);
-  final result = await showRevericDialog<_CanvasImportRun>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => _CanvasImportProgressDialog(
-      run: (report) => const ProductionCanvasPackageOrchestrator().importFile(
-        zip: File(path),
+  await importObtainedCanvasZip(context, File(path));
+}
+
+Future<void> importObtainedCanvasZip(BuildContext context, File zip) =>
+    _runCanvasImport(
+      context,
+      run: (container, fallbackTitle, report) =>
+          const ProductionCanvasPackageOrchestrator().importFile(
+            zip: zip,
+            actions: container.read(novelActionsProvider),
+            library: container.read(mediaLibraryServiceProvider),
+            fallbackTitle: fallbackTitle,
+            openContent: NovelContentDatabase.new,
+            releaseContent: (database) => database.close(),
+            onProgress: report,
+          ),
+    );
+
+Future<void> importObtainedCanvasCache(
+  BuildContext context,
+  Directory cacheDirectory,
+) => _runCanvasImport(
+  context,
+  run: (container, fallbackTitle, report) =>
+      const ProductionCanvasPackageOrchestrator().importFromCacheDirectory(
+        cacheDirectory: cacheDirectory,
         actions: container.read(novelActionsProvider),
         library: container.read(mediaLibraryServiceProvider),
         fallbackTitle: fallbackTitle,
@@ -57,6 +75,25 @@ Future<void> importCanvasFromShelf(BuildContext context) async {
         releaseContent: (database) => database.close(),
         onProgress: report,
       ),
+);
+
+Future<void> _runCanvasImport(
+  BuildContext context, {
+  required Future<ProductionCanvasPackageImport> Function(
+    ProviderContainer container,
+    String fallbackTitle,
+    void Function(double progress) report,
+  )
+  run,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final container = ProviderScope.containerOf(context);
+  final fallbackTitle = context.t(LocaleKeys.libraryDefaultCanvasTitle);
+  final result = await showRevericDialog<_CanvasImportRun>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _CanvasImportProgressDialog(
+      run: (report) => run(container, fallbackTitle, report),
     ),
   );
   if (!context.mounted || result == null) {
@@ -67,11 +104,12 @@ Future<void> importCanvasFromShelf(BuildContext context) async {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          context.t(
-            error.code == 'invalid_package' || error.code == 'missing_media'
-                ? LocaleKeys.productionImportCanvasInvalid
-                : LocaleKeys.productionImportCanvasFailed,
-          ),
+          context.t(switch (error.code) {
+            'unsupported' => LocaleKeys.productionGalleryImportUpgrade,
+            'invalid_package' ||
+            'missing_media' => LocaleKeys.productionImportCanvasInvalid,
+            _ => LocaleKeys.productionImportCanvasFailed,
+          }),
         ),
       ),
     );
@@ -123,32 +161,56 @@ Future<void> exportCanvasFromShelf(BuildContext context, Novel novel) async {
       ? context.t(LocaleKeys.libraryDefaultCanvasTitle)
       : novel.title.trim();
   final container = ProviderScope.containerOf(context);
+  final service = ProductionCanvasService(
+    container.read(storyboardServiceProvider(databasePath, novelId: novel.id)),
+    container.read(mediaLibraryServiceProvider),
+    novel.id,
+  );
+  final persistence = container.read(
+    aiSessionPersistenceServiceProvider(
+      novelId: novel.id,
+      databasePath: databasePath,
+    ),
+  );
+  final selected = await showCanvasConversationSelection(
+    context,
+    load: () => listProductionCanvasPackageConversations(
+      sessionPersistence: persistence,
+      novelDatabase: service.shots.database,
+    ),
+  );
+  if (!context.mounted || selected == null) {
+    return;
+  }
   final result = await showRevericDialog<_CanvasExportOutcome>(
     context: context,
     barrierDismissible: false,
     builder: (_) => _CanvasExportProgressDialog(
       run: (report) async {
-        final service = ProductionCanvasService(
-          container.read(
-            storyboardServiceProvider(databasePath, novelId: novel.id),
-          ),
-          container.read(mediaLibraryServiceProvider),
-          novel.id,
-        );
         final canvas = await service.ensureCanvas('');
         final file = await const ProductionCanvasPackageOrchestrator()
             .exportToFile(
               canvas: service,
               canvasId: canvas.id,
               title: title,
+              sessionPersistence: persistence,
+              conversationIds: selected.toList(),
               onProgress: (value) => report(value * 0.85),
             );
-        final status = await saveProductionCanvasPackage(
-          file.file,
-          title: title,
-          onProgress: (value) => report(0.85 + value * 0.15),
-        );
-        return _CanvasExportOutcome(file: file, status: status);
+        try {
+          final status = await saveProductionCanvasPackage(
+            file.file,
+            title: title,
+            onProgress: (value) => report(0.85 + value * 0.15),
+          );
+          return _CanvasExportOutcome(file: file, status: status);
+        } catch (error, stackTrace) {
+          return _CanvasExportOutcome(
+            file: file,
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
       },
     ),
   );
@@ -160,7 +222,16 @@ Future<void> exportCanvasFromShelf(BuildContext context, Novel novel) async {
     final error = result.error;
     if (error is ProductionCanvasPackageException) {
       messenger.showSnackBar(
-        SnackBar(content: Text(context.t(_exportMessage(error.code)))),
+        SnackBar(
+          content: Text(
+            context.t(
+              canvasPackageExportMessage(error.code),
+              namedArgs: error.subject != null
+                  ? {'subject': error.subject!}
+                  : null,
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -387,9 +458,15 @@ Widget _canvasProgressDialog(
   );
 }
 
-String _exportMessage(String code) => switch (code) {
+String canvasPackageExportMessage(String code) => switch (code) {
   'empty' => LocaleKeys.productionExportCanvasEmpty,
   'canvas_only' => LocaleKeys.productionCanvasPackageCanvasOnly,
   'missing_media' => LocaleKeys.productionExportCanvasMissingMedia,
+  'missing_conversation_file' =>
+    LocaleKeys.productionGalleryMissingConversationFile,
+  'invalid_conversation' => LocaleKeys.productionGalleryInvalidConversation,
+  'missing_style' => LocaleKeys.productionGalleryMissingStyle,
+  'cover_failed' => LocaleKeys.productionGalleryCoverFailed,
+  'package_too_large' => LocaleKeys.productionGalleryPackageTooLarge,
   _ => LocaleKeys.productionExportCanvasFailed,
 };

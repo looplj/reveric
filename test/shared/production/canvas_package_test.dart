@@ -18,6 +18,9 @@ import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/models/production/media.dart';
+import 'package:reveric/shared/models/production/panorama.dart';
+import 'package:reveric/shared/models/production/style.dart';
+import 'package:reveric/shared/models/production/view_presets.dart';
 import 'package:reveric/shared/models/storyboard/prompt.dart';
 import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/services/novel_actions.dart';
@@ -26,6 +29,7 @@ import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
+import 'package:reveric/shared/services/production/style_service.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
@@ -146,6 +150,14 @@ void main() {
         canvasId,
       )).nodes.map((node) => node.id).toSet();
 
+      final overview = await inspectProductionCanvasPublication(
+        canvas: source,
+        canvasId: canvasId,
+      );
+      expect(overview.nodeCount, sourceIds.length);
+      expect(overview.assetCount, 1);
+      expect(overview.sourceBytes, await File(library.resolve(png)).length());
+      expect(overview.preview.jpeg, isNotEmpty);
       final packaged = await const ProductionCanvasPackageOrchestrator()
           .exportToFile(canvas: source, canvasId: canvasId, title: 'Board');
       try {
@@ -352,7 +364,7 @@ void main() {
     }
   });
 
-  test('rejects a package that records a source work', () async {
+  test('ignores extra V1 fields and safe unreferenced ZIP entries', () async {
     await source.addText(canvasId, title: 'Note', content: 'hello');
     final packaged = await const ProductionCanvasPackageOrchestrator()
         .exportToFile(canvas: source, canvasId: canvasId, title: 'Board');
@@ -376,16 +388,136 @@ void main() {
             : file.readBytes()!;
         rebuilt.add(ArchiveFile.bytes(file.name, bytes));
       }
-      final zip = File(p.join(support.path, 'linked.zip'));
+      rebuilt.add(ArchiveFile.bytes('extra/notes.json', const [123, 125]));
+      final zip = File(p.join(support.path, 'extended.zip'));
       await zip.writeAsBytes(ZipEncoder().encode(rebuilt));
-      await _expectCode(
-        () => _import(zip, actions, library),
-        'invalid_package',
+      final imported = await _import(zip, actions, library);
+      final work = (await appDb.novelDao.get(imported.novelId))!;
+      expect(work.sourceNovelId, isNull);
+
+      final futureManifest = utf8.encode(
+        jsonEncode({...await _manifest(packaged.file), 'version': 2}),
       );
-      expect(await appDb.novelDao.getAll(), hasLength(1));
+      final futureZip = File(p.join(support.path, 'future.zip'));
+      await futureZip.writeAsBytes(
+        ZipEncoder().encode(
+          Archive()..add(ArchiveFile.bytes('manifest.json', futureManifest)),
+        ),
+      );
+      await _expectCode(
+        () => _import(futureZip, actions, library),
+        'unsupported',
+      );
+      expect(await appDb.novelDao.getAll(), hasLength(2));
     } finally {
       await packaged.delete();
     }
+  });
+
+  test('round-trips a custom style and public clip defaults', () async {
+    final styles = ProductionStyleService(appDb);
+    final original = await styles.save(
+      name: 'Portable',
+      prompt: ProductionStylePrompt(before: 'Prefix', after: 'Suffix'),
+    );
+    await source.setScreenplayStyle(original.id);
+    final node = await source.addImage(canvasId);
+    final clip = (await source.shots.getShot(node.clipId!))!;
+    await source.shots.apply(clip.id, {
+      ...source.shots.snapshot(clip),
+      'provider_id': 'private-provider',
+      'model_id': 'model-for-preview',
+      'style_selection': original.id,
+      'resolution': '2K',
+    });
+
+    final packaged = await const ProductionCanvasPackageOrchestrator()
+        .exportToFile(
+          canvas: source,
+          canvasId: canvasId,
+          title: 'Public',
+          publicGallery: true,
+        );
+    addTearDown(packaged.delete);
+    final cover = await packaged.cover!.readAsBytes();
+    expect(cover.take(2), [0xff, 0xd8]);
+    expect(cover.length, lessThanOrEqualTo(2 * 1024 * 1024));
+
+    final manifest = await _manifest(packaged.file);
+    expect(jsonEncode(manifest), isNot(contains('private-provider')));
+    final preview = await readProductionCanvasPackagePreview(packaged.file);
+    addTearDown(preview.delete);
+    expect(preview.generations.single.model, 'model-for-preview');
+    expect(preview.generations.single.parameters['resolution'], '2K');
+
+    final imported = await _import(packaged.file, actions, library);
+    final work = (await appDb.novelDao.get(imported.novelId))!;
+    final importedDb = NovelContentDatabase(work.contentDatabasePath!);
+    opened.add(importedDb);
+    final importedClip =
+        (await importedDb.select(importedDb.productionClips).get()).single;
+    final root = (await importedDb.screenplayDao.getRoot())!;
+    expect(importedClip.providerId, isNull);
+    expect(importedClip.modelId, isNull);
+    expect(importedClip.resolution, '1K');
+    expect(importedClip.styleSelection, root.styleId);
+    expect(root.styleId, isNot(original.id));
+    final restoredStyle = (await appDb.productionStyleDao.getStyle(
+      root.styleId!,
+    ))!;
+    expect(restoredStyle.before, 'Prefix');
+    expect(restoredStyle.after, 'Suffix');
+  });
+
+  test('restores panorama view and image preset on ordinary nodes', () async {
+    final png = await _pngAsset(library);
+    final media = await source.addMedia(canvasId, png.id);
+    const mediaView = PanoramaView(yaw: 20, pitch: -10, fov: 80);
+    await source.setPanoramaView(media.id, mediaView);
+    final image = await source.addImage(canvasId);
+    const imageView = PanoramaView(yaw: 5, pitch: 6, fov: 70);
+    const preset = ImageGenerationPreset(
+      method: ImageGenerationMethod.panorama,
+      complexity: 'detailed',
+    );
+    await source.write(image.id, () async {
+      await source.db.canvasDao.updateActiveNodeFields(
+        image.id,
+        CanvasNodesCompanion(
+          style: Value({
+            'imageGeneration': preset.toJson(),
+            'panorama': imageView.toJson(),
+          }),
+        ),
+      );
+    });
+
+    final packaged = await const ProductionCanvasPackageOrchestrator()
+        .exportToFile(canvas: source, canvasId: canvasId, title: 'Views');
+    addTearDown(packaged.delete);
+    final imported = await _import(packaged.file, actions, library);
+    final work = (await appDb.novelDao.get(imported.novelId))!;
+    final importedDb = NovelContentDatabase(work.contentDatabasePath!);
+    opened.add(importedDb);
+    final nodes = await importedDb.canvasDao.getNodesByCanvas(
+      (await importedDb.select(importedDb.canvases).get()).single.id,
+    );
+    final importedMedia = nodes.singleWhere(
+      (node) => node.type == canvasNodeTypeMedia,
+    );
+    final importedImage = nodes.singleWhere(
+      (node) => node.type == canvasNodeTypeImage,
+    );
+    expect(PanoramaView.fromStyle(importedMedia.style), mediaView);
+    expect(
+      ImageGenerationPreset.fromStyle(importedImage.style).method,
+      preset.method,
+    );
+    expect(
+      ImageGenerationPreset.fromStyle(importedImage.style).complexity,
+      preset.complexity,
+    );
+    expect(PanoramaView.fromStyle(importedImage.style), imageView);
   });
 
   test('refuses a screenplay production canvas', () async {
@@ -433,6 +565,60 @@ void main() {
     expect(await File(p.join(support.path, 'evil.json')).exists(), isFalse);
   });
 
+  test(
+    'publish preview keeps a sibling cover file when capture fails',
+    () async {
+      final media = _ThrowingThumbnailMedia();
+      final videoLibrary = MediaLibraryService(appDb, media, support);
+      final videoCanvas = ProductionCanvasService(
+        StoryboardService(sourceDb, contentKind: contentKindCanvas),
+        videoLibrary,
+        'source',
+      );
+      final video = await _videoAsset(videoLibrary);
+      await videoCanvas.addMedia(canvasId, video.id);
+      final stored = File(videoLibrary.resolve(video));
+      final sibling = File('${stored.path}.cover.png');
+      await sibling.writeAsBytes(const [1, 2, 3, 4]);
+
+      final overview = await inspectProductionCanvasPublication(
+        canvas: videoCanvas,
+        canvasId: canvasId,
+      );
+
+      expect(await sibling.readAsBytes(), const [1, 2, 3, 4]);
+      expect(media.outputs, hasLength(1));
+      expect(media.outputs.single, isNot(sibling.path));
+      expect(media.outputs.single, contains('reveric_canvas_cover_'));
+      expect(
+        await Directory(p.dirname(media.outputs.single)).exists(),
+        isFalse,
+      );
+      expect(overview.preview.jpeg, isNotEmpty);
+    },
+  );
+
+  test('offers placed and adopted images as gallery covers', () async {
+    final placed = await _pngAsset(library);
+    await source.addMedia(canvasId, placed.id);
+    final adopted = await _pngAsset(
+      library,
+      bytes: base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      ),
+    );
+    final image = await source.addImage(canvasId);
+    await source.adopt(image.id, adopted.id);
+    await source.addText(canvasId, title: 'Note', content: 'hello');
+
+    final choices = await listProductionCanvasCoverImages(
+      canvas: source,
+      canvasId: canvasId,
+    );
+
+    expect(choices.map((item) => item.id), [placed.id, adopted.id]);
+  });
+
   test('cancels export when a node file is missing', () async {
     final png = await _pngAsset(library);
     await source.addMedia(canvasId, png.id);
@@ -478,14 +664,17 @@ Future<Map<String, dynamic>> _manifest(File zip) async {
       as Map<String, dynamic>;
 }
 
-Future<app.AssetRow> _pngAsset(MediaLibraryService library) async {
+Future<app.AssetRow> _pngAsset(
+  MediaLibraryService library, {
+  List<int>? bytes,
+}) async {
   final file = File(
     p.join(
       Directory.systemTemp.path,
       'canvas-package-${DateTime.now().microsecondsSinceEpoch}.png',
     ),
   );
-  await file.writeAsBytes(base64Decode(_png));
+  await file.writeAsBytes(bytes ?? base64Decode(_png));
   try {
     return await library.importFile(
       file,
@@ -498,6 +687,57 @@ Future<app.AssetRow> _pngAsset(MediaLibraryService library) async {
     if (await file.exists()) {
       await file.delete();
     }
+  }
+}
+
+Future<app.AssetRow> _videoAsset(MediaLibraryService library) async {
+  final file = File(
+    p.join(
+      Directory.systemTemp.path,
+      'canvas-package-${DateTime.now().microsecondsSinceEpoch}.mp4',
+    ),
+  );
+  await file.writeAsBytes(const [0, 0, 0, 24]);
+  try {
+    return await library.importFile(
+      file,
+      name: 'clip.mp4',
+      novelId: 'source',
+      purpose: AssetPurpose.production_upload,
+      cancellation: MediaCancellation(),
+    );
+  } finally {
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+}
+
+class _ThrowingThumbnailMedia extends _ImageMedia {
+  final outputs = <String>[];
+
+  @override
+  Future<MediaInfo> probe(
+    String path, {
+    MediaCancellation? cancellation,
+  }) async => const MediaInfo(
+    duration: Duration(seconds: 1),
+    hasAudio: false,
+    hasVideo: true,
+    width: 2,
+    height: 2,
+    videoCodec: 'h264',
+    formatName: 'mov,mp4,m4a',
+  );
+
+  @override
+  Future<void> captureThumbnail(
+    String input,
+    File output, {
+    MediaCancellation? cancellation,
+  }) async {
+    outputs.add(output.path);
+    throw const MediaException(MediaFailure.invalid_media);
   }
 }
 

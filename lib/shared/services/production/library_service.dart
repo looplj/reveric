@@ -21,7 +21,12 @@ import 'video_thumbnail_cache.dart';
 
 final _log = AppLogger.forModule('MediaLibrary');
 
-class MediaLibraryService {
+/// 受控媒体路径解析接口；用于把媒体预览等只读组件与完整素材库解耦。
+abstract interface class MediaPathResolver {
+  String resolvePath(String stored);
+}
+
+class MediaLibraryService implements MediaPathResolver {
   MediaLibraryService(this.database, this.media, this.root);
   final AppDatabase database;
   final MediaService media;
@@ -138,6 +143,7 @@ class MediaLibraryService {
     p.split(p.relative(resolvePath(stored), from: root.path)),
   );
 
+  @override
   String resolvePath(String stored) {
     if (stored.trim().isEmpty || stored.contains('://')) {
       throw const MediaException(MediaFailure.invalid_media);

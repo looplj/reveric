@@ -265,6 +265,7 @@ Future<void> previewProductionAsset(
         type: file.type,
         name: file.name,
         autoplay: file.type == 'video',
+        pathResolver: service.library,
       ),
     );
   }

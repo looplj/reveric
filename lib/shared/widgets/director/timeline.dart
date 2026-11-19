@@ -559,11 +559,13 @@ class DirectorTimeline extends HookWidget {
                                     2,
                                 child: GestureDetector(
                                   onTap: () => session.seek(keyframe['frame']),
-                                  onDoubleTap: () => editTrackOrClip(
-                                    context,
-                                    session,
-                                    r.track!,
-                                  ),
+                                  onDoubleTap: session.readOnly
+                                      ? null
+                                      : () => editTrackOrClip(
+                                          context,
+                                          session,
+                                          r.track!,
+                                        ),
                                   child: SizedBox.square(
                                     dimension: RevericSizes.directorKeyButton,
                                     child: Center(
@@ -667,9 +669,10 @@ class _Ruler extends HookWidget {
       key: const ValueKey('director-time-ruler'),
       behavior: HitTestBehavior.opaque,
       onTapDown: (d) => session.seek(frameAt(d.localPosition.dx)),
-      onDoubleTap: () => session.setRange(0, 0),
+      onDoubleTap: session.readOnly ? null : () => session.setRange(0, 0),
       onHorizontalDragStart: (d) {
-        anchor.value = HardwareKeyboard.instance.isShiftPressed
+        anchor.value =
+            !session.readOnly && HardwareKeyboard.instance.isShiftPressed
             ? frameAt(d.localPosition.dx)
             : null;
       },
@@ -810,26 +813,28 @@ class _Label extends StatelessWidget {
                     },
                   ),
                 ),
-              if (lane.property case final property?) ...[
+              if (!session.readOnly && lane.property != null) ...[
                 const SizedBox(width: RevericSpacing.xs),
                 ValueListenableBuilder(
                   valueListenable: session.frame,
                   builder: (context, frame, _) => KeyButton(
-                    key: ValueKey('director-lane-key:${lane.owner}:$property'),
-                    state: keyState(session, lane.owner, property),
+                    key: ValueKey(
+                      'director-lane-key:${lane.owner}:${lane.property}',
+                    ),
+                    state: keyState(session, lane.owner, lane.property!),
                     tooltip: tr(context, 'toggle_key'),
                     onPressed:
                         session.playing ||
                             session.history.controlled(
                               lane.owner,
-                              property,
+                              lane.property!,
                               frame,
                             )
                         ? null
                         : () => session.attempt(
                             () => session.history.toggleKey(
                               lane.owner,
-                              property,
+                              lane.property!,
                               frame,
                             ),
                           ),
@@ -923,11 +928,21 @@ class _ClipRegion extends HookWidget {
       width: width,
       height: height,
       child: MouseRegion(
-        cursor: SystemMouseCursors.grab,
+        cursor: session.readOnly
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.grab,
         child: Listener(
           key: ValueKey('clip:${clip['id']}'),
           behavior: HitTestBehavior.opaque,
           onPointerDown: (event) {
+            if (session.readOnly) {
+              session.pause();
+              session.select(ownerId);
+              if (!move) {
+                session.pathEditor.select(clip['id']);
+              }
+              return;
+            }
             if (session.hasPendingInput) {
               session.error = 'apply_pending';
               session.refresh();
@@ -1012,10 +1027,12 @@ class _ClipRegion extends HookWidget {
           onPointerCancel: (_) => cancel(),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPanStart: (_) {},
-            onPanUpdate: (_) {},
-            onPanEnd: (_) {},
-            onDoubleTap: () => editTrackOrClip(context, session, clip),
+            onPanStart: session.readOnly ? null : (_) {},
+            onPanUpdate: session.readOnly ? null : (_) {},
+            onPanEnd: session.readOnly ? null : (_) {},
+            onDoubleTap: session.readOnly
+                ? null
+                : () => editTrackOrClip(context, session, clip),
             child: DecoratedBox(
               key: ValueKey(
                 '${valid.value ? 'clip-valid' : 'clip-invalid'}:${clip['id']}',

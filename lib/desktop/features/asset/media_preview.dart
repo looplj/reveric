@@ -32,6 +32,7 @@ import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/logger/app_logger.dart';
 import '../../../shared/providers/production_media.dart';
+import '../../../shared/services/production/library_service.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/utils/image_clipboard.dart';
 import 'playback_controls.dart';
@@ -39,17 +40,22 @@ import 'playback_controls.dart';
 final _log = AppLogger.forModule('MediaPreview');
 
 class MediaPreviewDialog extends HookConsumerWidget {
-  MediaPreviewDialog({super.key, required AssetRow asset, this.clipboard})
-    : path = asset.path!,
-      type = asset.type,
-      name = asset.name,
-      autoplay = false,
-      temporary = false;
+  MediaPreviewDialog({
+    super.key,
+    required AssetRow asset,
+    required this.pathResolver,
+    this.clipboard,
+  }) : path = asset.path!,
+       type = asset.type,
+       name = asset.name,
+       autoplay = false,
+       temporary = false;
   const MediaPreviewDialog.file({
     super.key,
     required this.path,
     required this.type,
     required this.name,
+    required this.pathResolver,
     this.autoplay = false,
     this.temporary = false,
     this.clipboard,
@@ -64,15 +70,19 @@ class MediaPreviewDialog extends HookConsumerWidget {
 
   /// 应用自己生成的临时文件（如剪辑预览渲染），不在素材库内，直接按绝对路径打开。
   final bool temporary;
+
+  /// 必选路径解析器，避免隐式耦合全局素材库，便于画廊沙箱与测试隔离。
+  final MediaPathResolver pathResolver;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final library = ref.watch(mediaLibraryServiceProvider);
     final playback = ref.watch(playbackServiceProvider);
     final owner = useMemoized(() => Object().hashCode.toString(), const []);
     final ready = useState(false);
     final failed = useState(false);
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    String resolveFilePath() =>
+        temporary ? path : pathResolver.resolvePath(path);
     useEffect(() {
       var active = true;
       if (type != 'image') {
@@ -83,7 +93,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
           try {
             await playback.open(
               owner: owner,
-              path: temporary ? path : library.resolvePath(path),
+              path: resolveFilePath(),
               play: autoplay,
             );
             if (active) {
@@ -105,7 +115,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
         active = false;
         unawaited(playback.release(owner));
       };
-    }, [path, playback, library, owner, autoplay, temporary]);
+    }, [path, playback, pathResolver, owner, autoplay, temporary]);
     useOnAppLifecycleStateChange((previous, current) {
       if (current != AppLifecycleState.resumed) {
         if (ready.value) {
@@ -116,8 +126,8 @@ class MediaPreviewDialog extends HookConsumerWidget {
     final isImage = type == 'image';
     const double? storedAspect = null;
     final imageFile = useMemoized(
-      () => isImage ? FileImage(File(library.resolvePath(path))) : null,
-      [path, library],
+      () => isImage ? FileImage(File(resolveFilePath())) : null,
+      [path, pathResolver, temporary],
     );
     // Older images may lack stored dimensions; read the decoded size so the
     // stage still matches the picture instead of falling back to 16:9.
@@ -206,7 +216,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
               try {
                 // 写入原文件，而不是对话框里按窗口缩小后的画面。
                 await copyImageToClipboard(
-                  File(library.resolvePath(path)),
+                  File(resolveFilePath()),
                   name: name,
                   clipboard: clipboard,
                 );

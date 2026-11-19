@@ -86,6 +86,7 @@
   "common.search_characters": "搜索角色",
   "common.search_locations": "搜索地点",
   "common.select_all": "全选",
+  "common.deselect_all": "全不选",
   "common.clear_selection": "清空",
   "common.no_results": "未找到匹配项",
   "common.filter_all": "全部",

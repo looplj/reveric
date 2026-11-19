@@ -167,7 +167,7 @@ class DirectorWorkspace extends HookWidget {
       actorCatalog: catalog,
       onAddCameraFromView: (name) =>
           session.attempt(() => addCameraFromView(name)),
-      onRecognizeImage: onRecognizeImage,
+      onRecognizeImage: session.readOnly ? null : onRecognizeImage,
     );
     final inspector = Inspector(
       key: inspectorKey,
@@ -187,7 +187,7 @@ class DirectorWorkspace extends HookWidget {
                 HardwareKeyboard.instance.isControlPressed;
         // 保存由当前编辑器处理；文本字段中的未提交输入也不能穿透到宿主保存。
         if (modifier && key == LogicalKeyboardKey.keyS) {
-          if (session.onSave != null) {
+          if (!session.readOnly && session.onSave != null) {
             session.attempt(session.save);
           }
           return KeyEventResult.handled;
@@ -223,6 +223,9 @@ class DirectorWorkspace extends HookWidget {
                 (key == LogicalKeyboardKey.arrowLeft ? -1 : 1),
           );
           return KeyEventResult.handled;
+        }
+        if (session.readOnly) {
+          return KeyEventResult.ignored;
         }
         if (key == LogicalKeyboardKey.delete ||
             key == LogicalKeyboardKey.backspace) {

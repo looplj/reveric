@@ -17,11 +17,15 @@ import 'dart:ui';
 
 import 'package:archive/archive_io.dart' hide ZLibDecoder;
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 
 import '../../database/app_database.dart';
 import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
+import '../../models/ai_chat_models.dart';
+import '../../models/ai_session_mode.dart';
+import '../../models/ask_user_models.dart';
 import '../../models/asset_purpose.dart';
 import '../../models/content_kind.dart';
 import '../../models/director/document.dart';
@@ -29,35 +33,64 @@ import '../../models/editing/document.dart';
 import '../../models/production/media.dart';
 import '../../models/production/settings.dart';
 import '../../models/production/style.dart';
+import '../../models/queued_chat_message.dart';
 import '../../models/storyboard/prompt.dart';
+import '../../models/user_message_presentation.dart';
 import '../../models/video/request.dart';
+import '../../utils/random_id.dart';
 import '../../utils/short_entity_id.dart';
 import '../../utils/short_entity_id_allocator.dart';
+import '../../utils/storage_paths.dart';
+import '../../utils/windows_safe_path.dart';
+import '../ai/files/session_files.dart';
+import '../ai/session_persistence.dart';
+import '../ai/xml_utils.dart';
 import '../backup_zip.dart';
 import '../novel_actions.dart';
 import '../novel_content.dart';
+import '../screenplay_service.dart';
 import '../storyboard/service.dart';
 import '../working_overlay.dart';
+import 'canvas_preview.dart';
 import 'canvas_service.dart';
 import 'ffmpeg_runner.dart';
 import 'library_service.dart';
+import 'media_service.dart';
+import 'style_service.dart';
+
+part 'canvas_package_conversations.dart';
 
 const productionCanvasPackageFormat = 'production.canvas';
 const _version = 1;
 const _maxEntries = 10000;
 const _maxManifestBytes = 32 * 1024 * 1024;
 const _maxExpandedBytes = 8 * 1024 * 1024 * 1024;
+const _maxGalleryZipBytes = 2 * 1024 * 1024 * 1024;
 
 final _log = AppLogger.forModule('ProductionCanvasPackage');
 
 class ProductionCanvasPackageException implements Exception {
-  const ProductionCanvasPackageException(this.code);
+  const ProductionCanvasPackageException(this.code, {this.subject});
   final String code;
+  final String? subject;
 }
 
 class ProductionCanvasPackageFile {
-  ProductionCanvasPackageFile._(this.file, this._directory);
+  ProductionCanvasPackageFile._(this.file, this._directory, this._stage);
+
   final File file;
+  final _CanvasPackageStage _stage;
+
+  File? get cover => _stage.cover;
+  int get nodeCount => _stage.nodeCount;
+  int get assetCount => _stage.assetCount;
+  int get conversationCount => _stage.conversations.sessions.length;
+  int get conversationFileCount => _stage.conversations.files.length;
+  List<ProductionCanvasPackageConversationSummary> get conversations =>
+      _stage.conversations.summaries;
+  List<String> get conversationFileNames => [
+    for (final file in _stage.conversations.files) file.name,
+  ];
   final Directory _directory;
 
   Future<void> delete() async {
@@ -84,6 +117,9 @@ class ProductionCanvasPackageOrchestrator {
     required ProductionCanvasService canvas,
     required String canvasId,
     required String title,
+    bool publicGallery = false,
+    AiSessionPersistenceService? sessionPersistence,
+    List<String> conversationIds = const [],
     void Function(double progress)? onProgress,
   }) async {
     await _requireCanvasWork(canvas, canvasId);
@@ -93,11 +129,14 @@ class ProductionCanvasPackageOrchestrator {
     try {
       final staging = Directory(p.join(parent.path, 'stage'));
       await staging.create();
-      await _writeStaging(
+      final stage = await _writeStaging(
         canvas,
         canvasId,
         staging,
         title,
+        publicGallery: publicGallery,
+        sessionPersistence: sessionPersistence,
+        conversationIds: conversationIds,
         onProgress: onProgress == null
             ? null
             : (value) => onProgress((value * 0.75).clamp(0, 0.75)),
@@ -110,9 +149,12 @@ class ProductionCanvasPackageOrchestrator {
             ? null
             : (value) => onProgress((0.75 + value * 0.25).clamp(0, 1)),
       );
+      if (publicGallery && await zip.length() > _maxGalleryZipBytes) {
+        throw const ProductionCanvasPackageException('package_too_large');
+      }
       onProgress?.call(1);
       await staging.delete(recursive: true);
-      return ProductionCanvasPackageFile._(zip, parent);
+      return ProductionCanvasPackageFile._(zip, parent, stage);
     } catch (error, stackTrace) {
       if (await parent.exists()) {
         await parent.delete(recursive: true);
@@ -142,17 +184,16 @@ class ProductionCanvasPackageOrchestrator {
       'reveric_canvas_import_',
     );
     try {
+      final archive = await _CanvasPackageArchive.open(zip);
+      final package = await archive.readManifest(parent);
       final extracted = Directory(p.join(parent.path, 'out'));
-      await extracted.create();
-      await _extract(
-        zip,
+      await archive.extract(
+        package.assets.map((asset) => asset.file),
         extracted,
-        parent,
         onProgress: onProgress == null
             ? null
             : (value) => onProgress((value * 0.6).clamp(0, 0.6)),
       );
-      final package = await _readPackage(extracted);
       _log.info(
         'import stage=read result=success nodes=${package.nodes.length} '
         'assets=${package.assets.length}',
@@ -175,6 +216,56 @@ class ProductionCanvasPackageOrchestrator {
       }
     }
   }
+
+  /// 直接从画廊已解包缓存目录安装新画布作品，无需重新下载或保留压缩包。
+  Future<ProductionCanvasPackageImport> importFromCacheDirectory({
+    required Directory cacheDirectory,
+    required NovelActionsService actions,
+    required MediaLibraryService library,
+    required String fallbackTitle,
+    required NovelContentDatabase Function(String path) openContent,
+    required Future<void> Function(NovelContentDatabase database)
+    releaseContent,
+    void Function(double progress)? onProgress,
+  }) async {
+    final meta = await _readPreviewCacheMeta(cacheDirectory);
+    final manifestFile = _packageFile(cacheDirectory, 'manifest.json');
+    if (!await manifestFile.exists()) {
+      throw const ProductionCanvasPackageException('invalid_package');
+    }
+    final package = _Package.parse(await _readPackageJson(manifestFile));
+    final workspaceRoot = Directory(p.join(cacheDirectory.path, 'workspace'));
+    File resolveAssetFile(_Asset asset) {
+      final stored = meta.assetFiles[asset.id];
+      if (stored == null) {
+        throw const ProductionCanvasPackageException('missing_media');
+      }
+      return _resolveCachedWorkspaceFile(workspaceRoot, stored);
+    }
+
+    for (final asset in package.assets) {
+      final file = resolveAssetFile(asset);
+      final stat = await file.stat();
+      if (stat.type != FileSystemEntityType.file || stat.size == 0) {
+        throw const ProductionCanvasPackageException('missing_media');
+      }
+    }
+    _log.info(
+      'import stage=cache_read result=success nodes=${package.nodes.length} '
+      'assets=${package.assets.length}',
+    );
+    return _install(
+      package,
+      cacheDirectory,
+      resolveAssetFile: resolveAssetFile,
+      actions: actions,
+      library: library,
+      fallbackTitle: fallbackTitle,
+      openContent: openContent,
+      releaseContent: releaseContent,
+      onProgress: onProgress,
+    );
+  }
 }
 
 Future<void> _requireCanvasWork(
@@ -188,22 +279,22 @@ Future<void> _requireCanvasWork(
   }
 }
 
-Future<void> _writeStaging(
-  ProductionCanvasService canvas,
-  String canvasId,
-  Directory staging,
-  String title, {
-  void Function(double progress)? onProgress,
-}) async {
+Future<
+  ({
+    List<CanvasNode> nodes,
+    List<ProductionConnection> edges,
+    Map<String, ProductionClipRow> clips,
+    Map<String, Object?> documents,
+  })
+>
+_readPackageCanvas(ProductionCanvasService canvas, String canvasId) async {
   final content = await canvas.content(canvasId);
   final nodes = content.nodes
       .where((node) => node.type != canvasNodeTypeScene)
       .toList();
   if (nodes.isEmpty) {
-    _log.info('export stage=read result=empty');
     throw const ProductionCanvasPackageException('empty');
   }
-  final byId = {for (final node in nodes) node.id: node};
   final clips = <String, ProductionClipRow>{};
   for (final node in nodes) {
     final clipId = node.clipId;
@@ -216,7 +307,155 @@ Future<void> _writeStaging(
     }
     clips[node.id] = clip;
   }
-  final documents = await _documents(canvas, nodes);
+  return (
+    nodes: nodes,
+    edges: content.edges,
+    clips: clips,
+    documents: await _documents(canvas, nodes),
+  );
+}
+
+/// 初始发布面板预览当前画布；最终封面和数据仍由冻结的归档生成。
+Future<
+  ({
+    int nodeCount,
+    int assetCount,
+    int sourceBytes,
+    ProductionCanvasPreviewResult preview,
+  })
+>
+inspectProductionCanvasPublication({
+  required ProductionCanvasService canvas,
+  required String canvasId,
+}) async {
+  await _requireCanvasWork(canvas, canvasId);
+  final source = await canvas.db.transaction(
+    () => _readPackageCanvas(canvas, canvasId),
+  );
+  final references = _referencedAssets(
+    source.nodes,
+    source.clips,
+    source.documents,
+  );
+  final files = <String, ({AssetRow asset, File file})>{};
+  var size = 0;
+  for (final id in references) {
+    final asset = await canvas.library.database.assetDao.getAsset(id);
+    if (asset?.path == null) {
+      throw ProductionCanvasPackageException(
+        'missing_media',
+        subject: asset?.name,
+      );
+    }
+    final file = File(canvas.library.resolve(asset!));
+    size += await file.length();
+    files[id] = (asset: asset, file: file);
+  }
+  final preview = await renderProductionCanvasCover(
+    canvas: canvas,
+    nodes: source.nodes,
+    edges: source.edges,
+    clips: source.clips,
+    assets: files,
+  );
+  return (
+    nodeCount: source.nodes.length,
+    assetCount: files.length,
+    sourceBytes: size,
+    preview: preview,
+  );
+}
+
+/// 这张画布上可当作封面的图片：放上画布的图片，以及图片节点已采用的生成图。
+Future<List<({String id, String name, File file})>>
+listProductionCanvasCoverImages({
+  required ProductionCanvasService canvas,
+  required String canvasId,
+}) async {
+  final content = await canvas.content(canvasId);
+  final clipIds = [for (final node in content.nodes) ?node.clipId];
+  final clips = clipIds.isEmpty
+      ? const <ProductionClipRow>[]
+      : await (canvas.db.select(
+          canvas.db.productionClips,
+        )..where((row) => row.id.isIn(clipIds))).get();
+  final adopted = {for (final clip in clips) clip.id: clip.adoptedAssetId};
+  final ordered = [...content.nodes]
+    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  final ids = <String>[];
+  final seen = <String>{};
+  for (final node in ordered) {
+    final String? assetId;
+    if (node.type == canvasNodeTypeMedia) {
+      assetId = node.mediaAssetId;
+    } else if (node.type == canvasNodeTypeImage) {
+      assetId = node.clipId == null ? null : adopted[node.clipId];
+    } else {
+      assetId = null;
+    }
+    if (assetId != null && seen.add(assetId)) {
+      ids.add(assetId);
+    }
+  }
+  final images = <({String id, String name, File file})>[];
+  for (final id in ids) {
+    final asset = await canvas.library.database.assetDao.getAsset(id);
+    final stored = asset?.path;
+    if (asset?.type != 'image' || stored == null) {
+      continue;
+    }
+    final file = File(canvas.library.resolve(asset!));
+    if (!await file.exists() || await file.length() == 0) {
+      continue;
+    }
+    images.add((id: asset.id, name: asset.name, file: file));
+  }
+  return images;
+}
+
+class _CanvasPackageStage {
+  const _CanvasPackageStage({
+    required this.cover,
+    required this.nodeCount,
+    required this.assetCount,
+    required this.conversations,
+  });
+
+  final File? cover;
+  final int nodeCount;
+  final int assetCount;
+  final _PackagedConversations conversations;
+}
+
+Future<_CanvasPackageStage> _writeStaging(
+  ProductionCanvasService canvas,
+  String canvasId,
+  Directory staging,
+  String title, {
+  required bool publicGallery,
+  required AiSessionPersistenceService? sessionPersistence,
+  required List<String> conversationIds,
+  void Function(double progress)? onProgress,
+}) async {
+  final sessions = await _selectPackageSessions(
+    canvas,
+    sessionPersistence,
+    conversationIds,
+  );
+  final (source, root, messages) = await canvas.db.transaction(() async {
+    final source = await _readPackageCanvas(canvas, canvasId);
+    final root = await canvas.db.screenplayDao.getRoot();
+    final messages = <String, List<AiMessage>>{
+      for (final session in sessions)
+        session.id: (await sessionPersistence!.loadSessionMessages(
+          sessionId: session.id,
+          novelDatabase: canvas.db,
+        )).messages.where(_packageMessageVisible).toList(),
+    };
+    return (source, root, messages);
+  });
+  final (:edges, :nodes, :clips, :documents) = source;
+  final byId = {for (final node in nodes) node.id: node};
   final referenced = _referencedAssets(nodes, clips, documents);
   for (final node in nodes) {
     if (node.parentId != null &&
@@ -248,7 +487,7 @@ Future<void> _writeStaging(
       }
     }
   }
-  final stored = content.edges.where((edge) => edge.inputId == null).toList();
+  final stored = edges.where((edge) => edge.inputId == null).toList();
   for (final edge in stored) {
     if (edge.type != canvasEdgeTypeStagingOutput &&
         edge.type != canvasEdgeTypeDerivedOutput) {
@@ -262,12 +501,15 @@ Future<void> _writeStaging(
   final media = Directory(p.join(staging.path, 'media'));
   await media.create();
   final queued =
-      <({AssetRow asset, File source, String extension, int length})>[];
+      <({AssetRow asset, File source, String extension, FileStat stat})>[];
   for (final id in referenced) {
     final asset = await canvas.library.database.assetDao.getAsset(id);
     if (asset == null || asset.path == null) {
       _log.info('export stage=media result=missing asset=$id');
-      throw const ProductionCanvasPackageException('missing_media');
+      throw ProductionCanvasPackageException(
+        'missing_media',
+        subject: asset?.name ?? id,
+      );
     }
     final extension = p.extension(asset.path!).toLowerCase();
     final format = productionMediaFormats[extension];
@@ -282,53 +524,93 @@ Future<void> _writeStaging(
       source = File(canvas.library.resolve(asset));
     } on MediaException {
       _log.info('export stage=media result=missing asset=$id');
-      throw const ProductionCanvasPackageException('missing_media');
+      throw ProductionCanvasPackageException(
+        'missing_media',
+        subject: asset.name,
+      );
     }
-    final length = await source.exists() ? await source.length() : 0;
-    if (length == 0) {
+    final stat = await source.stat();
+    if (stat.type != FileSystemEntityType.file || stat.size == 0) {
       _log.info('export stage=media result=missing asset=$id');
-      throw const ProductionCanvasPackageException('missing_media');
+      throw ProductionCanvasPackageException(
+        'missing_media',
+        subject: asset.name,
+      );
     }
     queued.add((
       asset: asset,
       source: source,
       extension: extension,
-      length: length,
+      stat: stat,
     ));
   }
   final assets = <Map<String, Object?>>[];
-  final total = queued.fold<int>(0, (sum, item) => sum + item.length);
+  final total = queued.fold<int>(0, (sum, item) => sum + item.stat.size);
+  final sharedFiles = <String, String>{};
+  final stagedAssets = <String, ({AssetRow asset, File file})>{};
   var copied = 0;
   for (var index = 0; index < queued.length; index++) {
     final item = queued[index];
     final name = '${(index + 1).toString().padLeft(4, '0')}${item.extension}';
-    final destination = p.join(media.path, name);
-    if (onProgress == null) {
-      await item.source.copy(destination);
-    } else {
-      final start = copied;
-      await _copyWithProgress(item.source, destination, (bytes) {
-        onProgress(total == 0 ? 1 : (start + bytes) / total);
-      });
-    }
-    copied += item.length;
-    onProgress?.call(total == 0 ? 1 : copied / total);
+    final destination = File(p.join(media.path, name));
+    final start = copied;
+    await _copyStablePackageFile(
+      item.source,
+      destination,
+      expected: item.stat,
+      subject: item.asset.name,
+      code: 'missing_media',
+      onCopied: onProgress == null
+          ? null
+          : (bytes) => onProgress((start + bytes) / total),
+    );
+    copied += item.stat.size;
+    final archivePath = 'media/$name';
+    sharedFiles[await item.source.resolveSymbolicLinks()] = archivePath;
+    stagedAssets[item.asset.id] = (asset: item.asset, file: destination);
     assets.add({
       'id': item.asset.id,
-      'name': _portableAssetName(item.asset.name, 'media/$name'),
+      'name': _portableAssetName(item.asset.name, archivePath),
       'purpose': item.asset.purpose,
-      'file': 'media/$name',
+      'file': archivePath,
       'in_library': item.asset.inLibrary,
     });
   }
-  if (queued.isEmpty) {
-    onProgress?.call(1);
-  }
-  final root = await canvas.db.screenplayDao.getRoot();
+  final conversations = await _writePackageConversations(
+    canvas,
+    sessions,
+    messages,
+    staging,
+    sharedFiles,
+  );
+  onProgress?.call(1);
   if (root == null ||
       !ProductionSettings.ratios.contains(root.ratio) ||
       !ProductionSettings.resolutions.contains(root.resolution)) {
     throw const ProductionCanvasPackageException('unsupported');
+  }
+  final styles = <Map<String, Object?>>[];
+  final styleIds = {
+    root.styleId,
+    ...clips.values.map((clip) => clip.styleSelection),
+  };
+  for (final id in styleIds.nonNulls) {
+    if (id == 'none' || isProductionStylePresetRef(id)) {
+      continue;
+    }
+    final style = await canvas.library.database.productionStyleDao.getStyle(id);
+    if (style == null) {
+      if (publicGallery) {
+        throw ProductionCanvasPackageException('missing_style', subject: id);
+      }
+      continue;
+    }
+    styles.add({
+      'id': style.id,
+      'name': style.name,
+      'before': style.before,
+      'after': style.after,
+    });
   }
   final manifest = {
     'format': productionCanvasPackageFormat,
@@ -341,7 +623,12 @@ Future<void> _writeStaging(
     },
     'nodes': [
       for (final node in nodes)
-        _nodeJson(node, clips[node.id], documents[node.id]),
+        _nodeJson(
+          node,
+          clips[node.id],
+          documents[node.id],
+          publicGallery: publicGallery,
+        ),
     ],
     'edges': [
       for (final edge in stored)
@@ -352,39 +639,87 @@ Future<void> _writeStaging(
         },
     ],
     'assets': assets,
+    if (styles.isNotEmpty) 'styles': styles,
+    if (conversations.sessions.isNotEmpty) ...conversations.toJson(),
   };
-  await File(
-    p.join(staging.path, 'manifest.json'),
-  ).writeAsString(jsonEncode(manifest));
+  final manifestBytes = utf8.encode(jsonEncode(manifest));
+  if (manifestBytes.length > _maxManifestBytes) {
+    throw const ProductionCanvasPackageException('package_too_large');
+  }
+  await _packageFile(staging, 'manifest.json').writeAsBytes(manifestBytes);
+  File? cover;
+  if (publicGallery) {
+    try {
+      final preview = await renderProductionCanvasCover(
+        canvas: canvas,
+        nodes: nodes,
+        edges: edges,
+        clips: clips,
+        assets: stagedAssets,
+      );
+      cover = await File(
+        p.join(staging.parent.path, 'cover.jpg'),
+      ).writeAsBytes(preview.jpeg);
+    } catch (error, stackTrace) {
+      _log.error(
+        'export stage=cover result=failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw const ProductionCanvasPackageException('cover_failed');
+    }
+  }
   _log.info(
     'export stage=read result=success nodes=${nodes.length} assets=${assets.length}',
   );
+  return _CanvasPackageStage(
+    cover: cover,
+    nodeCount: nodes.length,
+    assetCount: assets.length,
+    conversations: conversations,
+  );
 }
 
-Future<void> _copyWithProgress(
+Future<void> _copyStablePackageFile(
   File source,
-  String destination,
-  void Function(int copied) onCopied,
-) async {
-  final sink = File(destination).openWrite();
+  File target, {
+  required FileStat expected,
+  required String subject,
+  required String code,
+  void Function(int bytes)? onCopied,
+}) async {
   var copied = 0;
+  final sink = target.openWrite();
   try {
-    await for (final chunk in source.openRead()) {
-      sink.add(chunk);
-      copied += chunk.length;
-      onCopied(copied);
-    }
+    await sink.addStream(
+      source.openRead().map((chunk) {
+        copied += chunk.length;
+        if (copied > expected.size) {
+          throw ProductionCanvasPackageException(code, subject: subject);
+        }
+        onCopied?.call(copied);
+        return chunk;
+      }),
+    );
     await sink.flush();
   } finally {
     await sink.close();
+  }
+  final finalStat = await source.stat();
+  if (copied != expected.size ||
+      finalStat.size != expected.size ||
+      finalStat.modified != expected.modified ||
+      finalStat.type != FileSystemEntityType.file) {
+    throw ProductionCanvasPackageException(code, subject: subject);
   }
 }
 
 Map<String, Object?> _nodeJson(
   CanvasNode node,
   ProductionClipRow? clip,
-  Object? document,
-) {
+  Object? document, {
+  required bool publicGallery,
+}) {
   if (node.isGenerationNode) {
     if (clip == null) {
       throw const ProductionCanvasPackageException('unsupported');
@@ -420,8 +755,17 @@ Map<String, Object?> _nodeJson(
         : {
             'title': clip.title,
             'prompt': clip.prompt,
-            'provider_id': clip.providerId,
-            'model_id': clip.modelId,
+            'provider_id': publicGallery ? null : clip.providerId,
+            'model_id': publicGallery ? null : clip.modelId,
+            if (publicGallery)
+              'preview_generation': {
+                'model': clip.modelId,
+                'reference_mode': clip.referenceMode,
+                'duration_ms': clip.durationMs,
+                'generate_audio': clip.generateAudio,
+                'ratio': clip.ratio,
+                'resolution': clip.resolution,
+              },
             'reference_mode': clip.referenceMode,
             'duration_ms': clip.durationMs,
             'generate_audio': clip.generateAudio,
@@ -556,115 +900,166 @@ void _collectAssetIds(Object? value, Set<String> ids) {
 bool _purposeKnown(String value) =>
     AssetPurpose.values.any((purpose) => purpose.value == value);
 
-Future<void> _extract(
-  File zip,
-  Directory dest,
-  Directory scratch, {
-  void Function(double progress)? onProgress,
-}) async {
-  if (!await zip.exists()) {
-    throw const ProductionCanvasPackageException('invalid_package');
-  }
-  final source = p.extension(zip.path).toLowerCase() == '.zip'
-      ? zip
-      : await zip.copy(p.join(scratch.path, 'input.zip'));
-  final input = InputFileStream(source.path);
-  final headers = <ZipFileHeader>[];
-  try {
-    final directory = ZipDirectory();
+class _CanvasPackageArchive {
+  _CanvasPackageArchive(this.source, this.headers, this.dataLimit);
+
+  final File source;
+  final Map<String, ZipFileHeader> headers;
+  final int dataLimit;
+
+  static Future<_CanvasPackageArchive> open(File zip) async {
+    if (!await zip.exists()) {
+      throw const ProductionCanvasPackageException('invalid_package');
+    }
+    final input = InputFileStream(zip.path);
     try {
+      final directory = ZipDirectory();
       directory.read(input);
+      if (directory.filePosition < 0 ||
+          directory.centralDirectoryOffset < 0 ||
+          directory.centralDirectoryOffset > directory.filePosition ||
+          directory.fileHeaders.isEmpty ||
+          directory.fileHeaders.length > _maxEntries ||
+          directory.totalCentralDirectoryEntries !=
+              directory.fileHeaders.length) {
+        throw const ProductionCanvasPackageException('invalid_package');
+      }
+      final headers = <String, ZipFileHeader>{};
+      final keys = <String>{};
+      var expanded = 0;
+      for (final header in directory.fileHeaders) {
+        final name = header.filename;
+        _requireZipName(name);
+        final directoryEntry = name.endsWith('/');
+        final key = directoryEntry ? name.substring(0, name.length - 1) : name;
+        if (!keys.add(key.toLowerCase()) ||
+            (header.externalFileAttributes >> 16) & 0xf000 == 0xa000 ||
+            (header.generalPurposeBitFlag & 1) != 0 ||
+            (header.compressionMethod != 0 && header.compressionMethod != 8) ||
+            header.compressedSize < 0 ||
+            header.uncompressedSize < 0 ||
+            (directoryEntry && header.uncompressedSize != 0)) {
+          throw const ProductionCanvasPackageException('invalid_package');
+        }
+        expanded += header.uncompressedSize;
+        if (expanded > _maxExpandedBytes) {
+          throw const ProductionCanvasPackageException('invalid_package');
+        }
+        if (!directoryEntry) {
+          headers[name] = header;
+        }
+      }
+      return _CanvasPackageArchive(
+        zip,
+        headers,
+        directory.centralDirectoryOffset,
+      );
+    } on ProductionCanvasPackageException {
+      rethrow;
     } catch (error) {
       _log.warning(
         'import stage=zip result=invalid errorType=${error.runtimeType}',
       );
       throw const ProductionCanvasPackageException('invalid_package');
+    } finally {
+      await input.close();
     }
-    if (directory.filePosition < 0 ||
-        directory.fileHeaders.isEmpty ||
-        directory.fileHeaders.length > _maxEntries) {
+  }
+
+  Future<_Package> readManifest(Directory dest) async {
+    const name = 'manifest.json';
+    final manifest = headers[name];
+    if (manifest == null || manifest.uncompressedSize > _maxManifestBytes) {
       throw const ProductionCanvasPackageException('invalid_package');
     }
-    var expanded = 0;
-    for (final header in directory.fileHeaders) {
-      if ((header.externalFileAttributes >> 16) & 0xf000 == 0xa000 ||
-          (header.generalPurposeBitFlag & 1) != 0 ||
-          (header.compressionMethod != 0 && header.compressionMethod != 8)) {
-        throw const ProductionCanvasPackageException('invalid_package');
-      }
-      _requireZipName(header.filename);
-      expanded += header.uncompressedSize;
-      if (expanded > _maxExpandedBytes) {
-        throw const ProductionCanvasPackageException('invalid_package');
-      }
-      headers.add(header);
-    }
-  } finally {
-    await input.close();
-  }
-  await _streamExtract(source, dest, headers, onProgress: onProgress);
-}
-
-Future<void> _streamExtract(
-  File zip,
-  Directory dest,
-  List<ZipFileHeader> headers, {
-  void Function(double progress)? onProgress,
-}) async {
-  final handle = await zip.open();
-  final ranges = <({ZipFileHeader header, int start})>[];
-  try {
-    for (final header in headers) {
-      if (header.filename.endsWith('/')) {
-        continue;
-      }
-      ranges.add((
-        header: header,
-        start: await _zipDataOffset(handle, header.localHeaderOffset),
-      ));
-    }
-  } finally {
-    await handle.close();
-  }
-  final total = ranges.fold<int>(
-    0,
-    (sum, range) => sum + range.header.uncompressedSize,
-  );
-  var done = 0;
-  for (final range in ranges) {
-    final header = range.header;
-    final target = File(
-      p.join(dest.path, p.joinAll(p.posix.split(header.filename))),
+    await extract([name], dest);
+    final package = _Package.parse(
+      await _readPackageJson(_packageFile(dest, name)),
     );
-    await target.parent.create(recursive: true);
-    final raw = zip.openRead(range.start, range.start + header.compressedSize);
-    final decoded = header.compressionMethod == 0
-        ? raw
-        : raw.transform(ZLibDecoder(raw: true));
-    final sink = target.openWrite();
-    var crc = 0;
+    for (final asset in package.assets) {
+      if ((headers[asset.file]?.uncompressedSize ?? 0) == 0) {
+        throw const ProductionCanvasPackageException('missing_media');
+      }
+    }
+    for (final session in package.conversations.sessions) {
+      final header = headers[session.file];
+      if (header == null ||
+          header.uncompressedSize == 0 ||
+          header.uncompressedSize > _maxManifestBytes) {
+        throw const ProductionCanvasPackageException('invalid_package');
+      }
+    }
+    for (final file in package.conversations.files) {
+      if (headers[file.file]?.uncompressedSize != file.sizeBytes) {
+        throw const ProductionCanvasPackageException('invalid_package');
+      }
+    }
+    return package;
+  }
+
+  Future<void> extract(
+    Iterable<String> names,
+    Directory dest, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final selected = names.toSet().map((name) => headers[name]!).toList();
+    final total = selected.fold<int>(
+      0,
+      (sum, entry) => sum + entry.uncompressedSize,
+    );
+    final handle = await source.open();
+    var done = 0;
     try {
-      await for (final chunk in decoded) {
-        crc = getCrc32(chunk, crc);
-        sink.add(chunk);
-        done += chunk.length;
-        if (total > 0) {
-          onProgress?.call((done / total).clamp(0.0, 1.0));
+      for (final header in selected) {
+        final start = await _zipDataOffset(handle, header.localHeaderOffset);
+        if (start > dataLimit || header.compressedSize > dataLimit - start) {
+          throw const ProductionCanvasPackageException('invalid_package');
+        }
+        final target = _packageFile(dest, header.filename);
+        await target.parent.create(recursive: true);
+        final raw = source.openRead(start, start + header.compressedSize);
+        final decoded = header.compressionMethod == 0
+            ? raw
+            : raw.transform(ZLibDecoder(raw: true));
+        final sink = target.openWrite();
+        var crc = 0;
+        var written = 0;
+        try {
+          await sink.addStream(
+            decoded.map((chunk) {
+              written += chunk.length;
+              done += chunk.length;
+              if (written > header.uncompressedSize ||
+                  done > total ||
+                  done > _maxExpandedBytes) {
+                throw const ProductionCanvasPackageException('invalid_package');
+              }
+              crc = getCrc32(chunk, crc);
+              if (total > 0) {
+                onProgress?.call(done / total);
+              }
+              return chunk;
+            }),
+          );
+        } finally {
+          await sink.close();
+        }
+        if (written != header.uncompressedSize || crc != header.crc32) {
+          throw const ProductionCanvasPackageException('invalid_package');
         }
       }
+    } on ProductionCanvasPackageException {
+      rethrow;
     } catch (error) {
       _log.warning(
         'import stage=extract result=invalid errorType=${error.runtimeType}',
       );
       throw const ProductionCanvasPackageException('invalid_package');
     } finally {
-      await sink.close();
+      await handle.close();
     }
-    if (crc != header.crc32) {
-      throw const ProductionCanvasPackageException('invalid_package');
-    }
+    onProgress?.call(1);
   }
-  onProgress?.call(1);
 }
 
 Future<int> _zipDataOffset(
@@ -686,99 +1081,41 @@ Future<int> _zipDataOffset(
 }
 
 void _requireZipName(String name) {
-  if (name.isEmpty ||
-      name.contains('\\') ||
-      name.startsWith('/') ||
-      p.posix.isAbsolute(name)) {
-    throw const ProductionCanvasPackageException('invalid_package');
-  }
-  final parts = p.posix.split(name);
-  if (parts.any((part) => part.isEmpty || part == '.' || part == '..')) {
-    throw const ProductionCanvasPackageException('invalid_package');
-  }
-  final file = name.endsWith('/');
-  if (file) {
-    if (name != 'media/') {
-      throw const ProductionCanvasPackageException('invalid_package');
-    }
-    return;
-  }
-  if (name == 'manifest.json') {
-    return;
-  }
-  if (parts.length != 2 ||
-      parts.first != 'media' ||
-      productionMediaFormat(parts.last) == null) {
+  final path = name.endsWith('/') ? name.substring(0, name.length - 1) : name;
+  final parts = path.split('/');
+  if (parts.any(
+    (part) =>
+        part.isEmpty ||
+        part.endsWith('.') ||
+        part.endsWith(' ') ||
+        RegExp(r'[\\:\x00-\x1f<>?"|*]').hasMatch(part) ||
+        RegExp(
+          r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)',
+          caseSensitive: false,
+        ).hasMatch(part),
+  )) {
     throw const ProductionCanvasPackageException('invalid_package');
   }
 }
 
-Future<_Package> _readPackage(Directory root) async {
-  final found = <String>{};
-  await for (final entity in root.list(recursive: true, followLinks: false)) {
-    if (p.normalize(entity.path) != p.normalize(root.path) &&
-        !p.isWithin(root.path, entity.path)) {
-      throw const ProductionCanvasPackageException('invalid_package');
-    }
-    final relative = p.posix.joinAll(
-      p.split(p.relative(entity.path, from: root.path)),
-    );
-    if (entity is Link) {
-      throw const ProductionCanvasPackageException('invalid_package');
-    }
-    if (entity is Directory) {
-      if (relative != 'media') {
-        throw const ProductionCanvasPackageException('invalid_package');
-      }
-      continue;
-    }
-    if (entity is! File) {
-      throw const ProductionCanvasPackageException('invalid_package');
-    }
-    found.add(relative);
-  }
-  final manifestFile = File(p.join(root.path, 'manifest.json'));
-  if (!await manifestFile.exists() ||
-      await manifestFile.length() > _maxManifestBytes) {
-    throw const ProductionCanvasPackageException('invalid_package');
-  }
-  final Object? decoded;
+File _packageFile(Directory root, String name) =>
+    File(p.joinAll([root.path, ...name.split('/')]));
+
+Future<Map<String, Object?>> _readPackageJson(File file) async {
   try {
-    decoded = jsonDecode(await manifestFile.readAsString());
-  } catch (error) {
+    return _map(jsonDecode(await file.readAsString()));
+  } on FormatException catch (error) {
     _log.warning(
       'import stage=parse result=invalid errorType=${error.runtimeType}',
     );
     throw const ProductionCanvasPackageException('invalid_package');
   }
-  if (decoded is! Map) {
-    throw const ProductionCanvasPackageException('invalid_package');
-  }
-  final package = _Package.parse(decoded.cast<String, Object?>());
-  final expected = {
-    'manifest.json',
-    ...package.assets.map((asset) => asset.file),
-  };
-  if (found.length != expected.length || !found.containsAll(expected)) {
-    if (package.assets.any((asset) => !found.contains(asset.file))) {
-      throw const ProductionCanvasPackageException('missing_media');
-    }
-    throw const ProductionCanvasPackageException('invalid_package');
-  }
-  for (final asset in package.assets) {
-    final file = File(p.join(root.path, asset.file));
-    if (!p.isWithin(root.path, file.path) ||
-        !await file.exists() ||
-        await file.length() == 0) {
-      throw const ProductionCanvasPackageException('missing_media');
-    }
-  }
-  return package;
 }
 
 Future<ProductionCanvasPackageImport> _install(
   _Package package,
   Directory root, {
+  File Function(_Asset asset)? resolveAssetFile,
   required NovelActionsService actions,
   required MediaLibraryService library,
   required String fallbackTitle,
@@ -788,6 +1125,7 @@ Future<ProductionCanvasPackageImport> _install(
 }) async {
   String? novelId;
   final createdAssets = <String>[];
+  final createdStyles = <String>[];
   try {
     novelId = await _createWork(
       actions,
@@ -814,16 +1152,33 @@ Future<ProductionCanvasPackageImport> _install(
         library,
         novelId,
         createdAssets,
+        resolveAssetFile: resolveAssetFile,
         onProgress: onProgress,
       );
-      final dropped = await _writeCanvas(
+      final styles = ProductionStyleService(library.database);
+      final styleIds = <String, String>{};
+      for (final entry in package.styles.entries) {
+        final style = entry.value;
+        final created = await styles.save(
+          name: style.name,
+          prompt: ProductionStylePrompt(
+            before: style.before,
+            after: style.after,
+          ),
+        );
+        createdStyles.add(created.id);
+        styleIds[entry.key] = created.id;
+      }
+      final written = await _writeCanvas(
         package,
         canvas,
         canvasId,
         assetIds,
+        styleIds,
         actions,
         content,
       );
+      final dropped = written.dropped;
       _log.info(
         'import stage=create result=success novel=$novelId '
         'nodes=${package.nodes.length} droppedStyles=$dropped',
@@ -842,6 +1197,10 @@ Future<ProductionCanvasPackageImport> _install(
       stackTrace: stackTrace,
     );
     try {
+      final styles = ProductionStyleService(library.database);
+      for (final id in createdStyles) {
+        await styles.delete(id);
+      }
       await _discard(actions, library, novelId, createdAssets);
     } catch (cleanup, cleanupStack) {
       _log.error(
@@ -892,13 +1251,20 @@ Future<Map<String, String>> _importAssets(
   MediaLibraryService library,
   String novelId,
   List<String> created, {
+  File Function(_Asset asset)? resolveAssetFile,
+  Map<String, String>? importedPathsByAssetId,
   void Function(double progress)? onProgress,
 }) async {
   final ids = <String, String>{};
+  final files = <File>[];
   final sizes = <int>[];
   var total = 0;
   for (final asset in package.assets) {
-    final length = await File(p.join(root.path, asset.file)).length();
+    final file = resolveAssetFile != null
+        ? resolveAssetFile(asset)
+        : File(p.join(root.path, asset.file));
+    final length = await file.length();
+    files.add(file);
     sizes.add(length);
     total += length;
   }
@@ -908,7 +1274,7 @@ Future<Map<String, String>> _importAssets(
     final length = sizes[index];
     final start = done;
     final imported = await library.importFile(
-      File(p.join(root.path, asset.file)),
+      files[index],
       name: _portableAssetName(asset.name, asset.file),
       novelId: novelId,
       purpose: asset.purpose,
@@ -919,6 +1285,9 @@ Future<Map<String, String>> _importAssets(
                 onProgress(((start + value * length) / total).clamp(0, 1)),
     );
     ids[asset.id] = imported.id;
+    if (importedPathsByAssetId != null && imported.path != null) {
+      importedPathsByAssetId[asset.id] = imported.path!;
+    }
     created.add(imported.id);
     done += length;
     if (total > 0) {
@@ -929,20 +1298,24 @@ Future<Map<String, String>> _importAssets(
   return ids;
 }
 
-Future<int> _writeCanvas(
+Future<({int dropped, Map<String, String> nodeIds})> _writeCanvas(
   _Package package,
   ProductionCanvasService canvas,
   String canvasId,
   Map<String, String> assetIds,
-  NovelActionsService actions,
-  NovelContentDatabase content,
-) async {
+  Map<String, String> styleIds,
+  NovelActionsService? actions,
+  NovelContentDatabase content, {
+  bool previewMode = false,
+}) async {
   var dropped = 0;
-  final overlay = WorkingOverlayService(
-    content,
-    NovelContentService(content),
-    novelActionsService: actions,
-  );
+  final overlay = actions == null
+      ? null
+      : WorkingOverlayService(
+          content,
+          NovelContentService(content),
+          novelActionsService: actions,
+        );
   final nodeIds = <String, String>{};
   final created = <String, CanvasNode>{};
   for (final node in package.nodes.where(
@@ -957,7 +1330,12 @@ Future<int> _writeCanvas(
           content: node.content,
         );
       case canvasNodeTypeVideo:
-        createdNode = await canvas.addFree(canvasId, overlay: overlay);
+        if (overlay != null) {
+          createdNode = await canvas.addFree(canvasId, overlay: overlay);
+        } else {
+          final clip = await canvas.shots.createVideo('');
+          createdNode = await canvas.shots.ensureClipNode(clip.id);
+        }
       case canvasNodeTypeImage:
         createdNode = await canvas.addImage(canvasId);
       case canvasNodeTypeAudio:
@@ -1006,11 +1384,49 @@ Future<int> _writeCanvas(
         'voice_asset_id': ?voice,
       });
     }
-    final style = await _keepStyle(canvas, clip.styleSelection);
+    final style = await _keepStyle(canvas, clip.styleSelection, styleIds);
     if (style.dropped) {
       dropped += 1;
     }
     final values = canvas.shots.snapshot(current);
+    if (clip.previewGeneration == null) {
+      values
+        ..['provider_id'] = clip.providerId
+        ..['model_id'] = clip.modelId
+        ..['reference_mode'] = clip.referenceMode
+        ..['duration_ms'] = clip.durationMs
+        ..['generate_audio'] = clip.generateAudio
+        ..['ratio'] = clip.ratio
+        ..['resolution'] = clip.resolution;
+    } else if (previewMode) {
+      final generation = clip.previewGeneration!;
+      final rawMode = generation['reference_mode'];
+      final mode =
+          rawMode is String &&
+              VideoMode.values.any((value) => value.name == rawMode)
+          ? rawMode
+          : clip.referenceMode;
+      final rawRatio = generation['ratio'];
+      final rawResolution = generation['resolution'];
+      final rawDuration = generation['duration_ms'];
+      final rawAudio = generation['generate_audio'];
+      values
+        ..['provider_id'] = null
+        ..['model_id'] = null
+        ..['reference_mode'] = mode
+        ..['ratio'] = rawRatio is String && rawRatio.isNotEmpty
+            ? rawRatio
+            : clip.ratio
+        ..['resolution'] = rawResolution is String
+            ? rawResolution
+            : clip.resolution
+        ..['duration_ms'] = rawDuration is int ? rawDuration : clip.durationMs
+        ..['generate_audio'] = rawAudio is bool ? rawAudio : clip.generateAudio;
+    } else {
+      values
+        ..['provider_id'] = null
+        ..['model_id'] = null;
+    }
     values
       ..['episode_id'] = ''
       ..['character_id'] = null
@@ -1020,13 +1436,6 @@ Future<int> _writeCanvas(
       ..['sort_order'] = null
       ..['title'] = clip.title
       ..['prompt'] = _rewritePrompt(clip.prompt, inputIds)
-      ..['provider_id'] = clip.providerId
-      ..['model_id'] = clip.modelId
-      ..['reference_mode'] = clip.referenceMode
-      ..['duration_ms'] = clip.durationMs
-      ..['generate_audio'] = clip.generateAudio
-      ..['ratio'] = clip.ratio
-      ..['resolution'] = clip.resolution
       ..['style_selection'] = style.id;
     await canvas.shots.apply(current.id, values);
     await canvas.shots.restoreInputs(current.id, inputs);
@@ -1047,6 +1456,7 @@ Future<int> _writeCanvas(
           height: Value(node.height),
           zIndex: Value(node.z),
           sortOrder: Value(node.sort),
+          style: Value(node.style),
         ),
       );
     }
@@ -1176,22 +1586,27 @@ Future<int> _writeCanvas(
     'ratio': package.ratio,
     'resolution': package.resolution,
   });
-  final rootStyle = await _keepStyle(canvas, package.styleId);
+  final rootStyle = await _keepStyle(canvas, package.styleId, styleIds);
   if (rootStyle.dropped) {
     dropped += 1;
   }
   if (rootStyle.id != null) {
     await canvas.setScreenplayStyle(rootStyle.id);
   }
-  return dropped;
+  return (dropped: dropped, nodeIds: nodeIds);
 }
 
 Future<({String? id, bool dropped})> _keepStyle(
   ProductionCanvasService canvas,
   String? styleId,
+  Map<String, String> styleIds,
 ) async {
   if (styleId == null || styleId == 'none') {
     return (id: styleId, dropped: false);
+  }
+  final imported = styleIds[styleId];
+  if (imported != null) {
+    return (id: imported, dropped: false);
   }
   if (isProductionStylePresetRef(styleId)) {
     final preset = productionStylePreset(
@@ -1291,6 +1706,38 @@ Future<void> _discard(
   }
 }
 
+class _PackagedStyle {
+  const _PackagedStyle(this.name, this.before, this.after);
+
+  final String name;
+  final String before;
+  final String after;
+
+  static Map<String, _PackagedStyle> parseAll(Object? raw) {
+    final styles = <String, _PackagedStyle>{};
+    for (final item in _list(raw ?? const [])) {
+      final json = _map(item);
+      final id = json['id'];
+      final name = json['name'];
+      final before = json['before'];
+      final after = json['after'];
+      if (id is! String ||
+          id.isEmpty ||
+          id == 'none' ||
+          isProductionStylePresetRef(id) ||
+          styles.containsKey(id) ||
+          name is! String ||
+          name.trim().isEmpty ||
+          before is! String ||
+          after is! String) {
+        throw const ProductionCanvasPackageException('invalid_package');
+      }
+      styles[id] = _PackagedStyle(name, before, after);
+    }
+    return styles;
+  }
+}
+
 class _Package {
   _Package({
     required this.title,
@@ -1300,6 +1747,8 @@ class _Package {
     required this.nodes,
     required this.edges,
     required this.assets,
+    required this.styles,
+    required this.conversations,
   });
   final String title;
   final String? styleId;
@@ -1308,6 +1757,8 @@ class _Package {
   final List<_Node> nodes;
   final List<_Edge> edges;
   final List<_Asset> assets;
+  final Map<String, _PackagedStyle> styles;
+  final _PackagedConversations conversations;
 
   _Group? groupOf(String id) {
     for (final node in nodes) {
@@ -1319,7 +1770,7 @@ class _Package {
   }
 
   static _Package parse(Map<String, Object?> json) {
-    _exact(json, const {
+    _requireKeys(json, const {
       'format',
       'version',
       'title',
@@ -1328,13 +1779,19 @@ class _Package {
       'edges',
       'assets',
     });
+    final version = json['version'];
+    if (json['format'] == productionCanvasPackageFormat &&
+        version is int &&
+        version > _version) {
+      throw const ProductionCanvasPackageException('unsupported');
+    }
     if (json['format'] != productionCanvasPackageFormat ||
-        json['version'] != _version ||
+        version != _version ||
         json['title'] is! String) {
       throw const ProductionCanvasPackageException('invalid_package');
     }
     final settings = _map(json['settings']);
-    _exact(settings, const {'style_id', 'ratio', 'resolution'});
+    _requireKeys(settings, const {'style_id', 'ratio', 'resolution'});
     final styleId = settings['style_id'];
     final ratio = settings['ratio'];
     final resolution = settings['resolution'];
@@ -1444,6 +1901,14 @@ class _Package {
         throw const ProductionCanvasPackageException('invalid_package');
       }
     }
+    final styles = _PackagedStyle.parseAll(json['styles']);
+    final styleReferences = {
+      styleId,
+      ...nodes.map((node) => node.clip?.styleSelection),
+    };
+    if (!styleReferences.containsAll(styles.keys)) {
+      throw const ProductionCanvasPackageException('invalid_package');
+    }
     return _Package(
       title: json['title']! as String,
       styleId: styleId as String?,
@@ -1452,6 +1917,8 @@ class _Package {
       nodes: nodes,
       edges: edges,
       assets: assets,
+      styles: styles,
+      conversations: _PackagedConversations.parse(json),
     );
   }
 }
@@ -1513,7 +1980,7 @@ class _Node {
   final String? editingRatio;
 
   static _Node parse(Map<String, Object?> json) {
-    _exact(json, const {
+    _requireKeys(json, const {
       'id',
       'type',
       'title',
@@ -1646,6 +2113,7 @@ class _Clip {
     required this.styleSelection,
     required this.inputs,
     required this.adoptedAssetId,
+    required this.previewGeneration,
   });
   final String title;
   final String prompt;
@@ -1659,9 +2127,10 @@ class _Clip {
   final String? styleSelection;
   final List<_Input> inputs;
   final String? adoptedAssetId;
+  final Map<String, Object?>? previewGeneration;
 
   static _Clip parse(Map<String, Object?> json) {
-    _exact(json, const {
+    _requireKeys(json, const {
       'title',
       'prompt',
       'provider_id',
@@ -1729,8 +2198,38 @@ class _Clip {
       styleSelection: style as String?,
       inputs: inputs,
       adoptedAssetId: adopted as String?,
+      previewGeneration: _parsePreviewGeneration(json['preview_generation']),
     );
   }
+}
+
+Map<String, Object?>? _parsePreviewGeneration(Object? input) {
+  if (input == null) {
+    return null;
+  }
+  final json = _map(input);
+  final model = json['model'];
+  final mode = json['reference_mode'];
+  final duration = json['duration_ms'];
+  final audio = json['generate_audio'];
+  final ratio = json['ratio'];
+  final resolution = json['resolution'];
+  if ((model != null && model is! String) ||
+      mode is! String ||
+      (duration != null && (duration is! int || duration <= 0)) ||
+      (audio != null && audio is! bool) ||
+      ratio is! String ||
+      resolution is! String) {
+    throw const ProductionCanvasPackageException('invalid_package');
+  }
+  return {
+    'model': model,
+    'reference_mode': mode,
+    'duration_ms': duration,
+    'generate_audio': audio,
+    'ratio': ratio,
+    'resolution': resolution,
+  };
 }
 
 class _Input {
@@ -1788,7 +2287,7 @@ class _Edge {
   final String type;
 
   static _Edge parse(Map<String, Object?> json) {
-    _exact(json, const {'source_id', 'target_id', 'type'});
+    _requireKeys(json, const {'source_id', 'target_id', 'type'});
     final type = json['type'];
     if (json['source_id'] is! String ||
         json['target_id'] is! String ||
@@ -1821,7 +2320,7 @@ class _Asset {
   final String type;
 
   static _Asset parse(Map<String, Object?> json) {
-    _exact(json, const {'id', 'name', 'purpose', 'file', 'in_library'});
+    _requireKeys(json, const {'id', 'name', 'purpose', 'file', 'in_library'});
     final file = json['file'];
     final purpose = json['purpose'];
     if (json['id'] is! String ||
@@ -1832,6 +2331,7 @@ class _Asset {
         json['in_library'] is! bool) {
       throw const ProductionCanvasPackageException('invalid_package');
     }
+    _requireZipName(file);
     final format = productionMediaFormat(file);
     final parts = p.posix.split(file);
     if (format == null || parts.length != 2 || parts.first != 'media') {
@@ -1873,8 +2373,8 @@ final class _StoryboardGroup extends _Group {
   final bool numbered;
 }
 
-void _exact(Map<dynamic, dynamic> json, Set<String> keys) {
-  if (json.length != keys.length || !keys.containsAll(json.keys)) {
+void _requireKeys(Map<dynamic, dynamic> json, Set<String> keys) {
+  if (!json.keys.toSet().containsAll(keys)) {
     throw const ProductionCanvasPackageException('invalid_package');
   }
 }

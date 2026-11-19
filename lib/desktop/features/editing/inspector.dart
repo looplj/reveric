@@ -121,12 +121,14 @@ class EditingInspector extends StatelessWidget {
               context.t(LocaleKeys.editingKeySpace),
               context.t(LocaleKeys.commonPlay),
             ),
-            key('S', context.t(LocaleKeys.editingSplit)),
-            key('⌫', context.t(LocaleKeys.commonDelete)),
-            key(
-              Platform.isMacOS ? '⌘Z' : 'Ctrl+Z',
-              context.t(LocaleKeys.editingUndo),
-            ),
+            if (!controller.readOnly) ...[
+              key('S', context.t(LocaleKeys.editingSplit)),
+              key('⌫', context.t(LocaleKeys.commonDelete)),
+              key(
+                Platform.isMacOS ? '⌘Z' : 'Ctrl+Z',
+                context.t(LocaleKeys.editingUndo),
+              ),
+            ],
           ],
         ),
       ),
@@ -136,7 +138,7 @@ class EditingInspector extends StatelessWidget {
   List<Widget> _clip(BuildContext context, EditingDocument doc, EditingClip c) {
     final track = doc.track(c.trackId);
     final content = c.content;
-    final locked = track.locked;
+    final locked = track.locked || controller.readOnly;
     void set(EditingClip next) => editingRun(
       context,
       () => controller.session.commit(EditingCommands.update(doc, next)),
@@ -337,7 +339,8 @@ class EditingInspector extends StatelessWidget {
                 ? null
                 : (v) => setContent(media.copyWith(gainDb: v)),
           ),
-          if (media is EditingVideoContent &&
+          if (!controller.readOnly &&
+              media is EditingVideoContent &&
               source.hasAudio &&
               !media.audioDetached)
             RevericButton.text(
@@ -451,7 +454,7 @@ class EditingInspector extends StatelessWidget {
         ),
       ],
       if (source.mediaType == 'video' && !video.audioDetached) volume,
-      if (track.main)
+      if (track.main && !controller.readOnly)
         Padding(
           padding: const EdgeInsets.only(top: RevericSpacing.md),
           child: Align(

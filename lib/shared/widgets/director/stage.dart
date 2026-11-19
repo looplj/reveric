@@ -121,42 +121,43 @@ class DirectorStage extends HookWidget {
                 ],
               ),
             ),
-          Positioned(
-            left: RevericSpacing.lg,
-            right: RevericSpacing.lg,
-            bottom: RevericSpacing.lg,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (session.versions != null && historyOpen.value) ...[
-                  DirectorHistoryPanel(
-                    session: session,
-                    onClose: () => historyOpen.value = false,
-                  ),
-                  const SizedBox(height: RevericSpacing.sm),
-                ],
-                Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _Dock(session: session),
-                      if (session.versions != null) ...[
-                        const SizedBox(width: RevericSpacing.sm),
-                        _RoundButton(
-                          icon: RevericIcons.history_outlined,
-                          tooltip: tr(context, 'history'),
-                          selected: historyOpen.value,
-                          onPressed: () =>
-                              historyOpen.value = !historyOpen.value,
-                        ),
+          if (!session.readOnly)
+            Positioned(
+              left: RevericSpacing.lg,
+              right: RevericSpacing.lg,
+              bottom: RevericSpacing.lg,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (session.versions != null && historyOpen.value) ...[
+                    DirectorHistoryPanel(
+                      session: session,
+                      onClose: () => historyOpen.value = false,
+                    ),
+                    const SizedBox(height: RevericSpacing.sm),
+                  ],
+                  Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _Dock(session: session),
+                        if (session.versions != null) ...[
+                          const SizedBox(width: RevericSpacing.sm),
+                          _RoundButton(
+                            icon: RevericIcons.history_outlined,
+                            tooltip: tr(context, 'history'),
+                            selected: historyOpen.value,
+                            onPressed: () =>
+                                historyOpen.value = !historyOpen.value,
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

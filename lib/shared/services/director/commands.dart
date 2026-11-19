@@ -22,6 +22,7 @@ import 'package:reveric/shared/models/director/sampling.dart';
 
 class CommandHistory extends ChangeNotifier {
   DirectorDocument document;
+  final bool readOnly;
   String _saved;
   final List<DirectorDocument> _undo = [], _redo = [];
   DirectorDocument? preview;
@@ -31,10 +32,11 @@ class CommandHistory extends ChangeNotifier {
 
   /// Interactive sessions validate the current frame before publishing edits.
   void Function(DirectorDocument)? validateEdit;
-  CommandHistory(this.document) : _saved = document.businessContent;
-  bool get dirty => document.businessContent != _saved;
-  bool get canUndo => _undo.isNotEmpty;
-  bool get canRedo => _redo.isNotEmpty;
+  CommandHistory(this.document, {this.readOnly = false})
+    : _saved = document.businessContent;
+  bool get dirty => !readOnly && document.businessContent != _saved;
+  bool get canUndo => !readOnly && _undo.isNotEmpty;
+  bool get canRedo => !readOnly && _redo.isNotEmpty;
   int get undoCount => _undo.length;
   DirectorDocument get visible => preview ?? document;
   void markSaved(DirectorDocument saved) {
@@ -72,6 +74,9 @@ class CommandHistory extends ChangeNotifier {
   }
 
   void execute(void Function(Json) edit, {bool validate = true}) {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     beforeEdit?.call();
     final next = document.mutate((j) {
       edit(j);
@@ -105,6 +110,9 @@ class CommandHistory extends ChangeNotifier {
   }
 
   void undo() {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     beforeEdit?.call();
     if (!canUndo) {
       return;
@@ -130,7 +138,11 @@ class CommandHistory extends ChangeNotifier {
   });
 
   /// 视口缩放更新输出快照，但不占用撤销栈或中断当前播放与字段编辑。
+  /// 只读预览保持文档里已保存的输出尺寸，不跟当前窗口重算画幅。
   void updateViewportSize(double width, double height) {
+    if (readOnly) {
+      return;
+    }
     _viewportOutputSize = adaptiveOutputSize(width, height);
     if (_resizeAdaptiveDocument()) {
       notifyListeners();
@@ -146,6 +158,9 @@ class CommandHistory extends ChangeNotifier {
   }
 
   bool _resizeAdaptiveDocument() {
+    if (readOnly) {
+      return false;
+    }
     final size = _viewportOutputSize;
     if (size == null ||
         document.aspectRatio != DirectorAspectRatio.adaptive ||
@@ -162,6 +177,9 @@ class CommandHistory extends ChangeNotifier {
   }
 
   void redo() {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     beforeEdit?.call();
     if (!canRedo) {
       return;
@@ -177,6 +195,9 @@ class CommandHistory extends ChangeNotifier {
   }
 
   void previewEdit(void Function(Json) edit) {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     final next = document.mutate(edit);
     validateEdit?.call(next);
     preview = next;

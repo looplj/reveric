@@ -56,6 +56,7 @@ class ObjectInspector extends StatelessWidget {
     final rotation = quaternionEuler(sampled['rotation']);
     final scale = [for (final v in sampled['scale']) (v as num).toDouble()];
     bool enabled(String property) =>
+        !session.readOnly &&
         !session.playing &&
         session.history.editBlock(id, property, frame) == null;
     void set(String property, dynamic value) =>
@@ -116,16 +117,23 @@ class ObjectInspector extends StatelessWidget {
           SectionTitle(tr(context, 'transform')),
           KeyRow(
             label: tr(context, 'position'),
-            keyButton: KeyButton(
-              key: const ValueKey('director-key:position'),
-              state: keyState(session, id, 'position'),
-              tooltip: tr(context, 'toggle_key'),
-              onPressed: session.playing || !session.history.timelineVisible
-                  ? null
-                  : () => session.attempt(
-                      () => session.history.toggleKey(id, 'position', frame),
-                    ),
-            ),
+            keyButton: session.readOnly
+                ? null
+                : KeyButton(
+                    key: const ValueKey('director-key:position'),
+                    state: keyState(session, id, 'position'),
+                    tooltip: tr(context, 'toggle_key'),
+                    onPressed:
+                        session.playing || !session.history.timelineVisible
+                        ? null
+                        : () => session.attempt(
+                            () => session.history.toggleKey(
+                              id,
+                              'position',
+                              frame,
+                            ),
+                          ),
+                  ),
             child: XyzInput(
               session: session,
               fieldKey: 'position',
@@ -139,16 +147,23 @@ class ObjectInspector extends StatelessWidget {
           ),
           KeyRow(
             label: tr(context, 'rotation'),
-            keyButton: KeyButton(
-              key: const ValueKey('director-key:rotation'),
-              state: keyState(session, id, 'rotation'),
-              tooltip: tr(context, 'toggle_key'),
-              onPressed: session.playing || !session.history.timelineVisible
-                  ? null
-                  : () => session.attempt(
-                      () => session.history.toggleKey(id, 'rotation', frame),
-                    ),
-            ),
+            keyButton: session.readOnly
+                ? null
+                : KeyButton(
+                    key: const ValueKey('director-key:rotation'),
+                    state: keyState(session, id, 'rotation'),
+                    tooltip: tr(context, 'toggle_key'),
+                    onPressed:
+                        session.playing || !session.history.timelineVisible
+                        ? null
+                        : () => session.attempt(
+                            () => session.history.toggleKey(
+                              id,
+                              'rotation',
+                              frame,
+                            ),
+                          ),
+                  ),
             child: XyzInput(
               session: session,
               fieldKey: 'rotation',
@@ -164,16 +179,19 @@ class ObjectInspector extends StatelessWidget {
           SectionTitle(tr(context, 'appearance')),
           KeyRow(
             label: tr(context, 'scale'),
-            keyButton: KeyButton(
-              key: const ValueKey('director-key:scale'),
-              state: keyState(session, id, 'scale'),
-              tooltip: tr(context, 'toggle_key'),
-              onPressed: session.playing || !session.history.timelineVisible
-                  ? null
-                  : () => session.attempt(
-                      () => session.history.toggleKey(id, 'scale', frame),
-                    ),
-            ),
+            keyButton: session.readOnly
+                ? null
+                : KeyButton(
+                    key: const ValueKey('director-key:scale'),
+                    state: keyState(session, id, 'scale'),
+                    tooltip: tr(context, 'toggle_key'),
+                    onPressed:
+                        session.playing || !session.history.timelineVisible
+                        ? null
+                        : () => session.attempt(
+                            () => session.history.toggleKey(id, 'scale', frame),
+                          ),
+                  ),
             child: actor
                 ? CommitField(
                     fieldKey: const ValueKey('director-field:scale'),
@@ -196,16 +214,19 @@ class ObjectInspector extends StatelessWidget {
           ),
           KeyRow(
             label: tr(context, 'color'),
-            keyButton: KeyButton(
-              key: const ValueKey('director-key:color'),
-              state: keyState(session, id, 'color'),
-              tooltip: tr(context, 'toggle_key'),
-              onPressed: session.playing || !session.history.timelineVisible
-                  ? null
-                  : () => session.attempt(
-                      () => session.history.toggleKey(id, 'color', frame),
-                    ),
-            ),
+            keyButton: session.readOnly
+                ? null
+                : KeyButton(
+                    key: const ValueKey('director-key:color'),
+                    state: keyState(session, id, 'color'),
+                    tooltip: tr(context, 'toggle_key'),
+                    onPressed:
+                        session.playing || !session.history.timelineVisible
+                        ? null
+                        : () => session.attempt(
+                            () => session.history.toggleKey(id, 'color', frame),
+                          ),
+                  ),
             child: CommitField(
               fieldKey: const ValueKey('director-field:color'),
               session: session,
@@ -219,16 +240,20 @@ class ObjectInspector extends StatelessWidget {
           ),
           KeyRow(
             label: tr(context, 'visible'),
-            keyButton: KeyButton(
-              key: const ValueKey('director-key:visible'),
-              state: keyState(session, id, 'visible'),
-              tooltip: tr(context, 'toggle_key'),
-              onPressed: session.playing || !session.history.timelineVisible
-                  ? null
-                  : () => session.attempt(
-                      () => session.history.toggleKey(id, 'visible', frame),
-                    ),
-            ),
+            keyButton: session.readOnly
+                ? null
+                : KeyButton(
+                    key: const ValueKey('director-key:visible'),
+                    state: keyState(session, id, 'visible'),
+                    tooltip: tr(context, 'toggle_key'),
+                    onPressed:
+                        session.playing || !session.history.timelineVisible
+                        ? null
+                        : () => session.attempt(
+                            () =>
+                                session.history.toggleKey(id, 'visible', frame),
+                          ),
+                  ),
             child: Align(
               alignment: Alignment.centerLeft,
               child: RevericCheckbox(

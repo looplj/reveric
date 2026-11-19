@@ -41,6 +41,8 @@ class ChatHeader extends ConsumerWidget {
     this.activeSessionId,
     this.avoidWindowCaption = true,
     this.floating = false,
+    this.readOnly = false,
+    this.readOnlySessions,
   });
 
   final AiChatSessionState sessionState;
@@ -73,27 +75,36 @@ class ChatHeader extends ConsumerWidget {
   /// 浮窗外壳：关闭按钮语义变成「收起为悬浮球」，面板仍保持挂载。
   final bool floating;
 
+  /// 只读模式（画布画廊）：隐藏新建/展开/权限入口，直接展示会话模型名并使用静态会话切换。
+  final bool readOnly;
+
+  /// 只读模式下的静态会话列表；数量大于 1 时在标题旁展示切换下拉。
+  final List<ReadOnlyChatSessionItem>? readOnlySessions;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final appBackgroundActive = ref.watch(appBackgroundActiveProvider);
-    final aiSettings = ref.watch(aiSettingsProvider);
-    final providerName = sessionState.providerId != null
-        ? aiSettings.findConfigById(sessionState.providerId!)?.displayName
-        : null;
-    // 会话存的是 model id：优先解析为模型目录的展示名（Reveric 渠道），
-    // 解析不到（provider 未配置或模型已下线）时回退原始 id。
-    final availableModels = ref.watch(availableAiModelsProvider);
-    final sessionProviderId = sessionState.providerId;
-    final sessionModel = sessionState.model;
-    String? modelName = sessionModel;
-    if (sessionProviderId != null && sessionModel != null) {
-      final optionId = '$sessionProviderId::$sessionModel';
-      for (final option in availableModels) {
-        if (option.id == optionId) {
-          modelName = option.displayModelName;
-          break;
+    String? providerName;
+    String? modelName = sessionState.model;
+    if (!readOnly) {
+      final aiSettings = ref.watch(aiSettingsProvider);
+      providerName = sessionState.providerId != null
+          ? aiSettings.findConfigById(sessionState.providerId!)?.displayName
+          : null;
+      // 会话存的是 model id：优先解析为模型目录的展示名（Reveric 渠道），
+      // 解析不到（provider 未配置或模型已下线）时回退原始 id。
+      final availableModels = ref.watch(availableAiModelsProvider);
+      final sessionProviderId = sessionState.providerId;
+      final sessionModel = sessionState.model;
+      if (sessionProviderId != null && sessionModel != null) {
+        final optionId = '$sessionProviderId::$sessionModel';
+        for (final option in availableModels) {
+          if (option.id == optionId) {
+            modelName = option.displayModelName;
+            break;
+          }
         }
       }
     }
@@ -159,7 +170,13 @@ class ChatHeader extends ConsumerWidget {
       ],
     );
     // 有会话列表上下文时，标题区变为会话切换触发器（caret + 下拉浮层）。
+    final canSwitchReadOnlySessions =
+        readOnly &&
+        onSelectSession != null &&
+        readOnlySessions != null &&
+        readOnlySessions!.length > 1;
     final canSwitchSessions =
+        !readOnly &&
         onSelectSession != null &&
         novelId != null &&
         novelId!.isNotEmpty &&
@@ -186,12 +203,21 @@ class ChatHeader extends ConsumerWidget {
                 children: [
                   AiAvatar(
                     size: RevericSizes.aiAvatarSm,
-                    tooltip: context.t(LocaleKeys.aiPermissionsTitle),
-                    onTap: onOpenPermissions,
+                    tooltip: readOnly
+                        ? null
+                        : context.t(LocaleKeys.aiPermissionsTitle),
+                    onTap: readOnly ? null : onOpenPermissions,
                   ),
                   const SizedBox(width: RevericSpacing.sm),
                   Expanded(
-                    child: canSwitchSessions
+                    child: canSwitchReadOnlySessions
+                        ? ChatSessionSwitcher.readOnly(
+                            sessions: readOnlySessions!,
+                            activeSessionId: activeSessionId,
+                            onSelectSession: onSelectSession,
+                            child: titleColumn,
+                          )
+                        : canSwitchSessions
                         ? ChatSessionSwitcher(
                             novelId: novelId!,
                             databasePath: databasePath!,
@@ -207,12 +233,13 @@ class ChatHeader extends ConsumerWidget {
                     colors: colors,
                     // 直接新建，不再先弹「新对话 / 延续」二选一：延续降级成新
                     // 会话里的一次性提议条（ContinueSessionOfferBar）。
-                    onRequestNewSession: onRequestNewSession,
-                    onExpand: onExpand,
+                    onRequestNewSession: readOnly ? null : onRequestNewSession,
+                    onExpand: readOnly ? null : onExpand,
                     onClose: onClose,
                     isRequestInFlight:
-                        runtimeState.isRequestInFlight ||
-                        runtimeState.isSessionMutationInFlight,
+                        !readOnly &&
+                        (runtimeState.isRequestInFlight ||
+                            runtimeState.isSessionMutationInFlight),
                     newTooltip: runtimeState.isRequestInFlight
                         ? context.t(LocaleKeys.aiCancelFirst)
                         : context.t(LocaleKeys.aiChatNewConversation),
@@ -234,10 +261,18 @@ class ChatHeader extends ConsumerWidget {
   }
 
   String? _subtitleText(String? providerName, String? modelName) {
-    final modelLabel = providerName != null && modelName != null
-        ? '$providerName · $modelName'
-        : null;
-    return modelLabel;
+    final cleanProvider = providerName?.trim();
+    final cleanModel = modelName?.trim();
+    if (cleanProvider != null &&
+        cleanProvider.isNotEmpty &&
+        cleanModel != null &&
+        cleanModel.isNotEmpty) {
+      return '$cleanProvider · $cleanModel';
+    }
+    if (cleanModel != null && cleanModel.isNotEmpty) {
+      return cleanModel;
+    }
+    return null;
   }
 }
 

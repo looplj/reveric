@@ -57,7 +57,7 @@ class EditingTimelineClip extends HookWidget {
         ? c.content as EditingTextContent
         : null;
     final selected = controller.session.selectedId == c.id;
-    final locked = track.locked;
+    final locked = track.locked || controller.readOnly;
 
     // 源素材能提供的区间：左边最多拉回到源头，右边到源尾。
     final headroom = source == null || source.mediaType == 'image'

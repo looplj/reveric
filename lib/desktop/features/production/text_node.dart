@@ -53,6 +53,8 @@ class ProductionTextNode extends HookWidget {
     required this.node,
     required this.selected,
     this.title,
+    this.readOnly = false,
+    this.onPreview,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
@@ -60,6 +62,10 @@ class ProductionTextNode extends HookWidget {
 
   /// 卡片外的标题输入；没有画布浮层的宿主不提供，编辑时标题保持不变。
   final ProductionNodeTitle? title;
+  final bool readOnly;
+
+  /// 只读模式下双击正文打开文本预览。
+  final VoidCallback? onPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -67,26 +73,31 @@ class ProductionTextNode extends HookWidget {
     final editing = useState<CanvasNode?>(null);
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    if (editing.value case final initial?) {
-      return _Editor(
-        service: service,
-        initial: initial,
-        selected: selected,
-        title: title,
-        onClose: () {
-          editing.value = null;
-          title?.end(initial.id);
-        },
-      );
+    if (!readOnly) {
+      if (editing.value case final initial?) {
+        return _Editor(
+          service: service,
+          initial: initial,
+          selected: selected,
+          title: title,
+          onClose: () {
+            editing.value = null;
+            title?.end(initial.id);
+          },
+        );
+      }
     }
     void edit({bool fromTitle = false}) {
+      if (readOnly) {
+        return;
+      }
       editing.value = node;
       title?.begin(node.id, node.title, fromTitle: fromTitle);
     }
 
     final start = useRef(edit)..value = edit;
     useEffect(() {
-      final host = title;
+      final host = readOnly ? null : title;
       if (host == null) {
         return null;
       }
@@ -97,9 +108,22 @@ class ProductionTextNode extends HookWidget {
           host.starters.remove(node.id);
         }
       };
-    }, [title, node.id]);
+    }, [title, node.id, readOnly]);
 
     if (node.content.trim().isEmpty) {
+      if (readOnly) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTap: onPreview,
+          child: Center(
+            child: RevericIcon(
+              RevericIcons.text_snippet_outlined,
+              size: 22,
+              color: colors.textSubtle,
+            ),
+          ),
+        );
+      }
       // 双击空白处进入编辑；起点行叠在上层单独接收点击，不用等双击判定超时。
       return Stack(
         children: [
@@ -133,7 +157,7 @@ class ProductionTextNode extends HookWidget {
     // 双击正文或点卡片外的标题进入编辑；留白与编辑器一致，进出编辑时正文不跳动。
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onDoubleTap: edit,
+      onDoubleTap: readOnly ? onPreview : edit,
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(RevericSpacing.x3l),
         // 未选中时拖动移动节点。选中后正文可拖选并复制；四周留白不参与选择，

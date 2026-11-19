@@ -54,7 +54,8 @@ class LightingInspector extends StatelessWidget {
                       ],
                       enabled: List.filled(
                         3,
-                        !session.playing &&
+                        !session.readOnly &&
+                            !session.playing &&
                             session.history.editBlock(
                                   document.id,
                                   'lighting.$field',
@@ -74,6 +75,7 @@ class LightingInspector extends StatelessWidget {
                       session: session,
                       value: (lighting[field] as num).toString(),
                       enabled:
+                          !session.readOnly &&
                           !session.playing &&
                           session.history.editBlock(
                                 document.id,

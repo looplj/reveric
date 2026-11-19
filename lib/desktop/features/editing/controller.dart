@@ -36,6 +36,7 @@ class EditingMedia {
 class EditingController extends ChangeNotifier {
   EditingController(this.session);
   final EditingSession session;
+  bool get readOnly => session.readOnly;
   final playhead = ValueNotifier(0);
 
   /// 拖动时命中的吸附点（帧），时间线画虚线。
@@ -65,11 +66,17 @@ class EditingController extends ChangeNotifier {
   EditingDocument get doc => session.document!;
 
   void toggleSnap() {
+    if (readOnly) {
+      return;
+    }
     snap = !snap;
     notifyListeners();
   }
 
   void showAssets(bool value) {
+    if (readOnly && value) {
+      return;
+    }
     assets = value;
     if (!value) {
       replaceFor = null;
@@ -94,6 +101,9 @@ class EditingController extends ChangeNotifier {
   }
 
   void startReplace(String id) {
+    if (readOnly) {
+      return;
+    }
     replaceFor = id;
     assets = true;
     notifyListeners();
@@ -122,6 +132,9 @@ class EditingController extends ChangeNotifier {
   }
 
   void split(BuildContext context) {
+    if (readOnly) {
+      return;
+    }
     final target = splitTarget;
     if (target == null) {
       return;
@@ -139,6 +152,9 @@ class EditingController extends ChangeNotifier {
   }
 
   void remove(BuildContext context) {
+    if (readOnly) {
+      return;
+    }
     final clip = session.selected;
     if (clip == null) {
       return;
@@ -171,6 +187,9 @@ class EditingController extends ChangeNotifier {
     String trackId,
     int frame,
   ) async {
+    if (readOnly) {
+      return;
+    }
     final track = doc.track(trackId);
     if (track.locked) {
       editingSay(context, context.t(LocaleKeys.editingTrackLocked));
@@ -227,6 +246,9 @@ class EditingController extends ChangeNotifier {
 
   /// 「＋」放到播放头：视频进主轨，图片进叠加，音频进第一条播放头处空着的音频轨。
   Future<void> addAtPlayhead(BuildContext context, EditingMedia media) {
+    if (readOnly) {
+      return Future.value();
+    }
     final frame = playhead.value;
     final target = switch (media.type) {
       'video' => doc.mainTrack,
@@ -251,6 +273,9 @@ class EditingController extends ChangeNotifier {
   }
 
   Future<void> replace(BuildContext context, EditingMedia media) async {
+    if (readOnly) {
+      return;
+    }
     final id = replaceFor;
     if (id == null) {
       return;
@@ -281,7 +306,7 @@ class EditingController extends ChangeNotifier {
   }
 
   Future<void> importAdopted(BuildContext context, String? episodeId) async {
-    if (_disposed || importing || doc.clips.isNotEmpty) {
+    if (readOnly || _disposed || importing || doc.clips.isNotEmpty) {
       return;
     }
     final snapshot = doc;
@@ -333,50 +358,69 @@ class EditingController extends ChangeNotifier {
     }
   }
 
-  void addText(BuildContext context, EditingTrack track) =>
-      editingRun(context, () {
-        final frame = playhead.value;
-        if (doc.clips.any(
-          (c) =>
-              c.trackId == track.id &&
-              frame >= c.startFrame &&
-              frame < c.endFrame,
-        )) {
-          editingSay(context, context.t(LocaleKeys.editingOccupied));
-          return;
-        }
-        session.commit(
-          EditingCommands.addText(
-            doc,
-            track.id,
-            frame,
-            context.t(
-              track.role == EditingRole.subtitle
-                  ? LocaleKeys.editingNewSubtitle
-                  : LocaleKeys.editingNewText,
-            ),
+  void addText(BuildContext context, EditingTrack track) {
+    if (readOnly) {
+      return;
+    }
+    editingRun(context, () {
+      final frame = playhead.value;
+      if (doc.clips.any(
+        (c) =>
+            c.trackId == track.id &&
+            frame >= c.startFrame &&
+            frame < c.endFrame,
+      )) {
+        editingSay(context, context.t(LocaleKeys.editingOccupied));
+        return;
+      }
+      session.commit(
+        EditingCommands.addText(
+          doc,
+          track.id,
+          frame,
+          context.t(
+            track.role == EditingRole.subtitle
+                ? LocaleKeys.editingNewSubtitle
+                : LocaleKeys.editingNewText,
           ),
-        );
-        select(
-          session.document!.clips
-              .where((c) => c.trackId == track.id && c.startFrame == frame)
-              .single
-              .id,
-        );
-      });
+        ),
+      );
+      select(
+        session.document!.clips
+            .where((c) => c.trackId == track.id && c.startFrame == frame)
+            .single
+            .id,
+      );
+    });
+  }
 
-  void changeTrack(BuildContext context, EditingTrack next) => editingRun(
-    context,
-    () => session.commit(EditingCommands.updateTrack(doc, next)),
-  );
+  void changeTrack(BuildContext context, EditingTrack next) {
+    if (readOnly) {
+      return;
+    }
+    editingRun(
+      context,
+      () => session.commit(EditingCommands.updateTrack(doc, next)),
+    );
+  }
 
-  void addAudioTrack(BuildContext context) => editingRun(context, () {
-    session.commit(EditingCommands.addAudioTrack(doc));
-  });
+  void addAudioTrack(BuildContext context) {
+    if (readOnly) {
+      return;
+    }
+    editingRun(context, () {
+      session.commit(EditingCommands.addAudioTrack(doc));
+    });
+  }
 
-  void addTextTrack(BuildContext context) => editingRun(context, () {
-    session.commit(EditingCommands.addTextTrack(doc));
-  });
+  void addTextTrack(BuildContext context) {
+    if (readOnly) {
+      return;
+    }
+    editingRun(context, () {
+      session.commit(EditingCommands.addTextTrack(doc));
+    });
+  }
 
   @override
   void dispose() {

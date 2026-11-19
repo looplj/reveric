@@ -67,6 +67,7 @@ class ChatMessageView extends ConsumerWidget {
     this.onSetAsAvatar,
     this.onAddPhoto,
     this.onOpenSessionReference,
+    this.readOnly = false,
     this.isCompactingContext = false,
     this.isWaitingForResponse = false,
     this.retryProgress = '',
@@ -78,6 +79,7 @@ class ChatMessageView extends ConsumerWidget {
   final String? activeSessionId;
   final String? databasePath;
   final String? novelId;
+  final bool readOnly;
 
   /// 无 blocks 的 assistant 纯文本消息可重试时由宿主注入;为 null 不显示重试。
   final VoidCallback? onRetry;
@@ -121,6 +123,7 @@ class ChatMessageView extends ConsumerWidget {
       return CompactionCard(
         summary: message.content,
         metadata: message.metadata,
+        loadInlineImages: !readOnly,
       );
     }
     final isSentByMe = message.role == AiMessageRole.user;
@@ -198,7 +201,7 @@ class ChatMessageView extends ConsumerWidget {
                   ),
                 ),
               if (message.blocks.any((b) => b is AiAttachmentBlock))
-                ChatAttachmentBody(blocks: message.blocks)
+                ChatAttachmentBody(blocks: message.blocks, readOnly: readOnly)
               else if (presentation.text.isNotEmpty)
                 Text(
                   presentation.text,
@@ -429,7 +432,8 @@ class ChatMessageView extends ConsumerWidget {
         !isCompactingContext &&
         isStreaming &&
         _shouldShowStreamingIndicator(message);
-    final isImageGenConfigured = ref.watch(isImageGenerationConfiguredProvider);
+    final isImageGenConfigured =
+        !readOnly && ref.watch(isImageGenerationConfiguredProvider);
 
     final children = <Widget>[];
     final activities = <AiMessageBlock>[];
@@ -526,7 +530,7 @@ class ChatMessageView extends ConsumerWidget {
             block.toolName == 'GeneratePhoto';
         final hasErrorNoModel =
             block.status == AiImageStatus.error && !isImageGenConfigured;
-        if (isCharImage) {
+        if (isCharImage || readOnly) {
           final setAsAvatar = onSetAsAvatar;
           final addPhoto = onAddPhoto;
           final characterId = block.characterId;
@@ -537,6 +541,7 @@ class ChatMessageView extends ConsumerWidget {
           children.add(
             AiCharacterImageToolCard(
               block: block,
+              readOnly: readOnly,
               onSetAsAvatar:
                   (setAsAvatar != null &&
                       block.toolName == 'GenerateAvatar' &&
@@ -572,12 +577,15 @@ class ChatMessageView extends ConsumerWidget {
             );
           }
         }
+      } else if (block is AiAttachmentBlock && readOnly) {
+        flushActivities();
+        children.add(ChatAttachmentBody(blocks: [block], readOnly: true));
       } else if (block is AiAskUserBlock) {
         flushActivities();
         PendingAskUser? findLiveRequest() {
           final provider = aiChatRuntimeProvider(activeSessionId);
           // 历史 pending 卡片可能没有运行时；只查询已有实例，避免渲染创建它。
-          if (!block.isPending || !ref.exists(provider)) {
+          if (readOnly || !block.isPending || !ref.exists(provider)) {
             return null;
           }
           final pending = ref
@@ -758,6 +766,7 @@ class ChatMessageView extends ConsumerWidget {
               content: text,
               textStyle: typo.ui,
               selectable: selectable,
+              loadInlineImages: !readOnly,
             ),
             Positioned(
               top: RevericSpacing.xs,

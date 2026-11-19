@@ -61,6 +61,7 @@ class AiMarkdownText extends StatelessWidget {
     super.key,
     required this.style,
     this.selectable = true,
+    this.loadInlineImages = true,
     this.maxLines,
     this.overflow,
   });
@@ -70,6 +71,7 @@ class AiMarkdownText extends StatelessWidget {
 
   /// false 时内容不可选中：内容仍在流式增长，框架选区索引会失稳崩溃。
   final bool selectable;
+  final bool loadInlineImages;
   final int? maxLines;
   final TextOverflow? overflow;
 
@@ -82,6 +84,9 @@ class AiMarkdownText extends StatelessWidget {
       maxLines: maxLines,
       overflow: overflow,
       codeBuilder: buildMarkdownCodeBlock,
+      imageBuilder: loadInlineImages
+          ? null
+          : (_, _, _, _) => const SizedBox.shrink(),
       onLinkTap: (url, _) => unawaited(_openWebLink(context, url)),
     );
     final textColor = style.color;

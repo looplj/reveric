@@ -29,6 +29,7 @@ class PathEditSession extends ChangeNotifier {
   double height = 0;
   PathHandle? dragging;
   PathEditSession(this.history, this.currentFrame);
+  bool get readOnly => history.readOnly;
   Json? get selected =>
       history.document.paths.where((p) => p['id'] == selectedId).firstOrNull;
   Json? get visible => _draft == null ? selected : cloneJson(_draft!);
@@ -53,6 +54,9 @@ class PathEditSession extends ChangeNotifier {
   }
 
   void begin(String actorId, String kind, (int, int) range, int frame) {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     cancelGesture();
     choice(kind, 'kind', pathKinds);
     final actor = sampleDocument(
@@ -111,6 +115,9 @@ class PathEditSession extends ChangeNotifier {
   }
 
   void update(void Function(Json) edit) {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     final value = visible;
     if (value == null) {
       return;
@@ -127,6 +134,9 @@ class PathEditSession extends ChangeNotifier {
   }
 
   void finish() {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     final value = visible;
     if (value == null) {
       return;
@@ -146,6 +156,9 @@ class PathEditSession extends ChangeNotifier {
   }
 
   void remove() {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     if (selected != null) {
       history.removePath(selectedId!);
     }
@@ -153,11 +166,17 @@ class PathEditSession extends ChangeNotifier {
   }
 
   void bake() {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     history.bake('motion_paths', selectedId!);
     cancel();
   }
 
   void pointerDown(List<double> point, PathHandle? handle) {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     final value = visible;
     if (value == null) {
       return;
@@ -179,6 +198,9 @@ class PathEditSession extends ChangeNotifier {
   }
 
   void pointerMove(List<double> point) {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     vector(point, 'motion_path.point', 50);
     if (_gestureStart == null || _generation != history.gestureGeneration) {
       cancelGesture();
@@ -213,6 +235,9 @@ class PathEditSession extends ChangeNotifier {
   }
 
   void pointerUp() {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     if (_gestureStart == null) {
       return;
     }

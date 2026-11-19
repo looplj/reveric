@@ -30,6 +30,7 @@ class DirectorPreview {
   File get image => File('${storage.root.path}/preview.png');
 
   Future<void> write(Uint8List bytes) async {
+    await image.parent.create(recursive: true);
     final part = File('${image.path}.${const Uuid().v4()}.pending');
     await part.writeAsBytes(bytes, flush: true);
     await part.rename(image.path);

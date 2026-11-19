@@ -38,26 +38,27 @@ class CameraCutsInspector extends StatelessWidget {
             key: const ValueKey('director-default-camera'),
             value: document.defaultCameraId,
             items: items,
-            enabled: !session.playing,
+            enabled: !session.readOnly && !session.playing,
             onChanged: (id) =>
                 session.attempt(() => session.history.setDefaultCamera(id)),
           ),
         ),
         if (session.history.timelineVisible) ...[
           SectionTitle(tr(context, 'camera_cuts')),
-          RevericButton.secondary(
-            key: const ValueKey('director-add-cut'),
-            label: tr(context, 'add_cut'),
-            size: RevericButtonSize.compact,
-            onPressed: session.playing
-                ? null
-                : () => session.attempt(
-                    () => session.history.setCut(
-                      session.frame.value,
-                      session.viewCameraId,
+          if (!session.readOnly)
+            RevericButton.secondary(
+              key: const ValueKey('director-add-cut'),
+              label: tr(context, 'add_cut'),
+              size: RevericButtonSize.compact,
+              onPressed: session.playing
+                  ? null
+                  : () => session.attempt(
+                      () => session.history.setCut(
+                        session.frame.value,
+                        session.viewCameraId,
+                      ),
                     ),
-                  ),
-          ),
+            ),
           for (final cut in document.cuts)
             Padding(
               key: ValueKey('director-cut:${cut['id']}'),
@@ -69,7 +70,7 @@ class CameraCutsInspector extends StatelessWidget {
                       fieldKey: ValueKey('director-cut-frame:${cut['id']}'),
                       session: session,
                       value: '${cut['frame']}',
-                      enabled: !session.playing,
+                      enabled: !session.readOnly && !session.playing,
                       suffix: tr(context, 'frame'),
                       onCommit: (text) {
                         final frame = int.tryParse(text);
@@ -91,7 +92,7 @@ class CameraCutsInspector extends StatelessWidget {
                       key: ValueKey('director-cut-camera:${cut['id']}'),
                       value: cut['camera_id'],
                       items: items,
-                      enabled: !session.playing,
+                      enabled: !session.readOnly && !session.playing,
                       onChanged: (id) => session.attempt(
                         () => session.history.editCut(
                           cut['id'],
@@ -101,21 +102,22 @@ class CameraCutsInspector extends StatelessWidget {
                       ),
                     ),
                   ),
-                  RevericMoreMenuButton(
-                    key: ValueKey('director-cut-more:${cut['id']}'),
-                    entries: () => [
-                      RevericMenuItem(
-                        label: tr(context, 'delete'),
-                        icon: RevericIcons.delete_outline,
-                        labelColor: colors.error,
-                        iconColor: colors.error,
-                        enabled: !session.playing,
-                        onTap: () => session.attempt(
-                          () => session.history.removeCut(cut['id']),
+                  if (!session.readOnly)
+                    RevericMoreMenuButton(
+                      key: ValueKey('director-cut-more:${cut['id']}'),
+                      entries: () => [
+                        RevericMenuItem(
+                          label: tr(context, 'delete'),
+                          icon: RevericIcons.delete_outline,
+                          labelColor: colors.error,
+                          iconColor: colors.error,
+                          enabled: !session.playing,
+                          onTap: () => session.attempt(
+                            () => session.history.removeCut(cut['id']),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
             ),

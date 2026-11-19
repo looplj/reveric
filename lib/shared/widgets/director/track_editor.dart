@@ -32,6 +32,9 @@ Future<void> editTrackOrClip(
   DirectorSession session,
   Json item,
 ) async {
+  if (session.readOnly) {
+    return;
+  }
   if (session.hasPendingInput) {
     session.error = 'apply_pending';
     session.refresh();

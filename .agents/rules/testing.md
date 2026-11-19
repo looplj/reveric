@@ -55,9 +55,33 @@ A Timer is still pending even after the widget tree was disposed.
 
 判断依据是**有没有 watch stream**，不是有没有 override `appDatabaseProvider`：同目录的 `canvas_test` / `designer_test` / `studio_page_test` 都 override 了 database 但不 watch stream，无需收尾；`records_back_test.dart` watch 了 `imageBatchesProvider`，必须收尾（参考实现在该文件）。
 
+## testWidgets 里的真实 IO
+
+`testWidgets` 的测试体跑在 FakeAsync 里。`dart:io` 的异步操作走真实事件循环，FakeAsync 不会把它完成。测试体里直接 `await` 下列调用会停住：用例名已经打印，CPU 时间不再增加，没有断言失败。
+
+- 文件：`File.open`、`readAsBytes`、`writeAsBytes`、`length`、`exists`、`delete`
+- 目录：`Directory.createTemp`、`create`、`delete`、`list`
+- 进程与网络：`Process.run` / `Process.start`、`HttpClient`、`Socket`、`InternetAddress.lookup`
+
+同步 API（`writeAsBytesSync`、`readAsBytesSync`、`existsSync`、`deleteSync`）不经过这个 Future，可以直接用。普通 `test()` 不在 FakeAsync 里，不需要 `runAsync`。
+
+测试体要等待的真实 IO 包进 `tester.runAsync`。服务方法名字像数据库写入时也可能打开文件：`requireAsset` 会 `File.open` 确认文件非空，`addMedia` 和 `setPanoramaView` 都走它。挂在这类调用上时，先看调用链里有没有 `dart:io`。
+
+```dart
+final node = (await tester.runAsync(() async {
+  final created = await service.addMedia(canvasId, assetId);
+  await service.setPanoramaView(created.id, const PanoramaView());
+  return (await contentDb.canvasDao.getNodeById(created.id))!;
+}))!;
+```
+
+- 不要用加长 timeout、多调 `pumpAndSettle`，或把生产代码里的文件校验挪走来迁就测试。
+- `runAsync` 的结果类型是 `T?`；回调正常返回时用 `!` 取回。
+- 参考 `test/desktop/features/canvas_gallery/local_alignment_test.dart` 和 `test/desktop/features/canvas_gallery/read_only_preview_test.dart`。
+
 ## 跑测试的操作纪律
 
 - **不要把 `flutter test` 的输出 pipe 给 `grep`**。非 tty 下 grep 块缓冲，进程跑完前看不到任何一行，一个 1 秒就失败的测试会表现得像卡死。先 `> /tmp/xxx.log` 落完整日志，再过滤。
 - **widget 测试一律带 `timeout`**。测试体失败后 flutter_tester 可能不退出（`tearDownAll` 卡在临时目录已被清的 `PathNotFoundException`），会空挂十分钟以上。
-- **怀疑"跑得慢"时先看 CPU 时间**：`ps -eo pid,etime,time -p <pid>`。挂钟很长而 CPU 只有一两秒 = 在等某个永不完成的 future/timer，不是在算；继续等或加长 timeout 没有意义，直接杀掉查根因。
+- **怀疑"跑得慢"时先看 CPU 时间**：`ps -eo pid,etime,time -p <pid>`。挂钟很长而 CPU 只有一两秒 = 在等某个永不完成的 future/timer，不是在算；继续等或加长 timeout 没有意义，直接杀掉查根因。停在 `testWidgets` 里对 `dart:io` Future 的 `await` 时，按上一节包进 `runAsync`。
 - 排查测试问题时不要 `git stash` 去对基线 —— 那会清空整个工作区。要对比就用 `git stash` 之外的手段（`git diff`、单独 checkout 到别处）。
