@@ -5,7 +5,9 @@
 //   lib/desktop/features/editing/canvas_shell.dart
 //   lib/desktop/widgets/ai/chat/panel.dart
 //   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/ai.json
 //   assets/translations/en/production.json
+//   assets/translations/zh-CN/ai.json
 //   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
@@ -22,11 +24,15 @@ import '../../../shared/database/app_database.dart' show Novel;
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/ai_provider.dart';
+import '../../../shared/models/ai_session_mode.dart';
 import '../../../shared/models/novel_workspace.dart';
+import '../../../shared/models/queued_chat_message.dart';
+import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/providers/production_chat.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/screenplay/director_shell.dart';
+import '../../pages/workspace_editor_page.dart';
 import '../../widgets/desktop_window_frame.dart';
 import '../../widgets/ai/chat/panel.dart';
 import '../../widgets/ai/chat/floating.dart';
@@ -44,11 +50,13 @@ class CanvasWorkPage extends HookConsumerWidget {
     required this.novel,
     this.initialSessionId,
     this.initialPrompt,
+    this.initialChatHandoff,
     this.openChatOnEntry = false,
     this.directorViewportBuilder,
   });
   final Novel novel;
   final String? initialSessionId, initialPrompt;
+  final PendingChatHandoff? initialChatHandoff;
   final bool openChatOnEntry;
   @visibleForTesting
   final Widget Function(DirectorSession, ViewState)? directorViewportBuilder;
@@ -83,10 +91,13 @@ class CanvasWorkPage extends HookConsumerWidget {
           return;
         }
         chatState.setCanvas(true);
-        if (openChatOnEntry || initialPrompt != null) {
+        final handoff = initialChatHandoff;
+        if (openChatOnEntry || initialPrompt != null || handoff != null) {
           chatState.setOpen(true);
         }
-        if (initialPrompt != null) {
+        if (handoff != null) {
+          draft.value = AiChatHandoffDraft.fromContinuation(handoff);
+        } else if (initialPrompt != null) {
           draft.value = AiChatHandoffDraft(
             id: 'canvas-initial',
             label: '',
@@ -99,6 +110,38 @@ class CanvasWorkPage extends HookConsumerWidget {
       });
       return null;
     }, [novel.id]);
+
+    Future<void> openChatSource(String id, AiSessionMode mode) async {
+      final source = await ref
+          .read(appDatabaseProvider)
+          .aiChatSessionDao
+          .getById(id);
+      if (!context.mounted) {
+        return;
+      }
+      if (source == null || source.mode != AiSessionMode.chat.value) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.t(LocaleKeys.aiChatSourceUnavailable)),
+          ),
+        );
+        return;
+      }
+      if (source.novelId == novel.id) {
+        sessionId.value = id;
+        return;
+      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => WorkspaceEditorPage(
+            novelId: source.novelId,
+            initialSessionId: id,
+            openChatOnEntry: true,
+          ),
+        ),
+      );
+    }
+
     Future<void> leave() async {
       if (leaving.value) {
         return;
@@ -272,6 +315,7 @@ class CanvasWorkPage extends HookConsumerWidget {
                           onSessionRestored: (id) => sessionId.value = id,
                           onActiveSessionIdChanged: (id) async =>
                               sessionId.value = id,
+                          onOpenSessionReference: openChatSource,
                           handoffDraft: draft.value,
                           onRequestHandoff: (value) => draft.value = value,
                           onHandoffDraftConsumed: (id) {

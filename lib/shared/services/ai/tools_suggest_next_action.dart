@@ -26,10 +26,11 @@ Map<String, dynamic> buildSuggestNextActionInputSchema() {
           'properties': {
             'kind': {
               'type': 'string',
-              'enum': ['prompt', 'feature'],
+              'enum': ['prompt', 'feature', 'work'],
               'description': 'prompt 表示点击后把 prompt 填入输入框；feature 表示点击后跳转到指定功能。',
             },
             'label': {'type': 'string', 'description': '按钮文案，一行内说清用户点了会发生什么。'},
+            'work_id': {'type': 'string'},
             'prompt': {
               'type': 'string',
               'description': 'kind=prompt 时必填，点击后填入输入框的文本。',
@@ -79,18 +80,21 @@ kind=prompt 时 prompt 必填；kind=feature 时 feature 必填、seed 可选。
 mixin _AiToolManagerSuggestNextActionMixin on _AiToolManagerBase {
   /// 校验 → 裁决 → 挂块 → 立即返回。
   ///
-  /// **同步返回，不建 Completer**：本工具在回合收尾被调用，挂起 turn 会让整轮卡死
-  /// （方案核心原则 6）。丢弃项只写 warn 日志，不回传模型（方案 5.1）。
+  /// 同步返回，避免下一步建议阻塞当前回合。
   Map<String, dynamic> _handleSuggestNextAction(
     Map<String, dynamic> input,
     String callId,
   ) {
     final rawSuggestions = input['suggestions'];
-    if (rawSuggestions is! List) {
+    if (rawSuggestions is! List || rawSuggestions.isEmpty) {
       _log.warning(
-        'SuggestNextAction dropped: suggestions is not a list callId=$callId',
+        'SuggestNextAction requires a non-empty suggestions array callId=$callId',
       );
-      return const {'ok': true};
+      return {
+        'ok': false,
+        'error_code': ToolErrorCode.invalid_argument.name,
+        'error': 'Pass at least one suggestion in the suggestions array.',
+      };
     }
 
     final judgement = ChatNextActionArbiter.judge(
@@ -103,11 +107,23 @@ mixin _AiToolManagerSuggestNextActionMixin on _AiToolManagerBase {
         'index=${drop.index} reason=${drop.reason}',
       );
     }
+    final rejected = judgement.drops
+        .map((drop) => 'suggestions[${drop.index}]: ${drop.reason}')
+        .join(', ');
+    final hint = 'Rejected suggestions: $rejected.';
+    if (judgement.actions.isEmpty) {
+      return {
+        'ok': false,
+        'error_code': ToolErrorCode.invalid_argument.name,
+        'error': 'No suggestions were added.',
+        'hint': hint,
+      };
+    }
 
     suggestNextActionCallback?.call(
       callId,
       judgement.actions.map(serializeChatNextAction).toList(),
     );
-    return const {'ok': true};
+    return {'ok': true, if (rejected.isNotEmpty) 'hint': hint};
   }
 }

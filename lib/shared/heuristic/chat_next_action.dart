@@ -78,6 +78,14 @@ final class FeatureActionTarget extends ChatNextActionTarget {
   final String? seedText;
 }
 
+/// 打开新作品，或在新作品中预填后续任务。
+final class WorkActionTarget extends ChatNextActionTarget {
+  const WorkActionTarget(this.workId, {this.prompt});
+
+  final String workId;
+  final String? prompt;
+}
+
 /// 统一展示模型 — 模型产出的建议与空态固定目录共用。
 class ChatNextAction {
   const ChatNextAction({
@@ -144,7 +152,7 @@ class ChatNextActionEnvironment {
   }
 }
 
-/// 一条被丢弃的建议及其原因，仅用于日志，不回传模型。
+/// 一条被丢弃的建议及其原因。
 typedef ChatNextActionDrop = ({int index, String reason});
 
 /// 裁决结果：保留项 + 丢弃原因。
@@ -160,8 +168,8 @@ const int chatNextActionMaxSuggestions = 3;
 abstract final class ChatNextActionArbiter {
   /// 逐条校验模型给的 raw 建议，丢弃非法项，最多保留 3 条。
   ///
-  /// 只做形状与白名单校验，不按作品状态动态过滤目标。丢弃不回传模型
-  /// （见方案 5.1「返回值最小化」），调用方按 [ChatNextActionDrop] 写 warn 日志即可。
+  /// 校验字段形状和功能白名单，作品是否可打开由导航入口检查。
+  /// 调用方按 [ChatNextActionDrop] 记录丢弃原因。
   static ChatNextActionJudgement judge(
     List<dynamic> raw, {
     bool allowFeatures = true,
@@ -227,6 +235,23 @@ abstract final class ChatNextActionArbiter {
               target: FeatureActionTarget(
                 feature,
                 seedText: seed.isEmpty ? null : seed,
+              ),
+            ),
+          );
+        case 'work':
+          final workId = _string(map['work_id']);
+          if (workId.isEmpty) {
+            drops.add((index: index, reason: 'missing_work_id'));
+            continue;
+          }
+          final prompt = _string(map['prompt']);
+          actions.add(
+            ChatNextAction(
+              id: 'suggest_work_${workId}_$index',
+              label: label,
+              target: WorkActionTarget(
+                workId,
+                prompt: prompt.isEmpty ? null : prompt,
               ),
             ),
           );
@@ -376,6 +401,13 @@ Map<String, dynamic> serializeChatNextAction(ChatNextAction action) {
       'feature': feature.storageKey,
       'seed': ?seedText,
     },
+    WorkActionTarget(:final workId, :final prompt) => {
+      'id': action.id,
+      'kind': 'work',
+      'label': action.label,
+      'work_id': workId,
+      'prompt': ?prompt,
+    },
   };
 }
 
@@ -419,6 +451,20 @@ ChatNextAction? deserializeChatNextAction(Map<String, dynamic> json) {
         target: FeatureActionTarget(
           feature,
           seedText: (seed == null || seed.isEmpty) ? null : seed,
+        ),
+      );
+    case 'work':
+      final workId = _string(json['work_id']);
+      if (workId.isEmpty) {
+        return null;
+      }
+      final prompt = _string(json['prompt']);
+      return ChatNextAction(
+        id: id,
+        label: label,
+        target: WorkActionTarget(
+          workId,
+          prompt: prompt.isEmpty ? null : prompt,
         ),
       );
   }

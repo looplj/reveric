@@ -263,6 +263,7 @@ class NovelEditorPage extends HookConsumerWidget {
     this.initialSessionId,
     this.initialChatKickoffPrompt,
     this.initialChatKickoffTitle,
+    this.initialChatHandoff,
     this.openChatOnEntry = false,
   });
 
@@ -275,6 +276,7 @@ class NovelEditorPage extends HookConsumerWidget {
 
   /// 开场会话标题，缺省为「快速开书」。
   final String? initialChatKickoffTitle;
+  final PendingChatHandoff? initialChatHandoff;
 
   /// 新建小说进入时直接展开聊天，等待用户输入，不自动发送消息。
   final bool openChatOnEntry;
@@ -3606,6 +3608,14 @@ class NovelEditorPage extends HookConsumerWidget {
         : '';
     final kickoffTitle = kickoffLabel;
     useEffect(() {
+      final handoff = initialChatHandoff;
+      if (handoff != null) {
+        openExpandedChat();
+        pendingHandoffDraft.value = AiChatHandoffDraft.fromContinuation(
+          handoff,
+        );
+        return null;
+      }
       final prompt = kickoffPrompt;
       if (prompt == null || prompt.isEmpty) {
         return null;
@@ -3690,11 +3700,13 @@ class NovelEditorPage extends HookConsumerWidget {
       final source = await ref
           .read(appDatabaseProvider)
           .aiChatSessionDao
-          .getById(sessionId, novelId: novelId);
+          .getById(sessionId);
       if (!context.mounted) {
         return;
       }
-      if (source == null) {
+      if (source == null ||
+          (source.novelId != novelId &&
+              source.mode != AiSessionMode.chat.value)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.t(LocaleKeys.aiChatSourceUnavailable)),
@@ -3704,6 +3716,21 @@ class NovelEditorPage extends HookConsumerWidget {
       }
 
       if (await guardUnsavedChanges()) {
+        return;
+      }
+      if (!context.mounted) {
+        return;
+      }
+      if (source.novelId != novelId) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => WorkspaceEditorPage(
+              novelId: source.novelId,
+              initialSessionId: sessionId,
+              openChatOnEntry: true,
+            ),
+          ),
+        );
         return;
       }
       aiPanelCollapsed.value = false;

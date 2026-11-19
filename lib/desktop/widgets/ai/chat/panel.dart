@@ -55,6 +55,7 @@ import '../../../../shared/agent/agent.dart';
 import '../../../../shared/services/ai/chat_attachments.dart';
 import '../../../../shared/services/ai/chat_session_controller.dart';
 import '../../../../shared/services/ai/handoff_service.dart';
+import '../../../pages/workspace_editor_page.dart';
 import '../../../../shared/services/ai/chat_prompt_builder.dart';
 import '../../../../shared/services/ai/context_message_matcher.dart';
 import '../../../../shared/theme/theme.dart';
@@ -1298,6 +1299,27 @@ class AiChatPanel extends HookConsumerWidget {
             return;
           }
           open(feature, seedText);
+        case final WorkActionTarget target:
+          if (ModalRoute.of(context)?.isCurrent == false) {
+            return;
+          }
+          final handoff = buildWorkActionHandoff(
+            target,
+            sourceWorkId: novelId,
+            sourceSessionId: sessionState.sessionId ?? runtimeSessionId,
+            sourceTitle: sessionState.title,
+            sourceMode: sessionState.sessionMode,
+          );
+          unawaited(
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => WorkspaceEditorPage(
+                  novelId: target.workId,
+                  initialChatHandoff: handoff,
+                ),
+              ),
+            ),
+          );
       }
     }
 

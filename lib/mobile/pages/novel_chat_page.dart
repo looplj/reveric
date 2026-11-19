@@ -48,6 +48,8 @@
 //   assets/translations/zh-CN/ai.json
 //   assets/translations/en/editor.json
 //   assets/translations/zh-CN/editor.json
+//   assets/translations/en/library.json
+//   assets/translations/zh-CN/library.json
 //   assets/translations/en/mobile.json
 //   assets/translations/zh-CN/mobile.json
 //   assets/translations/en/agent_skill.json
@@ -97,6 +99,7 @@ import '../../shared/providers/subagent_providers.dart';
 import '../../shared/providers/prompt_template_provider.dart';
 import '../../shared/services/ai/chat_session_controller.dart';
 import '../../shared/services/ai/handoff_service.dart';
+import 'workspace_editor_page.dart';
 import '../../shared/widgets/ai/chat/chat_message_parts.dart';
 import '../../shared/widgets/ai/chat/attachment_input.dart';
 import '../../shared/widgets/ai/chat/composer_controller.dart';
@@ -986,11 +989,22 @@ class _MobileNovelChatBody extends HookConsumerWidget {
       final source = await ref
           .read(appDatabaseProvider)
           .aiChatSessionDao
-          .getById(sourceId, novelId: novelId);
+          .getById(sourceId);
       if (!context.mounted) {
         return;
       }
-      if (source == null) {
+      final sourcePath = switch (source) {
+        null => null,
+        AiChatSession(novelId: final id) when id == novelId => databasePath,
+        AiChatSession(novelId: final id, mode: 'chat') =>
+          (await ref.read(novelActionsProvider).getNovel(id))
+              ?.contentDatabasePath,
+        _ => null,
+      };
+      if (!context.mounted) {
+        return;
+      }
+      if (source == null || sourcePath == null || sourcePath.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.t(LocaleKeys.aiChatSourceUnavailable)),
@@ -1014,8 +1028,8 @@ class _MobileNovelChatBody extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileNovelChatPage(
-            novelId: novelId,
-            databasePath: databasePath,
+            novelId: source.novelId,
+            databasePath: sourcePath,
             existingSessionId: sourceId,
           ),
         ),
@@ -1113,6 +1127,22 @@ class _MobileNovelChatBody extends HookConsumerWidget {
     /// 封面在移动端没有独立工作台，沿用 novel_editor_page 的 cover handoff prompt。
     void handleNextAction(ChatNextAction action) {
       switch (action.target) {
+        case final WorkActionTarget target:
+          final session = ref.read(aiChatSessionProvider(sessionId));
+          unawaited(
+            _openNextActionWork(
+              context,
+              ref,
+              target,
+              buildWorkActionHandoff(
+                target,
+                sourceWorkId: novelId,
+                sourceSessionId: session.sessionId ?? sessionId,
+                sourceTitle: session.title,
+                sourceMode: session.sessionMode,
+              ),
+            ),
+          );
         case PromptActionTarget(:final prompt, :final intent):
           if (intent == ChatNextActionIntent.new_chat ||
               intent == ChatNextActionIntent.continue_in_new_chat) {
@@ -2557,6 +2587,40 @@ Future<PendingChatModelSelection?> _showModelSelector(
     },
   );
   return pendingSelection;
+}
+
+Future<void> _openNextActionWork(
+  BuildContext context,
+  WidgetRef ref,
+  WorkActionTarget target,
+  PendingChatHandoff? handoff,
+) async {
+  Novel? novel;
+  try {
+    novel = await ref.read(novelActionsProvider).getNovel(target.workId);
+  } catch (error, stackTrace) {
+    _log.error(
+      'Failed to open work id=${target.workId}',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+  if (!context.mounted || ModalRoute.of(context)?.isCurrent == false) {
+    return;
+  }
+  if (novel == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.t(LocaleKeys.libraryWorkspaceLoadFailed))),
+    );
+    return;
+  }
+  final work = novel;
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) =>
+          MobileWorkspaceEditorPage(novel: work, initialChatHandoff: handoff),
+    ),
+  );
 }
 
 /// 「最近改动」点击条目后的工作区跳转：关掉 sheet，按 section push 对应 id 化编辑页。

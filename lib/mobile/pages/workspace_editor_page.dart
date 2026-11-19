@@ -29,6 +29,7 @@ class MobileWorkspaceEditorPage extends HookWidget {
     required this.novel,
     this.initialChatKickoffPrompt,
     this.initialChatKickoffTitle,
+    this.initialChatHandoff,
     this.openChatOnEntry = false,
   });
 
@@ -37,6 +38,7 @@ class MobileWorkspaceEditorPage extends HookWidget {
 
   /// 剧本开场会话的标题（如「导入剧本」）。
   final String? initialChatKickoffTitle;
+  final PendingChatHandoff? initialChatHandoff;
   final bool openChatOnEntry;
 
   @override
@@ -45,11 +47,11 @@ class MobileWorkspaceEditorPage extends HookWidget {
     final path = novel.contentDatabasePath;
     final kickoffPrompt = initialChatKickoffPrompt?.trim();
     final hasKickoff = kickoffPrompt != null && kickoffPrompt.isNotEmpty;
+    final shouldOpenChat =
+        initialChatHandoff != null ||
+        (isScreenplay && (openChatOnEntry || hasKickoff));
     useEffect(() {
-      if (!isScreenplay ||
-          (!openChatOnEntry && !hasKickoff) ||
-          path == null ||
-          path.isEmpty) {
+      if (!shouldOpenChat || path == null || path.isEmpty) {
         return null;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -61,20 +63,22 @@ class MobileWorkspaceEditorPage extends HookWidget {
             builder: (_) => MobileNovelChatPage(
               novelId: novel.id,
               databasePath: path,
-              handoff: hasKickoff
-                  ? PendingChatHandoff(
-                      label: initialChatKickoffTitle ?? '',
-                      content: kickoffPrompt,
-                      initialText: kickoffPrompt,
-                      autoSend: true,
-                    )
-                  : null,
+              handoff:
+                  initialChatHandoff ??
+                  (hasKickoff
+                      ? PendingChatHandoff(
+                          label: initialChatKickoffTitle ?? '',
+                          content: kickoffPrompt,
+                          initialText: kickoffPrompt,
+                          autoSend: true,
+                        )
+                      : null),
             ),
           ),
         );
       });
       return null;
-    }, [novel.id, path, isScreenplay, openChatOnEntry, kickoffPrompt]);
+    }, [novel.id, path, shouldOpenChat, kickoffPrompt, initialChatHandoff]);
 
     if (novel.contentKind == contentKindCanvas) {
       return Scaffold(

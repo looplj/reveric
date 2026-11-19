@@ -98,7 +98,7 @@ class _NextActionChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final isGoto = action.isFeatureTarget;
+    final isGoto = action.target is! PromptActionTarget;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 260),

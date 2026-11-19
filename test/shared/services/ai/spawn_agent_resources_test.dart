@@ -371,6 +371,7 @@ void main() {
       final work = (await appDb.novelDao.getAll()).single;
       expect(created['id'], work.id);
       expect(created['path'], '/works/${work.id}');
+      expect(created['hint'], isNull);
       expect(work.title, '子代理新书');
     },
   );

@@ -8,7 +8,7 @@ part of 'tools.dart';
 
 const _createDescription = '''创建作品工作区资源。
 
-用户明确要求新建作品时，使用 Create /works，字段见 Read /_schema/works。成功返回新作品的 id 和 path，当前会话仍指向原作品。
+用户要求新建作品，改编当前作品时，使用 Create /works，字段见 Read /_schema/works, 当前会话仍指向当前作品。
 
 批量创建时，每次调用都是独立请求，不继承同批或上次调用的参数。部分成功时，只修正并重试失败项，避免重复创建已成功的资源。
 
@@ -320,7 +320,17 @@ mixin _AiToolManagerCreateMixin
         type: type,
         sourceNovelId: fields['source_novel_id'] as String?,
       );
-      return {'ok': true, 'created': true, 'id': id, 'path': '/works/$id'};
+      return {
+        'ok': true,
+        'created': true,
+        'id': id,
+        'path': '/works/$id',
+        if (suggestNextActionCallback != null)
+          'hint':
+              'This session cannot edit the new work. '
+              'Use SuggestNextAction with kind=work and work_id="$id" to open it. '
+              'Put any remaining task in prompt.',
+      };
     } on NovelTitleConflictException catch (error) {
       return _resourceError(
         parsed.displayPath,

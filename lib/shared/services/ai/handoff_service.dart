@@ -8,6 +8,8 @@
 //   .agents/rules/state-management.md
 import '../../database/novel_content_database.dart';
 import '../../database/app_database.dart';
+import '../../heuristic/chat_next_action.dart';
+import '../../models/ai_chat_session_id.dart';
 import '../../models/queued_chat_message.dart';
 import '../../models/novel_workspace.dart';
 import '../../models/ai_chat_models.dart';
@@ -17,6 +19,29 @@ import 'session_persistence.dart';
 import 'xml_utils.dart';
 
 const sessionContinuationInstruction = '继续来源对话中的任务。';
+
+PendingChatHandoff? buildWorkActionHandoff(
+  WorkActionTarget target, {
+  required String sourceWorkId,
+  required String? sourceSessionId,
+  required String sourceTitle,
+  required AiSessionMode sourceMode,
+}) {
+  final prompt = target.prompt;
+  if (prompt == null) {
+    return null;
+  }
+  if (sourceSessionId == null || isTemporaryAiChatSessionId(sourceSessionId)) {
+    return PendingChatHandoff(label: '', content: '', initialText: prompt);
+  }
+  return buildSessionContinuationDraft(
+    workId: sourceWorkId,
+    sourceSessionId: sourceSessionId,
+    sourceTitle: sourceTitle,
+    sourceMode: sourceMode,
+    initialText: prompt,
+  );
+}
 
 /// Only returns a real, available source with saved messages; never creates data.
 Future<AiChatSession?> loadSessionContinuationSource({

@@ -565,7 +565,7 @@ void main() {
   );
 
   testWidgets(
-    'canvas chat offers an editable next step without feature navigation',
+    'canvas chat opens a new work with an editable continuation draft',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1;
@@ -636,6 +636,13 @@ void main() {
                       'feature': 'ai_council',
                       'label': '前往圆桌',
                     },
+                    {
+                      'id': 'work',
+                      'kind': 'work',
+                      'work_id': 'new_canvas',
+                      'label': '在新作品中继续',
+                      'prompt': '根据原作写第一集',
+                    },
                   ],
                 ),
               ],
@@ -652,6 +659,30 @@ void main() {
       expect(
         container.read(aiChatSessionProvider(panel.activeSessionId)).messages,
         hasLength(2),
+      );
+      await app.novelDao.create(
+        id: 'new_canvas',
+        title: 'New canvas',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: db.filePath,
+      );
+      await tester.tap(find.text('在新作品中继续'));
+      await tester.pumpAndSettle();
+      final newPanel = tester.widget<AiChatPanel>(find.byType(AiChatPanel));
+      expect(newPanel.novelId, 'new_canvas');
+      expect(
+        tester
+            .widget<ChatAttachmentInput>(find.byType(ChatAttachmentInput))
+            .controller
+            .text,
+        '根据原作写第一集',
+      );
+      expect(
+        container
+            .read(aiChatSessionProvider(newPanel.activeSessionId))
+            .messages,
+        isEmpty,
       );
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();

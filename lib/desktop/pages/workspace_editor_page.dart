@@ -15,6 +15,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
+import '../../shared/models/queued_chat_message.dart';
 import '../../shared/providers/novel_providers.dart';
 import '../../shared/theme/theme.dart';
 import '../widgets/desktop_window_frame.dart';
@@ -29,6 +30,7 @@ class WorkspaceEditorPage extends ConsumerWidget {
     this.initialSessionId,
     this.initialChatKickoffPrompt,
     this.initialChatKickoffTitle,
+    this.initialChatHandoff,
     this.openChatOnEntry = false,
   });
 
@@ -36,6 +38,7 @@ class WorkspaceEditorPage extends ConsumerWidget {
   final String? initialSessionId;
   final String? initialChatKickoffPrompt;
   final String? initialChatKickoffTitle;
+  final PendingChatHandoff? initialChatHandoff;
   final bool openChatOnEntry;
 
   @override
@@ -59,6 +62,7 @@ class WorkspaceEditorPage extends ConsumerWidget {
                 novel: novel,
                 initialSessionId: initialSessionId,
                 initialPrompt: initialChatKickoffPrompt,
+                initialChatHandoff: initialChatHandoff,
                 openChatOnEntry: openChatOnEntry,
               );
             }
@@ -68,6 +72,7 @@ class WorkspaceEditorPage extends ConsumerWidget {
 
               initialChatKickoffPrompt: initialChatKickoffPrompt,
               initialChatKickoffTitle: initialChatKickoffTitle,
+              initialChatHandoff: initialChatHandoff,
               openChatOnEntry: openChatOnEntry,
             );
           },

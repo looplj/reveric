@@ -135,7 +135,7 @@ void main() {
   });
 
   group('执行契约', () {
-    test('返回值恒为 {"ok": true}，不含 accepted / dropped', () async {
+    test('建议全部有效时返回 {"ok": true}', () async {
       List<Map<String, dynamic>>? captured;
       final manager = _buildManager(
         onSuggest: (_, suggestions) => captured = suggestions,
@@ -178,7 +178,7 @@ void main() {
           .timeout(const Duration(seconds: 3));
     });
 
-    test('非法项被丢弃，合法项照常挂', () async {
+    test('合法项照常挂，返回非法项的位置和原因', () async {
       List<Map<String, dynamic>>? captured;
       final manager = _buildManager(
         onSuggest: (_, suggestions) => captured = suggestions,
@@ -195,12 +195,17 @@ void main() {
         },
       );
 
-      expect(result, {'ok': true});
+      expect(result['ok'], isTrue);
+      expect(
+        result['hint'],
+        contains('suggestions[0]: feature_not_whitelisted'),
+      );
+      expect(result['hint'], contains('suggestions[1]: missing_prompt'));
       expect(captured, hasLength(1));
       expect(captured!.single['feature'], 'ai_theater');
     });
 
-    test('全部被丢弃时仍返回 ok，挂上去的是空列表', () async {
+    test('全部无效时返回失败并说明原因', () async {
       List<Map<String, dynamic>>? captured;
       final manager = _buildManager(
         onSuggest: (_, suggestions) => captured = suggestions,
@@ -210,13 +215,32 @@ void main() {
         name: suggestNextActionToolName,
         input: {
           'suggestions': [
-            {'kind': 'unknown', 'label': '???'},
+            {'kind': 'work', 'label': '打开作品'},
           ],
         },
       );
 
-      expect(result, {'ok': true});
-      expect(captured, isEmpty);
+      expect(result['ok'], isFalse);
+      expect(result['error_code'], 'invalid_argument');
+      expect(result['hint'], contains('suggestions[0]: missing_work_id'));
+      expect(captured, isNull);
+    });
+
+    test('建议列表缺失、格式错误或为空时返回失败', () async {
+      final manager = _buildManager(onSuggest: (_, _) => fail('无效建议不得挂载'));
+
+      for (final input in <Map<String, dynamic>>[
+        {},
+        {'suggestions': 'invalid'},
+        {'suggestions': []},
+      ]) {
+        final result = await manager.executeTool(
+          name: suggestNextActionToolName,
+          input: input,
+        );
+        expect(result['ok'], isFalse, reason: '$input');
+        expect(result['error_code'], 'invalid_argument');
+      }
     });
 
     test('传 5 条 → 最多挂 3 条', () async {

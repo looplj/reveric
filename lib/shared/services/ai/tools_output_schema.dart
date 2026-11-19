@@ -217,6 +217,7 @@ Map<String, dynamic> _builtinToolOutputSchema(String name) {
         'path': _outputString,
         'id': _outputString,
         'created': _outputBoolean,
+        if (name == 'Create') 'hint': _outputString,
         'updated': _outputBoolean,
         'fields': _outputStrings,
         'ignored_fields': _outputStrings,

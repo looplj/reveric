@@ -1390,6 +1390,7 @@ void main() {
           contentDatabasePath: sourcePath,
           draft: true,
         );
+        final suggestions = <Map<String, dynamic>>[];
         final manager =
             AiToolManager(
                 service,
@@ -1404,6 +1405,8 @@ void main() {
                   currentContentService: service,
                   currentWorkId: 'work_source',
                 ),
+                suggestNextActionCallback: (_, actions) =>
+                    suggestions.addAll(actions),
               )
               ..workCreationService = actions
               ..registerAllTools();
@@ -1441,6 +1444,31 @@ void main() {
         expect(work.sourceNovelId, 'work_source');
         expect(work.draft, isFalse);
         expect(created['path'], '/works/$id');
+        expect(created['hint'], contains('SuggestNextAction with kind=work'));
+        expect(created['hint'], contains('work_id="$id"'));
+
+        await manager.executeTool(
+          name: 'SuggestNextAction',
+          input: {
+            'suggestions': [
+              {'kind': 'work', 'label': '原作', 'work_id': 'work_source'},
+              {'kind': 'work', 'label': '打开新作品', 'work_id': id},
+              {
+                'kind': 'work',
+                'label': '在新作品中继续',
+                'work_id': id,
+                'prompt': '根据原作写第一集',
+              },
+            ],
+          },
+        );
+        expect(suggestions, [
+          containsPair('work_id', 'work_source'),
+          containsPair('work_id', id),
+          containsPair('prompt', '根据原作写第一集'),
+        ]);
+        expect(suggestions[1].containsKey('prompt'), isFalse);
+        expect(suggestions.last['work_id'], id);
 
         final listed = await manager.executeTool(
           name: 'Read',

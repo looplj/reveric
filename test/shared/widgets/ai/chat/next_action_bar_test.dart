@@ -67,12 +67,17 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('确认剧情推演方向'));
       await tester.pump();
-      expect(picked, hasLength(2));
+      await tester.tap(find.text('在新作品中继续'));
+      await tester.pump();
+      expect(picked, hasLength(3));
       expect((picked.first.target as PromptActionTarget).prompt, '把黄金三章的大纲排出来');
       expect(
-        (picked.last.target as PromptActionTarget).intent,
+        (picked[1].target as PromptActionTarget).intent,
         ChatNextActionIntent.agent_rule,
       );
+      final work = picked.last.target as WorkActionTarget;
+      expect(work.workId, 'new_work');
+      expect(work.prompt, '根据原作写第一集');
     },
   );
 
@@ -140,7 +145,7 @@ void main() {
     expect(tester.getSize(find.byType(NextActionBar)).height, greaterThan(0));
     expect(find.text('排黄金三章大纲'), findsOneWidget);
     expect(find.text('确认剧情推演方向'), findsOneWidget);
-    expect(find.text('定顾家人物网'), findsOneWidget);
+    expect(find.text('在新作品中继续'), findsOneWidget);
 
     // ── 回归：放进默认居中的 Column 里必须仍然左对齐撑满 ──
     // desktop panel 的根 Column 就是默认 CrossAxisAlignment.center，本条若只按
@@ -212,11 +217,11 @@ final _persistedTurnMessages = [
             'prompt': '确认弹簧结构的剧情推演',
           },
           {
-            'id': 'suggest_prompt_2',
-            'intent': 'agent_skill',
-            'kind': 'prompt',
-            'label': '定顾家人物网',
-            'prompt': '先把顾家的关键人物定下来',
+            'id': 'suggest_work_2',
+            'kind': 'work',
+            'label': '在新作品中继续',
+            'work_id': 'new_work',
+            'prompt': '根据原作写第一集',
           },
         ],
       ),
