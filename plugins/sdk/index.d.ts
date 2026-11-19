@@ -574,6 +574,12 @@ export interface ProviderFileInfo {
 }
 export interface ProviderFileMediaInfo {
   width?: number; height?: number; durationMs?: number; frameRate?: number;
+  /**
+   * Whether the file carries an audio stream. Only meaningful for video: the
+   * probe reports it for any container, but images have no audio track.
+   * Some platforms require the client to declare it in the upload ticket.
+   */
+  hasAudio?: boolean;
 }
 export interface ProviderUploadContext extends ProviderContext {
   readonly files: { upload(handle: string, request: ProviderUploadRequest): Promise<HttpResponse> };
