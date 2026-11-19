@@ -1,0 +1,66 @@
+name: Cache desktop SDK
+
+on:
+  workflow_run:
+    workflows: [Package]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  save-sdk:
+    # Tag-scoped caches cannot be restored by a different tag. Save the built
+    # SDK on the default branch, which subsequent releases can restore from.
+    if: |
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v') &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    strategy:
+      matrix:
+        include:
+          - runner: windows-latest
+            sdk: build/depth-native/ort-sdk-windows-x64
+          - runner: macos-latest
+            sdk: build/depth-native/ort-reduced-1.31.0/dist
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Find SDK matching the default-branch build recipe
+        id: sdk
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          CACHE_KEY: ${{ runner.os == 'Windows' && format('Windows-x64-onnxruntime-{0}', hashFiles('third/depth-native/prepare-product-windows.ps1', 'third/depth-native/required_operators.config')) || format('macOS-{0}-onnxruntime-{1}', runner.arch, hashFiles('third/depth-native/prepare-product-macos.sh', 'third/depth-native/build-reduced-macos.sh', 'third/depth-native/package_reduced.py', 'third/depth-native/required_operators.config')) }}
+        run: |
+          name="onnxruntime-sdk-$CACHE_KEY"
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?name=$name" --jq .total_count)
+          if [[ "$count" == 1 ]]; then
+            printf 'artifact=%s\nkey=%s\n' "$name" "$CACHE_KEY" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download the built SDK
+        if: steps.sdk.outputs.artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.sdk.outputs.artifact }}
+          path: sdk-cache-transfer
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Extract SDK
+        if: steps.sdk.outputs.artifact != ''
+        shell: bash
+        env:
+          SDK_PATH: ${{ matrix.sdk }}
+        run: |
+          mkdir -p "$SDK_PATH"
+          tar -xzf sdk-cache-transfer/onnxruntime-sdk.tar.gz -C "$SDK_PATH"
+      - name: Save SDK for later release tags
+        if: steps.sdk.outputs.artifact != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ matrix.sdk }}
+          key: ${{ steps.sdk.outputs.key }}
