@@ -15,12 +15,14 @@
 
 - 向已正式发布的 Drift schema 添加字段时，必须同时做三件事：
   1. 在 `lib/shared/database/novel_content_database.dart`（或对应 database 文件）中提升 `schemaVersion`（当前值加 1）
-  2. 在 `onUpgrade` 回调中添加对应版本号的 migration 步骤，使用 `migrator.addColumn(table, table.newColumn)` 或 `customStatement` 执行 `ALTER TABLE`
+  2. 在 `onUpgrade` 回调中添加对应版本号的 migration 步骤，使用 `migrator.addColumnIfMissing(table, table.newColumn)` 补列
   3. 在该表对应的 `@DataClass` 或模型 Dart 类中添加新字段
 - 已发布 schema 的修改不满足以上三点时**禁止合入**。只改 Dart 表定义不改版本号和 migration，会导致已有数据库静默不生效，新列根本不存在，写入无报错但数据丢失。
 - 开发过程中如果已部署的数据库与当前 schemaVersion 不一致，可用 `PRAGMA user_version` 确认数据库当前版本。
 
 ## 历史表重建与当前 schema
+
+- 所有正式迁移中的加列操作必须幂等。库版本号只决定执行哪些步骤。每次加列前检查 SQLite 中的实际列，已有列保留定义和值，缺失时才添加。Drift 迁移统一使用 `lib/shared/database/migration_columns.dart` 的 `addColumnIfMissing`，例如 `await migrator.addColumnIfMissing(db.generationTasks, db.generationTasks.providerState);`。必须手写 `ALTER TABLE … ADD COLUMN` 时，先用同一文件中的 `tableHasColumn` 检查。
 
 以下规则用于正式升级路径中已有的历史表重建；不得用于为未发布 schema 的本地开发库增加运行时兼容层。
 

@@ -52,6 +52,7 @@ import '../utils/short_entity_id.dart';
 import '../utils/short_entity_id_allocator.dart';
 import '../utils/storage_paths.dart';
 import '../utils/windows_safe_path.dart';
+import 'migration_columns.dart';
 import 'novel_content_daos/agent_rule_dao.dart';
 import 'novel_content_daos/ai_chat_message_dao.dart';
 import 'novel_content_daos/canvas_dao.dart';
@@ -1627,7 +1628,7 @@ class NovelContentDatabase extends _$NovelContentDatabase {
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (migrator, from, to) async {
       if (from < 2) {
-        await migrator.addColumn(
+        await migrator.addColumnIfMissing(
           productionClips,
           productionClips.generateAudio,
         );

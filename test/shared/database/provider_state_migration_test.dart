@@ -12,9 +12,12 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/type_converters.dart';
 
 void main() {
-  for (final version in [1, 2, 3, 4, 5, 6]) {
+  for (final (version, hasProviderState) in [
+    for (final version in [1, 2, 3, 4, 5, 6]) (version, false),
+    (6, true),
+  ]) {
     test(
-      'schema $version upgrades with nullable task state and no download headers',
+      'schema $version upgrades with ${hasProviderState ? 'existing' : 'nullable'} task state and no download headers',
       () async {
         final database = AppDatabase.forTest(
           NativeDatabase.memory(
@@ -111,6 +114,18 @@ void main() {
                   ],
                 );
               }
+              if (hasProviderState) {
+                sqlite.execute(
+                  'ALTER TABLE generation_tasks ADD COLUMN provider_state TEXT',
+                );
+                sqlite.execute(
+                  'UPDATE generation_tasks SET provider_state = ? WHERE id = ?',
+                  [
+                    jsonEncode({'queryUrl': 'https://legacy.example/query'}),
+                    'legacy',
+                  ],
+                );
+              }
             },
           ),
         );
@@ -125,7 +140,12 @@ void main() {
         expect(task.videoRequest.prompt, 'unchanged');
         expect(task.createdAt.millisecondsSinceEpoch, 10000);
         expect(task.updatedAt.millisecondsSinceEpoch, 20000);
-        expect(task.providerState, isNull);
+        expect(
+          task.providerState,
+          hasProviderState
+              ? {'queryUrl': 'https://legacy.example/query'}
+              : isNull,
+        );
         expect(await database.generationTaskDao.getById('deleted'), isNull);
         expect(
           (await database
