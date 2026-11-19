@@ -1337,7 +1337,6 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
   Future<void> _persistPartial({
     String? language,
     AiSettings? aiSettings,
-    List<AiProvider>? aiProviders,
     SearchEngine? searchEngine,
     AppSettings? appearanceSettings,
     AppSettings? storageSettings,
@@ -1410,11 +1409,8 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     if (aiSettings != null) {
       await database.appSettingsDao.set(
         key: _aiSettingsKey,
-        value: jsonEncode(aiSettings.toJson()),
+        value: jsonEncode(aiSettings.copyWith(providers: const []).toJson()),
       );
-    }
-    if (aiProviders != null) {
-      await database.aiProviderDao.saveAll(aiProviders);
     }
     if (searchEngine != null) {
       await database.appSettingsDao.set(
@@ -1833,29 +1829,28 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
   }
 
   Future<void> _setAiSettings(
-    AppSettings currentState,
     AiSettings newAiSettings, {
-    bool persistProviders = false,
+    String? providerId,
     bool publishState = true,
   }) async {
-    final nextState = state.requireValue.copyWith(aiSettings: newAiSettings);
-
-    if (publishState) {
-      state = AsyncValue.data(nextState);
+    final current = state.requireValue.aiSettings;
+    final provider = providerId == null
+        ? null
+        : newAiSettings.findConfigById(providerId)!;
+    final database = ref.read(appSettingsDatabaseProvider);
+    await database.transaction(() async {
+      if (provider != null &&
+          !isDebugAiProviderId(provider.id) &&
+          current.findConfigById(provider.id) != provider) {
+        await database.aiProviderDao.upsert(provider);
+      }
+      await _persistPartial(aiSettings: newAiSettings);
+    });
+    if (publishState && ref.mounted) {
+      state = AsyncValue.data(
+        state.requireValue.copyWith(aiSettings: newAiSettings),
+      );
     }
-    await _persistPartial(
-      aiProviders: persistProviders
-          ? newAiSettings.providers
-                .where(
-                  (provider) =>
-                      !isDebugAiProviderId(provider.id) &&
-                      currentState.aiSettings.findConfigById(provider.id) !=
-                          provider,
-                )
-                .toList()
-          : null,
-      aiSettings: newAiSettings.copyWith(providers: const []),
-    );
   }
 
   Future<void> setAiProviderConfig(AiProvider config) =>
@@ -1875,7 +1870,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       );
     }
     final newAiSettings = currentState.aiSettings.updateConfig(config);
-    await _setAiSettings(currentState, newAiSettings, persistProviders: true);
+    await _setAiSettings(newAiSettings, providerId: config.id);
   }
 
   Future<void> savePluginProviderConfiguration(
@@ -1927,12 +1922,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
           updatedAt: DateTime.now(),
         );
         next = current.aiSettings.updateConfig(updated);
-        await _setAiSettings(
-          current,
-          next,
-          persistProviders: true,
-          publishState: false,
-        );
+        await _setAiSettings(next, providerId: updated.id, publishState: false);
       });
       if (ref.mounted) {
         state = AsyncValue.data(state.requireValue.copyWith(aiSettings: next));
@@ -1972,9 +1962,8 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
             saveProvider: (provider) async {
               next = current.aiSettings.updateConfig(provider);
               await _setAiSettings(
-                current,
                 next,
-                persistProviders: true,
+                providerId: provider.id,
                 publishState: false,
               );
             },
@@ -2011,9 +2000,8 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
             saveProvider: (provider) async {
               next = current.aiSettings.updateConfig(provider);
               await _setAiSettings(
-                current,
                 next,
-                persistProviders: true,
+                providerId: provider.id,
                 publishState: false,
               );
             },
@@ -2077,7 +2065,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       kind,
       optionId,
     );
-    await _setAiSettings(currentState, newAiSettings);
+    await _setAiSettings(newAiSettings);
   }
 
   Future<void> setDefaultChatModelWithEffort(
@@ -2110,7 +2098,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       defaultChatModelId: availableOption.id,
       defaultChatReasoningEffort: effort,
     );
-    await _setAiSettings(currentState, newAiSettings);
+    await _setAiSettings(newAiSettings);
   }
 
   Future<void> setDefaultAiModelForRole(AiModelRole role, String? optionId) =>
@@ -2127,7 +2115,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       role,
       optionId,
     );
-    await _setAiSettings(currentState, newAiSettings);
+    await _setAiSettings(newAiSettings);
   }
 
   Future<String> addPluginProvider(
@@ -2164,12 +2152,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
         if (snapshot.invalidField(manifest.provider!) != null) {
           throw const FormatException('Invalid plugin configuration');
         }
-        await _setAiSettings(
-          current,
-          next,
-          persistProviders: true,
-          publishState: false,
-        );
+        await _setAiSettings(next, providerId: config.id, publishState: false);
       });
     } catch (error, stack) {
       _log.error(
@@ -2191,7 +2174,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
   Future<String> _addCustomProvider(AiProvider config) async {
     final currentState = await _requireCurrentState('ADD_CUSTOM_PROVIDER');
     final newAiSettings = currentState.aiSettings.addCustomConfig(config);
-    await _setAiSettings(currentState, newAiSettings, persistProviders: true);
+    await _setAiSettings(newAiSettings, providerId: config.id);
     return config.id;
   }
 
@@ -2212,7 +2195,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
         if (config.pluginId case final pluginId?) {
           await database.pluginDao.removeProviderConfiguration(pluginId, id);
         }
-        await _setAiSettings(currentState, newAiSettings, publishState: false);
+        await _setAiSettings(newAiSettings, publishState: false);
       });
     } catch (error, stackTrace) {
       _log.error(
@@ -2877,7 +2860,7 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
     state = AsyncValue.data(nextState);
     await _persistPartial(
       appearanceSettings: nextState,
-      aiSettings: nextAiSettings.copyWith(providers: const []),
+      aiSettings: nextAiSettings,
     );
   }
 

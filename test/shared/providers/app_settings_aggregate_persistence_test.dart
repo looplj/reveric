@@ -332,6 +332,74 @@ void main() {
     );
   });
 
+  test(
+    'provider save and default model cleanup succeed or fail together',
+    () async {
+      final database = AppDatabase.forTest(NativeDatabase.memory());
+      final container = _createContainer(database);
+      addTearDown(() async {
+        container.dispose();
+        await database.close();
+      });
+      final unrelated = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(updatedAt: DateTime.fromMillisecondsSinceEpoch(10000));
+      await database.into(database.aiProviders).insert(unrelated);
+      await database.appSettingsDao.set(key: 'app_language', value: 'zh_CN');
+      await container.read(appSettingsProvider.future);
+      final notifier = container.read(appSettingsProvider.notifier);
+      const modelId = 'deepseek-v4-flash';
+      const defaultOption = 'api88::$modelId';
+      final provider = aiProviderBuiltinById('api88')!.copyWith(
+        enabled: true,
+        apiKey: 'test-key',
+        models: const [modelId, 'another-model'],
+      );
+      await notifier.setAiProviderConfig(provider);
+      await notifier.setDefaultAiModelForKind(AiModelKind.chat, defaultOption);
+      AiSettings current() =>
+          container.read(appSettingsProvider).requireValue.aiSettings;
+      Future<AiSettings> stored() async => AiSettings.fromJson(
+        jsonDecode((await database.appSettingsDao.get('ai_settings'))!),
+      );
+
+      await database.customStatement('''
+      CREATE TRIGGER fail_provider_save BEFORE UPDATE ON ai_providers
+      WHEN old.id = 'api88'
+      BEGIN SELECT RAISE(ABORT, 'provider save blocked'); END
+    ''');
+      final edited = provider.copyWith(models: const ['another-model']);
+      await expectLater(
+        notifier.setAiProviderConfig(edited),
+        throwsA(
+          predicate<Object>(
+            (error) => error.toString().contains('provider save blocked'),
+          ),
+        ),
+      );
+      expect(current().findConfigById(provider.id)!.models, contains(modelId));
+      expect(current().defaultChatModelId, defaultOption);
+      expect((await stored()).defaultChatModelId, defaultOption);
+      expect(
+        (await database.aiProviderDao.getById(provider.id))!.models,
+        contains(modelId),
+      );
+
+      await database.customStatement('DROP TRIGGER fail_provider_save');
+      await notifier.setAiProviderConfig(edited);
+      expect(current().defaultChatModelId, isNull);
+      expect((await stored()).defaultChatModelId, isNull);
+      expect(
+        (await database.aiProviderDao.getById(provider.id))!.models,
+        edited.models,
+      );
+      expect(
+        (await database.aiProviderDao.getById(unrelated.id))!.toJson(),
+        unrelated.toJson(),
+      );
+    },
+  );
+
   test('deletion survives config changes and settings reload', () async {
     final database = AppDatabase.forTest(NativeDatabase.memory());
     final container = _createContainer(database);
