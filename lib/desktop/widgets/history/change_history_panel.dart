@@ -25,14 +25,14 @@ class ChangeHistoryPanel extends ConsumerStatefulWidget {
   const ChangeHistoryPanel({
     super.key,
     required this.databasePath,
-    this.novelId,
+    required this.novelId,
     this.resourceId,
     this.resourceLabel,
     this.onClose,
   });
 
   final String databasePath;
-  final int? novelId;
+  final String novelId;
   final String? resourceId;
   final String? resourceLabel;
   final VoidCallback? onClose;
@@ -118,6 +118,7 @@ class _ChangeHistoryPanelState extends ConsumerState<ChangeHistoryPanel> {
                       VerticalDivider(width: 1, color: colors.borderSubtle),
                       Expanded(
                         child: CommitDetail(
+                          novelId: widget.novelId,
                           databasePath: widget.databasePath,
                           commit: selected,
                           resourceId: widget.resourceId,

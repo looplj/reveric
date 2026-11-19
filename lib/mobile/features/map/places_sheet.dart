@@ -36,6 +36,7 @@ import 'location_tree.dart';
 Future<void> openMobileMapPlacesSheet(
   BuildContext context, {
   required String databasePath,
+  required String novelId,
   required MapStudioNav nav,
   required List<Location> locations,
   required ValueChanged<String?> onSelect,
@@ -53,6 +54,7 @@ Future<void> openMobileMapPlacesSheet(
       ),
     ),
     builder: (sheetContext) => _PlacesSheet(
+      novelId: novelId,
       databasePath: databasePath,
       nav: nav,
       onSelect: (id) {
@@ -70,12 +72,14 @@ Future<void> openMobileMapPlacesSheet(
 class _PlacesSheet extends HookConsumerWidget {
   const _PlacesSheet({
     required this.databasePath,
+    required this.novelId,
     required this.nav,
     required this.onSelect,
     required this.onEnterMap,
   });
 
   final String databasePath;
+  final String novelId;
   final MapStudioNav nav;
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onEnterMap;
@@ -128,6 +132,7 @@ class _PlacesSheet extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileLocationEditorPage(
+            novelId: novelId,
             databasePath: databasePath,
             locationId: id,
           ),

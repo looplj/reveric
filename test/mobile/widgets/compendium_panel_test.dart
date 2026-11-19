@@ -110,6 +110,7 @@ Widget _wrap() {
             data: RevericThemeData.reveric,
             child: Scaffold(
               body: MobileCompendiumPanel(
+                novelId: 'work',
                 databasePath: 'test',
                 onCreate: (MobileEditorSection section) {},
               ),

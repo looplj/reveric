@@ -52,11 +52,13 @@ const double _kTextButtonIconGap = 8;
 class EntityGraphPanel extends HookConsumerWidget {
   const EntityGraphPanel({
     super.key,
+    required this.novelId,
     required this.databasePath,
     required this.selectedEntityKey,
     required this.onSelectedEntityKeyChanged,
   });
 
+  final String novelId;
   final String databasePath;
   final String? selectedEntityKey;
   final ValueChanged<String?> onSelectedEntityKeyChanged;
@@ -109,10 +111,7 @@ class EntityGraphPanel extends HookConsumerWidget {
       const [],
     );
     final isExporting = useState(false);
-    final novelTitle = ref
-        .watch(novelByContentDatabasePathProvider(databasePath))
-        .value
-        ?.title;
+    final novelTitle = ref.watch(novelProvider(novelId)).value?.title;
 
     final allRelations = relationsAsync.value ?? const [];
 

@@ -77,10 +77,8 @@ final productionResultServiceProvider = Provider<ProductionResultService>((
     if (novel == null || novel.contentDatabasePath == null) {
       return null;
     }
-    final databasePath = RevericPaths.resolveDatabasePath(
-      novel.contentDatabasePath!,
-    );
-    if (!await File(databasePath).exists()) {
+    final databasePath = novel.contentDatabasePath!;
+    if (!await File(RevericPaths.resolveDatabasePath(databasePath)).exists()) {
       throw StateError('Production content database is unavailable');
     }
     return ProductionCanvasService(

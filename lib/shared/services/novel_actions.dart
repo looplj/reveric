@@ -477,8 +477,8 @@ class NovelActionsService {
 
   /// 内容编辑只更新所属作品的时间，保留主记录的元数据与字数。
   /// 尚未绑定到作品的内容库（初始化、导入）不参与书库排序。
-  Future<void> markContentEdited(String contentDatabasePath) async {
-    final novel = await getNovelByContentDatabasePath(contentDatabasePath);
+  Future<void> markContentEdited(String novelId) async {
+    final novel = await getNovel(novelId);
     if (novel == null) {
       return;
     }
@@ -519,24 +519,6 @@ class NovelActionsService {
     if (existing != null && existing.id != excludingId) {
       throw NovelTitleConflictException(title);
     }
-  }
-
-  Future<Novel?> getNovelByContentDatabasePath(
-    String contentDatabasePath,
-  ) async {
-    final relativePath = RevericPaths.toRelative(contentDatabasePath);
-    final directPaths = <String>{contentDatabasePath};
-    if (relativePath != null) {
-      directPaths.add(relativePath);
-    }
-    for (final path in directPaths) {
-      final novel = await _database.novelDao.getByContentDatabasePath(path);
-      if (novel != null) {
-        return novel;
-      }
-    }
-
-    return null;
   }
 
   Future<String> ensureNovelContentDatabasePath(Novel novel) async {

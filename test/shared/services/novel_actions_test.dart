@@ -758,58 +758,6 @@ END;
     );
 
     test(
-      'does not match database paths from a previous support root',
-      () async {
-        final tempDir = await Directory.systemTemp.createTemp(
-          'reveric_legacy_workspace_path_test_',
-        );
-        addTearDown(() async {
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-              .setMockMethodCallHandler(
-                const MethodChannel('plugins.flutter.io/path_provider'),
-                null,
-              );
-          if (await tempDir.exists()) {
-            await tempDir.delete(recursive: true);
-          }
-        });
-
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(
-              const MethodChannel('plugins.flutter.io/path_provider'),
-              (call) async {
-                if (call.method == 'getApplicationSupportDirectory') {
-                  return tempDir.path;
-                }
-                return null;
-              },
-            );
-        await RevericPaths.initialize();
-
-        final relativePath =
-            'novel_workspaces${Platform.pathSeparator}legacy.sqlite';
-        final currentPath =
-            '${tempDir.path}${Platform.pathSeparator}$relativePath';
-        await File(currentPath).parent.create(recursive: true);
-        await File(currentPath).create();
-        const legacyStoredPath =
-            '/previous-container/novel_workspaces/legacy.sqlite';
-        await appDb.novelDao.create(
-          id: 'legacy_workspace_novel',
-          title: 'Legacy workspace',
-          description: '',
-          contentDatabasePath: legacyStoredPath,
-        );
-
-        final service = NovelActionsService(appDb);
-
-        final novel = await service.getNovelByContentDatabasePath(currentPath);
-
-        expect(novel, isNull);
-      },
-    );
-
-    test(
       'deleteNovel closes cached content database but keeps files',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(

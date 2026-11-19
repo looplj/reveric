@@ -32,11 +32,13 @@ class InlineShotEditor extends HookConsumerWidget {
   const InlineShotEditor({
     super.key,
     required this.path,
+    required this.novelId,
     required this.shot,
     required this.session,
     required this.onProduce,
   });
   final String path;
+  final String novelId;
   final ProductionClipRow shot;
   final ProductionEditSession session;
   final VoidCallback onProduce;
@@ -46,8 +48,12 @@ class InlineShotEditor extends HookConsumerWidget {
       shot.id,
     ]);
     final baseline = useRef(shot.prompt);
-    final service = ref.watch(storyboardServiceProvider(path));
-    final overlay = ref.watch(workingOverlayServiceProvider(path));
+    final service = ref.watch(
+      storyboardServiceProvider(path, novelId: novelId),
+    );
+    final overlay = ref.watch(
+      workOverlayServiceProvider((path: path, novelId: novelId)),
+    );
     useEffect(() => prompt.dispose, [prompt]);
     useEffect(() {
       if (prompt.source == baseline.value && baseline.value != shot.prompt) {

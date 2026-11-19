@@ -430,6 +430,7 @@ class _OwnerStudio extends HookConsumerWidget {
             tooltip: context.t(LocaleKeys.mapEditorStudioRailPlaces),
             onPressed: () => openMobileMapPlacesSheet(
               context,
+              novelId: novelId,
               databasePath: databasePath,
               nav: nav,
               locations: locations,
@@ -453,10 +454,7 @@ class _OwnerStudio extends HookConsumerWidget {
                         sourceMapName: map.name,
                       ),
                     ),
-              icon: const RevericIcon(
-                RevericIcons.history_outlined,
-                size: 18,
-              ),
+              icon: const RevericIcon(RevericIcons.history_outlined, size: 18),
             ),
           IconButton(
             key: const ValueKey('mobile_map_export'),
@@ -509,6 +507,7 @@ class _OwnerStudio extends HookConsumerWidget {
                 onEdit: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => MobileLocationEditorPage(
+                      novelId: novelId,
                       databasePath: databasePath,
                       locationId: selected.id,
                     ),

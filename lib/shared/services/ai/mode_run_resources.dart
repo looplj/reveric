@@ -109,12 +109,16 @@ final aiModeClientFactoryProvider = Provider<AiModeClientFactory>((ref) {
     final context = request.context;
     final path = context.databasePath;
     final workId = context.workId;
-    final content = path == null
+    final content = path == null || workId == null
         ? null
-        : container.read(novelContentServiceProvider(path));
-    final overlay = path == null
+        : container.read(
+            workContentServiceProvider((path: path, novelId: workId)),
+          );
+    final overlay = path == null || workId == null
         ? null
-        : container.read(workingOverlayServiceProvider(path));
+        : container.read(
+            workOverlayServiceProvider((path: path, novelId: workId)),
+          );
     final mode = ValueNotifier(request.mode);
     final lease = container.read(aiHttpClientRegistryProvider).acquire(config);
     final client = AiClient(
@@ -148,7 +152,6 @@ final aiModeClientFactoryProvider = Provider<AiModeClientFactory>((ref) {
               workId != null
           ? CrossWorkResolver(
               appDatabase: container.read(appDatabaseProvider),
-              currentDatabasePath: path!,
               currentContentService: content,
               currentWorkId: workId,
             )

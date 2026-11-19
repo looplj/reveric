@@ -1021,10 +1021,14 @@ class ChatTurnRunner {
     final path = databasePath;
     final contentService = path == null || path.isEmpty
         ? null
-        : container.read(novelContentServiceProvider(path));
+        : container.read(
+            workContentServiceProvider((path: path, novelId: novel.id)),
+          );
     final workingOverlay = path == null || path.isEmpty
         ? null
-        : container.read(workingOverlayServiceProvider(path));
+        : container.read(
+            workOverlayServiceProvider((path: path, novelId: novel.id)),
+          );
     final locationsService = path == null || path.isEmpty
         ? null
         : container.read(locationsServiceProvider(path));
@@ -1033,7 +1037,6 @@ class ChatTurnRunner {
         ? null
         : CrossWorkResolver(
             appDatabase: container.read(appDatabaseProvider),
-            currentDatabasePath: path,
             currentContentService: contentService,
             currentWorkId: novel.id,
           );
@@ -1288,10 +1291,14 @@ class ChatTurnRunner {
     final path = databasePath;
     final contentService = path == null || path.isEmpty
         ? null
-        : container.read(novelContentServiceProvider(path));
+        : container.read(
+            workContentServiceProvider((path: path, novelId: novel.id)),
+          );
     final workingOverlay = path == null || path.isEmpty
         ? null
-        : container.read(workingOverlayServiceProvider(path));
+        : container.read(
+            workOverlayServiceProvider((path: path, novelId: novel.id)),
+          );
     final locationsService = path == null || path.isEmpty
         ? null
         : container.read(locationsServiceProvider(path));
@@ -1300,7 +1307,6 @@ class ChatTurnRunner {
         ? null
         : CrossWorkResolver(
             appDatabase: container.read(appDatabaseProvider),
-            currentDatabasePath: path,
             currentContentService: contentService,
             currentWorkId: novel.id,
           );
@@ -2836,7 +2842,9 @@ class ChatTurnRunner {
       return;
     }
     try {
-      final overlay = container.read(workingOverlayServiceProvider(dbPath));
+      final overlay = container.read(
+        workOverlayServiceProvider((path: dbPath, novelId: novel.id)),
+      );
       if (sourceTurnIds != null) {
         final ids = (await overlay.getWorkingChanges())
             .where(

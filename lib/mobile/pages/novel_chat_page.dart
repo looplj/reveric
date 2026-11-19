@@ -1428,6 +1428,7 @@ class _MobileNovelChatBody extends HookConsumerWidget {
         backgroundColor: RevericTheme.colorsOf(context).surface,
         showDragHandle: true,
         builder: (sheetContext) => _RecentChangesSheet(
+          novelId: novelId,
           databasePath: databasePath,
           sessionId: sessionId,
         ),
@@ -1892,10 +1893,12 @@ class _RecentChangesBar extends StatelessWidget {
 class _RecentChangesSheet extends ConsumerWidget {
   const _RecentChangesSheet({
     required this.databasePath,
+    required this.novelId,
     required this.sessionId,
   });
 
   final String databasePath;
+  final String novelId;
   final String sessionId;
 
   @override
@@ -1947,6 +1950,7 @@ class _RecentChangesSheet extends ConsumerWidget {
                 )
               else
                 RecentChangesLog(
+                  novelId: novelId,
                   databasePath: databasePath,
                   changes: changes,
                   bounded: false,
@@ -2663,6 +2667,7 @@ Future<void> _openWorkspaceResource(
         return;
       }
       page = MobileCharacterEditorPage(
+        novelId: novelId,
         databasePath: databasePath,
         characterId: id,
       );
@@ -2686,6 +2691,7 @@ Future<void> _openWorkspaceResource(
         return;
       }
       page = MobileEntryEditorPage(
+        novelId: novelId,
         databasePath: databasePath,
         section: section,
         entryId: id,

@@ -159,7 +159,7 @@ class ProductionRegion extends HookConsumerWidget {
           required Future<void> Function() reset,
         }) async {
           final service = ProductionCanvasService(
-            ref.read(storyboardServiceProvider(path)),
+            ref.read(storyboardServiceProvider(path, novelId: novel.id)),
             ref.read(mediaLibraryServiceProvider),
             novel.id,
           );
@@ -283,7 +283,7 @@ class ProductionCanvasRegion extends HookConsumerWidget {
     final textAsk = ProductionTextAsk.of(context);
     final canvasWork = novel.contentKind == contentKindCanvas;
     final path = novel.contentDatabasePath!;
-    final shots = ref.watch(storyboardServiceProvider(path));
+    final shots = ref.watch(storyboardServiceProvider(path, novelId: novel.id));
     final library = ref.watch(mediaLibraryServiceProvider);
     final scope = ProductionHistoryScope.of(context);
     final service = scope.service;
@@ -751,7 +751,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
       if (!await session.close() || !context.mounted) {
         return;
       }
-      final overlay = ref.read(workingOverlayServiceProvider(path));
+      final overlay = ref.read(
+        workOverlayServiceProvider((path: path, novelId: novel.id)),
+      );
       final node = await recordProductionChange(context, const [], () async {
         final clip = await StoryboardEditOrchestrator().create(
           service: shots,
@@ -770,7 +772,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
       if (!await session.close()) {
         return;
       }
-      final overlay = ref.read(workingOverlayServiceProvider(path));
+      final overlay = ref.read(
+        workOverlayServiceProvider((path: path, novelId: novel.id)),
+      );
       switch (kind) {
         case ProductionAddKind.video:
           await createAndPlace(
@@ -863,7 +867,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
             nodeId: target.id,
             values: shots.snapshot(clip),
             inputs: [...inputs, ProductionInput.text(source.id)],
-            overlay: ref.read(workingOverlayServiceProvider(path)),
+            overlay: ref.read(
+              workOverlayServiceProvider((path: path, novelId: novel.id)),
+            ),
             history: history,
           );
         }
@@ -877,7 +883,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
         await service.attachStoryboardGroup(
           source.id,
           target.id,
-          overlay: ref.read(workingOverlayServiceProvider(path)),
+          overlay: ref.read(
+            workOverlayServiceProvider((path: path, novelId: novel.id)),
+          ),
           history: history,
         );
         if (context.mounted) {
@@ -974,7 +982,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                 providerId: shot.providerId,
                 modelId: shot.modelId,
                 inputs: next,
-                overlay: ref.read(workingOverlayServiceProvider(path)),
+                overlay: ref.read(
+                  workOverlayServiceProvider((path: path, novelId: novel.id)),
+                ),
               );
             } else if (target.type == canvasNodeTypeImage) {
               await service.saveImage(
@@ -990,7 +1000,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                   ...existing.where((e) => e.identity != input.identity),
                   input,
                 ],
-                overlay: ref.read(workingOverlayServiceProvider(path)),
+                overlay: ref.read(
+                  workOverlayServiceProvider((path: path, novelId: novel.id)),
+                ),
               );
             } else {
               final fresh = !existing.any((e) => e.identity == input.identity);
@@ -1004,7 +1016,9 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                       ? await service.withDefaultVoice(input)
                       : input,
                 ],
-                overlay: ref.read(workingOverlayServiceProvider(path)),
+                overlay: ref.read(
+                  workOverlayServiceProvider((path: path, novelId: novel.id)),
+                ),
               );
             }
             if (context.mounted) {
@@ -1198,7 +1212,10 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                                   .where((input) => input.id != inputId)
                                   .toList(),
                               overlay: ref.read(
-                                workingOverlayServiceProvider(path),
+                                workOverlayServiceProvider((
+                                  path: path,
+                                  novelId: novel.id,
+                                )),
                               ),
                             );
                           }),
@@ -1217,7 +1234,10 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                                 history: history,
                                 video: video,
                                 overlay: ref.read(
-                                  workingOverlayServiceProvider(path),
+                                  workOverlayServiceProvider((
+                                    path: path,
+                                    novelId: novel.id,
+                                  )),
                                 ),
                                 placement:
                                     placement ??
@@ -1299,9 +1319,10 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                                                 selected.value!.id,
                                                 history: history,
                                                 overlay: ref.read(
-                                                  workingOverlayServiceProvider(
-                                                    path,
-                                                  ),
+                                                  workOverlayServiceProvider((
+                                                    path: path,
+                                                    novelId: novel.id,
+                                                  )),
                                                 ),
                                               ),
                                             );

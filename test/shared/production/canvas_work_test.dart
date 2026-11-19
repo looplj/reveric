@@ -4,9 +4,9 @@
 //   lib/shared/services/storyboard/service.dart
 //   lib/shared/providers/storyboard.dart
 import 'dart:io';
-import 'dart:ui';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
@@ -33,8 +33,11 @@ import 'package:reveric/shared/services/production/audio_generate_orchestrator.d
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late NovelContentDatabase db;
   late app.AppDatabase main;
   late Directory root;
@@ -107,7 +110,7 @@ void main() {
       final node = await canvas.addImage(board.id);
       await StoryboardEditOrchestrator().save(
         service: canvas.shots,
-        overlay: overlay,
+        overlay: overlay.forNovel(canvas.novelId),
         shotId: node.clipId!,
         values: {'title': 'Edited canvas image'},
       );
@@ -117,10 +120,9 @@ void main() {
             item.newText!.contains('Edited canvas image'),
       );
       expect(
-        await overlay.rollbackCommit(
-          commitId: item.commitId,
-          resourceId: node.clipId!,
-        ),
+        await overlay
+            .forNovel(canvas.novelId)
+            .rollbackCommit(commitId: item.commitId, resourceId: node.clipId!),
         RestoreResourceResult.restored,
       );
       expect((await canvas.shots.getShot(node.clipId!))!.title, '');
@@ -128,8 +130,113 @@ void main() {
   );
 
   test(
-    'provider resolves registered kind and rejects empty episode for other works',
+    'draft saves use the known work ID when a path matches multiple registrations',
     () async {
+      await main.novelDao.create(
+        id: 'other',
+        title: 'Other work',
+        description: '',
+        contentDatabasePath: db.contentDatabasePath,
+      );
+      final before = DateTime.utc(2020);
+      await main
+          .update(main.novels)
+          .write(app.NovelsCompanion(updatedAt: Value(before)));
+      final node = await canvas.addImage(board.id);
+
+      await canvas.saveImage(
+        nodeId: node.id,
+        draft: const ProductionImageDraft(
+          prompt: 'Save on this work',
+          modelId: '',
+          ratio: '1:1',
+          resolution: '1K',
+        ),
+        inputs: [],
+        overlay: overlay,
+      );
+
+      expect(
+        (await canvas.shots.getShot(node.clipId!))!.prompt,
+        'Save on this work',
+      );
+      expect(
+        (await main.novelDao.get('work'))!.updatedAt.isAfter(before),
+        isTrue,
+      );
+      expect(
+        (await main.novelDao.get('other'))!.updatedAt.isAtSameMomentAs(before),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'image drafts save and roll back when the registered path differs from the SQLite path',
+    () async {
+      const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(pathProvider, (_) async => root.path);
+      addTearDown(() => messenger.setMockMethodCallHandler(pathProvider, null));
+      await RevericPaths.initialize();
+      await Directory('${root.path}/novel_workspaces').create();
+      const registeredPath = r'novel_workspaces\canvas.sqlite';
+      final content = NovelContentDatabase(registeredPath);
+      addTearDown(content.close);
+      expect(content.filePath, isNot(registeredPath));
+      await main.novelDao.create(
+        id: 'path-work',
+        title: 'Canvas with a registered path',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: registeredPath,
+      );
+      await ScreenplayService(content).createCanvasStructure();
+      final service = ProductionCanvasService(
+        StoryboardService(content, contentKind: contentKindCanvas),
+        canvas.library,
+        'path-work',
+      );
+      final history = WorkingOverlayService(
+        content,
+        NovelContentService(content),
+        novelActionsService: NovelActionsService(main),
+      );
+      final node = await service.addImage((await service.ensureCanvas('')).id);
+      final clipId = node.clipId!;
+      await service.saveImage(
+        nodeId: node.id,
+        draft: const ProductionImageDraft(
+          prompt: '生成一个古典庭院',
+          modelId: '',
+          ratio: '1:1',
+          resolution: '1K',
+        ),
+        inputs: [],
+        overlay: history,
+      );
+      expect((await service.shots.getShot(clipId))!.prompt, '生成一个古典庭院');
+      final commit = (await history.getChangeCommits()).single;
+      expect(
+        await history
+            .forNovel(service.novelId)
+            .rollbackCommit(commitId: commit.id, resourceId: clipId),
+        RestoreResourceResult.restored,
+      );
+      expect((await service.shots.getShot(clipId))!.prompt, isEmpty);
+    },
+  );
+
+  test(
+    'provider resolves kind by work ID even when two registrations share a path',
+    () async {
+      await main.novelDao.create(
+        id: 'another-work',
+        title: 'Another work',
+        description: '',
+        contentDatabasePath: db.filePath,
+      );
       final container = ProviderContainer.test(
         overrides: [
           novelContentDatabaseProvider(db.filePath).overrideWithValue(db),
@@ -138,7 +245,7 @@ void main() {
       );
       addTearDown(container.dispose);
       final subscription = container.listen(
-        storyboardServiceProvider(db.filePath),
+        storyboardServiceProvider(db.filePath, novelId: canvas.novelId),
         (_, _) {},
       );
       addTearDown(subscription.close);

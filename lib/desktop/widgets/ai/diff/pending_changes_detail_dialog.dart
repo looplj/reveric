@@ -74,21 +74,25 @@ class PendingChangesDetailDialog extends HookConsumerWidget {
   const PendingChangesDetailDialog({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.items,
   });
 
   final String databasePath;
+  final String novelId;
   final List<PendingChangesDetailItem> items;
 
   static Future<void> show(
     BuildContext context, {
     required String databasePath,
+    required String novelId,
     required List<PendingChangesDetailItem> items,
   }) {
     return showRevericDialog(
       context: context,
       builder: (_) => DialogFeedback.scope(
         builder: (_) => PendingChangesDetailDialog(
+          novelId: novelId,
           databasePath: databasePath,
           items: items,
         ),
@@ -99,11 +103,13 @@ class PendingChangesDetailDialog extends HookConsumerWidget {
   static Future<void> showFromChanges(
     BuildContext context, {
     required String databasePath,
+    required String novelId,
     required List<WorkingChange> changes,
   }) {
     return showRevericDialog(
       context: context,
       builder: (_) => _PendingChangesDetailDialogFromChanges(
+        novelId: novelId,
         databasePath: databasePath,
         changes: changes,
       ),
@@ -216,7 +222,9 @@ class PendingChangesDetailDialog extends HookConsumerWidget {
       if (targets.isEmpty) {
         return 0;
       }
-      final service = ref.read(workingOverlayServiceProvider(databasePath));
+      final service = ref.read(
+        workOverlayServiceProvider((path: databasePath, novelId: novelId)),
+      );
       final nextPending = Map<String, Set<String>>.from(pendingSnapshot);
       var revertedCount = 0;
       var failed = false;
@@ -286,7 +294,9 @@ class PendingChangesDetailDialog extends HookConsumerWidget {
 
       isRunning.value = true;
       try {
-        final service = ref.read(workingOverlayServiceProvider(databasePath));
+        final service = ref.read(
+          workOverlayServiceProvider((path: databasePath, novelId: novelId)),
+        );
         // 先按展示快照应用行选择，再接受剩余 active 原始记录。
         // 部分回退提交原始记录并另存反向改动，不改变原轮次快照。
         final revertedCount = await applyMarkedLineRollbacks();
@@ -359,7 +369,9 @@ class PendingChangesDetailDialog extends HookConsumerWidget {
 
       isRunning.value = true;
       try {
-        final service = ref.read(workingOverlayServiceProvider(databasePath));
+        final service = ref.read(
+          workOverlayServiceProvider((path: databasePath, novelId: novelId)),
+        );
         final result = await service.rollbackFields([
           for (final item in items) ...item.fields,
         ]);
@@ -854,10 +866,12 @@ class _FileDetail extends StatelessWidget {
 class _PendingChangesDetailDialogFromChanges extends HookConsumerWidget {
   const _PendingChangesDetailDialogFromChanges({
     required this.databasePath,
+    required this.novelId,
     required this.changes,
   });
 
   final String databasePath;
+  final String novelId;
   final List<WorkingChange> changes;
 
   @override
@@ -911,6 +925,7 @@ class _PendingChangesDetailDialogFromChanges extends HookConsumerWidget {
 
     return DialogFeedback.scope(
       builder: (_) => PendingChangesDetailDialog(
+        novelId: novelId,
         databasePath: databasePath,
         items: resolvedResult,
       ),

@@ -43,12 +43,14 @@ class MobileSectionPanel extends ConsumerWidget {
   const MobileSectionPanel({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.section,
     required this.onCreate,
     this.onRegisterDocumentCreate,
   });
 
   final String databasePath;
+  final String novelId;
   final MobileEditorSection section;
 
   /// 新建入口由标题栏右上角承载；空状态引导按钮复用同一回调。
@@ -61,6 +63,7 @@ class MobileSectionPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (section.isDocument) {
       return MobileDocumentFolderBrowser(
+        novelId: novelId,
         databasePath: databasePath,
         section: section,
         onRegisterCreate: onRegisterDocumentCreate,
@@ -85,6 +88,7 @@ class MobileSectionPanel extends ConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileEntryEditorPage(
+            novelId: novelId,
             databasePath: databasePath,
             section: section,
             entryId: entry.id,

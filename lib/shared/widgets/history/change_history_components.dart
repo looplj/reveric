@@ -387,12 +387,14 @@ class CommitDetail extends ConsumerWidget {
   const CommitDetail({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.commit,
     this.resourceId,
     this.onClose,
   });
 
   final String databasePath;
+  final String novelId;
   final ChangeCommit commit;
   final String? resourceId;
   final VoidCallback? onClose;
@@ -459,6 +461,7 @@ class CommitDetail extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     HistoryCommitActionButton(
+                      novelId: novelId,
                       databasePath: databasePath,
                       resourceId: scopedResourceId,
                       commitId: commit.id,
@@ -467,6 +470,7 @@ class CommitDetail extends ConsumerWidget {
                     ),
                     const SizedBox(width: RevericSpacing.xs),
                     HistoryCommitActionButton(
+                      novelId: novelId,
                       databasePath: databasePath,
                       resourceId: scopedResourceId,
                       commitId: commit.id,
@@ -481,6 +485,7 @@ class CommitDetail extends ConsumerWidget {
                   child: Align(
                     alignment: Alignment.topRight,
                     child: HistoryCommitActionButton(
+                      novelId: novelId,
                       databasePath: databasePath,
                       commitId: commit.id,
                       action: HistoryCommitAction.rollback,
@@ -535,6 +540,7 @@ class HistoryCommitActionButton extends ConsumerStatefulWidget {
   const HistoryCommitActionButton({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.commitId,
     required this.action,
     this.resourceId,
@@ -542,6 +548,7 @@ class HistoryCommitActionButton extends ConsumerStatefulWidget {
   });
 
   final String databasePath;
+  final String novelId;
   final String? resourceId;
   final String commitId;
   final HistoryCommitAction action;
@@ -592,9 +599,9 @@ class _HistoryCommitActionButtonState
 
     setState(() => _running = true);
     try {
-      final service = ref.read(
-        workingOverlayServiceProvider(widget.databasePath),
-      );
+      final service = ref
+          .read(workingOverlayServiceProvider(widget.databasePath))
+          .forNovel(widget.novelId);
       final result = switch (widget.action) {
         HistoryCommitAction.rollback => await service.rollbackCommit(
           commitId: widget.commitId,

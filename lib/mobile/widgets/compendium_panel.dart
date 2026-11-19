@@ -75,10 +75,12 @@ class MobileCompendiumPanel extends HookConsumerWidget {
   const MobileCompendiumPanel({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.onCreate,
   });
 
   final String databasePath;
+  final String novelId;
   final ValueChanged<MobileEditorSection> onCreate;
 
   @override
@@ -153,9 +155,7 @@ class MobileCompendiumPanel extends HookConsumerWidget {
                     child: Semantics(
                       selected: filter.value == section,
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(
-                          RevericRadius.pill,
-                        ),
+                        borderRadius: BorderRadius.circular(RevericRadius.pill),
                         onTap: () {
                           filter.value = section;
                           if (section != null) {
@@ -243,6 +243,7 @@ class MobileCompendiumPanel extends HookConsumerWidget {
                       final entry = row.item;
                       if (entry != null) {
                         return CompendiumEntryRow(
+                          novelId: novelId,
                           key: ValueKey(entry.id),
                           databasePath: databasePath,
                           section: row.section,

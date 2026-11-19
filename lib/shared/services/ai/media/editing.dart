@@ -80,7 +80,11 @@ class EditingToolHost {
     String callId,
   ) async {
     final canvas = production.canvas;
-    final service = EditingService(canvas.db, canvas.library);
+    final service = EditingService(
+      canvas.db,
+      canvas.library,
+      novelId: canvas.novelId,
+    );
     final sessions = production.editingSessions;
     if (sessions == null) {
       throw const ToolOperationException(

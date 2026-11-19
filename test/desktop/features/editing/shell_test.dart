@@ -21,7 +21,10 @@ import 'package:reveric/desktop/features/production/history_region.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/models/production/asset_content.dart';
+import 'package:reveric/shared/models/production/media.dart';
+import 'package:reveric/shared/providers/editing.dart';
 import 'package:reveric/shared/providers/production_media.dart';
+import 'package:reveric/shared/services/editing/service.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
@@ -58,11 +61,13 @@ void main() {
         contentDatabasePath: db.filePath,
       );
       final novel = (await main.novelDao.get('work'))!;
-      final library = MediaLibraryService(
-        main,
-        MediaService(FfmpegRunner()),
-        Directory.systemTemp,
-      );
+      final root = Directory.systemTemp.createTempSync('canvas-editing-test-');
+      addTearDown(() => root.delete(recursive: true));
+      const assetPath = 'file_workspaces/work/result.mp4';
+      File('${root.path}/$assetPath')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync([1]);
+      final library = MediaLibraryService(main, _VideoProbe(), root);
       final service = ProductionCanvasService(
         StoryboardService(db, contentKind: contentKindCanvas),
         library,
@@ -86,7 +91,7 @@ void main() {
           id: 'adopted',
           type: 'video',
           name: const Value('Result'),
-          path: const Value('file_workspaces/work/result.mp4'),
+          path: const Value(assetPath),
           purpose: 'production_output',
           content: const Value(VideoAssetContent(mimeType: 'video/mp4')),
         ),
@@ -148,6 +153,12 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('Canvas ready'), findsOneWidget);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(CanvasEditingShell)),
+        );
+        final unbound = container
+            .read(editingSessionsProvider)
+            .get(EditingService(db, library), first.editingId!);
         await open(first.id);
         await tester.pumpAndSettle();
         expect(
@@ -161,6 +172,12 @@ void main() {
             .widget<EditingTimeline>(find.byType(EditingTimeline))
             .controller
             .session;
+        expect(a, isNot(same(unbound)));
+        final imported = (await tester.runAsync(
+          () => a.projects.fromCanvasAdopted(a.editingId, '16:9'),
+        ))!;
+        expect(imported.$1.mainClips.single.media!.source.assetId, 'adopted');
+        expect(imported.$2, [pending.id]);
         a.commit(a.document!.copyWith(ratio: '1:1'));
         final saved = flush!();
         await tester.pumpAndSettle();
@@ -265,5 +282,22 @@ void main() {
         await db.close();
       }
     },
+  );
+}
+
+class _VideoProbe extends MediaService {
+  _VideoProbe() : super(FfmpegRunner());
+
+  @override
+  Future<MediaInfo> probe(
+    String path, {
+    MediaCancellation? cancellation,
+  }) async => const MediaInfo(
+    duration: Duration(seconds: 2),
+    hasVideo: true,
+    hasAudio: false,
+    width: 1280,
+    height: 720,
+    formatName: 'mov,mp4',
   );
 }

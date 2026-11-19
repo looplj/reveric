@@ -127,11 +127,13 @@ class MobileEntryEditorPage extends ConsumerWidget {
   const MobileEntryEditorPage({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.section,
     required this.entryId,
   });
 
   final String databasePath;
+  final String novelId;
   final MobileEditorSection section;
   final String entryId;
 
@@ -186,6 +188,7 @@ class MobileEntryEditorPage extends ConsumerWidget {
       photos: selectedItem == null
           ? null
           : MobileCompendiumPhotos(
+              novelId: novelId,
               databasePath: databasePath,
               item: selectedItem,
             ),

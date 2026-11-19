@@ -96,6 +96,7 @@ void main() {
             ),
           ],
           child: MobileCharacterEditorPage(
+            novelId: 'work',
             databasePath: _databasePath,
             characterId: characterId,
           ),

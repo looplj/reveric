@@ -13,16 +13,17 @@ import 'novel_providers.dart';
 import 'production_media.dart';
 
 final editingServiceProvider = Provider.autoDispose
-    .family<EditingService, String>(
-      (ref, path) => EditingService(
-        ref.watch(novelContentDatabaseProvider(path)),
+    .family<EditingService, ({String path, String novelId})>(
+      (ref, work) => EditingService(
+        ref.watch(novelContentDatabaseProvider(work.path)),
         ref.watch(mediaLibraryServiceProvider),
+        novelId: work.novelId,
       ),
     );
 final editingRenderServiceProvider = Provider.autoDispose
-    .family<EditingRenderService, String>((ref, path) {
+    .family<EditingRenderService, ({String path, String novelId})>((ref, work) {
       final service = EditingRenderService(
-        ref.watch(editingServiceProvider(path)),
+        ref.watch(editingServiceProvider(work)),
         FfmpegRunner(),
       );
       ref.onDispose(() => unawaited(service.dispose()));

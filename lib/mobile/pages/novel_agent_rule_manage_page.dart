@@ -120,6 +120,7 @@ class MobileNovelAgentRuleManagePage extends ConsumerWidget {
     final copied = await showMobileAgentRuleCopySheet(
       context,
       databasePath: databasePath,
+      novelId: novel.id,
     );
     if (copied == null || copied == 0 || !context.mounted) {
       return;

@@ -2189,14 +2189,8 @@ class ScreenplayService {
 
   Future<void> syncNovelWordCount() async {
     final actions = novelActionsService;
-    if (actions == null) {
-      return;
-    }
-    // AI 和历史变更按内容库操作；与小说正文使用同一所属作品查询。
-    final workId =
-        novelId ??
-        (await actions.getNovelByContentDatabasePath(_database.filePath))?.id;
-    if (workId == null) {
+    final workId = novelId;
+    if (actions == null || workId == null) {
       return;
     }
     final row = await _database
@@ -2220,7 +2214,10 @@ class ScreenplayService {
   ) async {
     try {
       final result = await action();
-      await novelActionsService?.markContentEdited(_database.filePath);
+      final workId = novelId;
+      if (workId != null) {
+        await novelActionsService?.markContentEdited(workId);
+      }
       return result;
     } catch (error, stackTrace) {
       _log.error(

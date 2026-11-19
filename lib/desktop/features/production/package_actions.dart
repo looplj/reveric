@@ -129,7 +129,9 @@ Future<void> exportCanvasFromShelf(BuildContext context, Novel novel) async {
     builder: (_) => _CanvasExportProgressDialog(
       run: (report) async {
         final service = ProductionCanvasService(
-          container.read(storyboardServiceProvider(databasePath)),
+          container.read(
+            storyboardServiceProvider(databasePath, novelId: novel.id),
+          ),
           container.read(mediaLibraryServiceProvider),
           novel.id,
         );

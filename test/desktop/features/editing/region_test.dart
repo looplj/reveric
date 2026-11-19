@@ -131,8 +131,14 @@ void main() {
               appDatabaseProvider.overrideWithValue(app),
               appBackgroundActiveProvider.overrideWithValue(false),
               novelContentDatabaseProvider('test').overrideWithValue(db),
-              editingServiceProvider('test').overrideWithValue(projects),
-              editingRenderServiceProvider('test').overrideWithValue(renderer),
+              editingServiceProvider((
+                path: 'test',
+                novelId: 'work',
+              )).overrideWithValue(projects),
+              editingRenderServiceProvider((
+                path: 'test',
+                novelId: 'work',
+              )).overrideWithValue(renderer),
             ],
             child: EasyLocalization(
               supportedLocales: const [Locale('en')],

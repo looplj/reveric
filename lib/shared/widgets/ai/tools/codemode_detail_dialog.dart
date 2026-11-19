@@ -57,7 +57,11 @@ Future<void> showCodemodeDetail(
     databasePath: databasePath,
     novelId: novelId,
     scrollController: controller,
-    footer: _CodemodeScript(block: block, databasePath: databasePath),
+    footer: _CodemodeScript(
+      block: block,
+      databasePath: databasePath,
+      novelId: novelId,
+    ),
   ),
 );
 
@@ -114,9 +118,10 @@ Map<String, dynamic>? _decode(String preview) {
 }
 
 class _CodemodeScript extends HookConsumerWidget {
-  const _CodemodeScript({required this.block, this.databasePath});
+  const _CodemodeScript({required this.block, this.databasePath, this.novelId});
   final AiToolCallBlock block;
   final String? databasePath;
+  final String? novelId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -127,9 +132,11 @@ class _CodemodeScript extends HookConsumerWidget {
         : null;
     final code = block.arguments['code'];
     final path = databasePath;
+    final workId = novelId;
     final canReplay =
         debugMode &&
         path != null &&
+        workId != null &&
         code is String &&
         code.isNotEmpty &&
         block.status != AiToolCallStatus.pending &&
@@ -207,7 +214,12 @@ class _CodemodeScript extends HookConsumerWidget {
               label: context.t(LocaleKeys.aiCodemodeRerun),
               icon: RevericIcons.arrow_clockwise,
               size: RevericButtonSize.compact,
-              onPressed: () => _replay(context, databasePath: path, code: code),
+              onPressed: () => _replay(
+                context,
+                databasePath: path,
+                novelId: workId,
+                code: code,
+              ),
             ),
           ),
         if (expanded.value) ...[
@@ -234,6 +246,7 @@ class _CodemodeScript extends HookConsumerWidget {
 Future<void> _replay(
   BuildContext context, {
   required String databasePath,
+  required String novelId,
   required String code,
 }) async {
   final container = ProviderScope.containerOf(context);
@@ -243,11 +256,11 @@ Future<void> _replay(
   Navigator.of(context).pop();
 
   final contentLease = container.listen(
-    novelContentServiceProvider(databasePath),
+    workContentServiceProvider((path: databasePath, novelId: novelId)),
     (_, _) {},
   );
   final overlayLease = container.listen(
-    workingOverlayServiceProvider(databasePath),
+    workOverlayServiceProvider((path: databasePath, novelId: novelId)),
     (_, _) {},
   );
   try {

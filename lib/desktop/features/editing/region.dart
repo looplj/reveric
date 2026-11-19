@@ -58,8 +58,9 @@ class EditingRegion extends HookConsumerWidget {
   final ValueChanged<Future<void> Function()?> registerFlush;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final projects = ref.watch(editingServiceProvider(identity.path));
-    final renderer = ref.watch(editingRenderServiceProvider(identity.path));
+    final work = (path: identity.path, novelId: novelId);
+    final projects = ref.watch(editingServiceProvider(work));
+    final renderer = ref.watch(editingRenderServiceProvider(work));
     final settings = ref
         .watch(
           episodeProductionProvider(identity.path, identity.episodeId ?? ''),

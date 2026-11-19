@@ -171,14 +171,12 @@ typedef CrossWorkDatabaseOpener = NovelContentDatabase Function(String path);
 class CrossWorkResolver implements CrossWorkAccess {
   CrossWorkResolver({
     required this._appDatabase,
-    required this._currentDatabasePath,
     required this._currentContentService,
     required String currentWorkId,
     this._databaseOpener = NovelContentDatabase.new,
   }) : _currentWorkId = currentWorkId.trim();
 
   final AppDatabase _appDatabase;
-  final String _currentDatabasePath;
   final NovelContentService _currentContentService;
   final String _currentWorkId;
   final CrossWorkDatabaseOpener _databaseOpener;
@@ -260,7 +258,7 @@ class CrossWorkResolver implements CrossWorkAccess {
     }
     final resolvedPath = RevericPaths.resolveDatabasePath(storedPath);
     final descriptor = _descriptorForNovel(novel, resolvedPath);
-    if (_isCurrentNovel(novel.id, storedPath)) {
+    if (novel.id == _currentWorkId) {
       return CrossWorkLease(
         work: descriptor,
         service: _currentContentService,
@@ -276,7 +274,7 @@ class CrossWorkResolver implements CrossWorkAccess {
 
     NovelContentDatabase? database;
     try {
-      database = _databaseOpener(resolvedPath);
+      database = _databaseOpener(storedPath);
       await database.customSelect('SELECT 1').getSingle();
       final acquired = database;
       return CrossWorkLease(
@@ -319,24 +317,6 @@ class CrossWorkResolver implements CrossWorkAccess {
         'Work content is unavailable: $normalizedWorkId',
       );
     }
-  }
-
-  bool _isCurrentNovel(String novelId, String storedPath) {
-    return novelId == _currentWorkId ||
-        _sameDatabasePath(storedPath, _currentDatabasePath);
-  }
-
-  bool _sameDatabasePath(String left, String right) {
-    final normalizedLeft = p.normalize(
-      File(RevericPaths.resolveDatabasePath(left)).absolute.path,
-    );
-    final normalizedRight = p.normalize(
-      File(RevericPaths.resolveDatabasePath(right)).absolute.path,
-    );
-    if (Platform.isWindows) {
-      return normalizedLeft.toLowerCase() == normalizedRight.toLowerCase();
-    }
-    return normalizedLeft == normalizedRight;
   }
 
   CrossWorkDescriptor _descriptorForNovel(

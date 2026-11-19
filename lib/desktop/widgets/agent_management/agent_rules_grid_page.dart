@@ -55,6 +55,7 @@ class AgentRulesGridPage extends HookConsumerWidget {
   const AgentRulesGridPage({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.headerGestureExclusionKey,
     required this.onOpen,
     required this.onCreate,
@@ -62,6 +63,7 @@ class AgentRulesGridPage extends HookConsumerWidget {
   });
 
   final String databasePath;
+  final String novelId;
   final GlobalKey headerGestureExclusionKey;
   final ValueChanged<AgentRule> onOpen;
   final VoidCallback onCreate;
@@ -76,6 +78,7 @@ class AgentRulesGridPage extends HookConsumerWidget {
       final copied = await showAgentRuleCopyDialog(
         context: context,
         databasePath: databasePath,
+        novelId: novelId,
       );
       if (copied == null || copied == 0 || !context.mounted) {
         return;

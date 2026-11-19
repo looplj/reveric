@@ -232,7 +232,10 @@ void main() {
     late ProductionHistoryScope scope;
     Widget page() => ProviderScope(
       overrides: [
-        storyboardServiceProvider('history-test').overrideWith((ref) => shots),
+        storyboardServiceProvider(
+          'history-test',
+          novelId: novel.id,
+        ).overrideWith((ref) => shots),
         mediaLibraryServiceProvider.overrideWithValue(library),
       ],
       child: _wrap(

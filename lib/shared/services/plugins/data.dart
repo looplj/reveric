@@ -198,7 +198,11 @@ class PluginDataService {
         'Work has no content database: $workId',
       );
     }
-    return services(path);
+    final access = services(path);
+    return (
+      content: access.content.forNovel(work.id),
+      overlay: access.overlay.forNovel(work.id),
+    );
   }
 
   Future<Map<String, dynamic>> _read(

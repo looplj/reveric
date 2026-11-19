@@ -115,15 +115,27 @@ List<CharacterBehaviorTag> _normalizeCharacterBehaviorTags(
 class NovelContentService {
   NovelContentService(
     this._database, {
+    this.novelId,
     this.novelActionsService,
     this.imageLibraryService,
     ShortEntityIdBuilder idBuilder = buildShortEntityId,
   }) : _buildEntityId = idBuilder;
 
   final NovelContentDatabase _database;
+  final String? novelId;
   final NovelActionsService? novelActionsService;
   final ImageLibraryService? imageLibraryService;
   final ShortEntityIdBuilder _buildEntityId;
+
+  NovelContentService forNovel(String novelId) => this.novelId == novelId
+      ? this
+      : NovelContentService(
+          _database,
+          novelId: novelId,
+          novelActionsService: novelActionsService,
+          imageLibraryService: imageLibraryService,
+          idBuilder: _buildEntityId,
+        );
 
   Future<void> _assertCharacterFirstAppearChapter(
     String? firstAppearChapterId,
@@ -1227,17 +1239,11 @@ class NovelContentService {
 
   /// 本内容库所属作品的 id；图片入库按作品隔离，找不到作品时不能入库。
   Future<String> requireNovelId() async {
-    final actions = novelActionsService;
-    if (actions == null) {
-      throw StateError('Resolving the work requires novel actions.');
+    final workId = novelId;
+    if (workId == null) {
+      throw StateError('Content operation requires a work ID.');
     }
-    final novel = await actions.getNovelByContentDatabasePath(
-      _database.filePath,
-    );
-    if (novel == null) {
-      throw StateError('Content database has no work: ${_database.filePath}');
-    }
-    return novel.id;
+    return workId;
   }
 
   Future<List<ScreenplaySceneReference>> getCharacterScreenplayScenes(
@@ -1510,18 +1516,13 @@ class NovelContentService {
 
   Future<void> _syncNovelWordCount() async {
     final actions = novelActionsService;
-    if (actions == null) {
-      return;
-    }
-    final novel = await actions.getNovelByContentDatabasePath(
-      _database.filePath,
-    );
-    if (novel == null) {
+    final workId = novelId;
+    if (actions == null || workId == null) {
       return;
     }
     final stats = await _database.chapterDao.getListStats();
     await actions.updateNovelWordCount(
-      novelId: novel.id,
+      novelId: workId,
       wordCount: stats.totalWordCount,
     );
   }

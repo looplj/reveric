@@ -1355,6 +1355,52 @@ void main() {
 
   group('CrossWorkResolver', () {
     test(
+      'reuses the current content service only for the current work ID',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'shared-work-path-',
+        );
+        addTearDown(() => directory.delete(recursive: true));
+        final path = '${directory.path}/content.sqlite';
+        final content = NovelContentDatabase(path);
+        addTearDown(content.close);
+        final currentService = NovelContentService(content);
+        final chapterId = await currentService.createChapter(
+          siblingOrder: 1,
+          title: 'Shared file chapter',
+        );
+        final app = AppDatabase.forTest(NativeDatabase.memory());
+        addTearDown(app.close);
+        for (final id in ['current', 'other']) {
+          await app.novelDao.create(
+            id: id,
+            title: id,
+            description: '',
+            contentDatabasePath: path,
+          );
+        }
+        final resolver = CrossWorkResolver(
+          appDatabase: app,
+          currentContentService: currentService,
+          currentWorkId: 'current',
+        );
+
+        final current = await resolver.acquire('current');
+        addTearDown(current.release);
+        final other = await resolver.acquire('other');
+        addTearDown(other.release);
+
+        expect(current.service, same(currentService));
+        expect(other.workId, 'other');
+        expect(other.service, isNot(same(currentService)));
+        expect(
+          (await other.service.getChapterById(chapterId))?.title,
+          'Shared file chapter',
+        );
+      },
+    );
+
+    test(
       'Create /works creates a discoverable adaptation of a novel',
       () async {
         TestWidgetsFlutterBinding.ensureInitialized();
@@ -1401,7 +1447,6 @@ void main() {
                 ),
                 crossWorkAccess: CrossWorkResolver(
                   appDatabase: app,
-                  currentDatabasePath: sourcePath,
                   currentContentService: service,
                   currentWorkId: 'work_source',
                 ),
@@ -1553,7 +1598,6 @@ void main() {
         await app.novelDao.softDelete('deleted');
         final resolver = CrossWorkResolver(
           appDatabase: app,
-          currentDatabasePath: '${temp.path}/current.sqlite',
           currentContentService: service,
           currentWorkId: 'current',
           databaseOpener: (_) => throw StateError('private opener failure'),
@@ -1658,7 +1702,6 @@ void main() {
       );
       final resolver = CrossWorkResolver(
         appDatabase: appDatabase,
-        currentDatabasePath: currentPath,
         currentContentService: currentService,
         currentWorkId: 'work_current',
       );

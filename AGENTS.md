@@ -8,7 +8,7 @@
 
 ## 支持平台
 
-当前支持的平台为 **Windows、macOS、Android**。平台适配、构建、测试与验收以这三个平台为范围。
+当前支持的平台为 **Windows、macOS、Linux、Android**。Windows、macOS、Linux 为桌面端，Android 为移动端。平台适配、构建、测试与验收以这四个平台为范围。
 
 ## 插件仓库与维护入口
 
@@ -63,7 +63,7 @@
 | 新增或修改图标 | `.agents/rules/icons.md` |
 | 新增、修改或删除用户可见文案、AI 提示词 | `.agents/rules/i18n.md` |
 | 搜索、过滤或昂贵 query | `.agents/rules/search-debounce.md` |
-| 文件选择、目录选择、附件、导入、导出、备份、临时文件或移动端路径 | `.agents/rules/file-access.md` |
+| 作品归属与身份、内容库路径、文件选择、目录选择、附件、导入、导出、备份、临时文件或移动端路径 | `.agents/rules/file-access.md` |
 | 错误、fallback、必备依赖或 DB 写日志 | `.agents/rules/error-handling.md` |
 | 第三方 library / SDK 或本地 dependency override | `.agents/rules/local-dependencies.md` |
 | AI 文本生成或 Agent Read field path | `.agents/rules/ai-calling.md`、`.agents/rules/tools_path.md` |

@@ -487,77 +487,6 @@ final class NovelFamily extends $Family
   String toString() => r'novelProvider';
 }
 
-@ProviderFor(novelByContentDatabasePath)
-final novelByContentDatabasePathProvider = NovelByContentDatabasePathFamily._();
-
-final class NovelByContentDatabasePathProvider
-    extends $FunctionalProvider<AsyncValue<Novel?>, Novel?, Stream<Novel?>>
-    with $FutureModifier<Novel?>, $StreamProvider<Novel?> {
-  NovelByContentDatabasePathProvider._({
-    required NovelByContentDatabasePathFamily super.from,
-    required String super.argument,
-  }) : super(
-         retry: null,
-         name: r'novelByContentDatabasePathProvider',
-         isAutoDispose: true,
-         dependencies: null,
-         $allTransitiveDependencies: null,
-       );
-
-  @override
-  String debugGetCreateSourceHash() => _$novelByContentDatabasePathHash();
-
-  @override
-  String toString() {
-    return r'novelByContentDatabasePathProvider'
-        ''
-        '($argument)';
-  }
-
-  @$internal
-  @override
-  $StreamProviderElement<Novel?> $createElement($ProviderPointer pointer) =>
-      $StreamProviderElement(pointer);
-
-  @override
-  Stream<Novel?> create(Ref ref) {
-    final argument = this.argument as String;
-    return novelByContentDatabasePath(ref, argument);
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is NovelByContentDatabasePathProvider &&
-        other.argument == argument;
-  }
-
-  @override
-  int get hashCode {
-    return argument.hashCode;
-  }
-}
-
-String _$novelByContentDatabasePathHash() =>
-    r'41b388a36b14f0c5d73b74f815a862ae3f7aefe9';
-
-final class NovelByContentDatabasePathFamily extends $Family
-    with $FunctionalFamilyOverride<Stream<Novel?>, String> {
-  NovelByContentDatabasePathFamily._()
-    : super(
-        retry: null,
-        name: r'novelByContentDatabasePathProvider',
-        dependencies: null,
-        $allTransitiveDependencies: null,
-        isAutoDispose: true,
-      );
-
-  NovelByContentDatabasePathProvider call(String databasePath) =>
-      NovelByContentDatabasePathProvider._(argument: databasePath, from: this);
-
-  @override
-  String toString() => r'novelByContentDatabasePathProvider';
-}
-
 @ProviderFor(novelActions)
 final novelActionsProvider = NovelActionsProvider._();
 
@@ -1946,7 +1875,7 @@ final class WorkingFieldReviewsProvider
 }
 
 String _$workingFieldReviewsHash() =>
-    r'26cf0e1f66687ece1d091947f9f9df3ff2a58b90';
+    r'3b138ad3a16aaa1ccc398bed0765abe94823c98b';
 
 /// 只订阅审阅涉及的资源表；直接手动编辑也会使右侧快照刷新。
 

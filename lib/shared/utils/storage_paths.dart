@@ -164,8 +164,8 @@ class RevericPaths {
     return File(path).existsSync() ? path : null;
   }
 
-  /// 解析数据库路径；允许打开或创建尚不存在的数据库，不猜测其他位置。
-  static String resolveDatabasePath(String stored) {
+  /// 解析数据库路径。已有应用目录的调用方可显式传入 [support]。
+  static String resolveDatabasePath(String stored, {String? support}) {
     final syntax = contextForStoredPath(stored);
     if (syntax.isAbsolute(stored)) {
       return stored;
@@ -175,7 +175,7 @@ class RevericPaths {
         'Stored path escapes the application directory.',
       );
     }
-    return resolveRelative(stored, support: supportRoot);
+    return resolveRelative(stored, support: support ?? supportRoot);
   }
 
   /// 把绝对路径归一化为相对当前根的路径，便于持久化。

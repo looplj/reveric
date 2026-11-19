@@ -9,6 +9,12 @@
 - 文件选择与目录选择不是同一份契约：某些插件会把单文件复制到缓存后返回可读路径，但目录选择可能只返回不可直接遍历的 URI 或转换后的裸路径。必须分别验证，不能用单文件导入成功推断目录导入可用。
 - 先区分资源的三种身份：系统 URI（访问授权）、App 临时副本路径（`dart:io` 读取）和展示名称（数据库标题/UI）。展示名称不能从临时副本路径推导。
 
+## 作品登记与内容库路径
+
+- 查询作品归属、比较作品身份、校验作品类型及读写作品元数据时，只能使用作品 ID。需要归属的入口由上游显式传入作品 ID，禁止按内容库路径反查、比较或从文件名推断作品身份。
+- `contentDatabasePath`、解析后的绝对路径及 Windows 8.3 短路径只用于打开、缓存、备份和访问内容库文件。读取已有登记时兼容 `/` 和 `\` 两种相对路径。
+- 修改作品归属判断时，回归测试应覆盖两个作品共享路径或同一文件有不同路径表示的情况，并验证读写落在指定作品 ID。
+
 ## 移动端导入
 
 - Android 目录导入必须使用 SAF `ACTION_OPEN_DOCUMENT_TREE` 的 URI 读取能力；不要把 `file_selector.getDirectoryPath()` 的结果直接用于递归 `Directory.listSync()`。
@@ -40,7 +46,7 @@
 
 ## 跨平台与验证
 
-- 修改任何文件选择/导入/导出代码后，必须逐一检查 Android、iOS、desktop 的调用方和平台实现；不能只改当前看到的页面。
+- 修改任何文件选择/导入/导出代码后，必须逐一检查 Windows、macOS、Linux、Android 的调用方和平台实现；不能只改当前看到的页面。
 - 用 `rg` 全仓扫描同类 API：`getDirectoryPath`、`openFile(s)`、`File(`、`Directory(`、`XFile.path`、`ACTION_OPEN_DOCUMENT_TREE`。每个命中点要明确是普通路径、URI、App 私有路径还是临时副本。
 - 至少覆盖：取消选择、单文件、嵌套目录、中文名、`.txt/.md/.csv`、不支持扩展名、隐藏项、空文件、权限/Provider 失败、部分文件读取失败和临时目录清理。
 - Flutter 测试必须串行并使用 FVM；涉及原生桥接时，除了 Dart MethodChannel 单测，还必须运行 Android Debug/Release 编译，并在真实 Android 设备或等价 SAF 环境手工验证 `Downloads`、主存储、外部存储/云盘等 Provider。

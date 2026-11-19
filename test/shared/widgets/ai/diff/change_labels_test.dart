@@ -190,7 +190,11 @@ void main() {
         _wrap(
           locale,
           service,
-          PendingChangesDetailDialog(databasePath: 'test', items: [item]),
+          PendingChangesDetailDialog(
+            novelId: 'work',
+            databasePath: 'test',
+            items: [item],
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -225,6 +229,7 @@ void main() {
           locale,
           service,
           RecentChangesLog(
+            novelId: 'work',
             databasePath: 'test',
             changes: [change],
             bounded: false,

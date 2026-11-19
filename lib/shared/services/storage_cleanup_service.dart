@@ -360,7 +360,7 @@ class StorageCleanupService {
           continue;
         }
         try {
-          if (!await File(path).exists()) {
+          if (!await _contentDatabaseExists(entry.key, path)) {
             scanFailures++;
             continue;
           }
@@ -479,7 +479,7 @@ class StorageCleanupService {
           }
           continue;
         }
-        if (path == null || path.isEmpty || !await File(path).exists()) {
+        if (path == null || !await _contentDatabaseExists(novelId, path)) {
           skipped += novelTrees.length;
           for (final group in novelTrees) {
             record(group, 'skipped');
@@ -720,6 +720,27 @@ class StorageCleanupService {
         stackTrace: stackTrace,
       );
       return const NetworkImageCachePruneResult();
+    }
+  }
+
+  Future<bool> _contentDatabaseExists(
+    String novelId,
+    String registeredPath,
+  ) async {
+    if (registeredPath.isEmpty) {
+      return false;
+    }
+    try {
+      return await File(
+        RevericPaths.resolveDatabasePath(registeredPath),
+      ).exists();
+    } on FormatException catch (error, stackTrace) {
+      _log.error(
+        'invalid registered content path novel=$novelId',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
     }
   }
 

@@ -133,6 +133,7 @@ void main() {
                   data: RevericThemeData.reveric,
                   child: Scaffold(
                     body: AgentRulesGridPage(
+                      novelId: 'novel-target',
                       databasePath: _targetPath,
                       headerGestureExclusionKey: GlobalKey(),
                       onOpen: (_) {},

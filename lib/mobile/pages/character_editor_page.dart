@@ -68,12 +68,14 @@ class MobileCharacterEditorPage extends ConsumerWidget {
   const MobileCharacterEditorPage({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.characterId,
     this.onOpenGraph,
     this.isScreenplay = false,
   });
 
   final String databasePath;
+  final String novelId;
   final String characterId;
 
   /// 关系网络分组的「在关系图中查看」入口；为空时隐藏（如从聊天页推入，无法切回关系图）。
@@ -97,6 +99,7 @@ class MobileCharacterEditorPage extends ConsumerWidget {
     }
     return _CharacterEditorBody(
       key: ValueKey(character.id),
+      novelId: novelId,
       databasePath: databasePath,
       character: character,
       onOpenGraph: onOpenGraph,
@@ -109,12 +112,14 @@ class _CharacterEditorBody extends HookConsumerWidget {
   const _CharacterEditorBody({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.character,
     required this.onOpenGraph,
     required this.isScreenplay,
   });
 
   final String databasePath;
+  final String novelId;
   final CharacterProfile character;
   final VoidCallback? onOpenGraph;
   final bool isScreenplay;
@@ -196,7 +201,9 @@ class _CharacterEditorBody extends HookConsumerWidget {
       );
     }
 
-    final service = ref.watch(novelContentServiceProvider(databasePath));
+    final service = ref.watch(
+      workContentServiceProvider((path: databasePath, novelId: novelId)),
+    );
     // 剧本作品没有章节，「本作首次出场」整行隐藏，也不必订阅章节列表。
     final chaptersAsync = isScreenplay
         ? null
@@ -635,6 +642,7 @@ class _CharacterEditorBody extends HookConsumerWidget {
                                 ),
                                 const SizedBox(height: RevericSpacing.x3l),
                                 MobileCharacterImageActions(
+                                  novelId: novelId,
                                   databasePath: databasePath,
                                   characterId: character.id,
                                   prepareCharacter: () async {

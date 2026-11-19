@@ -382,7 +382,7 @@ class ProductionCanvasService {
       final episodeId = await episodeForCanvas(canvasId);
       final clip = await StoryboardEditOrchestrator().create(
         service: shots,
-        overlay: overlay,
+        overlay: overlay.forNovel(novelId),
         episodeId: episodeId,
         values: const {'duration_ms': defaultDurationMs},
       );
@@ -999,7 +999,7 @@ class ProductionCanvasService {
             )
           : await StoryboardEditOrchestrator().create(
               service: shots,
-              overlay: overlay,
+              overlay: overlay.forNovel(novelId),
               episodeId: clip.episodeId,
               values: shots.snapshot(clip),
             );
@@ -1763,12 +1763,13 @@ class ProductionCanvasService {
     'saveDraft',
     [nodeId],
     () => write(nodeId, () async {
+      final workOverlay = overlay.forNovel(novelId);
       final node = await requireNode(nodeId);
       final beforeInputs = node.clipId != null
           ? await shots.inputSnapshot(node.clipId!)
           : null;
       if (!origin.isAgent && node.clipId != null) {
-        await StoryboardEditOrchestrator().takeOver(overlay, node.clipId!);
+        await StoryboardEditOrchestrator().takeOver(workOverlay, node.clipId!);
       }
       await validateInputs(
         node: node,
@@ -1785,7 +1786,7 @@ class ProductionCanvasService {
         if (beforeInputs != null) {
           final afterInputs = await shots.inputSnapshot(node.clipId!);
           if (jsonEncode(beforeInputs) != jsonEncode(afterInputs)) {
-            final inputChange = await overlay.stageTextChange(
+            final inputChange = await workOverlay.stageTextChange(
               resourcePath: 'clips/${node.clipId}/inputs',
               resourceType: 'production_clips',
               resourceId: node.clipId!,
@@ -1803,7 +1804,7 @@ class ProductionCanvasService {
         }
         await StoryboardEditOrchestrator().save(
           service: shots,
-          overlay: overlay,
+          overlay: workOverlay,
           shotId: node.clipId!,
           origin: origin,
           values: {
@@ -1812,7 +1813,7 @@ class ProductionCanvasService {
           },
         );
         if (!origin.isAgent && inputChangeId != null) {
-          await overlay.commitManualSave(
+          await workOverlay.commitManualSave(
             manualChangeIds: [inputChangeId],
             resourceScopes: ['clips/${node.clipId}'],
             manualMessage: 'history.commit_message.manual_storyboard_save',
@@ -1937,7 +1938,7 @@ class ProductionCanvasService {
   }) => write(sceneId ?? episodeId ?? '', () async {
     final row = await StoryboardEditOrchestrator().create(
       service: shots,
-      overlay: overlay,
+      overlay: overlay.forNovel(novelId),
       sceneId: sceneId,
       episodeId: episodeId,
       values: values,

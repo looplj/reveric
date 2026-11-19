@@ -259,6 +259,7 @@ Future<void> showMobileScreenplaySceneSheet(
   required ScreenplaySceneSummary scene,
 }) => showSceneProperties(
   context,
+  novelId: novel.id,
   databasePath: novel.contentDatabasePath!,
   episodeId: scene.episodeId,
   sceneId: scene.id,

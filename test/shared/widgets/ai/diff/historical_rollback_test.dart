@@ -91,10 +91,8 @@ void main() {
               supportedLocales: context.supportedLocales,
               locale: context.locale,
               theme: RevericThemeData.reveric.toThemeData(),
-              builder: (context, route) => RevericTheme(
-                data: RevericThemeData.reveric,
-                child: route!,
-              ),
+              builder: (context, route) =>
+                  RevericTheme(data: RevericThemeData.reveric, child: route!),
               home: Scaffold(body: child),
             ),
           ),
@@ -142,6 +140,7 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => PendingChangesDetailDialog.showFromChanges(
               context,
+              novelId: 'work',
               databasePath: _path,
               changes: rows,
             ),
@@ -273,6 +272,7 @@ void main() {
             tester,
             SingleChildScrollView(
               child: RecentChangesLog(
+                novelId: 'work',
                 databasePath: _path,
                 changes: changes,
                 bounded: !mobile,
@@ -363,6 +363,7 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => PendingChangesDetailDialog.showFromChanges(
               context,
+              novelId: 'work',
               databasePath: _path,
               changes: changes,
             ),
@@ -451,6 +452,7 @@ void main() {
         await mount(
           tester,
           RecentChangesLog(
+            novelId: 'work',
             databasePath: _path,
             changes: fixture.rows,
             bounded: !mobile,
@@ -508,6 +510,7 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => PendingChangesDetailDialog.showFromChanges(
               context,
+              novelId: 'work',
               databasePath: _path,
               changes: fixture.rows,
             ),
@@ -603,6 +606,7 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => PendingChangesDetailDialog.showFromChanges(
               context,
+              novelId: 'work',
               databasePath: _path,
               changes: changes,
             ),

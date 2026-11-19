@@ -1463,6 +1463,7 @@ class AiChatPanel extends HookConsumerWidget {
                     pendingAiChanges.isNotEmpty &&
                     databasePath != null)
                   PendingChangesSummaryCard(
+                    novelId: novelId,
                     databasePath: databasePath!,
                     changes: pendingAiChanges,
                   ),

@@ -8,6 +8,7 @@
 
 import 'dart:convert';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -64,6 +65,79 @@ void main() {
       crossWorkAccess: crossWorkAccess,
     )..registerAllTools();
   }
+
+  test(
+    'AI scene writes update metadata for the bound screenplay work',
+    () async {
+      final initial = await ScreenplayService(
+        database,
+      ).createInitialStructure();
+      for (final id in ['current', 'other']) {
+        await appDatabase.novelDao.create(
+          id: id,
+          title: id,
+          description: '',
+          contentKind: contentKindScreenplay,
+          contentDatabasePath: database.filePath,
+        );
+      }
+      final before = DateTime.utc(2020);
+      Future<void> resetTimestamps() => appDatabase
+          .update(appDatabase.novels)
+          .write(NovelsCompanion(updatedAt: Value(before)));
+      await resetTimestamps();
+      contentService = NovelContentService(
+        database,
+        novelId: 'current',
+        novelActionsService: NovelActionsService(appDatabase),
+      );
+      overlay = overlay.forNovel('current');
+      final tools = manager();
+      addTearDown(tools.dispose);
+
+      final created = await tools.executeTool(
+        name: 'Create',
+        input: {
+          'path': 'scenes',
+          'fields': {
+            'episode_id': initial.episodeId,
+            'elements': [
+              {'type': 'action', 'text': '推门而入。'},
+            ],
+          },
+        },
+      );
+      expect(created['ok'], isTrue, reason: '$created');
+      final sceneId = created['id'] as String;
+      final scene = (await database.screenplayDao.getScene(sceneId))!;
+      expect(scene.wordCount, greaterThan(0));
+      final first = (await appDatabase.novelDao.get('current'))!;
+      expect(first.updatedAt.isAfter(before), isTrue);
+      expect(first.wordCount, scene.wordCount);
+
+      await resetTimestamps();
+      final written = await tools.executeTool(
+        name: 'Write',
+        input: {
+          'path': 'scenes/$sceneId/elements',
+          'value': [
+            {'type': 'action', 'text': '推开沉重的门，缓步走进寂静的房间。'},
+          ],
+        },
+      );
+      expect(written['ok'], isTrue, reason: '$written');
+      final second = (await appDatabase.novelDao.get('current'))!;
+      expect(second.updatedAt.isAfter(before), isTrue);
+      expect(second.wordCount, greaterThan(first.wordCount));
+      expect(
+        second.wordCount,
+        (await database.screenplayDao.getScene(sceneId))!.wordCount,
+      );
+      final other = (await appDatabase.novelDao.get('other'))!;
+      expect(other.updatedAt.isAtSameMomentAs(before), isTrue);
+      expect(other.wordCount, 0);
+    },
+  );
 
   test('cast removal blocked by dialogue returns JSON-safe details', () async {
     final service = ScreenplayService(database);

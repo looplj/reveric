@@ -2200,12 +2200,28 @@ AiClient? aiService(Ref ref, String? sessionId) {
   if (config == null || !config.isValid) return null;
   final chatModel = writerOption?.model ?? sessionConfig.model;
   if (chatModel == null) return null;
-  final contentService = novelContentPath == null || novelContentPath.isEmpty
+  final contentService =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(novelContentServiceProvider(novelContentPath));
-  final workingOverlay = novelContentPath == null || novelContentPath.isEmpty
+      : ref.watch(
+          workContentServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
+  final workingOverlay =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(workingOverlayServiceProvider(novelContentPath));
+      : ref.watch(
+          workOverlayServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
   final locationsService = novelContentPath == null || novelContentPath.isEmpty
       ? null
       : ref.watch(locationsServiceProvider(novelContentPath));
@@ -2238,7 +2254,6 @@ AiClient? aiService(Ref ref, String? sessionId) {
         ? null
         : CrossWorkResolver(
             appDatabase: ref.watch(appDatabaseProvider),
-            currentDatabasePath: novelContentPath,
             currentContentService: contentService,
             currentWorkId: currentWorkId,
           ),
@@ -2304,12 +2319,28 @@ Future<AiClient?> aiServiceAsync(Ref ref, String? sessionId) async {
   if (config == null || !config.isValid) return null;
   final chatModel = writerOption?.model ?? sessionConfig.model;
   if (chatModel == null) return null;
-  final contentService = novelContentPath == null || novelContentPath.isEmpty
+  final contentService =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(novelContentServiceProvider(novelContentPath));
-  final workingOverlay = novelContentPath == null || novelContentPath.isEmpty
+      : ref.watch(
+          workContentServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
+  final workingOverlay =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(workingOverlayServiceProvider(novelContentPath));
+      : ref.watch(
+          workOverlayServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
   final locationsService = novelContentPath == null || novelContentPath.isEmpty
       ? null
       : ref.watch(locationsServiceProvider(novelContentPath));
@@ -2342,7 +2373,6 @@ Future<AiClient?> aiServiceAsync(Ref ref, String? sessionId) async {
         ? null
         : CrossWorkResolver(
             appDatabase: ref.watch(appDatabaseProvider),
-            currentDatabasePath: novelContentPath,
             currentContentService: contentService,
             currentWorkId: currentWorkId,
           ),

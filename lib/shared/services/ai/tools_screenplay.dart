@@ -15,6 +15,7 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
   ScreenplayService get _screenplayService => ScreenplayService(
     _contentService.database,
     novelActionsService: _contentService.novelActionsService,
+    novelId: _contentService.novelId,
   );
 
   @override

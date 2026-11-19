@@ -1438,7 +1438,9 @@ class ChatSessionController {
       final dbPath = scope.databasePath;
       if (dbPath != null && dbPath.isNotEmpty) {
         try {
-          final overlay = container.read(workingOverlayServiceProvider(dbPath));
+          final overlay = container.read(
+            workOverlayServiceProvider((path: dbPath, novelId: scope.novel.id)),
+          );
           final result = await overlay.rollbackTurns(turnIds: rollbackTurnIds);
           if (result.skippedPaths.isNotEmpty) {
             host.onComposerWarning?.call(

@@ -768,7 +768,12 @@ void main() {
           final session = container
               .read(editingSessionsProvider)
               .get(
-                container.read(editingServiceProvider(db.filePath)),
+                container.read(
+                  editingServiceProvider((
+                    path: db.filePath,
+                    novelId: novel.id,
+                  )),
+                ),
                 region.editingId,
               );
           session.commit(

@@ -1575,32 +1575,43 @@ class ProductionClips extends Table {
 class NovelContentDatabase extends _$NovelContentDatabase {
   static final _log = AppLogger.forModule('NovelContentDB');
 
-  factory NovelContentDatabase(String filePath) {
-    final normalizedPath = _normalizedDatabasePath(filePath);
+  factory NovelContentDatabase(String contentDatabasePath) {
+    final normalizedPath = _normalizedDatabasePath(contentDatabasePath);
     final cachedDatabase = _databaseCache[normalizedPath];
     if (cachedDatabase != null) {
       cachedDatabase.referenceCount += 1;
       return cachedDatabase.database;
     }
 
-    final database = NovelContentDatabase._internal(normalizedPath);
+    final database = NovelContentDatabase._internal(
+      contentDatabasePath,
+      normalizedPath,
+    );
     _databaseCache[normalizedPath] = _CachedNovelContentDatabase(
       database: database,
     );
     return database;
   }
 
-  NovelContentDatabase._internal(this.filePath)
+  NovelContentDatabase._internal(this.contentDatabasePath, this.filePath)
     : super(_openConnection(filePath));
 
   @visibleForTesting
-  NovelContentDatabase.forTest(super.executor) : filePath = ':memory:';
+  NovelContentDatabase.forTest(super.executor)
+    : contentDatabasePath = ':memory:',
+      filePath = ':memory:';
 
   /// 供受控维护操作在内存库中生成当前 schema 参考。
-  NovelContentDatabase.forSchemaRepair(super.executor) : filePath = ':memory:';
+  NovelContentDatabase.forSchemaRepair(super.executor)
+    : contentDatabasePath = ':memory:',
+      filePath = ':memory:';
 
   static final Map<String, _CachedNovelContentDatabase> _databaseCache = {};
 
+  /// 打开内容库时传入的路径，保留平台转换前的值。
+  final String contentDatabasePath;
+
+  /// SQLite 打开路径和连接缓存键，仅用于访问数据库文件。
   final String filePath;
 
   final Object _transactionContext = Object();

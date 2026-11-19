@@ -49,10 +49,12 @@ class MobileLocationEditorPage extends ConsumerWidget {
   const MobileLocationEditorPage({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.locationId,
   });
 
   final String databasePath;
+  final String novelId;
   final String locationId;
 
   @override
@@ -67,6 +69,7 @@ class MobileLocationEditorPage extends ConsumerWidget {
     }
     return _LocationEditorBody(
       key: ValueKey(location.id),
+      novelId: novelId,
       databasePath: databasePath,
       location: location,
     );
@@ -77,10 +80,12 @@ class _LocationEditorBody extends HookConsumerWidget {
   const _LocationEditorBody({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.location,
   });
 
   final String databasePath;
+  final String novelId;
   final Location location;
 
   @override
@@ -222,6 +227,7 @@ class _LocationEditorBody extends HookConsumerWidget {
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => MobileLocationEditorPage(
+                novelId: novelId,
                 databasePath: databasePath,
                 locationId: id,
               ),
@@ -254,6 +260,7 @@ class _LocationEditorBody extends HookConsumerWidget {
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => MobileLocationEditorPage(
+                novelId: novelId,
                 databasePath: databasePath,
                 locationId: child.id,
               ),
@@ -385,6 +392,7 @@ class _LocationEditorBody extends HookConsumerWidget {
                               ),
                             ),
                             LocationPhotos(
+                              novelId: novelId,
                               databasePath: databasePath,
                               location: location,
                               pickImages: _pickImages,

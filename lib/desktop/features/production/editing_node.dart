@@ -41,7 +41,7 @@ import 'support.dart';
 final _posterRenderer = Provider.autoDispose
     .family<EditingRenderService, ProductionCanvasService>((ref, service) {
       final renderer = EditingRenderService(
-        EditingService(service.db, service.library),
+        EditingService(service.db, service.library, novelId: service.novelId),
         FfmpegRunner(),
       );
       ref.onDispose(() => unawaited(renderer.dispose()));
@@ -177,7 +177,7 @@ Future<void> exportProductionEditing(
     return;
   }
   final renderer = EditingRenderService(
-    EditingService(service.db, service.library),
+    EditingService(service.db, service.library, novelId: service.novelId),
     FfmpegRunner(),
   );
   try {
@@ -210,7 +210,11 @@ Future<void> previewProductionEditing(
   if (editingId == null) {
     return;
   }
-  final projects = EditingService(service.db, service.library);
+  final projects = EditingService(
+    service.db,
+    service.library,
+    novelId: service.novelId,
+  );
   final row = await projects.read(editingId);
   if (row.document.totalFrames == 0 || !context.mounted) {
     return;

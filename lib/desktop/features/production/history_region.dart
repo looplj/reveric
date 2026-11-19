@@ -38,7 +38,7 @@ class ProductionHistoryRegion extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shots = ref.watch(
-      storyboardServiceProvider(novel.contentDatabasePath!),
+      storyboardServiceProvider(novel.contentDatabasePath!, novelId: novel.id),
     );
     final library = ref.watch(mediaLibraryServiceProvider);
     final service = useMemoized(

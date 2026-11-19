@@ -124,6 +124,7 @@ void main() {
                   ).overrideWith((ref) => Stream.value(null)),
                 ],
                 child: MobileEntryEditorPage(
+                  novelId: 'work',
                   databasePath: 'test',
                   section: section,
                   entryId: 'entry',

@@ -284,7 +284,9 @@ class MobileChapterEditorPage extends HookConsumerWidget {
       editorEntityRecognitionEnabledProvider,
     );
 
-    final service = ref.watch(novelContentServiceProvider(databasePath));
+    final service = ref.watch(
+      workContentServiceProvider((path: databasePath, novelId: novel.id)),
+    );
     final chaptersAsync = ref.watch(chapterTreeProvider(databasePath));
 
     // 工作区资料（角色/地点/技能/物品/生物/势力），用于正文实体提及目录与角色面板。
@@ -354,7 +356,12 @@ class MobileChapterEditorPage extends HookConsumerWidget {
     }) {
       final before = activeChapter;
       final overlay = before != null && before.id == id
-          ? ref.read(workingOverlayServiceProvider(databasePath))
+          ? ref.read(
+              workOverlayServiceProvider((
+                path: databasePath,
+                novelId: novel.id,
+              )),
+            )
           : null;
       // 落盘的标题以 trim 后为准，历史记录与 chapters 表保持同一份值。
       final storedTitle = title.trim();
@@ -690,6 +697,7 @@ class MobileChapterEditorPage extends HookConsumerWidget {
           Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => MobileChapterHistoryPage(
+                novelId: novel.id,
                 databasePath: databasePath,
                 resourceId: chapter.id,
                 resourceLabel: (chapter.title?.isNotEmpty ?? false)
@@ -780,6 +788,7 @@ Future<void> _showChapterMoreMenu({
       label: context.t(LocaleKeys.workspaceChapterFormatAll),
       onTap: () => _formatAllChapters(
         context,
+        novel: novel,
         ref: ref,
         databasePath: databasePath,
         flushSave: flushSave,
@@ -823,7 +832,12 @@ Future<void> _showChapterMoreMenu({
             return;
           }
           await ref
-              .read(novelContentServiceProvider(databasePath))
+              .read(
+                workContentServiceProvider((
+                  path: databasePath,
+                  novelId: novel.id,
+                )),
+              )
               .updateChapterStat(chapterId: chapter.id, stat: chapterStatDraft);
         },
       ),
@@ -841,6 +855,7 @@ Future<void> _showChapterMoreMenu({
 Future<void> _formatAllChapters(
   BuildContext context, {
   required WidgetRef ref,
+  required Novel novel,
   required String databasePath,
   required Future<void> Function() flushSave,
 }) async {
@@ -848,7 +863,9 @@ Future<void> _formatAllChapters(
   if (!context.mounted) {
     return;
   }
-  final service = ref.read(novelContentServiceProvider(databasePath));
+  final service = ref.read(
+    workContentServiceProvider((path: databasePath, novelId: novel.id)),
+  );
   final indentCount = ref.read(editorFormatIndentCountProvider);
   final blankLine =
       ref.read(editorFormatParagraphSpacingProvider) ==
@@ -1014,7 +1031,7 @@ Future<void> _publishChapter(
   }
 
   await ref
-      .read(novelContentServiceProvider(databasePath))
+      .read(workContentServiceProvider((path: databasePath, novelId: novel.id)))
       .updateChapterStat(chapterId: chapter.id, stat: chapterStatPublished);
 
   if (!useChronicler || !context.mounted) {
@@ -1182,10 +1199,7 @@ class _ChapterEditorHeader extends StatelessWidget {
             icon: RevericIcons.list_alt_outlined,
             onTap: onOpenToc,
           ),
-          _HeaderIconButton(
-            icon: RevericIcons.person,
-            onTap: onOpenCharacters,
-          ),
+          _HeaderIconButton(icon: RevericIcons.person, onTap: onOpenCharacters),
           _HeaderIconButton(icon: RevericIcons.more_horiz, onTapDown: onMore),
         ],
       ),

@@ -15,6 +15,7 @@ Future<void> showScreenplaySceneDialog(
   required ScreenplaySceneSummary scene,
 }) => showSceneProperties(
   context,
+  novelId: novelId,
   databasePath: databasePath,
   episodeId: scene.episodeId,
   sceneId: scene.id,

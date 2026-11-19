@@ -33,6 +33,7 @@ void main() {
         relationHarness(
           db,
           EntityGraphPanel(
+            novelId: 'work',
             databasePath: 'test',
             selectedEntityKey: null,
             onSelectedEntityKeyChanged: (_) {},

@@ -80,10 +80,8 @@ void main() {
               supportedLocales: context.supportedLocales,
               locale: context.locale,
               theme: RevericThemeData.reveric.toThemeData(),
-              builder: (_, child) => RevericTheme(
-                data: RevericThemeData.reveric,
-                child: child!,
-              ),
+              builder: (_, child) =>
+                  RevericTheme(data: RevericThemeData.reveric, child: child!),
               home: const Scaffold(body: Text('Home')),
             ),
           ),
@@ -93,8 +91,11 @@ void main() {
     await tester.pumpAndSettle();
     nav.currentState!.push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            MobileLocationEditorPage(databasePath: _path, locationId: id),
+        builder: (_) => MobileLocationEditorPage(
+          databasePath: _path,
+          novelId: 'work',
+          locationId: id,
+        ),
       ),
     );
     await tester.pumpAndSettle();

@@ -131,7 +131,7 @@ void main() {
     root = await Directory.systemTemp.createTemp('editing-agent-');
     runner = _FrameRunner();
     final library = MediaLibraryService(app, MediaService(runner), root);
-    service = EditingService(db, library);
+    service = EditingService(db, library, novelId: 'work');
     sessions = EditingSessions();
     registry = ToolOperationRegistry();
     operations = ToolOperationManager(

@@ -51,7 +51,7 @@ void main() {
     );
     canvasId = (await canvas.ensureCanvas('')).id;
     history = CanvasHistory(canvas.shots, canvasId);
-    projects = EditingService(db, canvas.library);
+    projects = EditingService(db, canvas.library, novelId: canvas.novelId);
   });
   tearDown(() async {
     history.dispose();

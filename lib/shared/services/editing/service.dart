@@ -9,7 +9,6 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
 import '../../models/content_kind.dart';
-import '../novel_actions.dart';
 import 'package:crypto/crypto.dart';
 export '../../database/novel_content_daos/editing_dao.dart'
     show EditingConflict;
@@ -33,9 +32,10 @@ class EditingSourceProblem implements Exception {
 typedef EditingAdoptedClip = ({String id, String title, String? assetId});
 
 class EditingService {
-  EditingService(this.database, this.library);
+  EditingService(this.database, this.library, {this.novelId});
   final NovelContentDatabase database;
   final MediaLibraryService library;
+  final String? novelId;
   Future<VideoEditingRow> read(String editingId) async {
     final editing = await database.editingDao.get(editingId);
     if (editing == null) {
@@ -46,9 +46,10 @@ class EditingService {
 
   /// 按当前内容库登记与持有该工程的节点验证归属，不接受其他作品或游离工程。
   Future<String> canvasForEditing(String editingId) async {
-    final work = await NovelActionsService(
-      library.database,
-    ).getNovelByContentDatabasePath(database.filePath);
+    final workId = novelId;
+    final work = workId == null
+        ? null
+        : await library.database.novelDao.get(workId);
     if (work == null || work.contentKind != contentKindCanvas) {
       throw StateError('Canvas editing requires a canvas work');
     }

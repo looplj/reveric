@@ -10,6 +10,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../database/app_database.dart' show Novel;
 import '../database/novel_content_database.dart';
 import '../database/novel_content_daos/working_change_dao.dart';
 import '../database/type_converters.dart';
@@ -172,18 +173,42 @@ class WorkingOverlayService {
     this._contentDatabase,
     this._contentService, {
     required this._novelActionsService,
+    this._novelId,
   });
 
   final NovelContentDatabase _contentDatabase;
   final NovelContentService _contentService;
   final NovelActionsService _novelActionsService;
+  final String? _novelId;
+
+  WorkingOverlayService forNovel(String novelId) => _novelId == novelId
+      ? this
+      : WorkingOverlayService(
+          _contentDatabase,
+          _contentService.forNovel(novelId),
+          novelActionsService: _novelActionsService,
+          novelId: novelId,
+        );
+
+  Future<Novel?> _registeredNovel([String? resourceId]) async {
+    final novelId = _novelId ?? resourceId;
+    if (novelId == null || (resourceId != null && resourceId != novelId)) {
+      return null;
+    }
+    return _novelActionsService.getNovel(novelId);
+  }
+
+  Future<void> _markContentEdited() async {
+    final novelId = _novelId;
+    if (novelId != null) {
+      await _novelActionsService.markContentEdited(novelId);
+    }
+  }
 
   StoryboardService get _storyboardService => StoryboardService(
     _contentDatabase,
     resolveContentKind: () async {
-      final novel = await _novelActionsService.getNovelByContentDatabasePath(
-        _contentDatabase.filePath,
-      );
+      final novel = await _registeredNovel();
       if (novel == null) {
         throw StateError('Production work registration is unavailable');
       }
@@ -640,7 +665,7 @@ class WorkingOverlayService {
       resourcePath,
     )).firstWhere((change) => change.status == workingChangeStatusActive);
     if (resourceType == 'production_clips') {
-      await _novelActionsService.markContentEdited(_contentDatabase.filePath);
+      await _markContentEdited();
     }
     return active;
   }
@@ -1013,9 +1038,11 @@ class WorkingOverlayService {
     }
     switch (row.resourceType) {
       case 'novel':
-        final novel = await _novelActionsService.getNovelByContentDatabasePath(
-          _contentDatabase.filePath,
-        );
+        final id = row.resourceId;
+        if (id == null) {
+          return false;
+        }
+        final novel = await _registeredNovel(id);
         if (novel == null) return false;
         await _novelActionsService.updateNovel(
           novel: novel,
@@ -1072,9 +1099,7 @@ class WorkingOverlayService {
                 .map((item) => Map<String, dynamic>.from(item as Map))
                 .toList(),
           );
-          await _novelActionsService.markContentEdited(
-            _contentDatabase.filePath,
-          );
+          await _markContentEdited();
           return true;
         }
         if (row.resourceId == null || row.field != 'document') {
@@ -1085,7 +1110,7 @@ class WorkingOverlayService {
           jsonDecode(value) as Map<String, dynamic>,
           restoring: restoreHistory,
         );
-        await _novelActionsService.markContentEdited(_contentDatabase.filePath);
+        await _markContentEdited();
         return true;
       case workingChangeResourceTypeScreenplayScenes:
         final id = row.resourceId;
@@ -1093,6 +1118,7 @@ class WorkingOverlayService {
         final service = ScreenplayService(
           _contentDatabase,
           novelActionsService: _novelActionsService,
+          novelId: _novelId,
         );
         switch (row.field) {
           case 'title':
@@ -1162,6 +1188,7 @@ class WorkingOverlayService {
         await ScreenplayService(
           _contentDatabase,
           novelActionsService: _novelActionsService,
+          novelId: _novelId,
         ).updateEpisodeOutline(episodeId: id, outline: value);
         return true;
       case 'volumes':
@@ -2435,9 +2462,7 @@ class WorkingOverlayService {
 
     switch (resourceType) {
       case 'novel':
-        final novel = await _novelActionsService.getNovelByContentDatabasePath(
-          _contentDatabase.filePath,
-        );
+        final novel = await _registeredNovel(id);
         if (novel == null) {
           return null;
         }
@@ -2705,12 +2730,13 @@ class WorkingOverlayService {
         return;
       case 'production_clips':
         await _storyboardService.softDelete(id);
-        await _novelActionsService.markContentEdited(_contentDatabase.filePath);
+        await _markContentEdited();
         return;
       case workingChangeResourceTypeScreenplayScenes:
         await ScreenplayService(
           _contentDatabase,
           novelActionsService: _novelActionsService,
+          novelId: _novelId,
         ).deleteScene(id);
         return;
       default:

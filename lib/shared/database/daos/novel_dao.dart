@@ -60,15 +60,6 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
         .watchSingleOrNull();
   }
 
-  Stream<Novel?> watchByContentDatabasePath(String contentDatabasePath) {
-    return (select(novels)..where(
-          (table) =>
-              table.contentDatabasePath.equals(contentDatabasePath) &
-              table.deletedAt.equals(notDeletedSentinel),
-        ))
-        .watchSingleOrNull();
-  }
-
   Future<Novel?> get(String id) {
     return (select(novels)..where(
           (table) =>
@@ -84,15 +75,6 @@ class NovelDao extends DatabaseAccessor<AppDatabase> with _$NovelDaoMixin {
               table.title.equals(title) &
               table.deletedAt.equals(notDeletedSentinel) &
               table.draft.equals(false),
-        ))
-        .getSingleOrNull();
-  }
-
-  Future<Novel?> getByContentDatabasePath(String contentDatabasePath) {
-    return (select(novels)..where(
-          (table) =>
-              table.contentDatabasePath.equals(contentDatabasePath) &
-              table.deletedAt.equals(notDeletedSentinel),
         ))
         .getSingleOrNull();
   }
