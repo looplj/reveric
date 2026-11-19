@@ -15,6 +15,7 @@ import '../../../helpers/media_provider_types.dart';
 
 const approvedOpenRouterModels = {
   'bytedance/seedance-2.5',
+  'bytedance/seedance-2.5-flash',
   'bytedance/seedance-2.0',
   'bytedance/seedance-2.0-fast',
   'bytedance/seedance-2.0-mini',
@@ -338,6 +339,58 @@ void main() {
     VideoCapabilities(
       videoProviderType(VideoProtocol.ark_video),
     ).validateParameters(request, []);
+  });
+
+  test('Ark lists Seedance 2.5 Flash with its own generation limits', () {
+    const id = 'doubao-seedance-2-5-flash-261115';
+    expect(videoModelsForProvider('volcengine'), contains(id));
+    final channel = lookupVideoChannelModel('volcengine', id)!;
+    final capabilities = channel.capabilities;
+    expect(channel.resolutions, {'480p', '720p'});
+    expect(channel.durations, {
+      for (var seconds = 4; seconds <= 30; seconds++) seconds,
+    });
+    expect(channel.requestDefaults.audio, isTrue);
+    expect(capabilities.supportsAudioOnlyReference, isTrue);
+    expect(capabilities.framesRequireAdaptiveRatio, isTrue);
+    expect(capabilities.supportsCertifiedAssets, isTrue);
+    expect(capabilities.draft, isNull);
+    expect(channel.protocolOptions.supportsOmniReferenceTaskType, isTrue);
+    expect(capabilities.maxReferences, 20);
+    expect(
+      capabilities.references.map(
+        (kind, limits) => MapEntry(kind, limits.maxCount),
+      ),
+      {
+        VideoMediaKind.image: 10,
+        VideoMediaKind.video: 5,
+        VideoMediaKind.audio: 5,
+      },
+    );
+  });
+
+  test('Seedance 2.5 Flash shares its catalog with 88API and OpenRouter', () {
+    const id = 'doubao-seedance-2-5-flash-261115';
+    final gateway = lookupVideoChannelModel(
+      'api88',
+      'doubao-seedance-2.5-flash',
+    )!;
+    final router = lookupVideoChannelModel(
+      'openrouter',
+      'bytedance/seedance-2.5-flash',
+    )!;
+    expect(gateway.model, same(lookupVideoModel(id)));
+    expect(router.model, same(gateway.model));
+    expect(
+      gateway.capabilities.references.keys,
+      unorderedEquals(VideoMediaKind.values),
+    );
+    expect(gateway.capabilities.supportsAudioOnlyReference, isFalse);
+    expect(gateway.capabilities.framesRequireAdaptiveRatio, isTrue);
+    expect(router.capabilities.references.keys, [VideoMediaKind.image]);
+    expect(router.capabilities.maxReferences, 10);
+    expect(router.ratios, isNot(contains('adaptive')));
+    expect(router.capabilities.framesRequireAdaptiveRatio, isFalse);
   });
 
   test(

@@ -1070,7 +1070,7 @@ void main() {
               seen.first.url.path,
               '/proxy/api/v3/contents/generations/tasks',
             );
-            if (model == 'doubao-seedance-2-5-260628') {
+            if (model.startsWith('doubao-seedance-2-5-')) {
               expect(body['omni_reference_task_type'], 'reference');
             } else {
               expect(body.containsKey('omni_reference_task_type'), false);

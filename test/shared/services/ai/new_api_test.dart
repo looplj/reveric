@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/new_api.dart';
+import 'package:reveric/shared/models/provider_model.dart';
 import 'package:reveric/shared/models/audio/channels.dart';
 import 'package:reveric/shared/models/image/channels.dart';
 import 'package:reveric/shared/models/video/channels.dart';
@@ -195,6 +196,7 @@ void _testProvider(String type, String baseUrl) {
     test(
       'fetch all kinds from authenticated models and filter by capabilities',
       () async {
+        const flash = 'vendor/seedance-2.5-flash-20261115';
         var requests = 0;
         await http.runWithClient(
           () async {
@@ -222,13 +224,21 @@ void _testProvider(String type, String baseUrl) {
               ),
               ['gemini-3.1-flash-tts'],
             );
-            expect(
-              await fetchProviderModels(
-                _provider(type),
-                kind: AiModelKind.video,
-              ),
-              ['seedance-2.0官方版', 'unknown-video', 'veo-3.1'],
+            final videos = await fetchProviderModels(
+              _provider(type),
+              kind: AiModelKind.video,
             );
+            expect(videos, [
+              'seedance-2.0官方版',
+              'unknown-video',
+              flash,
+              'veo-3.1',
+            ]);
+            final provider = _provider(type).copyWith(videoModels: videos);
+            final spec = resolveVideoModel(provider, flash)!;
+            expect(spec.resolutions, {'480p', '720p'});
+            expect(spec.capabilities.maxReferences, 20);
+            expect(resolveVideoModel(provider, 'unknown-video'), isNull);
           },
           () => MockClient((request) async {
             requests++;
@@ -244,6 +254,7 @@ void _testProvider(String type, String baseUrl) {
                 _model('gemini-3.1-flash-image', ['gemini', 'openai']),
                 _model('gemini-3.1-flash-tts', ['gemini', 'openai']),
                 _model('seedance-2.0官方版', ['openai-video']),
+                _model(flash, ['openai']),
                 _model('veo-3.1', ['openai-video']),
                 _model('unknown-video', ['openai-video']),
               ],

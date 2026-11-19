@@ -2215,6 +2215,13 @@ final videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         supportsOmniReferenceTaskType: true,
       ),
     ),
+    'doubao-seedance-2-5-flash-261115': VideoChannelModel(
+      catalogId: 'doubao-seedance-2-5-flash-261115',
+      capabilities: VideoModelCapabilities(supportsCertifiedAssets: true),
+      protocolOptions: VideoProtocolOptions(
+        supportsOmniReferenceTaskType: true,
+      ),
+    ),
     'doubao-seedance-2-0-260128': VideoChannelModel(
       capabilities: VideoModelCapabilities(supportsCertifiedAssets: true),
       catalogId: 'doubao-seedance-2-0-260128',
@@ -2267,6 +2274,16 @@ final videoChannelModels = <VideoProtocol, Map<String, VideoChannelModel>>{
         frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
         references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
         modes: VideoMode.values,
+      ),
+    ),
+    'bytedance/seedance-2.5-flash': VideoChannelModel(
+      catalogId: 'doubao-seedance-2-5-flash-261115',
+      capabilities: VideoModelCapabilities(
+        ratios: {'16:9', '4:3', '1:1', '3:4', '9:16', '21:9'},
+        maxReferences: 10,
+        references: {VideoMediaKind.video: null, VideoMediaKind.audio: null},
+        supportsAudioOnlyReference: false,
+        framesRequireAdaptiveRatio: false,
       ),
     ),
     'bytedance/seedance-2.0': VideoChannelModel(
@@ -2700,9 +2717,25 @@ VideoChannelModel? lookupVideoChannelModel(
     return exact;
   }
   final catalogId = recognizeVideoModel(modelId);
-  return models.values
+  final channel = models.values
       .where((channel) => channel.catalogId == catalogId)
       .firstOrNull;
+  if (channel != null) {
+    return channel;
+  }
+  // New API 的 Seedance 请求格式适用于整个系列，型号 ID 由渠道返回。
+  if (config.videoProtocol == VideoProtocol.new_api_video &&
+      catalogId != null &&
+      catalogId.startsWith('doubao-seedance-')) {
+    return VideoChannelModel(
+      catalogId: catalogId,
+      capabilities: VideoModelCapabilities(
+        // https://88api.ai/zh/docs/api/video/seedance-multi-resolution/
+        supportsAudioOnlyReference: providerType == 'api88' ? false : null,
+      ),
+    );
+  }
+  return null;
 }
 
 const _newApiSingleFrame = VideoModelCapabilities(

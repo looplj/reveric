@@ -610,6 +610,35 @@ void main() {
   });
 
   test(
+    '88API submits a discovered Seedance alias with its original ID',
+    () async {
+      const model = 'vendor/seedance-2.5-flash-20261115';
+      final transport = MockClient((request) async {
+        expect(request.url.toString(), 'https://api.88api.ai/v1/videos');
+        final body = jsonDecode(request.body) as Map;
+        expect(body['model'], model);
+        expect(body['metadata']['generate_audio'], true);
+        expect(body['metadata']['content'][1]['role'], 'reference_image');
+        expect(body['metadata'], isNot(contains('omni_reference_task_type')));
+        return _json({'id': 'task_flash', 'status': 'queued'});
+      });
+      addTearDown(transport.close);
+      final task = await NewApiClient(_provider())
+          .video(transport)
+          .submitNative(_video(model, mode: VideoMode.reference, audio: true), [
+            VideoReference(
+              role: VideoInputRole.reference_image,
+              url: 'https://reference.test/image.png',
+              mimeType: 'image/png',
+              fileSize: 100,
+              mediaInfo: const VideoMediaInfo(width: 1280, height: 720),
+            ),
+          ]);
+      expect(task.taskId, 'task_flash');
+    },
+  );
+
+  test(
     'Veo resolves reference URL into inline images before charging submission',
     () async {
       final transport = MockClient((request) async {

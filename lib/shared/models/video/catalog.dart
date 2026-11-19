@@ -20,6 +20,14 @@ class VideoModelCatalogEntry {
 }
 
 const _imageFormats = {'image/jpeg', 'image/png', 'image/webp'};
+const _seedanceImageFormats = {
+  ..._imageFormats,
+  'image/bmp',
+  'image/tiff',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+};
 const _videoFormats = {'video/mp4', 'video/quicktime'};
 const _audioFormats = {'audio/mpeg', 'audio/wav', 'audio/x-wav'};
 
@@ -571,9 +579,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
     aliases: {'seedance-2-5'},
     capabilities: VideoModelCapabilities(
       resolutions: {'480p', '720p', '1080p'},
-      // dart format off
-      durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30},
-      // dart format on
+      durations: _seedance25Durations,
       maxReferences: 50,
       references: {
         VideoMediaKind.image: VideoReferenceLimits(
@@ -601,6 +607,54 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
         ),
         VideoMediaKind.audio: VideoReferenceLimits(
           maxCount: 10,
+          maxSizeMb: ConfigValue(15),
+          mimeTypes: ConfigValue(_audioFormats),
+          minDurationMs: ConfigValue(2000),
+          maxDurationMs: ConfigValue(30000),
+          maxTotalDurationMs: ConfigValue(30000),
+        ),
+      },
+    ),
+  ),
+  // https://docs.volcengine.com/docs/ark/seedance-2-5
+  'doubao-seedance-2-5-flash-261115': VideoModelCatalogEntry(
+    requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
+    aliases: {'seedance-2-5-flash'},
+    capabilities: VideoModelCapabilities(
+      resolutions: {'480p', '720p'},
+      durations: _seedance25Durations,
+      supportsAdaptiveTextRatio: true,
+      framesRequireAdaptiveRatio: true,
+      maxReferences: 20,
+      references: {
+        VideoMediaKind.image: VideoReferenceLimits(
+          maxCount: 10,
+          maxSizeMb: ConfigValue(30),
+          exclusiveMaxSize: true,
+          mimeTypes: ConfigValue(_seedanceImageFormats),
+          minDimension: ConfigValue(300),
+          maxDimension: ConfigValue(6000),
+          minRatio: ConfigValue(0.4),
+          maxRatio: ConfigValue(2.5),
+        ),
+        VideoMediaKind.video: VideoReferenceLimits(
+          maxCount: 5,
+          maxSizeMb: ConfigValue(200),
+          mimeTypes: ConfigValue(_videoFormats),
+          minDimension: ConfigValue(300),
+          maxDimension: ConfigValue(6000),
+          minRatio: ConfigValue(0.4),
+          maxRatio: ConfigValue(2.5),
+          minPixels: ConfigValue(407696),
+          maxPixels: ConfigValue(8295044),
+          minDurationMs: ConfigValue(2000),
+          maxDurationMs: ConfigValue(30000),
+          maxTotalDurationMs: ConfigValue(30000),
+          minFrameRate: ConfigValue(24),
+          maxFrameRate: ConfigValue(60),
+        ),
+        VideoMediaKind.audio: VideoReferenceLimits(
+          maxCount: 5,
           maxSizeMb: ConfigValue(15),
           mimeTypes: ConfigValue(_audioFormats),
           minDurationMs: ConfigValue(2000),
@@ -778,19 +832,16 @@ const _agnesAudio = VideoReferenceLimits(
   maxTotalDurationMs: ConfigValue(12000),
 );
 
+// dart format off
+const _seedance25Durations = {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30};
+// dart format on
+
 const _seedance20References = {
   VideoMediaKind.image: VideoReferenceLimits(
     maxCount: 9,
     maxSizeMb: ConfigValue(30),
     exclusiveMaxSize: true,
-    mimeTypes: ConfigValue({
-      ..._imageFormats,
-      'image/bmp',
-      'image/tiff',
-      'image/gif',
-      'image/heic',
-      'image/heif',
-    }),
+    mimeTypes: ConfigValue(_seedanceImageFormats),
     minDimension: ConfigValue(300),
     maxDimension: ConfigValue(6000),
     minRatio: ConfigValue(0.4),
