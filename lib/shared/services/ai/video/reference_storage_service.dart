@@ -807,6 +807,7 @@ class ReferenceStorageService {
                 if (probed.height != null) 'height': probed.height,
                 if (probed.durationMs != null) 'durationMs': probed.durationMs,
                 if (probed.frameRate != null) 'frameRate': probed.frameRate,
+                if (probed.hasAudio != null) 'hasAudio': probed.hasAudio,
               };
             } catch (_) {
               mediaInfo = null;
@@ -1011,6 +1012,9 @@ class ReferenceStorageService {
       height: info.height,
       durationMs: info.duration.inMilliseconds,
       frameRate: info.frameRate,
+      // 探测已经拿到了音轨信息，别在这里丢掉：有些平台的票据接口要求
+      // 客户端声明它（Flova 的 video_metadata.has_audio），缺了会被拒。
+      hasAudio: info.hasAudio,
     );
   }
 

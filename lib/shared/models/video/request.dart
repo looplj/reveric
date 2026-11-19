@@ -162,17 +162,25 @@ class VideoMediaInfo {
     this.height,
     this.durationMs,
     this.frameRate,
+    this.hasAudio,
   });
   final int? width;
   final int? height;
   final int? durationMs;
   final double? frameRate;
 
+  /// 是否有音轨；null 表示没有探测。只有视频有意义。
+  ///
+  /// 有些平台的票据接口要求客户端报这个值（Flova 的 `video_metadata.has_audio`），
+  /// 缺了整个元数据会被拒。
+  final bool? hasAudio;
+
   factory VideoMediaInfo.fromJson(Map<String, dynamic> json) => VideoMediaInfo(
     width: json['width'] as int?,
     height: json['height'] as int?,
     durationMs: json['duration_ms'] as int?,
     frameRate: (json['frame_rate'] as num?)?.toDouble(),
+    hasAudio: json['has_audio'] as bool?,
   );
 }
 
