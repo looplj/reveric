@@ -84,6 +84,7 @@ class VideoTaskService {
     this.beforeSubmit,
     this.recoverSources,
     this.sourceName,
+    this.onGenerationAttempt,
     http.Client Function(AiProvider)? providerTransport,
     http.Client Function(AiProvider)? downloadTransport,
     DateTime Function()? now,
@@ -101,6 +102,7 @@ class VideoTaskService {
   beforeCreate;
   final Future<void> Function(GenerationTask task)? beforeSubmit;
   final Future<void> Function()? recoverSources;
+  final Future<void> Function(GenerationTask task)? onGenerationAttempt;
 
   /// 结果入库时的资产名（不含扩展名）；为 null 或返回 null 时用任务 id。
   final Future<String?> Function(GenerationTask task)? sourceName;
@@ -427,12 +429,23 @@ class VideoTaskService {
     }
   }
 
-  Future<void> submit(String id, {bool acknowledgeReferenceUpload = false}) {
+  Future<void> submit(String id, {bool acknowledgeReferenceUpload = false}) =>
+      _queueSubmission(id, acknowledgeReferenceUpload, reportAttempt: true);
+
+  Future<void> _queueSubmission(
+    String id,
+    bool acknowledgeReferenceUpload, {
+    required bool reportAttempt,
+  }) {
     _requireActive();
     final result = Completer<void>();
     _submissions = _submissions.then((_) async {
       try {
-        await _submit(id, acknowledgeReferenceUpload);
+        await _submit(
+          id,
+          acknowledgeReferenceUpload,
+          reportAttempt: reportAttempt,
+        );
         result.complete();
       } catch (error, stack) {
         result.completeError(error, stack);
@@ -441,10 +454,17 @@ class VideoTaskService {
     return result.future;
   }
 
-  Future<void> _submit(String id, bool acknowledge) async {
+  Future<void> _submit(
+    String id,
+    bool acknowledge, {
+    required bool reportAttempt,
+  }) async {
     PluginFileScope? files;
     _requireActive();
     final preparedTask = await _task(id);
+    if (reportAttempt && preparedTask.status == GenerationTaskStatus.prepared) {
+      await onGenerationAttempt?.call(preparedTask);
+    }
     if (await _cancelUnsubmitted(preparedTask)) {
       return;
     }
@@ -1242,7 +1262,7 @@ class VideoTaskService {
     }
     if (submitAfter) {
       // Explicit retry also confirms reference upload; reuse submission guards.
-      await submit(id, acknowledgeReferenceUpload: true);
+      await _queueSubmission(id, true, reportAttempt: false);
     } else if (refreshAfter) {
       await refresh(id);
     }

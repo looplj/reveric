@@ -51,6 +51,7 @@ class ImageTaskService {
     this.sourceName,
     this.fetchResult,
     this.pluginHost,
+    this.onGenerationAttempt,
   });
   final PluginHostService? pluginHost;
   final AppDatabase database;
@@ -60,6 +61,7 @@ class ImageTaskService {
   beforeCreate;
   final Future<void> Function(GenerationTask task) beforeSubmit;
   final Future<void> Function() recoverSources;
+  final Future<void> Function(GenerationTask task)? onGenerationAttempt;
 
   /// 结果入库时的资产名（不含扩展名）；为 null 或返回 null 时用文件名。
   final Future<String?> Function(GenerationTask task)? sourceName;
@@ -314,6 +316,7 @@ class ImageTaskService {
       await onPrepared?.call(id);
       _requireActive();
       final prepared = await requireRun(id);
+      await onGenerationAttempt?.call(prepared);
       if (prepared.cancelRequestedAt != null ||
           prepared.status == GenerationTaskStatus.cancelled) {
         await database.generationTaskDao.transition(

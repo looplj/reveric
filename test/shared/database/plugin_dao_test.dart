@@ -101,7 +101,8 @@ void main() {
         isEmpty,
       );
       for (final entry in original.entries.where(
-        (entry) => entry.key != 'memories',
+        (entry) =>
+            entry.key != 'memories' && entry.key != 'anonymous_outbox_events',
       )) {
         expect(
           (await db
@@ -118,7 +119,11 @@ void main() {
             ),
             'generation_tasks' => entry.value.replaceFirst(
               ', PRIMARY KEY ("id"))',
-              ', "image_outputs" TEXT NULL, "provider_state" TEXT NULL, "output_headers" TEXT NULL, PRIMARY KEY ("id"))',
+              ', "image_outputs" TEXT NULL, "provider_state" TEXT NULL, PRIMARY KEY ("id"))',
+            ),
+            'ai_providers' => entry.value.replaceFirst(
+              ', PRIMARY KEY ("id"))',
+              ', "config" TEXT NULL, PRIMARY KEY ("id"))',
             ),
             'provider_assets' => entry.value.replaceFirst(
               ', PRIMARY KEY ("id"))',

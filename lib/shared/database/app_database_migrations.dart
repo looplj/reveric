@@ -33,6 +33,19 @@ class AppDatabaseMigrations {
   Future<void> migrateToV8(Migrator m) =>
       m.addColumn(db.aiProviders, db.aiProviders.config);
 
+  /// v9: 匿名上报队列按接口和设备分批。
+  Future<void> migrateToV9() => db.transaction(() async {
+    await db.customStatement(
+      'DROP INDEX IF EXISTS anonymous_outbox_events_by_endpoint_product_code_device_id_next_retry_at_id',
+    );
+    if (await _tableHasColumn('anonymous_outbox_events', 'product_code')) {
+      await db.customStatement(
+        'ALTER TABLE anonymous_outbox_events DROP COLUMN product_code',
+      );
+    }
+    await createAnonymousOutboxBatchIndex(db);
+  });
+
   /// v6: 同次图片任务的有序候选结果。
   Future<void> migrateToV6(Migrator m) =>
       m.addColumn(db.generationTasks, db.generationTasks.imageOutputs);

@@ -14,7 +14,7 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/ai_provider_config.dart';
 
 void main() {
-  for (final version in [1, 2, 3, 4, 5, 6, 7]) {
+  for (final version in [1, 2, 3, 4, 5, 6, 7, 8]) {
     test(
       'schema $version providers gain config and keep temperature unsent',
       () async {
@@ -75,11 +75,21 @@ void main() {
                   'ALTER TABLE generation_tasks ADD COLUMN provider_state TEXT',
                 );
               }
+              if (version >= 8) {
+                sqlite.execute(
+                  'ALTER TABLE ai_providers ADD COLUMN config TEXT',
+                );
+              }
               sqlite.execute('PRAGMA user_version=$version');
               sqlite.execute(
                 "INSERT INTO ai_providers (id, name, type, temperature, updated_at, deleted_at) "
                 "VALUES ('openai', 'OpenAI', 'openai', 0.4, 10, 0), "
                 "('deleted', 'Deleted', 'openai', 0.9, 15, 20)",
+              );
+              sqlite.execute(
+                "INSERT INTO anonymous_outbox_events VALUES "
+                "(42, 'queued-event', 'trace', 2, 'trace', 'legacy', "
+                "'device', '{}', 10, 11, 12, 1)",
               );
             },
           ),
@@ -90,6 +100,21 @@ void main() {
           (await database.customSelect('PRAGMA user_version').getSingle())
               .read<int>('user_version'),
           AppDatabase.currentSchemaVersion,
+        );
+        final queued = await database.anonymousOutboxDao.nextReadyBatch(
+          now: DateTime.fromMillisecondsSinceEpoch(12000, isUtc: true),
+          limit: 100,
+        );
+        expect(queued.single.id, 42);
+        expect(queued.single.eventId, 'queued-event');
+        expect(queued.single.nextRetryAt.millisecondsSinceEpoch, 12000);
+        expect(queued.single.attemptCount, 1);
+        final queueColumns = await database
+            .customSelect('PRAGMA table_info(anonymous_outbox_events)')
+            .get();
+        expect(
+          queueColumns.map((column) => column.read<String>('name')),
+          database.anonymousOutboxEvents.$columns.map((column) => column.$name),
         );
         final columns = await database
             .customSelect('PRAGMA table_info(ai_providers)')

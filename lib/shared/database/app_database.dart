@@ -213,8 +213,6 @@ class AnonymousOutboxEvents extends Table {
 
   TextColumn get endpoint => text()();
 
-  TextColumn get productCode => text()();
-
   TextColumn get deviceId => text()();
 
   /// 单条、endpoint 专属 payload，不持久化批请求体或签名。
@@ -1286,7 +1284,7 @@ class AppDatabase extends _$AppDatabase {
 
   static _CachedAppDatabase? _cachedDatabase;
 
-  static const currentSchemaVersion = 8;
+  static const currentSchemaVersion = 9;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1373,6 +1371,18 @@ class AppDatabase extends _$AppDatabase {
         } catch (error, stackTrace) {
           _log.error(
             '[DB] ALTER ai_providers ADD config schema=8',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 9) {
+        try {
+          await migrations.migrateToV9();
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER anonymous_outbox_events schema=9',
             error: error,
             stackTrace: stackTrace,
           );

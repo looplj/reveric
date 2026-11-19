@@ -105,23 +105,64 @@ class _PrivacySection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 加载完成前禁用开关，不用默认值冒充真实同意状态。
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    // 加载完成前禁用开关，避免覆盖尚未读取的本机设置。
     final consent = ref.watch(anonymousReportingConsentProvider).value;
+    final setConsent = consent == null
+        ? null
+        : ref.read(anonymousReportingConsentProvider.notifier).set;
     return SettingsSection(
       titleKey: LocaleKeys.settingsPrivacySection,
-      descriptionKey: LocaleKeys.settingsPrivacyDescription,
       child: SettingsCard(
+        padding: EdgeInsets.zero,
         children: [
-          SettingsRow(
-            labelKey: LocaleKeys.settingsAnonymousReporting,
-            descriptionKey: LocaleKeys.settingsAnonymousReportingDescription,
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: RevericSwitch(
-                value: consent ?? false,
-                onChanged: consent == null
+          MergeSemantics(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: consent == null || setConsent == null
                     ? null
-                    : ref.read(anonymousReportingConsentProvider.notifier).set,
+                    : () => setConsent(!consent),
+                hoverColor: colors.hover,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: RevericSpacing.lg,
+                    vertical: RevericSpacing.x2l,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.t(LocaleKeys.settingsAnonymousReporting),
+                              style: typo.uiSemibold.copyWith(
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: RevericSpacing.xxs),
+                            Text(
+                              context.t(
+                                LocaleKeys.settingsAnonymousReportingDescription,
+                              ),
+                              style: typo.uiSmall.copyWith(
+                                color: colors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: RevericSpacing.lg),
+                      RevericSwitch(
+                        value: consent ?? true,
+                        onChanged: setConsent,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

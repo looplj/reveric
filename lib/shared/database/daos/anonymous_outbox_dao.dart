@@ -25,7 +25,6 @@ class AnonymousOutboxDao extends DatabaseAccessor<AppDatabase>
     required String channel,
     required int priority,
     required String endpoint,
-    required String productCode,
     required String deviceId,
     required String payloadJson,
     required DateTime occurredAt,
@@ -37,7 +36,6 @@ class AnonymousOutboxDao extends DatabaseAccessor<AppDatabase>
           channel: channel,
           priority: priority,
           endpoint: endpoint,
-          productCode: productCode,
           deviceId: deviceId,
           payloadJson: payloadJson,
           occurredAt: occurredAt.toUtc(),
@@ -78,8 +76,8 @@ class AnonymousOutboxDao extends DatabaseAccessor<AppDatabase>
           ..where(
             (table) =>
                 table.endpoint.equals(first.endpoint) &
-                table.productCode.equals(first.productCode) &
                 table.deviceId.equals(first.deviceId) &
+                table.attemptCount.equals(first.attemptCount) &
                 table.nextRetryAt.isSmallerOrEqualValue(now),
           )
           ..orderBy([(table) => OrderingTerm.asc(table.id)])
@@ -122,19 +120,12 @@ class AnonymousOutboxDao extends DatabaseAccessor<AppDatabase>
       return;
     }
     try {
-      await (update(
-        anonymousOutboxEvents,
-      )..where((table) => table.id.isIn(ids))).write(
-        AnonymousOutboxEventsCompanion(
-          nextRetryAt: Value(nextRetryAt.toUtc()),
-          attemptCount: const Value.absent(),
+      final table = anonymousOutboxEvents;
+      await (update(table)..where((row) => row.id.isIn(ids))).write(
+        AnonymousOutboxEventsCompanion.custom(
+          nextRetryAt: Variable(nextRetryAt.toUtc()),
+          attemptCount: table.attemptCount + const Variable(1),
         ),
-      );
-      await customStatement(
-        'UPDATE anonymous_outbox_events '
-        'SET attempt_count = attempt_count + 1 '
-        'WHERE id IN (${List.filled(ids.length, '?').join(', ')})',
-        ids,
       );
     } catch (error, stackTrace) {
       _log.error(

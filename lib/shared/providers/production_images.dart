@@ -19,6 +19,7 @@ import '../services/production/image_generate_orchestrator.dart';
 import 'novel_providers.dart';
 import 'video_tasks.dart';
 import 'plugin_providers.dart';
+import 'trace_providers.dart';
 
 final productionImageInvokeProvider = Provider<ProductionImageInvoke>((ref) {
   final database = ref.watch(appDatabaseProvider);
@@ -110,6 +111,9 @@ final imageTaskServiceProvider = Provider<ImageTaskService>((ref) {
     beforeSubmit: results.beforeSubmit,
     recoverSources: results.recover,
     sourceName: results.sourceName,
+    onGenerationAttempt: ref
+        .watch(traceReporterServiceProvider)
+        .onMediaGenerationAttempt,
   );
   ref.onDispose(service.dispose);
   return service;

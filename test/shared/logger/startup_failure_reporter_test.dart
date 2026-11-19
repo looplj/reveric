@@ -149,7 +149,6 @@ void main() {
       expect(client.requests, hasLength(1));
       final request = client.requests.single;
       expect(request.url, 'https://anonymous.example/diagnostics/events');
-      expect(request.headers['X-Product-Code'], 'writer');
 
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       final event =

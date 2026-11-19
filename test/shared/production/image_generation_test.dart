@@ -22,6 +22,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/testing.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/production/image_request.dart';
@@ -39,6 +40,9 @@ import 'package:reveric/shared/database/app_database.dart'
 import 'package:reveric/shared/providers/production_media.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/services/ai/image.dart';
+import 'package:reveric/shared/services/ai/trace_reporter_service.dart';
+import 'package:reveric/shared/services/anonymous_outbox_service.dart';
+import 'package:reveric/shared/services/device_id_service.dart';
 import 'package:reveric/shared/services/image_library_service.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/image_generate_orchestrator.dart';
@@ -49,6 +53,7 @@ import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +72,7 @@ void main() {
     ProductionImageInvoke invoke, {
     Future<AiImageGenerationResult> Function(AiProvider, app.GenerationTask)?
     fetch,
+    Future<void> Function(app.GenerationTask)? onGenerationAttempt,
   }) {
     final result = results();
     return ImageTaskService(
@@ -78,6 +84,7 @@ void main() {
       beforeSubmit: result.beforeSubmit,
       recoverSources: result.recover,
       fetchResult: fetch ?? (_, _) => throw StateError('Must not fetch'),
+      onGenerationAttempt: onGenerationAttempt,
     );
   }
 
@@ -164,6 +171,67 @@ void main() {
         );
     await root.delete(recursive: true);
   });
+
+  test(
+    'rejected image generation records use once when reporting is enabled',
+    () async {
+      SharedPreferences.setMockInitialValues({'device_id': 'test-device'});
+      var enabled = true;
+      final client = MockClient(
+        (_) async => throw StateError('Unexpected flush'),
+      );
+      final outbox = AnonymousOutboxService(
+        database: appDb,
+        httpClient: client,
+        getBaseUrl: () => null,
+        getEnabled: () => enabled,
+        autoFlush: false,
+      );
+      addTearDown(client.close);
+      addTearDown(outbox.dispose);
+      final reporter = TraceReporterService(
+        deviceIdService: DeviceIdService(),
+        outbox: outbox,
+      );
+      var submissions = 0;
+      final service = jobs((_, _, _, _, _, _) async {
+        submissions++;
+        throw StateError('Provider denied generation');
+      }, onGenerationAttempt: reporter.onMediaGenerationAttempt);
+      addTearDown(service.shutdown);
+      final preview = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      Future<String> generate(String id) => service.submit(
+        novelId: preview.novelId,
+        sourceType: preview.sourceType,
+        sourceId: preview.sourceId,
+        request: preview.request,
+        taskId: id,
+      );
+
+      final id = await generate('first-image');
+      expect(
+        (await service.requireRun(id)).status,
+        GenerationTaskStatus.failed,
+      );
+      await generate(id);
+      enabled = false;
+      await generate('opted-out-image');
+      expect(submissions, 2);
+
+      final row = await appDb.select(appDb.anonymousOutboxEvents).getSingle();
+      final event = jsonDecode(row.payloadJson) as Map<String, dynamic>;
+      expect(event['event_type'], 'media_generation_attempted');
+      expect(event['model'], 'gpt-image-2');
+      expect(event['session_id'], row.eventId);
+      expect(jsonDecode(event['message'] as String), {
+        'media_kind': 'image',
+        'provider_type': 'openai',
+      });
+    },
+  );
 
   testWidgets(
     'candidate grid shows all four and selects the third without generation',

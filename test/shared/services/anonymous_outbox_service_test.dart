@@ -1,4 +1,4 @@
-// 职责: 验证匿名 Outbox 只有收到 204 才删除事件，并重试失败批次。
+// 职责: 验证匿名 Outbox 按约定投递、退避并限制重试。
 // 关联文件:
 //   lib/shared/services/anonymous_outbox_service.dart
 //   lib/shared/database/daos/anonymous_outbox_dao.dart
@@ -17,17 +17,22 @@ void main() {
   late AppDatabase database;
   late _RecordingClient httpClient;
   late AnonymousOutboxService outbox;
+  late DateTime now;
+
+  AnonymousOutboxService makeOutbox() => AnonymousOutboxService(
+    database: database,
+    httpClient: httpClient,
+    getBaseUrl: () => 'https://anonymous.example/',
+    getEnabled: () => true,
+    autoFlush: false,
+    now: () => now,
+  );
 
   setUp(() {
     database = AppDatabase.forTest(NativeDatabase.memory());
     httpClient = _RecordingClient();
-    outbox = AnonymousOutboxService(
-      database: database,
-      httpClient: httpClient,
-      getBaseUrl: () => 'https://anonymous.example',
-      getEnabled: () => true,
-      autoFlush: false,
-    );
+    now = DateTime.now().toUtc().add(const Duration(minutes: 1));
+    outbox = makeOutbox();
   });
 
   tearDown(() async {
@@ -166,7 +171,7 @@ void main() {
     },
   );
 
-  test('trace batch preserves JSON and deletes only after 204', () async {
+  test('trace retry preserves JSON and event ID until acknowledged', () async {
     httpClient.statusCode = 500;
     await outbox.enqueue(
       AnonymousOutboxEventInput(
@@ -191,7 +196,7 @@ void main() {
 
     final firstRequest = httpClient.requests.single;
     final rawBody = firstRequest.body;
-    expect(firstRequest.headers['X-Product-Code'], 'writer');
+    expect(firstRequest.url.path, '/v1/analysis/traces/events');
     expect(jsonDecode(rawBody), {
       'events': [
         {
@@ -202,10 +207,7 @@ void main() {
     });
 
     httpClient.statusCode = 204;
-    await database.anonymousOutboxDao.scheduleRetry(
-      ids: [1],
-      nextRetryAt: DateTime.now().toUtc().subtract(const Duration(seconds: 1)),
-    );
+    now = now.add(const Duration(seconds: 30));
     await outbox.flush();
 
     final remaining = await database
@@ -213,6 +215,7 @@ void main() {
         .get();
     expect(remaining, isEmpty);
     expect(httpClient.requests, hasLength(2));
+    expect(httpClient.requests.last.body, rawBody);
   });
 
   test('dispose after 204 still deletes the acknowledged batch', () async {
@@ -280,28 +283,127 @@ void main() {
     expect(usageCount.read<int>('event_count'), 1);
   });
 
-  test('retries a failed batch after its scheduled backoff', () async {
+  test('shares backoff across endpoints and stops after two retries', () async {
     httpClient.statusCode = 500;
     await outbox.enqueue(
       AnonymousOutboxEventInput(
-        channel: AnonymousOutboxChannel.usage,
-        endpoint: AnonymousOutboxEndpoint.usage,
+        channel: AnonymousOutboxChannel.trace,
+        endpoint: AnonymousOutboxEndpoint.trace,
         deviceId: 'retry-device',
-        occurredAt: DateTime.utc(2026, 7, 15, 12),
-        payload: {'event_type': 'app_launch'},
+        occurredAt: now,
+        payload: {'event_type': 'turn_end'},
       ),
     );
 
     await outbox.flush();
     expect(httpClient.requests, hasLength(1));
 
-    httpClient.statusCode = 204;
-    await _waitFor(() => httpClient.requests.length == 2);
+    await outbox.enqueue(
+      AnonymousOutboxEventInput(
+        channel: AnonymousOutboxChannel.toolError,
+        endpoint: AnonymousOutboxEndpoint.toolError,
+        deviceId: 'retry-device',
+        occurredAt: now,
+        payload: {'tool_name': 'Read'},
+      ),
+    );
+    now = now.add(const Duration(seconds: 29));
+    await outbox.flush();
+    expect(httpClient.requests, hasLength(1));
 
+    now = now.add(const Duration(seconds: 1));
+    await outbox.flush();
+    expect(httpClient.requests, hasLength(2));
+
+    // The remaining trace retry survives an app restart.
+    outbox.dispose();
+    outbox = makeOutbox();
+    now = now.add(const Duration(minutes: 2));
+    await outbox.flush();
+    expect(httpClient.requests, hasLength(3));
+    expect(
+      httpClient.requests.map((request) => request.body).toSet(),
+      hasLength(1),
+    );
+    final queued = await database.select(database.anonymousOutboxEvents).get();
+    expect(queued.single.channel, 'toolError');
+
+    httpClient.statusCode = 204;
+    now = now.add(const Duration(minutes: 2));
+    await outbox.flush();
+    expect(httpClient.requests, hasLength(4));
+    expect(httpClient.requests.last.url.path, '/v1/analysis/tool-call-errors');
     final remaining = await database
         .select(database.anonymousOutboxEvents)
         .get();
     expect(remaining, isEmpty);
+  });
+
+  test('permanent rejections and legacy usage are never retried', () async {
+    httpClient.statusCode = 400;
+    await outbox.enqueue(
+      AnonymousOutboxEventInput(
+        channel: AnonymousOutboxChannel.usage,
+        endpoint: AnonymousOutboxEndpoint.usage,
+        deviceId: 'test-device',
+        occurredAt: now,
+        payload: {'event_type': 'app_launch'},
+      ),
+    );
+    await outbox.enqueue(
+      AnonymousOutboxEventInput(
+        channel: AnonymousOutboxChannel.requestError,
+        endpoint: AnonymousOutboxEndpoint.requestError,
+        deviceId: 'test-device',
+        occurredAt: now,
+        payload: {'error_type': 'stream_error'},
+      ),
+    );
+    await outbox.flush();
+    now = now.add(const Duration(hours: 1));
+    await outbox.flush();
+
+    final request = httpClient.requests.single;
+    expect(request.url.path, '/v1/analysis/request-errors');
+    final payload = jsonDecode(request.body) as Map<String, dynamic>;
+    expect(payload['events'].single['event_id'], isNotEmpty);
+    expect(
+      await database.select(database.anonymousOutboxEvents).get(),
+      isEmpty,
+    );
+  });
+
+  test('an event on its last attempt keeps a new event queued', () async {
+    Future<void> enqueue(String eventId) => outbox.enqueue(
+      AnonymousOutboxEventInput(
+        channel: AnonymousOutboxChannel.trace,
+        endpoint: AnonymousOutboxEndpoint.trace,
+        deviceId: 'test-device',
+        occurredAt: now,
+        payload: {'event_type': 'turn_end'},
+        eventId: eventId,
+      ),
+    );
+    await enqueue('last-attempt');
+    final row = await database
+        .select(database.anonymousOutboxEvents)
+        .getSingle();
+    for (var retry = 0; retry < 2; retry++) {
+      await database.anonymousOutboxDao.scheduleRetry(
+        ids: [row.id],
+        nextRetryAt: now.subtract(const Duration(seconds: 1)),
+      );
+    }
+    await enqueue('first-attempt');
+    httpClient.statusCode = 500;
+    await outbox.flush();
+
+    expect(httpClient.requests.single.body, contains('last-attempt'));
+    final queued = await database
+        .select(database.anonymousOutboxEvents)
+        .getSingle();
+    expect(queued.eventId, 'first-attempt');
+    expect(queued.attemptCount, 0);
   });
 
   test(
@@ -342,8 +444,13 @@ Future<void> _waitFor(bool Function() condition) async {
 }
 
 class _RecordedRequest {
-  const _RecordedRequest({required this.headers, required this.body});
+  const _RecordedRequest({
+    required this.url,
+    required this.headers,
+    required this.body,
+  });
 
+  final Uri url;
   final Map<String, String> headers;
   final String body;
 }
@@ -356,7 +463,9 @@ class _RecordingClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = await request.finalize().bytesToString();
-    requests.add(_RecordedRequest(headers: request.headers, body: body));
+    requests.add(
+      _RecordedRequest(url: request.url, headers: request.headers, body: body),
+    );
     final gate = responseGate;
     if (gate != null) {
       await gate;

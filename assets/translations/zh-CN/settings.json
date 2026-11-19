@@ -36,7 +36,6 @@
   "settings.tagline_footer": "幻界 · 为创作者打造的写作空间",
   "settings.language_section": "语言",
   "settings.privacy_section": "隐私",
-  "settings.privacy_description": "选择是否发送匿名诊断数据。",
   "settings.anonymous_reporting": "发送匿名诊断数据",
   "settings.anonymous_reporting_description": "上报匿名数据，帮助我们改善产品。",
   "settings.custom_themes": "自定义主题",

@@ -4685,7 +4685,6 @@ abstract final class LocaleKeys {
   static const settingsProxyLoadFailed = 'settings.proxy.load_failed';
   static const settingsLanguageSection = 'settings.language_section';
   static const settingsPrivacySection = 'settings.privacy_section';
-  static const settingsPrivacyDescription = 'settings.privacy_description';
   static const settingsAnonymousReporting = 'settings.anonymous_reporting';
   static const settingsAnonymousReportingDescription =
       'settings.anonymous_reporting_description';

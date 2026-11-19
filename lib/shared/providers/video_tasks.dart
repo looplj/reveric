@@ -28,6 +28,7 @@ import '../services/ai/video/task_service.dart';
 import 'novel_providers.dart';
 import 'object_storage.dart';
 import 'plugin_providers.dart';
+import 'trace_providers.dart';
 
 final _log = AppLogger.forModule('VideoTasks');
 
@@ -108,6 +109,9 @@ final videoTaskServiceProvider = FutureProvider<VideoTaskService>((ref) async {
     beforeSubmit: results.beforeSubmit,
     recoverSources: results.recover,
     sourceName: results.sourceName,
+    onGenerationAttempt: ref
+        .watch(traceReporterServiceProvider)
+        .onMediaGenerationAttempt,
     database: database,
     probeResult: ref.watch(mediaServiceProvider).probe,
     rootDirectory: root,

@@ -36,7 +36,6 @@
   "settings.tagline_footer": "Reveric · A writing space for creators",
   "settings.language_section": "Language",
   "settings.privacy_section": "Privacy",
-  "settings.privacy_description": "Choose whether to share anonymous diagnostics.",
   "settings.anonymous_reporting": "Share anonymous diagnostics",
   "settings.anonymous_reporting_description": "Share anonymous data to help us improve the product.",
   "settings.custom_themes": "Custom themes",

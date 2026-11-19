@@ -1,4 +1,4 @@
-// 职责: 验证匿名诊断上报为 opt-in：默认未同意，同意状态持久化并在重建后恢复。
+// 职责: 验证匿名诊断默认开启，用户选择在重启后仍生效。
 // 关联文件:
 //   lib/shared/providers/anonymous_reporting_providers.dart
 //   lib/shared/services/anonymous_reporting_consent_service.dart
@@ -13,13 +13,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('defaults to not granted until the user opts in', () async {
+  test('defaults to enabled when no choice is saved', () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
     expect(
       await container.read(anonymousReportingConsentProvider.future),
-      isFalse,
+      isTrue,
     );
   });
 
@@ -28,22 +28,22 @@ void main() {
     addTearDown(container.dispose);
     await container.read(anonymousReportingConsentProvider.future);
 
-    await container.read(anonymousReportingConsentProvider.notifier).set(true);
-    expect(container.read(anonymousReportingConsentProvider).value, isTrue);
+    await container.read(anonymousReportingConsentProvider.notifier).set(false);
+    expect(container.read(anonymousReportingConsentProvider).value, isFalse);
 
     final restarted = ProviderContainer();
     addTearDown(restarted.dispose);
     expect(
       await restarted.read(anonymousReportingConsentProvider.future),
-      isTrue,
+      isFalse,
     );
 
-    await restarted.read(anonymousReportingConsentProvider.notifier).set(false);
+    await restarted.read(anonymousReportingConsentProvider.notifier).set(true);
     final restartedAgain = ProviderContainer();
     addTearDown(restartedAgain.dispose);
     expect(
       await restartedAgain.read(anonymousReportingConsentProvider.future),
-      isFalse,
+      isTrue,
     );
   });
 }

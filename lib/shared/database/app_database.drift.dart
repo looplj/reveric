@@ -17498,17 +17498,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _productCodeMeta = const VerificationMeta(
-    'productCode',
-  );
-  @override
-  late final GeneratedColumn<String> productCode = GeneratedColumn<String>(
-    'product_code',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
   static const VerificationMeta _deviceIdMeta = const VerificationMeta(
     'deviceId',
   );
@@ -17585,7 +17574,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
     channel,
     priority,
     endpoint,
-    productCode,
     deviceId,
     payloadJson,
     occurredAt,
@@ -17637,17 +17625,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
       );
     } else if (isInserting) {
       context.missing(_endpointMeta);
-    }
-    if (data.containsKey('product_code')) {
-      context.handle(
-        _productCodeMeta,
-        productCode.isAcceptableOrUnknown(
-          data['product_code']!,
-          _productCodeMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_productCodeMeta);
     }
     if (data.containsKey('device_id')) {
       context.handle(
@@ -17733,10 +17710,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
         DriftSqlType.string,
         data['${effectivePrefix}endpoint'],
       )!,
-      productCode: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}product_code'],
-      )!,
       deviceId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}device_id'],
@@ -17779,7 +17752,6 @@ class AnonymousOutboxEvent extends DataClass
   final String channel;
   final int priority;
   final String endpoint;
-  final String productCode;
   final String deviceId;
 
   /// 单条、endpoint 专属 payload，不持久化批请求体或签名。
@@ -17794,7 +17766,6 @@ class AnonymousOutboxEvent extends DataClass
     required this.channel,
     required this.priority,
     required this.endpoint,
-    required this.productCode,
     required this.deviceId,
     required this.payloadJson,
     required this.occurredAt,
@@ -17812,7 +17783,6 @@ class AnonymousOutboxEvent extends DataClass
     map['channel'] = Variable<String>(channel);
     map['priority'] = Variable<int>(priority);
     map['endpoint'] = Variable<String>(endpoint);
-    map['product_code'] = Variable<String>(productCode);
     map['device_id'] = Variable<String>(deviceId);
     map['payload_json'] = Variable<String>(payloadJson);
     map['occurred_at'] = Variable<DateTime>(occurredAt);
@@ -17831,7 +17801,6 @@ class AnonymousOutboxEvent extends DataClass
       channel: Value(channel),
       priority: Value(priority),
       endpoint: Value(endpoint),
-      productCode: Value(productCode),
       deviceId: Value(deviceId),
       payloadJson: Value(payloadJson),
       occurredAt: Value(occurredAt),
@@ -17852,7 +17821,6 @@ class AnonymousOutboxEvent extends DataClass
       channel: serializer.fromJson<String>(json['channel']),
       priority: serializer.fromJson<int>(json['priority']),
       endpoint: serializer.fromJson<String>(json['endpoint']),
-      productCode: serializer.fromJson<String>(json['productCode']),
       deviceId: serializer.fromJson<String>(json['deviceId']),
       payloadJson: serializer.fromJson<String>(json['payloadJson']),
       occurredAt: serializer.fromJson<DateTime>(json['occurredAt']),
@@ -17870,7 +17838,6 @@ class AnonymousOutboxEvent extends DataClass
       'channel': serializer.toJson<String>(channel),
       'priority': serializer.toJson<int>(priority),
       'endpoint': serializer.toJson<String>(endpoint),
-      'productCode': serializer.toJson<String>(productCode),
       'deviceId': serializer.toJson<String>(deviceId),
       'payloadJson': serializer.toJson<String>(payloadJson),
       'occurredAt': serializer.toJson<DateTime>(occurredAt),
@@ -17886,7 +17853,6 @@ class AnonymousOutboxEvent extends DataClass
     String? channel,
     int? priority,
     String? endpoint,
-    String? productCode,
     String? deviceId,
     String? payloadJson,
     DateTime? occurredAt,
@@ -17899,7 +17865,6 @@ class AnonymousOutboxEvent extends DataClass
     channel: channel ?? this.channel,
     priority: priority ?? this.priority,
     endpoint: endpoint ?? this.endpoint,
-    productCode: productCode ?? this.productCode,
     deviceId: deviceId ?? this.deviceId,
     payloadJson: payloadJson ?? this.payloadJson,
     occurredAt: occurredAt ?? this.occurredAt,
@@ -17914,9 +17879,6 @@ class AnonymousOutboxEvent extends DataClass
       channel: data.channel.present ? data.channel.value : this.channel,
       priority: data.priority.present ? data.priority.value : this.priority,
       endpoint: data.endpoint.present ? data.endpoint.value : this.endpoint,
-      productCode: data.productCode.present
-          ? data.productCode.value
-          : this.productCode,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       payloadJson: data.payloadJson.present
           ? data.payloadJson.value
@@ -17942,7 +17904,6 @@ class AnonymousOutboxEvent extends DataClass
           ..write('channel: $channel, ')
           ..write('priority: $priority, ')
           ..write('endpoint: $endpoint, ')
-          ..write('productCode: $productCode, ')
           ..write('deviceId: $deviceId, ')
           ..write('payloadJson: $payloadJson, ')
           ..write('occurredAt: $occurredAt, ')
@@ -17960,7 +17921,6 @@ class AnonymousOutboxEvent extends DataClass
     channel,
     priority,
     endpoint,
-    productCode,
     deviceId,
     payloadJson,
     occurredAt,
@@ -17977,7 +17937,6 @@ class AnonymousOutboxEvent extends DataClass
           other.channel == this.channel &&
           other.priority == this.priority &&
           other.endpoint == this.endpoint &&
-          other.productCode == this.productCode &&
           other.deviceId == this.deviceId &&
           other.payloadJson == this.payloadJson &&
           other.occurredAt == this.occurredAt &&
@@ -17993,7 +17952,6 @@ class AnonymousOutboxEventsCompanion
   final Value<String> channel;
   final Value<int> priority;
   final Value<String> endpoint;
-  final Value<String> productCode;
   final Value<String> deviceId;
   final Value<String> payloadJson;
   final Value<DateTime> occurredAt;
@@ -18006,7 +17964,6 @@ class AnonymousOutboxEventsCompanion
     this.channel = const Value.absent(),
     this.priority = const Value.absent(),
     this.endpoint = const Value.absent(),
-    this.productCode = const Value.absent(),
     this.deviceId = const Value.absent(),
     this.payloadJson = const Value.absent(),
     this.occurredAt = const Value.absent(),
@@ -18020,7 +17977,6 @@ class AnonymousOutboxEventsCompanion
     required String channel,
     required int priority,
     required String endpoint,
-    required String productCode,
     required String deviceId,
     required String payloadJson,
     required DateTime occurredAt,
@@ -18030,7 +17986,6 @@ class AnonymousOutboxEventsCompanion
   }) : channel = Value(channel),
        priority = Value(priority),
        endpoint = Value(endpoint),
-       productCode = Value(productCode),
        deviceId = Value(deviceId),
        payloadJson = Value(payloadJson),
        occurredAt = Value(occurredAt);
@@ -18040,7 +17995,6 @@ class AnonymousOutboxEventsCompanion
     Expression<String>? channel,
     Expression<int>? priority,
     Expression<String>? endpoint,
-    Expression<String>? productCode,
     Expression<String>? deviceId,
     Expression<String>? payloadJson,
     Expression<DateTime>? occurredAt,
@@ -18054,7 +18008,6 @@ class AnonymousOutboxEventsCompanion
       if (channel != null) 'channel': channel,
       if (priority != null) 'priority': priority,
       if (endpoint != null) 'endpoint': endpoint,
-      if (productCode != null) 'product_code': productCode,
       if (deviceId != null) 'device_id': deviceId,
       if (payloadJson != null) 'payload_json': payloadJson,
       if (occurredAt != null) 'occurred_at': occurredAt,
@@ -18070,7 +18023,6 @@ class AnonymousOutboxEventsCompanion
     Value<String>? channel,
     Value<int>? priority,
     Value<String>? endpoint,
-    Value<String>? productCode,
     Value<String>? deviceId,
     Value<String>? payloadJson,
     Value<DateTime>? occurredAt,
@@ -18084,7 +18036,6 @@ class AnonymousOutboxEventsCompanion
       channel: channel ?? this.channel,
       priority: priority ?? this.priority,
       endpoint: endpoint ?? this.endpoint,
-      productCode: productCode ?? this.productCode,
       deviceId: deviceId ?? this.deviceId,
       payloadJson: payloadJson ?? this.payloadJson,
       occurredAt: occurredAt ?? this.occurredAt,
@@ -18111,9 +18062,6 @@ class AnonymousOutboxEventsCompanion
     }
     if (endpoint.present) {
       map['endpoint'] = Variable<String>(endpoint.value);
-    }
-    if (productCode.present) {
-      map['product_code'] = Variable<String>(productCode.value);
     }
     if (deviceId.present) {
       map['device_id'] = Variable<String>(deviceId.value);
@@ -18144,7 +18092,6 @@ class AnonymousOutboxEventsCompanion
           ..write('channel: $channel, ')
           ..write('priority: $priority, ')
           ..write('endpoint: $endpoint, ')
-          ..write('productCode: $productCode, ')
           ..write('deviceId: $deviceId, ')
           ..write('payloadJson: $payloadJson, ')
           ..write('occurredAt: $occurredAt, ')
@@ -33802,7 +33749,6 @@ typedef $$AnonymousOutboxEventsTableCreateCompanionBuilder =
       required String channel,
       required int priority,
       required String endpoint,
-      required String productCode,
       required String deviceId,
       required String payloadJson,
       required DateTime occurredAt,
@@ -33817,7 +33763,6 @@ typedef $$AnonymousOutboxEventsTableUpdateCompanionBuilder =
       Value<String> channel,
       Value<int> priority,
       Value<String> endpoint,
-      Value<String> productCode,
       Value<String> deviceId,
       Value<String> payloadJson,
       Value<DateTime> occurredAt,
@@ -33857,11 +33802,6 @@ class $$AnonymousOutboxEventsTableFilterComposer
 
   ColumnFilters<String> get endpoint => $composableBuilder(
     column: $table.endpoint,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get productCode => $composableBuilder(
-    column: $table.productCode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -33930,11 +33870,6 @@ class $$AnonymousOutboxEventsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get productCode => $composableBuilder(
-    column: $table.productCode,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get deviceId => $composableBuilder(
     column: $table.deviceId,
     builder: (column) => ColumnOrderings(column),
@@ -33989,11 +33924,6 @@ class $$AnonymousOutboxEventsTableAnnotationComposer
 
   GeneratedColumn<String> get endpoint =>
       $composableBuilder(column: $table.endpoint, builder: (column) => column);
-
-  GeneratedColumn<String> get productCode => $composableBuilder(
-    column: $table.productCode,
-    builder: (column) => column,
-  );
 
   GeneratedColumn<String> get deviceId =>
       $composableBuilder(column: $table.deviceId, builder: (column) => column);
@@ -34073,7 +34003,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 Value<String> channel = const Value.absent(),
                 Value<int> priority = const Value.absent(),
                 Value<String> endpoint = const Value.absent(),
-                Value<String> productCode = const Value.absent(),
                 Value<String> deviceId = const Value.absent(),
                 Value<String> payloadJson = const Value.absent(),
                 Value<DateTime> occurredAt = const Value.absent(),
@@ -34086,7 +34015,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 channel: channel,
                 priority: priority,
                 endpoint: endpoint,
-                productCode: productCode,
                 deviceId: deviceId,
                 payloadJson: payloadJson,
                 occurredAt: occurredAt,
@@ -34101,7 +34029,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 required String channel,
                 required int priority,
                 required String endpoint,
-                required String productCode,
                 required String deviceId,
                 required String payloadJson,
                 required DateTime occurredAt,
@@ -34114,7 +34041,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 channel: channel,
                 priority: priority,
                 endpoint: endpoint,
-                productCode: productCode,
                 deviceId: deviceId,
                 payloadJson: payloadJson,
                 occurredAt: occurredAt,
