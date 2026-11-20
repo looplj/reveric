@@ -640,6 +640,7 @@ class _ChapterContentFieldState extends State<_ChapterContentField> {
   // 内部样式控制器：负责在同一 EditableText 内渲染高亮。外部注入的 widget.controller
   // 仍是 auto-save / history / AI / 字数 / 格式化 / 查找替换的唯一数据源，两者双向镜像。
   late final ChapterContentStyleController _styleController;
+  var _paragraphIndentFormatter = ChapterParagraphIndentFormatter();
   bool _syncing = false;
   bool _primaryPointerIsDown = false;
   bool _useSelectionAnchorsForToolbar = false;
@@ -699,6 +700,7 @@ class _ChapterContentFieldState extends State<_ChapterContentField> {
       _removeHoverOverlay();
     }
     if (oldWidget.controller != widget.controller) {
+      _paragraphIndentFormatter = ChapterParagraphIndentFormatter();
       oldWidget.controller.removeListener(_externalToInternal);
       widget.controller.addListener(_externalToInternal);
       _syncing = true;
@@ -1392,7 +1394,7 @@ class _ChapterContentFieldState extends State<_ChapterContentField> {
                               ),
                             ),
                             inputFormatters: [
-                              const ChapterParagraphIndentFormatter(),
+                              _paragraphIndentFormatter,
                               PasteSizeLimitTextInputFormatter(
                                 onRejected: (int chars) {
                                   ScaffoldMessenger.of(context).showSnackBar(

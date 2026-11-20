@@ -8,9 +8,9 @@ import 'package:flutter/services.dart';
 
 /// 正文回车缩进 formatter — 首字符补齐默认段首缩进，新行继承上一行行首空白。
 class ChapterParagraphIndentFormatter extends TextInputFormatter {
-  const ChapterParagraphIndentFormatter();
-
   static const String _defaultIndent = '\u3000\u3000';
+
+  String? _firstCompositionText;
 
   static bool _isIndentCharacter(String character) {
     return character == ' ' || character == '\t' || character == '\u3000';
@@ -36,8 +36,21 @@ class ChapterParagraphIndentFormatter extends TextInputFormatter {
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    // 只处理「净增 1 个字符 + 光标坍缩」的常规键盘输入。
-    if (newValue.text.length != oldValue.text.length + 1 ||
+    final continuesFirstComposition =
+        !oldValue.composing.isCollapsed &&
+        oldValue.text == _firstCompositionText;
+    if (!newValue.composing.isCollapsed) {
+      // 分段上屏后，组词范围会移到剩余拼音，正文已不再为空。
+      _firstCompositionText = oldValue.text.isEmpty || continuesFirstComposition
+          ? newValue.text
+          : null;
+      return newValue;
+    }
+    _firstCompositionText = null;
+
+    // 首段组词上屏可能只清除组词范围，或用更短的词替换拼音。
+    if ((!continuesFirstComposition &&
+            newValue.text.length != oldValue.text.length + 1) ||
         !newValue.selection.isCollapsed) {
       return newValue;
     }
@@ -47,26 +60,20 @@ class ChapterParagraphIndentFormatter extends TextInputFormatter {
       return newValue;
     }
 
-    final inserted = newValue.text.substring(cursor - 1, cursor);
-    if (oldValue.text.isEmpty && inserted != '\n') {
-      if (newValue.text.startsWith(_defaultIndent)) {
+    if (oldValue.text.isEmpty || continuesFirstComposition) {
+      if (newValue.text.startsWith('\n') ||
+          newValue.text.startsWith(_defaultIndent)) {
         return newValue;
       }
-      final composing = newValue.composing.isValid
-          ? TextRange(
-              start: newValue.composing.start + _defaultIndent.length,
-              end: newValue.composing.end + _defaultIndent.length,
-            )
-          : TextRange.empty;
       return TextEditingValue(
         text: _defaultIndent + newValue.text,
         selection: TextSelection.collapsed(
           offset: cursor + _defaultIndent.length,
         ),
-        composing: composing,
       );
     }
 
+    final inserted = newValue.text.substring(cursor - 1, cursor);
     if (inserted != '\n') {
       return newValue;
     }
