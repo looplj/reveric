@@ -54,7 +54,6 @@ class GalleryFrame extends HookConsumerWidget {
     final appBackgroundActive = ref.watch(appBackgroundActiveProvider);
     final backKey = useMemoized(GlobalKey.new);
     final actionKey = useMemoized(GlobalKey.new);
-    final topInset = DesktopWindowFrame.captionSafeTopInset;
 
     return Scaffold(
       backgroundColor: appScaffoldBackgroundColor(colors, appBackgroundActive),
@@ -64,9 +63,8 @@ class GalleryFrame extends HookConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              height: DesktopWindowFrame.titleBarHeight + topInset,
+              height: DesktopWindowFrame.titleBarHeight,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(width: DesktopWindowFrame.sidebarLeadingInset),
                   Expanded(
@@ -112,16 +110,11 @@ class GalleryFrame extends HookConsumerWidget {
                     Padding(
                       key: actionKey,
                       padding: EdgeInsets.only(
-                        top: topInset,
-                        right: topInset == 0
-                            ? DesktopWindowFrame.trailingInset +
-                                  RevericSpacing.lg
-                            : RevericSpacing.lg,
+                        right:
+                            DesktopWindowFrame.trailingInset +
+                            RevericSpacing.lg,
                       ),
-                      child: SizedBox(
-                        height: DesktopWindowFrame.titleBarHeight,
-                        child: Center(child: trailing),
-                      ),
+                      child: trailing,
                     ),
                 ],
               ),

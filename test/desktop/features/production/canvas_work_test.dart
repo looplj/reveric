@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:reveric/desktop/pages/workspace_editor_page.dart';
 import 'package:reveric/desktop/features/production/editing_node.dart';
 import 'package:reveric/desktop/features/production/spec_panel.dart';
+import 'package:reveric/desktop/features/production/style_button.dart';
 import 'package:reveric/desktop/widgets/desktop_window_frame.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -862,7 +863,11 @@ void main() {
     );
   }
 
-  for (final platform in [TargetPlatform.macOS, TargetPlatform.windows]) {
+  for (final platform in [
+    TargetPlatform.macOS,
+    TargetPlatform.windows,
+    TargetPlatform.linux,
+  ]) {
     for (final width in [640.0, 1280.0]) {
       testWidgets(
         '$platform canvas header at width $width keeps title baseline and commits rename',
@@ -903,15 +908,22 @@ void main() {
             title.center.dy,
             closeTo(DesktopWindowFrame.titleBarHeight / 2, 1),
           );
+          final titleCenter = DesktopWindowFrame.titleBarHeight / 2;
           final specs = tester.getRect(find.byType(ProductionSpecChip));
-          expect(
-            specs.top,
-            greaterThanOrEqualTo(
-              platform == TargetPlatform.windows
-                  ? DesktopWindowFrame.titleBarHeight
-                  : 0,
-            ),
-          );
+          final style = tester.getRect(find.byType(ProductionScreenplayStyle));
+          expect(specs.center.dy, closeTo(titleCenter, 1));
+          expect(style.center.dy, closeTo(titleCenter, 1));
+          if (platform != TargetPlatform.macOS) {
+            final captionButtons = Rect.fromLTWH(
+              width - DesktopWindowFrame.windowsCaptionButtonsWidth,
+              0,
+              DesktopWindowFrame.windowsCaptionButtonsWidth,
+              DesktopWindowFrame.titleBarHeight,
+            );
+            expect(specs.overlaps(captionButtons), isFalse);
+            expect(style.overlaps(captionButtons), isFalse);
+            expect(specs.right, lessThanOrEqualTo(captionButtons.left));
+          }
           await app.novelDao.create(
             id: 'taken',
             title: 'Taken',

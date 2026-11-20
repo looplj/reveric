@@ -911,7 +911,7 @@ class NovelHomePage extends HookConsumerWidget {
         models: GlobalKey(),
       ),
     );
-    final homeGuide = useAutoGuideTour(
+    useAutoGuideTour(
       ref: ref,
       tourId: GuideTourId.home,
       buildSteps: (ctx) => [
@@ -1185,7 +1185,6 @@ class NovelHomePage extends HookConsumerWidget {
                 selectContent,
                 sessionsExpanded,
                 homeGuideKeys: homeGuideKeys,
-                onReplayGuide: () => unawaited(homeGuide.replay()),
               ),
               Container(
                 width: RevericSizes.dividerThickness,
@@ -1231,7 +1230,6 @@ class NovelHomePage extends HookConsumerWidget {
       GlobalKey models,
     })
     homeGuideKeys,
-    required VoidCallback onReplayGuide,
   }) {
     final colors = RevericTheme.colorsOf(context);
     final recentSessions = recentSessionsAsync.maybeWhen(
@@ -1262,17 +1260,14 @@ class NovelHomePage extends HookConsumerWidget {
       child: Column(
         children: [
           SizedBox(height: DesktopWindowFrame.sidebarTopInset),
-          // 作品搜索在书库作品区那一行（只搜当前集合），侧栏不再放。
           const SizedBox(height: RevericSpacing.md),
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                // Section 1: 作品 (Works)
                 _buildSectionGroupHeader(
                   context,
                   title: context.t(LocaleKeys.homeSectionWorks),
-                  trailing: GuideReplayButton(onPressed: onReplayGuide),
                 ),
                 // 小说和剧本各是一个独立的库，不在同一个作品区里混排。
                 _buildLeafNavItem(
@@ -1513,7 +1508,6 @@ class NovelHomePage extends HookConsumerWidget {
   Widget _buildSectionGroupHeader(
     BuildContext context, {
     required String title,
-    Widget? trailing,
   }) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
@@ -1524,19 +1518,12 @@ class NovelHomePage extends HookConsumerWidget {
         RevericSpacing.md,
         RevericSpacing.xxs,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: typo.uiTinySemibold.copyWith(
-                color: colors.textMuted,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-          ?trailing,
-        ],
+      child: Text(
+        title,
+        style: typo.uiTinySemibold.copyWith(
+          color: colors.textMuted,
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }
