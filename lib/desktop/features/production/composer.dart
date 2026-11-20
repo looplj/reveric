@@ -14,6 +14,8 @@
 //   .agents/rules/hooks.md
 //   .agents/rules/design-system.md
 
+import '../../../shared/models/provider_model.dart';
+import '../../../shared/models/ai_provider.dart';
 import '../../../shared/hooks/use_ai_providers.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -33,11 +35,9 @@ import '../../../shared/models/video/task_result.dart';
 import '../../../shared/database/daos/generation_task_dao.dart';
 import '../../../shared/models/storyboard/prompt.dart';
 import '../../../shared/models/video/capabilities.dart';
-import '../../../shared/models/video/channels.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/providers/purefox_media_providers.dart';
 import '../../../shared/providers/video_tasks.dart';
-import '../../../shared/services/ai/video/draft.dart';
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/services/production/generate_orchestrator.dart';
 import '../../../shared/theme/theme.dart';
@@ -49,6 +49,8 @@ import 'input_preview.dart';
 import 'character_input.dart';
 import '../../../shared/services/production/voices.dart';
 import 'edit_session.dart';
+import 'history_region.dart';
+import 'text_inputs.dart';
 import 'prompt_field.dart';
 import 'support.dart';
 import 'style_button.dart';
@@ -65,7 +67,7 @@ final _log = AppLogger.forModule('Production');
 
 /// 将参考输入校验失败映射为当前渠道和模式下可操作的提示。
 String productionReferenceErrorKey({
-  required VideoChannelModel channel,
+  required VideoModelSpec channel,
   required VideoMode mode,
   required List<VideoInputRole> roles,
 }) {
@@ -75,7 +77,7 @@ String productionReferenceErrorKey({
     return LocaleKeys.productionGenerateMiddleFramesUnsupported;
   }
   if (!productionUsesFrames(mode)) {
-    return channel.capabilities.allowsReferenceMode
+    return channel.capabilities.modes.contains(VideoMode.reference)
         ? LocaleKeys.productionGenerateReferencesInvalid
         : LocaleKeys.productionGenerateReferenceUnsupported;
   }
@@ -179,7 +181,7 @@ class _ComposerForm extends HookConsumerWidget {
     useEffect(() => prompt.dispose, [prompt]);
     final inputs = useState(initial.inputs);
     final busy = useState(false);
-    final error = useState<String?>(null);
+    final error = useState<Object?>(null);
     final saved = useRef('');
     // 型号能力由启动时的远端登记决定；完成后重建，让型号下拉拿到最新的能力表。
     ref.watch(purefoxMediaModelsProvider);
@@ -206,7 +208,25 @@ class _ComposerForm extends HookConsumerWidget {
         .firstOrNull;
     final modelConfig = selectedProvider == null
         ? null
-        : lookupVideoChannelModel(selectedProvider.type, modelSelection?.$2);
+        : resolveVideoModel(selectedProvider, modelSelection?.$2);
+    final editingModes = selectedProvider == null || modelConfig == null
+        ? const <VideoMode>[]
+        : productionEditingModes(selectedProvider, modelConfig);
+    useEffect(() {
+      if (editingModes.isNotEmpty &&
+          !editingModes.any(
+            (mode) => mode.name == form.getValue<String>(ShotField.mode),
+          )) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted &&
+              form.getValue<(String, String)>(ShotField.model) ==
+                  modelSelection) {
+            form.updateValue(ShotField.mode, editingModes.first.name);
+          }
+        });
+      }
+      return null;
+    }, [modelSelection, editingModes.map((mode) => mode.name).join(',')]);
     final tasks = useStream(
       useMemoized(
         () => service.library.database.generationTaskDao.watchSource(
@@ -223,13 +243,16 @@ class _ComposerForm extends HookConsumerWidget {
     final overlay = ref.watch(workingOverlayServiceProvider(path));
     String value(ShotField field) => form.getValue<String>(field) ?? '';
     String signature() =>
-        '${value(ShotField.title)}|${prompt.source}|${inputs.value.map((i) => '${i.identity}:${i.role.name}:${i.sourceNodeId}:${i.voiceAssetId}').join('|')}|${form.getValue<(String, String)>(ShotField.model)}|${value(ShotField.mode)}|${value(ShotField.ratio)}|${value(ShotField.resolution)}|${value(ShotField.duration)}|${form.getValue<bool>(ShotField.generateAudio)}';
+        '${value(ShotField.title)}|${prompt.source}|${inputs.value.map((i) => '${i.identity}:${i.roleName}:${i.sourceNodeId}:${i.voiceAssetId}').join('|')}|${form.getValue<(String, String)>(ShotField.model)}|${value(ShotField.mode)}|${value(ShotField.ratio)}|${value(ShotField.resolution)}|${value(ShotField.duration)}|${form.getValue<bool>(ShotField.generateAudio)}';
     if (saved.value.isEmpty) {
       saved.value = signature();
     }
     prompt.inputIds = inputs.value.map((i) => i.id).toSet();
     prompt.onPreview = (id) => productionRun(context, () async {
       final input = inputs.value.firstWhere((i) => i.id == id);
+      if (input.isPrompt) {
+        return;
+      }
       final asset = await service.inputAsset(input);
       if (context.mounted) {
         await previewProductionAsset(context, service, asset.id);
@@ -277,7 +300,7 @@ class _ComposerForm extends HookConsumerWidget {
       } catch (e, st) {
         _log.error('Composer autosave failed', error: e, stackTrace: st);
         if (context.mounted) {
-          error.value = context.t(LocaleKeys.productionInvalid);
+          error.value = e;
         }
         return false;
       }
@@ -361,13 +384,27 @@ class _ComposerForm extends HookConsumerWidget {
                       ) ||
                       (modelConfig?.capabilities.maxMiddleFrames ?? 0) > 0),
             )
+            .where((role) {
+              if (selectedProvider?.isPluginProvider != true) {
+                return true;
+              }
+              if (modelConfig == null) {
+                return false;
+              }
+              final mode = VideoMode.values.byName(value(ShotField.mode));
+              return productionUsesFrames(mode)
+                  ? modelConfig.frameRoles.contains(role)
+                  : (modelConfig.capabilities.references[role.kind]?.maxCount ??
+                            0) >
+                        0;
+            })
             .toList();
 
     Future<void> attach(AssetRow asset, {bool reference = false}) async {
       final matching = currentRoles()
           .where((r) => r.kind.name == asset.type)
           .toList();
-      void apply(VideoInputRole role) {
+      Future<void> apply(VideoInputRole role) async {
         if (!context.mounted) {
           return;
         }
@@ -381,7 +418,9 @@ class _ComposerForm extends HookConsumerWidget {
             .firstOrNull;
         if (input == null) {
           input = ProductionInput.asset(asset.id, role);
-          inputs.value = [...inputs.value, input];
+          await changeProductionInputs(context, node.id, save, () {
+            inputs.value = [...inputs.value, input!];
+          });
         }
         if (reference) {
           prompt.insertReference(input.id, asset.name);
@@ -389,7 +428,7 @@ class _ComposerForm extends HookConsumerWidget {
       }
 
       if (matching.length == 1) {
-        apply(matching.single);
+        await apply(matching.single);
       } else {
         await menu([
           for (final role in matching)
@@ -422,7 +461,7 @@ class _ComposerForm extends HookConsumerWidget {
         VideoMode.values.byName(value(ShotField.mode)),
       );
       final candidates = inputs.value
-          .where((i) => allowed.contains(i.role))
+          .where((i) => i.isPrompt || allowed.contains(i.role))
           .toList();
       final labels = <String, String>{};
       for (final input in candidates) {
@@ -524,6 +563,7 @@ class _ComposerForm extends HookConsumerWidget {
       () => value(ShotField.resolution),
     );
     final allowed = productionRoles(mode);
+    final textNodes = ProductionTextInputScope.of(context);
     final supportsMiddleFrames =
         !productionUsesFrames(mode) ||
         (modelConfig?.capabilities.maxMiddleFrames ?? 0) > 0;
@@ -534,26 +574,34 @@ class _ComposerForm extends HookConsumerWidget {
               VideoInputRole.middle_frame,
               VideoInputRole.last_frame,
             ])
-              ...inputs.value.where((input) => input.role == role),
+              ...inputs.value.where(
+                (input) => !input.isPrompt && input.role == role,
+              ),
             ...inputs.value.where(
-              (input) => ![
-                VideoInputRole.first_frame,
-                VideoInputRole.middle_frame,
-                VideoInputRole.last_frame,
-              ].contains(input.role),
+              (input) =>
+                  input.isPrompt ||
+                  ![
+                    VideoInputRole.first_frame,
+                    VideoInputRole.middle_frame,
+                    VideoInputRole.last_frame,
+                  ].contains(input.role),
             ),
           ]
         : inputs.value;
     final audioKey = inputs.value
         .where(
-          (i) => i.role.kind == VideoMediaKind.audio || i.voiceAssetId != null,
+          (i) =>
+              !i.isPrompt &&
+              (i.role.kind == VideoMediaKind.audio || i.voiceAssetId != null),
         )
-        .map((i) => '${i.identity}:${i.role.name}:${i.voiceAssetId}')
+        .map((i) => '${i.identity}:${i.roleName}:${i.voiceAssetId}')
         .join('|');
     final audioNames = useFuture(
       useMemoized(
         () => service.audioInputNames(
-          inputs.value.where((i) => allowed.contains(i.role)).toList(),
+          inputs.value
+              .where((i) => !i.isPrompt && allowed.contains(i.role))
+              .toList(),
         ),
         [service, audioKey, mode],
       ),
@@ -599,10 +647,10 @@ class _ComposerForm extends HookConsumerWidget {
       if (provider == null ||
           !provider.enabled ||
           !provider.videoModels.contains(model?.$2) ||
-          !productionSupportsVideoModel(provider.type, model?.$2)) {
+          !productionSupportsVideoModel(provider, model?.$2)) {
         return context.t(LocaleKeys.productionGenerateModelRequired);
       }
-      if (provider.apiKey.trim().isEmpty) {
+      if (!provider.hasCredentialConfiguration) {
         return context.t(LocaleKeys.productionGenerateProviderRequired);
       }
       if (productionUsesFrames(mode) &&
@@ -615,24 +663,45 @@ class _ComposerForm extends HookConsumerWidget {
       final roles = activeInputs
           .map((input) => productionSubmitRole(mode, input.role))
           .toList();
+      final promptInputs = inputs.value
+          .where((input) => input.isPrompt)
+          .toList();
+      if (promptInputs.isNotEmpty &&
+          ProductionTextInputScope.hasError(context)) {
+        return context.t(LocaleKeys.productionFailed);
+      }
+      if (promptInputs.isNotEmpty && textNodes == null) {
+        return context.t(LocaleKeys.productionGenerateChecking);
+      }
+      if (promptInputs.any((input) => !textNodes!.containsKey(input.refId))) {
+        return context.t(LocaleKeys.productionGenerateReferenceMissing);
+      }
+      final textInputs = {
+        for (final input in promptInputs) input.id: textNodes![input.refId]!,
+      };
       final parsed = StoryboardPrompt.parse(prompt.source);
       if (parsed.parts.any(
         (part) =>
             part.isReference &&
-            !activeInputs.any((input) => input.id == part.inputId),
+            !activeInputs.any((input) => input.id == part.inputId) &&
+            !textInputs.containsKey(part.inputId),
       )) {
         return context.t(LocaleKeys.productionGenerateReferenceMissing);
       }
       try {
-        VideoCapabilities(provider.type).validateParameters(
+        VideoCapabilities.forProvider(provider).validateParameters(
           compileProductionPrompt(
-            provider.type,
+            provider,
             VideoRequest(
               modelId: model!.$2,
               prompt: prompt.source,
-              mode: productionSubmitMode(mode, roles),
+              mode: productionSubmitMode(
+                mode,
+                roles,
+                explicit: provider.isPluginProvider,
+              ),
               resolution: draft
-                  ? videoDraftResolution
+                  ? modelConfig!.capabilities.draft!.resolution
                   : value(ShotField.resolution),
               ratio: value(ShotField.ratio),
               durationSeconds: int.tryParse(value(ShotField.duration)) ?? 0,
@@ -646,6 +715,7 @@ class _ComposerForm extends HookConsumerWidget {
               for (final input in activeInputs)
                 ResolvedProductionInput(input, input.refId),
             ],
+            textInputs: textInputs,
           ),
           roles,
         );
@@ -658,7 +728,7 @@ class _ComposerForm extends HookConsumerWidget {
         if (e.field == 'references') {
           return context.t(
             productionReferenceErrorKey(
-              channel: lookupVideoChannelModel(provider.type, model!.$2)!,
+              channel: resolveVideoModel(provider, model!.$2)!,
               mode: mode,
               roles: roles,
             ),
@@ -716,6 +786,7 @@ class _ComposerForm extends HookConsumerWidget {
                         RevericSelectItem(value: v, label: label?.call(v) ?? v),
                   )
                   .toList(),
+              enabled: choices.length > 1,
               onChanged: (v) {
                 onChanged?.call(v);
                 onPicked?.call(v);
@@ -725,11 +796,10 @@ class _ComposerForm extends HookConsumerWidget {
         ),
       ),
     );
-    final supportsDraft = modelConfig?.protocolOptions.supportsDraft == true;
+    final supportsDraft = modelConfig?.capabilities.draft != null;
     final frames = productionUsesFrames(mode);
     final ratios =
-        frames &&
-            modelConfig?.protocolOptions.framesRequireAdaptiveRatio == true
+        frames && modelConfig?.capabilities.framesRequireAdaptiveRatio == true
         ? const ['adaptive']
         : [
             for (final ratio in modelConfig?.ratios ?? <String>{})
@@ -780,7 +850,7 @@ class _ComposerForm extends HookConsumerWidget {
                   children: [
                     ProductionAddInputButton(
                       service: service,
-                      types: allowed.map((r) => r.kind.name).toSet(),
+                      types: currentRoles().map((r) => r.kind.name).toSet(),
                       enabled: !busy.value,
                       onPicked: attach,
                     ),
@@ -813,61 +883,86 @@ class _ComposerForm extends HookConsumerWidget {
                           service: service,
                           input: displayInputs[i],
                           framesMode: frames,
-                          onChanged: (input) {
-                            final next = [...inputs.value];
-                            next[next.indexWhere(
-                                  (item) => item.id == displayInputs[i].id,
-                                )] =
-                                input;
-                            inputs.value = next;
-                          },
+                          onChanged: (input) => changeProductionInputs(
+                            context,
+                            node.id,
+                            save,
+                            () {
+                              final next = [...inputs.value];
+                              next[next.indexWhere(
+                                    (item) => item.id == displayInputs[i].id,
+                                  )] =
+                                  input;
+                              inputs.value = next;
+                            },
+                          ),
                           child: ProductionInputTile(
                             service: service,
                             input: displayInputs[i],
                             mode: mode,
                             valid:
+                                displayInputs[i].isPrompt ||
                                 allowed.contains(displayInputs[i].role) &&
-                                (displayInputs[i].role !=
-                                        VideoInputRole.middle_frame ||
-                                    supportsMiddleFrames),
+                                    (displayInputs[i].role !=
+                                            VideoInputRole.middle_frame ||
+                                        supportsMiddleFrames),
                             supportsMiddleFrames: supportsMiddleFrames,
                             middleFrameIndex: displayInputs[i].middleFrameIndex(
                               inputs.value,
                             ),
-                            onRole: (r) {
-                              final next = [...inputs.value];
-                              final index = next.indexWhere(
-                                (item) => item.id == displayInputs[i].id,
-                              );
-                              next[index] = next[index].withRole(r);
-                              inputs.value = next;
-                            },
+                            onRole: (r) => changeProductionInputs(
+                              context,
+                              node.id,
+                              save,
+                              () {
+                                final next = [...inputs.value];
+                                final index = next.indexWhere(
+                                  (item) => item.id == displayInputs[i].id,
+                                );
+                                next[index] = next[index].withRole(r);
+                                inputs.value = next;
+                              },
+                            ),
                             onMove:
                                 displayInputs.length < 2 ||
                                     (productionUsesFrames(mode) &&
+                                        !displayInputs[i].isPrompt &&
                                         displayInputs[i].role !=
                                             VideoInputRole.middle_frame)
                                 ? null
-                                : (delta) {
-                                    final to = i + delta;
-                                    if (to < 0 ||
-                                        to >= displayInputs.length ||
-                                        (productionUsesFrames(mode) &&
-                                            displayInputs[to].role !=
-                                                VideoInputRole.middle_frame)) {
-                                      return;
-                                    }
-                                    final next = [...displayInputs];
-                                    next.insert(to, next.removeAt(i));
-                                    inputs.value = next;
-                                  },
-                            onRemove: () {
-                              inputs.value = inputs.value
-                                  .where(
-                                    (input) => input.id != displayInputs[i].id,
-                                  )
-                                  .toList();
-                            },
+                                : (delta) => changeProductionInputs(
+                                    context,
+                                    node.id,
+                                    save,
+                                    () {
+                                      final to = i + delta;
+                                      if (to < 0 ||
+                                          to >= displayInputs.length ||
+                                          (productionUsesFrames(mode) &&
+                                              !displayInputs[to].isPrompt &&
+                                              displayInputs[to].role !=
+                                                  VideoInputRole
+                                                      .middle_frame)) {
+                                        return;
+                                      }
+                                      final next = [...displayInputs];
+                                      next.insert(to, next.removeAt(i));
+                                      inputs.value = next;
+                                    },
+                                  ),
+                            onRemove: () => changeProductionInputs(
+                              context,
+                              node.id,
+                              save,
+                              () {
+                                inputs.value = inputs.value
+                                    .where(
+                                      (input) =>
+                                          input.id != displayInputs[i].id,
+                                    )
+                                    .toList();
+                              },
+                            ),
                           ),
                         ),
                     ],
@@ -883,6 +978,7 @@ class _ComposerForm extends HookConsumerWidget {
                     ),
                     child: SingleChildScrollView(
                       child: ProductionPromptField(
+                        autofocus: true,
                         controller: prompt,
                         footer: false,
                         maxLines: null,
@@ -895,7 +991,7 @@ class _ComposerForm extends HookConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: RevericSpacing.xs),
                     child: Text(
-                      error.value!,
+                      context.t(productionDraftSaveErrorKey(error.value!)),
                       style: typo.uiTiny.copyWith(color: colors.error),
                     ),
                   ),
@@ -948,10 +1044,8 @@ class _ComposerForm extends HookConsumerWidget {
                                   for (final p in providers.data ?? [])
                                     if (p.enabled)
                                       for (final model in p.videoModels.where(
-                                        (m) => productionSupportsVideoModel(
-                                          p.type,
-                                          m,
-                                        ),
+                                        (m) =>
+                                            productionSupportsVideoModel(p, m),
                                       ))
                                         RevericSelectItem(
                                           value: (p.id, model),
@@ -975,11 +1069,11 @@ class _ComposerForm extends HookConsumerWidget {
                                   final provider = providers.data!.firstWhere(
                                     (p) => p.id == v.$1,
                                   );
-                                  final next = lookupVideoChannelModel(
-                                    provider.type,
+                                  final next = resolveVideoModel(
+                                    provider,
                                     v.$2,
                                   )!;
-                                  if (!next.protocolOptions.supportsDraft) {
+                                  if (next.capabilities.draft == null) {
                                     sample.value = false;
                                   }
                                   final currentDuration = int.tryParse(
@@ -1003,7 +1097,7 @@ class _ComposerForm extends HookConsumerWidget {
                                   final ratios =
                                       frames &&
                                           next
-                                              .protocolOptions
+                                              .capabilities
                                               .framesRequireAdaptiveRatio
                                       ? ['adaptive']
                                       : next.ratios.toList();
@@ -1034,6 +1128,8 @@ class _ComposerForm extends HookConsumerWidget {
                       ratio: ratio,
                       resolution: resolution,
                       sample: supportsDraft ? sample : null,
+                      sampleResolution:
+                          modelConfig?.capabilities.draft?.resolution,
                       audio: modelConfig?.requiresAudio == true
                           ? generateAudio ?? modelConfig?.requestDefaults.audio
                           : null,
@@ -1080,19 +1176,21 @@ class _ComposerForm extends HookConsumerWidget {
                     ),
                     pill(
                       ShotField.mode,
-                      [
-                        VideoMode.reference.name,
-                        VideoMode.first_last_frame.name,
-                      ],
-                      label: (m) => context.t(
-                        m == VideoMode.reference.name
-                            ? LocaleKeys.storyboardReference
-                            : LocaleKeys.storyboardFirstLastFrame,
-                      ),
+                      editingModes.map((mode) => mode.name).toList(),
+                      label: (m) => context.t(switch (VideoMode.values.byName(
+                        m,
+                      )) {
+                        VideoMode.text => LocaleKeys.productionTextVideo,
+                        VideoMode.first_frame =>
+                          LocaleKeys.productionFirstFrame,
+                        VideoMode.first_last_frame =>
+                          LocaleKeys.storyboardFirstLastFrame,
+                        VideoMode.reference => LocaleKeys.storyboardReference,
+                      }),
                       onPicked: (m) {
-                        if (m == VideoMode.first_last_frame.name &&
+                        if (productionUsesFrames(VideoMode.values.byName(m)) &&
                             modelConfig
-                                    ?.protocolOptions
+                                    ?.capabilities
                                     .framesRequireAdaptiveRatio ==
                                 true) {
                           form.updateValue(ShotField.ratio, 'adaptive');

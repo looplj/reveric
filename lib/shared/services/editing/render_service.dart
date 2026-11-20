@@ -18,22 +18,39 @@ import '../../logger/app_logger.dart';
 import '../../models/editing/document.dart';
 import '../../models/production/settings.dart';
 import '../../models/production/media.dart';
+import '../production/bundled_font.dart';
 import '../production/ffmpeg_runner.dart';
 import '../production/media_service.dart';
 import '../production/contact_sheet.dart';
+import '../production/audio_inspection.dart';
 import '../production/frame_capture.dart';
 import 'service.dart';
 import 'disk_space.dart';
 
 final _log = AppLogger.forModule('EditingRender');
 
+typedef _BlockRange = ({
+  int start,
+  int count,
+  (int, int) size,
+  String subtitles,
+});
+
 typedef EditingProgress = void Function(String stage, double progress);
 
-/// 字幕导出方式：烧录进画面、另存 SRT（标题仍烧录）、不导出。
+/// 字幕轨的导出方式：烧录进画面、另存 SRT（标题仍烧录）、不导出。普通文字轨总是烧录。
 abstract final class EditingSubtitles {
   static const burn = 'burn';
   static const srt = 'srt';
   static const none = 'none';
+}
+
+enum EditingRenderPart {
+  video('video.mp4'),
+  audio('audio.f32');
+
+  const EditingRenderPart(this.filename);
+  final String filename;
 }
 
 class EditingInsufficientSpace implements Exception {
@@ -48,12 +65,13 @@ class EditingRenderService {
   Future<void> get whenIdle => _tail;
   MediaCancellation? _preview;
   Future<Directory>? _cache;
-  Future<String>? _font;
+  static const _masterLimiter =
+      'alimiter=limit=0.95:attack=5:release=50:level=false:latency=true';
   static const chunkFrames = 120;
   static const cacheLimit = 2 * 1024 * 1024 * 1024;
 
   /// 预览块缓存放在 App 私有目录里跨启动复用，所有实例共用一份；
-  /// 块的最后使用时间记在 video.mp4 的修改时间上，按它统一淘汰。
+  /// 按缓存媒体文件的最后使用时间统一淘汰。
   Future<Directory> _cacheDirectory() => _cache ??= () async {
     final dir = Directory(
       p.join(projects.library.root.path, 'cache', 'editing_preview'),
@@ -123,6 +141,153 @@ class EditingRenderService {
     }
   }
 
+  /// 节点封面复用时间线的单帧合成规则，包含裁切、叠层与字幕，不提交整段预览。
+  Future<Uint8List> firstFrame(
+    EditingDocument document, {
+    required MediaCancellation cancellation,
+  }) {
+    final result = _tail.then((_) async {
+      document.validate();
+      _check(cancellation);
+      if (document.totalFrames == 0) {
+        throw StateError('Empty timeline');
+      }
+      await projects.verify(document, cancellation);
+      final size = ProductionSettings.dimensions(document.ratio, '480p');
+      final temporary = await Directory.systemTemp.createTemp(
+        'reveric_editing_poster_',
+      );
+      try {
+        await _block(
+          document,
+          (start: 0, count: 1, size: size, subtitles: EditingSubtitles.burn),
+          temporary,
+          cancellation,
+          (_, _) {},
+          part: EditingRenderPart.video,
+        );
+        return await captureMediaFrame(
+          runner,
+          '${temporary.path}/video.mp4',
+          File('${temporary.path}/first.png'),
+          cancellation,
+        );
+      } catch (error, stack) {
+        if (!cancellation.cancelled) {
+          _log.error('First frame failed', error: error, stackTrace: stack);
+        }
+        rethrow;
+      } finally {
+        cancellation.onProgress = null;
+        await temporary.delete(recursive: true);
+      }
+    });
+    _tail = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+
+  /// Render only the requested interval. Capture each participating clip during
+  /// the same mix pass, after its source offset, gain and fades are applied.
+  Future<({InspectionAudio mix, List<Map<String, dynamic>> clips})>
+  inspectAudio(
+    EditingDocument document,
+    int start,
+    int end, {
+    String? clipId,
+    required MediaCancellation cancellation,
+  }) async {
+    if (start < 0 ||
+        end <= start ||
+        end > document.totalFrames ||
+        end - start > audioInspectionMaxSeconds * editingFps) {
+      throw const FormatException(
+        'Expected a timeline interval of at most 10 seconds.',
+      );
+    }
+    if (clipId != null &&
+        !document.clips.any(
+          (clip) =>
+              clip.id == clipId &&
+              clip.startFrame < end &&
+              clip.endFrame > start &&
+              _hasAudio(document.track(clip.trackId), clip.content),
+        )) {
+      throw const FormatException(
+        'clip_id must contribute audio in the selected interval.',
+      );
+    }
+    _check(cancellation);
+    final dir = await Directory.systemTemp.createTemp('reveric_editing_audio_');
+    final clips = <Map<String, dynamic>>[];
+    try {
+      await _block(
+        document,
+        (
+          start: start,
+          count: end - start,
+          size: (0, 0),
+          subtitles: EditingSubtitles.none,
+        ),
+        dir,
+        cancellation,
+        (_, _) {},
+        part: EditingRenderPart.audio,
+        inspectClip: (clip, file) async {
+          if (clipId != null && clip.id != clipId) {
+            return;
+          }
+          final bytes = await file.readAsBytes();
+          final first = math.max(start, clip.startFrame);
+          final last = math.min(end, clip.endFrame);
+          final bytesPerFrame = editingSamplesPerFrame * 8;
+          final interval = InspectionAudio(
+            Uint8List.sublistView(
+              bytes,
+              (first - start) * bytesPerFrame,
+              (last - start) * bytesPerFrame,
+            ),
+          );
+          clips.add({
+            'clip_id': clip.id,
+            'track_id': clip.trackId,
+            'asset_id': clip.media!.source.assetId,
+            ...interval.levels(
+              origin: first,
+              samplesPerUnit: editingSamplesPerFrame,
+              window: 1,
+              unit: 'frame',
+            ),
+          });
+        },
+      );
+      final limited = File('${dir.path}/limited.f32');
+      await runner.execute(
+        [
+          '-f',
+          'f32le',
+          '-ar',
+          '$editingSampleRate',
+          '-ac',
+          '2',
+          '-i',
+          '${dir.path}/audio.f32',
+          '-af',
+          _masterLimiter,
+          '-f',
+          'f32le',
+          limited.path,
+        ],
+        probe: false,
+        cancellation: cancellation,
+      );
+      _check(cancellation);
+      return (mix: InspectionAudio(await limited.readAsBytes()), clips: clips);
+    } finally {
+      cancellation.onProgress = null;
+      await dir.delete(recursive: true);
+    }
+  }
+
   Future<ContactSheet> frames(
     EditingDocument document,
     List<int> frames, {
@@ -138,7 +303,10 @@ class EditingRenderService {
       document.validate();
       _check(cancellation);
       await projects.verify(document, cancellation);
-      final size = ProductionSettings.dimensions(document.ratio, '480p');
+      final size = ProductionSettings.dimensions(
+        document.ratio,
+        positions.length == 1 ? '1080p' : '480p',
+      );
       final temporary = await Directory.systemTemp.createTemp(
         'reveric_editing_frames_',
       );
@@ -158,7 +326,7 @@ class EditingRenderService {
             block,
             cancellation,
             (stage, value) => progress(stage, (i + value) / positions.length),
-            includeAudio: false,
+            part: EditingRenderPart.video,
           );
           captures.add(
             await captureMediaFrame(
@@ -166,6 +334,7 @@ class EditingRenderService {
               '${block.path}/video.mp4',
               File('${block.path}/frame.png'),
               cancellation,
+              detailMaxSide: positions.length == 1 ? contactSheetMaxSide : null,
             ),
           );
           await block.delete(recursive: true);
@@ -197,15 +366,27 @@ class EditingRenderService {
   }
 
   /// 该方式下要烧录进画面的文字片段。
-  static bool burns(EditingClip clip, String subtitles) {
+  static bool burns(EditingTrack track, EditingClip clip, String subtitles) {
     final content = clip.content;
     return content is EditingTextContent &&
         content.text.trim().isNotEmpty &&
-        (subtitles == EditingSubtitles.burn ||
+        (track.role != EditingRole.subtitle ||
+            subtitles == EditingSubtitles.burn ||
             (subtitles == EditingSubtitles.srt && content.style == 'title'));
   }
 
-  /// 字幕样式的文字片段按时间顺序写成 SRT。
+  /// 字幕轨上字幕样式的片段，SRT 导出的就是它们。
+  static bool isSubtitleCue(EditingDocument doc, EditingClip clip) {
+    final track = doc.track(clip.trackId);
+    final content = clip.content;
+    return track.role == EditingRole.subtitle &&
+        !track.hidden &&
+        content is EditingTextContent &&
+        content.style == 'subtitle' &&
+        content.text.trim().isNotEmpty;
+  }
+
+  /// 字幕轨上字幕样式的片段按时间顺序写成 SRT。
   static String srt(EditingDocument doc) {
     String time(int frame) {
       final ms = (frame * 1000 / editingFps).round();
@@ -213,18 +394,8 @@ class EditingRenderService {
       return '${two(ms ~/ 3600000)}:${two(ms ~/ 60000 % 60)}:${two(ms ~/ 1000 % 60)},${(ms % 1000).toString().padLeft(3, '0')}';
     }
 
-    final cues =
-        doc.clips
-            .where(
-              (c) =>
-                  doc.track(c.trackId).kind == 'text' &&
-                  !doc.track(c.trackId).hidden &&
-                  c.content is EditingTextContent &&
-                  (c.content as EditingTextContent).style == 'subtitle' &&
-                  (c.content as EditingTextContent).text.trim().isNotEmpty,
-            )
-            .toList()
-          ..sort((a, b) => a.startFrame.compareTo(b.startFrame));
+    final cues = doc.clips.where((c) => isSubtitleCue(doc, c)).toList()
+      ..sort((a, b) => a.startFrame.compareTo(b.startFrame));
     return [
       for (var i = 0; i < cues.length; i++)
         '${i + 1}\n${time(cues[i].startFrame)} --> ${time(cues[i].endFrame)}\n${(cues[i].content as EditingTextContent).text.trim()}\n',
@@ -238,43 +409,81 @@ class EditingRenderService {
     (int, int) size, {
     String subtitles = EditingSubtitles.burn,
     Map<String, String> sourceFingerprints = const {},
+    EditingRenderPart? part,
   }) {
+    final clips = <Map<String, dynamic>>[];
     final active =
         doc.clips
             .where((c) => c.startFrame < start + count && c.endFrame > start)
             .toList()
           ..sort((a, b) => a.id.compareTo(b.id));
+    for (final clip in active) {
+      final track = doc.track(clip.trackId);
+      final content = clip.content;
+      if (part == EditingRenderPart.video &&
+          (track.hidden ||
+              content is EditingAudioContent ||
+              (content is EditingTextContent &&
+                  !burns(track, clip, subtitles)))) {
+        continue;
+      }
+      if (part == EditingRenderPart.audio && !_hasAudio(track, content)) {
+        continue;
+      }
+      final properties = content.toJson();
+      if (part == EditingRenderPart.video) {
+        properties.remove('gain_db');
+        properties.remove('audio_detached');
+      } else if (part == EditingRenderPart.audio) {
+        properties.remove('transform');
+        properties.remove('opacity');
+      }
+      clips.add({
+        'id': clip.id,
+        'start': clip.startFrame,
+        'duration': clip.durationFrames,
+        'content': properties,
+        if (clip.media != null)
+          'sourceFingerprint': sourceFingerprints[clip.media!.source.assetId],
+        'track': {
+          'id': track.id,
+          'kind': track.kind,
+          'role': track.role,
+          'order': track.order,
+          if (part == null) 'hidden': track.hidden,
+          if (part == null) 'muted': track.muted,
+        },
+      });
+    }
     return sha256
         .convert(
           utf8.encode(
             jsonEncode({
-              'renderer': 4,
-              'subtitles': subtitles,
+              'renderer': 7,
+              'part': part?.name,
               'start': start,
               'count': count,
-              'size': [size.$1, size.$2],
-              'clips': [
-                for (final c in active)
-                  {
-                    ...(c.toJson()
-                      ..remove('name')
-                      ..remove('origin')),
-                    if (c.media != null)
-                      'sourceFingerprint':
-                          sourceFingerprints[c.media!.source.assetId],
-                    'track': {
-                      'kind': doc.track(c.trackId).kind,
-                      'order': doc.track(c.trackId).order,
-                      'hidden': doc.track(c.trackId).hidden,
-                      'muted': doc.track(c.trackId).muted,
-                    },
-                  },
-              ],
+              if (part != EditingRenderPart.audio) ...{
+                'size': [size.$1, size.$2],
+                'subtitles': subtitles,
+              },
+              'clips': clips,
             }),
           ),
         )
         .toString();
   }
+
+  static bool _hasAudio(EditingTrack track, EditingContent content) =>
+      switch (content) {
+        EditingVideoContent() =>
+          !track.hidden &&
+              content.source.mediaType == 'video' &&
+              content.source.hasAudio &&
+              !content.audioDetached,
+        EditingAudioContent() => !track.muted,
+        EditingTextContent() => false,
+      };
 
   Future<EncodedMedia> _render(
     EditingDocument doc,
@@ -289,7 +498,9 @@ class EditingRenderService {
     }
     progress('verify', 0);
     await projects.verify(doc, token);
-    final fingerprints = await projects.fingerprints(doc, token);
+    final fingerprints = preview
+        ? await projects.fingerprints(doc, token)
+        : const <String, String>{};
     _check(token);
     final size = ProductionSettings.dimensions(
       doc.ratio,
@@ -317,56 +528,49 @@ class EditingRenderService {
         for (var start = 0; start < doc.totalFrames; start += chunkFrames) {
           _check(token);
           final count = math.min(chunkFrames, doc.totalFrames - start);
-          final key = cacheKey(
-            doc,
-            start,
-            count,
-            size,
+          final range = (
+            start: start,
+            count: count,
+            size: size,
             subtitles: subtitles,
-            sourceFingerprints: fingerprints,
           );
-          final cached = cache == null ? null : Directory('${cache.path}/$key');
-          final hit = cached != null && await cached.exists();
-          // 预览块直接建在缓存目录里，完成后同卷改名即可入缓存。
-          final block = hit
-              ? cached
-              : await (cache ?? temporary).createTemp(
-                  cache == null ? 'block-' : '.block-',
-                );
-          if (!hit) {
-            progress('render', start / doc.totalFrames * .85);
-            try {
-              await _block(
-                doc,
-                (start: start, count: count, size: size, subtitles: subtitles),
-                block,
-                token,
-                (stage, value) => progress(
-                  stage,
-                  (start + count * value) / doc.totalFrames * .85,
-                ),
-                preview: preview,
-              );
-            } catch (_) {
-              if (cache != null) {
-                await block.delete(recursive: true);
-              }
-              rethrow;
-            }
-          }
           final video = File('${temporary.path}/part-${videos.length}.mp4');
-          await File('${block.path}/video.mp4').copy(video.path);
-          videos.add(video);
-          await sink.addStream(File('${block.path}/audio.f32').openRead());
-          if (cached != null) {
-            if (hit) {
-              await File(
-                '${cached.path}/video.mp4',
-              ).setLastModified(DateTime.now());
-            } else {
-              await _store(block, cached);
+          void report(String stage, double fraction) => progress(
+            stage,
+            (start + count * fraction) / doc.totalFrames * .85,
+          );
+          if (cache == null) {
+            final block = await temporary.createTemp('block-');
+            await _block(doc, range, block, token, report);
+            await File('${block.path}/video.mp4').rename(video.path);
+            await sink.addStream(File('${block.path}/audio.f32').openRead());
+          } else {
+            final pcm = File('${temporary.path}/part.f32');
+            for (final part in EditingRenderPart.values) {
+              final key = cacheKey(
+                doc,
+                start,
+                count,
+                size,
+                subtitles: subtitles,
+                sourceFingerprints: fingerprints,
+                part: part,
+              );
+              await _previewPart(
+                doc,
+                range,
+                cache,
+                key,
+                part,
+                part == EditingRenderPart.video ? video : pcm,
+                token,
+                (stage, fraction) => report(stage, (part.index + fraction) / 2),
+              );
             }
+            await sink.addStream(pcm.openRead());
+            await pcm.delete();
           }
+          videos.add(video);
           progress('render', (start + count) / doc.totalFrames * .85);
         }
         await sink.flush();
@@ -417,7 +621,7 @@ class EditingRenderService {
           '-c:v',
           'copy',
           '-af',
-          'alimiter=limit=0.95:attack=5:release=50:level=false:latency=true',
+          _masterLimiter,
           '-c:a',
           'aac',
           '-b:a',
@@ -455,7 +659,52 @@ class EditingRenderService {
     }
   }
 
-  /// 预览块用最快档编码，只供播放器预览，并保留在 App 私有缓存中复用。
+  Future<void> _previewPart(
+    EditingDocument doc,
+    _BlockRange range,
+    Directory cache,
+    String key,
+    EditingRenderPart part,
+    File destination,
+    MediaCancellation token,
+    EditingProgress progress,
+  ) async {
+    _check(token);
+    final cached = Directory('${cache.path}/$key');
+    final file = File('${cached.path}/${part.filename}');
+    if (await file.exists()) {
+      try {
+        await file.setLastModified(DateTime.now());
+        await file.copy(destination.path);
+        return;
+      } on PathNotFoundException {
+        // 另一个实例可能在命中后淘汰了这一块。
+        if (await file.exists()) {
+          rethrow;
+        }
+      }
+    }
+    final block = await cache.createTemp('.block-');
+    try {
+      await _block(
+        doc,
+        range,
+        block,
+        token,
+        progress,
+        part: part,
+        preview: true,
+      );
+      await File('${block.path}/${part.filename}').copy(destination.path);
+      await _store(block, cached);
+    } finally {
+      if (await block.exists()) {
+        await block.delete(recursive: true);
+      }
+    }
+  }
+
+  /// 预览块使用最快档编码。
   List<String> _videoOutput(
     (int, int) size,
     int count,
@@ -489,13 +738,6 @@ class EditingRenderService {
     '${editingFps * 1000}',
     path,
   ];
-  Future<String> _fontFile() => _font ??= () async {
-    final dir = await Directory.systemTemp.createTemp('reveric_editing_font_');
-    final file = File('${dir.path}/subtitle.ttf');
-    final data = await rootBundle.load('assets/fonts/LXGWWenKai-Regular.ttf');
-    await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-    return file.path;
-  }();
 
   /// 滤镜参数里的路径：统一正斜杠并转义冒号（Windows 盘符）。
   static String _filterPath(String path) =>
@@ -524,27 +766,32 @@ class EditingRenderService {
 
   Future<void> _block(
     EditingDocument doc,
-    ({int start, int count, (int, int) size, String subtitles}) range,
+    _BlockRange range,
     Directory dir,
     MediaCancellation token,
     EditingProgress progress, {
-    bool includeAudio = true,
+    EditingRenderPart? part,
     bool preview = false,
+    Future<void> Function(EditingClip clip, File pcm)? inspectClip,
   }) async {
     final (:start, :count, :size, :subtitles) = range;
+    final includeVideo = part != EditingRenderPart.audio;
+    final includeAudio = part != EditingRenderPart.video;
     final seconds = editingSeconds(count);
     var video = '${dir.path}/base.mp4';
     var audio = '${dir.path}/base.f32';
     Future<void> run(List<String> args) =>
         runner.execute(args, probe: false, cancellation: token);
-    await run([
-      '-y',
-      '-f',
-      'lavfi',
-      '-i',
-      'color=c=black:s=${size.$1}x${size.$2}:r=$editingFps:d=$seconds',
-      ..._videoOutput(size, count, video, preview: preview),
-    ]);
+    if (includeVideo) {
+      await run([
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=black:s=${size.$1}x${size.$2}:r=$editingFps:d=$seconds',
+        ..._videoOutput(size, count, video, preview: preview),
+      ]);
+    }
     if (includeAudio) {
       await run([
         '-y',
@@ -580,15 +827,20 @@ class EditingRenderService {
       final content = c.content;
       final media = c.media;
       final track = doc.track(c.trackId);
-      if (!includeAudio && track.kind == 'audio') {
+      final mixAudio = includeAudio && _hasAudio(track, content);
+      final drawVideo =
+          includeVideo && !track.hidden && content is! EditingAudioContent;
+      if (!mixAudio && !drawVideo) {
         continue;
       }
       final first = math.max(start, c.startFrame);
       final frames = math.min(start + count, c.endFrame) - first;
       final elapsed = first - c.startFrame;
       final delay = first - start;
+      // FFmpeg 由时间戳换算出的 t 可能比整帧秒数小一点浮点误差，
+      // 两端都按半帧取界，否则片段首帧会被漏掉而露出底下的黑底。
       final window =
-          'between(t,${editingSeconds(delay)},${editingSeconds(delay + frames) - 1 / (2 * editingFps)})';
+          'between(t,${editingSeconds(delay) - 1 / (2 * editingFps)},${editingSeconds(delay + frames) - 1 / (2 * editingFps)})';
       token.onProgress = (d) => progress(
         'render',
         (i + (d.inMicroseconds / 1000000 / seconds).clamp(0, 1)) /
@@ -608,6 +860,10 @@ class EditingRenderService {
 
       Future<void> mix(String path, double inputStart) async {
         final next = '${dir.path}/mix-$i.f32';
+        final stem = File('${dir.path}/stem-$i.f32');
+        final tap = inspectClip == null
+            ? '[a];'
+            : ',asplit[a][tap];[tap]apad,atrim=end_sample=${count * editingSamplesPerFrame}[stem];';
         final envelope =
             '${math.pow(10, media!.gainDb / 20)}*${fade('n', editingSamplesPerFrame)}';
         await run([
@@ -626,45 +882,61 @@ class EditingRenderService {
           path,
           '-filter_complex',
           '[1:a:0]asetpts=PTS-STARTPTS,aresample=$editingSampleRate,aformat=sample_fmts=flt:channel_layouts=stereo,'
-              'apad,atrim=end_sample=${frames * editingSamplesPerFrame},aeval=\'val(0)*$envelope|val(1)*$envelope\','
-              'adelay=${delay * editingSamplesPerFrame}S:all=1[a];[0:a][a]amix=inputs=2:duration=first:normalize=0,'
+              '${_tempo(media.speed)}apad,atrim=end_sample=${frames * editingSamplesPerFrame},aeval=\'val(0)*$envelope|val(1)*$envelope\','
+              'adelay=${delay * editingSamplesPerFrame}S:all=1$tap[0:a][a]amix=inputs=2:duration=first:normalize=0,'
               'atrim=end_sample=${count * editingSamplesPerFrame}[out]',
           '-map',
           '[out]',
           '-f',
           'f32le',
           next,
+          if (inspectClip != null) ...[
+            '-map',
+            '[stem]',
+            '-f',
+            'f32le',
+            stem.path,
+          ],
         ]);
+        if (inspectClip != null) {
+          await inspectClip(c, stem);
+          await stem.delete();
+        }
         await File(audio).delete();
         audio = next;
       }
 
       if (content is EditingTextContent) {
-        if (track.hidden || !burns(c, subtitles)) {
+        if (!burns(track, c, subtitles)) {
           continue;
         }
         final title = content.style == 'title';
+        final transform = content.transform;
         final short = math.min(size.$1, size.$2);
-        final fontSize = (short * (title ? .075 : .05)).round();
+        final fontSize = math.max(
+          1,
+          (short * (title ? .075 : .05) * transform.scale).round(),
+        );
         final lineHeight = fontSize * 1.4;
         final lines = _wrap(content.text, size.$1 * .84 / fontSize);
         final block = lines.length * lineHeight;
-        final top = switch (content.position) {
-          'top' => size.$2 * .09,
-          'center' => (size.$2 - block) / 2,
-          _ => size.$2 * .91 - block,
-        };
-        final font = _filterPath(await _fontFile());
+        // 锚点按文字块定位；每行按 anchorX 对齐，左/中/右对齐无需知道整块宽度。
+        final left = (size.$1 * transform.x).round();
+        final top = size.$2 * transform.y - block * transform.anchorY;
+        final opacity = content.opacity;
+        final font = _filterPath(await bundledFontFile());
         final filters = <String>[];
         for (var j = 0; j < lines.length; j++) {
           final file = File('${dir.path}/text-$i-$j.txt');
           await file.writeAsString(lines[j]);
           filters.add(
             "drawtext=fontfile='$font':textfile='${_filterPath(file.path)}':"
-            'expansion=none:fontsize=$fontSize:fontcolor=white:'
-            'borderw=${math.max(1, fontSize ~/ 18)}:bordercolor=black@0.6:'
-            'shadowcolor=black@0.5:shadowx=0:shadowy=1:'
-            'x=(w-text_w)/2:y=${(top + j * lineHeight).round()}:'
+            'expansion=none:fontsize=$fontSize:fontcolor=white@$opacity:'
+            'borderw=${math.max(1, fontSize ~/ 18)}:'
+            'bordercolor=black@${.6 * opacity}:'
+            'shadowcolor=black@${.5 * opacity}:shadowx=0:shadowy=1:'
+            'x=$left-text_w*${transform.anchorX}:'
+            'y=${(top + j * lineHeight).round()}:'
             "enable='$window'",
           );
         }
@@ -686,7 +958,7 @@ class EditingRenderService {
         await projects.sourcePath(source.assetId),
       );
       final inputStart = media.sourceUsAt(elapsed) / 1000000;
-      if (content is EditingVideoContent && !track.hidden) {
+      if (drawVideo && content is EditingVideoContent) {
         final next = '${dir.path}/layer-$i.mp4';
         final w = math.max(
           2,
@@ -696,9 +968,11 @@ class EditingRenderService {
           2,
           (size.$2 * content.transform.scale / 2).round() * 2,
         );
-        // 素材在缩放后的图层框内等比居中，框中心使用归一化坐标。
+        // 图层框的锚点落在归一化坐标上，素材在框内等比居中。
+        final t = content.transform;
         final position =
-            'x=W*${content.transform.x}-w/2:y=H*${content.transform.y}-h/2';
+            'x=W*${t.x}-$w*${t.anchorX}+($w-w)/2:'
+            'y=H*${t.y}-$h*${t.anchorY}+($h-h)/2';
         final alpha = media.fadeInFrames == 0 && media.fadeOutFrames == 0
             ? 'colorchannelmixer=aa=${content.opacity}'
             : "geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
@@ -717,7 +991,7 @@ class EditingRenderService {
           '-i',
           path,
           '-filter_complex',
-          '[1:v:0]setpts=PTS-STARTPTS,fps=$editingFps,trim=end_frame=$frames,'
+          '[1:v:0]setpts=(PTS-STARTPTS)/${media.speed},fps=$editingFps,trim=end_frame=$frames,'
               'scale=$w:$h:force_original_aspect_ratio=decrease,setsar=1,format=rgba,'
               '$alpha,setpts=PTS+$delay/$editingFps/TB[fg];'
               '[0:v][fg]overlay=$position:'
@@ -728,30 +1002,43 @@ class EditingRenderService {
         ]);
         await File(video).delete();
         video = next;
-        if (includeAudio &&
-            source.mediaType == 'video' &&
-            source.hasAudio &&
-            !content.audioDetached) {
-          await mix(path, inputStart);
-        }
-      } else if (track.kind == 'audio' && !track.muted) {
+      }
+      if (mixAudio) {
         await mix(path, inputStart);
       }
     }
-    await File(video).rename('${dir.path}/video.mp4');
+    if (includeVideo) {
+      final output = await File(video).rename('${dir.path}/video.mp4');
+      final info = await projects.library.media.probe(
+        output.path,
+        cancellation: token,
+      );
+      _validate(info, size, count, audio: false);
+    }
     if (includeAudio) {
-      await File(audio).rename('${dir.path}/audio.f32');
+      final output = await File(audio).rename('${dir.path}/audio.f32');
+      if (await output.length() != count * editingSamplesPerFrame * 2 * 4) {
+        throw const MediaException(MediaFailure.encoding_failed);
+      }
     }
-    final info = await projects.library.media.probe(
-      '${dir.path}/video.mp4',
-      cancellation: token,
-    );
-    _validate(info, size, count, audio: false);
-    if (includeAudio &&
-        await File('${dir.path}/audio.f32').length() !=
-            count * editingSamplesPerFrame * 2 * 4) {
-      throw const MediaException(MediaFailure.encoding_failed);
+  }
+
+  /// 变速不变调；atempo 单级只保证 0.5–2 倍，超出时串联。
+  static String _tempo(double speed) {
+    if (speed == 1) {
+      return '';
     }
+    final stages = <double>[];
+    var rest = speed;
+    while (rest > 2) {
+      stages.add(2);
+      rest /= 2;
+    }
+    while (rest < .5) {
+      stages.add(.5);
+      rest /= .5;
+    }
+    return [...stages, rest].map((s) => 'atempo=$s,').join();
   }
 
   void _validate(
@@ -800,7 +1087,7 @@ class EditingRenderService {
           if (file is File) {
             final stat = await file.stat();
             bytes += stat.size;
-            if (p.basename(file.path) == 'video.mp4') {
+            if (stat.modified.isAfter(used)) {
               used = stat.modified;
             }
           }
@@ -834,9 +1121,5 @@ class EditingRenderService {
   Future<void> dispose() async {
     await _preview?.cancel();
     await _tail;
-    final font = await _font;
-    if (font != null) {
-      await File(font).parent.delete(recursive: true);
-    }
   }
 }

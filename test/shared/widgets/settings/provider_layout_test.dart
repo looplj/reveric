@@ -18,6 +18,7 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/provider_brand.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:reveric/shared/widgets/settings/ai_providers_section.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
 import 'package:reveric/shared/widgets/settings/provider_draft.dart';
@@ -26,6 +27,8 @@ import 'package:reveric/shared/widgets/settings/provider_overview.dart';
 import 'package:reveric/shared/widgets/settings/provider_type_picker.dart';
 import 'package:reveric/shared/widgets/settings/mobile_provider_list.dart';
 import 'package:reveric/shared/components/reveric_button.dart';
+import 'package:reveric/shared/components/reveric_dialog.dart';
+import 'package:reveric/mobile/widgets/sheet.dart';
 import 'package:reveric/shared/components/reveric_filter_chip.dart';
 
 final _metaso = aiProviderBuiltinById('metaso')!;
@@ -65,12 +68,342 @@ void main() {
     TargetPlatform.android,
   ]) {
     testWidgets(
+      'plugin provider type uses string identity on $platform',
+      (tester) async {
+        const type = 'plugin:test.media';
+        aiProviderTypeConfigs[type] = const AiProviderTypeConfig(
+          displayName: 'Workflow media',
+          modelIdSource: ModelIdSource.registered,
+          providerModelKinds: {AiModelKind.image, AiModelKind.video},
+        );
+        addTearDown(() => aiProviderTypeConfigs.remove(type));
+        String? picked;
+        late BuildContext pickerContext;
+        await tester.pumpWidget(
+          _wrap(
+            Builder(
+              builder: (context) {
+                pickerContext = context;
+                return SizedBox(
+                  width: 360,
+                  child: ProviderTypePicker(
+                    showHeader: true,
+                    onPick: (value) => picked = value,
+                  ),
+                );
+              },
+            ),
+            false,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('API formats'));
+        await tester.pumpAndSettle();
+        expect(find.text('Workflow media'), findsNothing);
+        await tester.tap(find.text('Plugins'));
+        await tester.pumpAndSettle();
+        expect(find.text('OpenAI Compatible'), findsNothing);
+        await tester.tap(find.widgetWithText(RevericFilterChip, 'Video'));
+        await tester.pumpAndSettle();
+        await tester.pumpAndSettle();
+        expect(find.text('Workflow media').hitTestable(), findsOneWidget);
+        await tester.tap(find.text('Workflow media'));
+        expect(picked, type);
+        final draft = newProviderDraft(pickerContext, picked!);
+        expect(draft.type, type);
+        expect(draft.name, 'Workflow media');
+        expect(draft.apiKey, isEmpty);
+        expect(draft.baseUrl, isEmpty);
+        expect(draft.supportedModelKinds, {
+          AiModelKind.image,
+          AiModelKind.video,
+        });
+        expect(draft.enabled, false);
+        // Reopening a selected plugin starts in its own group.
+        await tester.pumpWidget(
+          _wrap(
+            SizedBox(
+              width: 320,
+              child: ProviderTypePicker(
+                key: const ValueKey('selected-plugin'),
+                selected: type,
+                showHeader: true,
+                onPick: (_) {},
+              ),
+            ),
+            false,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Workflow media'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        aiProviderTypeConfigs.remove(type);
+        await tester.pumpWidget(
+          _wrap(
+            SizedBox(
+              width: 320,
+              child: ProviderTypePicker(
+                key: const ValueKey('no-plugins'),
+                showHeader: true,
+                onPick: (_) {},
+              ),
+            ),
+            false,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Plugins'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'Enable a provider plugin in Settings → Plugins to add it here.',
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+      variant: TargetPlatformVariant.only(platform),
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+  }
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.android,
+  ]) {
+    testWidgets(
+      'model discovery selection preserves unavailable IDs on $platform',
+      (tester) async {
+        await tester.binding.setSurfaceSize(
+          Size(platform == TargetPlatform.android ? 360 : 900, 700),
+        );
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        Set<String>? selected;
+        await tester.pumpWidget(
+          _wrap(
+            Builder(
+              builder: (context) => Center(
+                child: RevericButton.primary(
+                  label: 'Fetch',
+                  onPressed: () async {
+                    Widget builder(BuildContext context) =>
+                        ProviderModelsDialogContent(
+                          config: aiProviderBuiltinById('openai')!,
+                          kind: AiModelKind.image,
+                          existingModels: {'gone'},
+                          loadModels: () async => ['known', 'gone'],
+                          labelForModel: (id) => id == 'known'
+                              ? 'Custom workflow'
+                              : 'gone · unavailable',
+                        );
+                    selected = platform == TargetPlatform.android
+                        ? await showMobileSheet<Set<String>>(
+                            context: context,
+                            builder: builder,
+                          )
+                        : await showRevericDialog<Set<String>>(
+                            context: context,
+                            builder: builder,
+                          );
+                  },
+                ),
+              ),
+            ),
+            false,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Fetch'));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<CheckboxListTile>(
+                find.widgetWithText(CheckboxListTile, 'gone · unavailable'),
+              )
+              .value,
+          true,
+        );
+        await tester.tap(find.text('Custom workflow'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(RevericButton, 'Confirm'));
+        await tester.pumpAndSettle();
+        expect(selected, {'known', 'gone'});
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+      variant: TargetPlatformVariant.only(platform),
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+  }
+  for (final (type, baseUrl) in [
+    ('apikey', 'https://api.apikey.fan/v1'),
+    ('infistar', 'https://infistar.cc/v1'),
+  ]) {
+    for (final platform in [
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+      TargetPlatform.android,
+    ]) {
+      for (final locale in [const Locale('en'), const Locale('zh', 'CN')]) {
+        testWidgets(
+          '$type sponsor overview and links on $platform in $locale',
+          (tester) async {
+            final mobile = platform == TargetPlatform.android;
+            await tester.binding.setSurfaceSize(Size(mobile ? 360 : 900, 900));
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            final launched = <String>[];
+            const channel = MethodChannel('plugins.flutter.io/url_launcher');
+            tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+              channel,
+              (call) async {
+                if (call.method == 'launch') {
+                  launched.add((call.arguments as Map)['url'] as String);
+                }
+                return true;
+              },
+            );
+            addTearDown(
+              () => tester.binding.defaultBinaryMessenger
+                  .setMockMethodCallHandler(channel, null),
+            );
+            late AiProvider draft;
+            await tester.pumpWidget(
+              ProviderScope(
+                overrides: [
+                  appSettingsProvider.overrideWith(() => _Settings()),
+                ],
+                child: _wrap(
+                  SingleChildScrollView(
+                    child: Builder(
+                      builder: (context) {
+                        draft = newProviderDraft(context, type);
+                        return ProviderOverview(config: draft);
+                      },
+                    ),
+                  ),
+                  locale.languageCode == 'zh',
+                  locale: locale,
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              draft.name,
+              type == 'apikey'
+                  ? 'APIKEY.FAN'
+                  : locale.languageCode == 'zh'
+                  ? '无限星河'
+                  : 'Infistar',
+            );
+            expect(draft.effectiveBaseUrl, baseUrl);
+            expect(draft.supportedModelKinds, AiModelKind.values.toSet());
+            final types = providerTypePickerTypes();
+            expect(
+              types.indexOf(type),
+              types.indexOf(type == 'apikey' ? 'api88' : 'token91') + 1,
+            );
+            if (type == 'infistar') {
+              expect(types.indexOf('token91'), types.indexOf('apikey') + 1);
+              expect(types.indexOf('ooki'), types.indexOf('infistar') + 1);
+            }
+            expect(find.text('Claude · GPT · Gemini'), findsOneWidget);
+            final buttons = find.byType(RevericButton);
+            expect(buttons, findsNWidgets(2));
+            for (var i = 0; i < 2; i++) {
+              await tester.ensureVisible(buttons.at(i));
+              await tester.tap(buttons.at(i));
+              await tester.pumpAndSettle();
+            }
+            expect(launched, [
+              providerChannelUrls[type],
+              type == 'apikey'
+                  ? 'https://apikey.fun/pricing?aff=axonhub'
+                  : 'https://infistar.cc/pricing?aff=FQHYXMMS&ref_source=link',
+            ]);
+            expect(tester.takeException(), isNull);
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+          },
+          variant: TargetPlatformVariant.only(platform),
+          timeout: const Timeout(Duration(minutes: 1)),
+        );
+      }
+    }
+  }
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.android,
+  ]) {
+    for (final locale in [const Locale('en'), const Locale('zh', 'CN')]) {
+      testWidgets(
+        'token91 sponsor overview and link on $platform in $locale',
+        (tester) async {
+          final mobile = platform == TargetPlatform.android;
+          await tester.binding.setSurfaceSize(Size(mobile ? 360 : 900, 900));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final launched = <String>[];
+          const channel = MethodChannel('plugins.flutter.io/url_launcher');
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            channel,
+            (call) async {
+              if (call.method == 'launch') {
+                launched.add((call.arguments as Map)['url'] as String);
+              }
+              return true;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(channel, null),
+          );
+          final token91 = aiProviderBuiltinById('token91')!;
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              child: _wrap(
+                SingleChildScrollView(child: ProviderOverview(config: token91)),
+                locale.languageCode == 'zh',
+                locale: locale,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(token91.name, '91Token');
+          expect(token91.effectiveBaseUrl, 'https://api.91token.com/v1');
+          expect(token91.supportedModelKinds, AiModelKind.values.toSet());
+          expect(
+            find.text(locale.languageCode == 'zh' ? '推广' : 'Sponsored'),
+            findsOneWidget,
+          );
+          expect(find.text('GPT · Claude · Gemini · DeepSeek'), findsOneWidget);
+          final button = find.byType(RevericButton);
+          expect(button, findsOneWidget);
+          await tester.ensureVisible(button);
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          expect(launched, [providerChannelUrls['token91']]);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        },
+        variant: TargetPlatformVariant.only(platform),
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+    }
+  }
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.android,
+  ]) {
+    testWidgets(
       'Qwen Token Plan draft and referral link on $platform',
       (tester) async {
-        expect(
-          providerTypePickerTypes(),
-          contains(AiProviderType.qwen_token_plan),
-        );
+        expect(providerTypePickerTypes(), contains('qwen_token_plan'));
         final launched = <String>[];
         const channel = MethodChannel('plugins.flutter.io/url_launcher');
         tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -93,10 +426,7 @@ void main() {
           _wrap(
             Builder(
               builder: (context) {
-                draft = newProviderDraft(
-                  context,
-                  AiProviderType.qwen_token_plan,
-                );
+                draft = newProviderDraft(context, 'qwen_token_plan');
                 return ProviderOverview(config: draft);
               },
             ),
@@ -128,6 +458,10 @@ void main() {
   testWidgets(
     'all bundled provider logos and an unknown channel render offline',
     (tester) async {
+      expect(
+        providerLogoAsset('openai_compatible'),
+        providerLogoAsset('openai'),
+      );
       await tester.pumpWidget(
         _wrap(
           Wrap(
@@ -184,6 +518,7 @@ void main() {
           await tester.pumpWidget(
             ProviderScope(
               overrides: [
+                guideTourAutoTriggerProvider.overrideWithValue(false),
                 appSettingsProvider.overrideWith(() => settings),
                 aiSettingsProvider.overrideWithValue(
                   AiSettings(providers: _configs),
@@ -260,6 +595,7 @@ Future<_Settings> _pumpSection(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        guideTourAutoTriggerProvider.overrideWithValue(false),
         appSettingsProvider.overrideWith(() => settings),
         aiSettingsProvider.overrideWithValue(AiSettings(providers: _configs)),
       ],
@@ -278,6 +614,10 @@ void _draftFlowTests() {
       await tester.tap(find.text('Add Custom'));
       await tester.pumpAndSettle();
       expect(find.byType(ProviderTypePickerPanel), findsOneWidget);
+      expect(find.text('88API'), findsOneWidget);
+      expect(find.text('OpenAI Compatible'), findsNothing);
+      await tester.tap(find.text('API formats'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byType(RevericFilterChip),
@@ -304,6 +644,16 @@ void _draftFlowTests() {
       expect(find.text('Chat Models'), findsWidgets);
       expect(settings.added, isEmpty);
       expect(settings.saved, isEmpty);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byType(ProviderConfigForm),
+              matching: find.text('MiniMax'),
+            )
+            .last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ProviderTypePicker), findsNothing);
 
       await tester.tap(find.text('DeepSeek'));
       await tester.pumpAndSettle();
@@ -315,7 +665,7 @@ void _draftFlowTests() {
       await tester.tap(find.widgetWithText(RevericButton, 'Save'));
       await tester.pumpAndSettle();
       expect(settings.added, hasLength(1));
-      expect(settings.added.single.type, AiProviderType.minimax.name);
+      expect(settings.added.single.type, 'minimax');
       expect(settings.added.single.name, 'MiniMax');
       expect(settings.added.single.builtin, isFalse);
       // 未填密钥和模型，不满足启用条件。
@@ -336,6 +686,8 @@ void _draftFlowTests() {
       await tester.tap(find.text('DeepSeek'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add Custom'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('API formats'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('OpenAI Compatible'));
       await tester.pumpAndSettle();
@@ -362,7 +714,11 @@ void _draftFlowTests() {
       final settings = await _pumpSection(tester, mobile: true);
       await tester.tap(find.byTooltip('Add'));
       await tester.pumpAndSettle();
-      expect(find.text('Choose an API format'), findsOneWidget);
+      expect(find.text('Add provider'), findsOneWidget);
+      expect(find.text('88API'), findsOneWidget);
+      expect(find.text('OpenAI Compatible'), findsNothing);
+      await tester.tap(find.text('API formats'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byType(RevericFilterChip),
@@ -374,6 +730,16 @@ void _draftFlowTests() {
       await tester.pumpAndSettle();
       expect(find.text('New provider'), findsOneWidget);
       expect(find.text('Unsaved'), findsOneWidget);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byType(ProviderConfigForm),
+              matching: find.text('Doubao'),
+            )
+            .last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ProviderTypePicker), findsNothing);
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
@@ -392,13 +758,13 @@ void _draftFlowTests() {
   );
 }
 
-Widget _wrap(Widget child, bool dark) {
+Widget _wrap(Widget child, bool dark, {Locale locale = const Locale('en')}) {
   final theme = dark ? RevericThemeData.revericDark : RevericThemeData.reveric;
   return EasyLocalization(
-    supportedLocales: const [Locale('en')],
+    supportedLocales: const [Locale('en'), Locale('zh', 'CN')],
     path: 'assets/translations',
     assetLoader: const MergingAssetLoader(),
-    startLocale: const Locale('en'),
+    startLocale: locale,
     fallbackLocale: const Locale('en'),
     child: Builder(
       builder: (context) => MaterialApp(

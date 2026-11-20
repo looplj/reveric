@@ -20,7 +20,6 @@ import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/providers/maps_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/services/image_library_service.dart';
-import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/maps_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
@@ -62,13 +61,6 @@ class _Library extends ImageLibraryService {
       deletedAt: notDeletedSentinel,
     );
   }
-}
-
-class _Content extends NovelContentService {
-  _Content(super.database);
-
-  @override
-  Future<String> requireNovelId() async => 'novel_test';
 }
 
 void main() {
@@ -118,7 +110,6 @@ void main() {
         overrides: [
           novelContentDatabaseProvider(_path).overrideWithValue(db),
           locationsServiceProvider(_path).overrideWithValue(service),
-          novelContentServiceProvider(_path).overrideWithValue(_Content(db)),
           imageLibraryServiceProvider.overrideWithValue(_Library(appDb)),
         ],
         child: EasyLocalization(
@@ -137,6 +128,7 @@ void main() {
                 data: RevericThemeData.reveric,
                 child: Scaffold(
                   body: LocationPhotos(
+                    novelId: 'novel_test',
                     databasePath: _path,
                     location: location,
                     pickImages: () async => [

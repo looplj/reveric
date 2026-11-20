@@ -65,9 +65,7 @@ abstract final class PromptFragments {
     if (fieldNotes.isNotEmpty) {
       buffer.writeln();
       buffer.writeln();
-      buffer.writeln(
-        '字段（未标类型为 string；* 为创建必需；readonly 不可传入写操作；nullable 表示可为空）：',
-      );
+      buffer.writeln('字段：');
       buffer.write(fieldNotes);
     }
     return buffer.toString().trim();
@@ -119,6 +117,7 @@ abstract final class PromptFragments {
         !const {
           contentKindNovel,
           contentKindScreenplay,
+          contentKindCanvas,
         }.contains(context.contentKind)) {
       throw StateError('Bound work context requires an explicit contentKind.');
     }
@@ -138,33 +137,19 @@ abstract final class PromptFragments {
       _ => '原作工作路径',
     };
     return [
-      '当前作品类型：${context.contentKind == contentKindNovel ? '小说' : '剧本'}',
+      '当前作品类型：${context.contentKind == contentKindCanvas
+          ? '画布'
+          : context.contentKind == contentKindNovel
+          ? '小说'
+          : '剧本'}',
       '当前作品工作路径：$root',
       if (sourceId != null) '$sourcePathLabel：/works/$sourceId',
     ].join('\n');
   }
 
-  static String userRules(String? rawRules) {
-    final trimmed = rawRules?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return '';
-    }
-
-    final rules = trimmed
-        .split(RegExp(r'\r?\n'))
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
-    if (rules.isEmpty) {
-      return '';
-    }
-
-    return rules.map((rule) => '<user_rule>$rule</user_rule>').join('\n');
-  }
-
   /// 与 orchestrator 尾部相同的「用户自定义规则」整块；无规则时返回空串。
   static String userRulesSection(String? rawRules) {
-    final rules = userRules(rawRules);
+    final rules = rawRules?.trim() ?? '';
     if (rules.isEmpty) {
       return '';
     }
@@ -189,8 +174,6 @@ abstract final class PromptFragments {
       '开始任务前，检查 <available_agent_skills> 中的 <when_to_use>；若有明确匹配当前任务或子任务的技能，先调用 AgentSkill 加载并遵循其指令，再执行对应工作。多个技能分别覆盖不同任务环节时，按需加载；没有匹配技能时直接执行任务。',
     );
     buffer.writeln('若当前上下文已有同名技能的完整指令，直接遵循，不要重复加载。');
-    buffer.writeln();
-    buffer.writeln('### Available skills');
     buffer.writeln();
     buffer.writeln('<available_agent_skills>');
     for (final skill in skills) {

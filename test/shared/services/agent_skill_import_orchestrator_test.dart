@@ -179,6 +179,100 @@ void main() {
     );
   }
 
+  for (final path in [
+    'tree/main/skills/fight-director',
+    'blob/main/skills/fight-director/SKILL.md',
+    'tree/feature/topic/skills/fight-director',
+  ]) {
+    test('GitHub resolves missing commit 422 for $path', () async {
+      final branch = path.contains('feature/topic') ? 'feature/topic' : 'main';
+      respond((options) {
+        if (options.uri.path.contains('/commits/')) {
+          final ref = options.uri.pathSegments.last;
+          return ResponseBody.fromString(
+            jsonEncode(
+              ref == branch
+                  ? {'sha': _sha}
+                  : {'message': 'No commit found for SHA: $ref'},
+            ),
+            ref == branch ? 200 : 422,
+            headers: {
+              Headers.contentTypeHeader: ['application/json'],
+            },
+          );
+        }
+        return ResponseBody.fromBytes(
+          _zip({
+            'repo/skills/fight-director/SKILL.md': _skill('fight-director'),
+            'repo/skills/fight-director/references/guide.md': 'guide',
+            'repo/skills/other/SKILL.md': _skill('other'),
+          }),
+          200,
+        );
+      });
+      final result = await scan('https://github.com/a/b/$path');
+      expect(result.single.name, 'fight-director');
+      expect(result.single.references.single.content, 'guide');
+      expect(requests.last.pathSegments.last, _sha);
+      expect(requests[requests.length - 2].pathSegments.last, branch);
+    });
+  }
+
+  test(
+    'GitHub missing commit 422 never downloads the default branch',
+    () async {
+      respond(
+        (options) => ResponseBody.fromString(
+          jsonEncode({
+            'message':
+                'No commit found for SHA: ${options.uri.pathSegments.last}',
+          }),
+          422,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        ),
+      );
+      await expectLater(
+        scan('https://github.com/a/b/tree/missing/skills'),
+        throwsA(isA<AgentSkillImportUnavailableException>()),
+      );
+      expect(requests.map((uri) => uri.pathSegments.last), [
+        'missing/skills',
+        'missing',
+      ]);
+    },
+  );
+
+  for (final host in ['github.com', 'gitee.com']) {
+    test('$host preserves unrelated 422 errors without retrying', () async {
+      respond(
+        (options) => ResponseBody.fromString(
+          jsonEncode({
+            'message': host == 'github.com'
+                ? 'Validation failed'
+                : 'No commit found for SHA: ${options.uri.pathSegments.last}',
+          }),
+          422,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        ),
+      );
+      await expectLater(
+        scan('https://$host/a/b/tree/main/skills'),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.response?.statusCode,
+            'status',
+            422,
+          ),
+        ),
+      );
+      expect(requests, hasLength(1));
+    });
+  }
+
   test(
     'Gitee root fetches default branch instead of assuming main/master',
     () async {

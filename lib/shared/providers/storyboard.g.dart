@@ -22,7 +22,7 @@ final class StoryboardServiceProvider
     with $Provider<StoryboardService> {
   StoryboardServiceProvider._({
     required StoryboardServiceFamily super.from,
-    required String super.argument,
+    required (String, {String? novelId}) super.argument,
   }) : super(
          retry: null,
          name: r'storyboardServiceProvider',
@@ -38,7 +38,7 @@ final class StoryboardServiceProvider
   String toString() {
     return r'storyboardServiceProvider'
         ''
-        '($argument)';
+        '$argument';
   }
 
   @$internal
@@ -49,8 +49,8 @@ final class StoryboardServiceProvider
 
   @override
   StoryboardService create(Ref ref) {
-    final argument = this.argument as String;
-    return storyboardService(ref, argument);
+    final argument = this.argument as (String, {String? novelId});
+    return storyboardService(ref, argument.$1, novelId: argument.novelId);
   }
 
   /// {@macro riverpod.override_with_value}
@@ -72,10 +72,14 @@ final class StoryboardServiceProvider
   }
 }
 
-String _$storyboardServiceHash() => r'25d47fba72e8c3d3c3b5af5c3ba521ea45632b58';
+String _$storyboardServiceHash() => r'5ea2e24a8b994995306992aeafab4ac79ff1898f';
 
 final class StoryboardServiceFamily extends $Family
-    with $FunctionalFamilyOverride<StoryboardService, String> {
+    with
+        $FunctionalFamilyOverride<
+          StoryboardService,
+          (String, {String? novelId})
+        > {
   StoryboardServiceFamily._()
     : super(
         retry: null,
@@ -85,8 +89,11 @@ final class StoryboardServiceFamily extends $Family
         isAutoDispose: true,
       );
 
-  StoryboardServiceProvider call(String databasePath) =>
-      StoryboardServiceProvider._(argument: databasePath, from: this);
+  StoryboardServiceProvider call(String databasePath, {String? novelId}) =>
+      StoryboardServiceProvider._(
+        argument: (databasePath, novelId: novelId),
+        from: this,
+      );
 
   @override
   String toString() => r'storyboardServiceProvider';

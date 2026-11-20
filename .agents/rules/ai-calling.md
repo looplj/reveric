@@ -7,6 +7,12 @@
 - 例外情况：嵌入向量生成（`AiEmbeddingService`）或纯 token 计数等非文本生成场景可以绕过此规则。
 - Agent 的 `maxIterations` 根据工具需求设置：纯分析设 1，涉及工具调用设足够大（如 30）确保完整执行。
 
+## Provider 接入日志
+
+- 接入或调试 provider 时，必须在 HTTP 响应到达后、状态判断和 JSON 解析之前，以 **debug 级别记录完整 Response body**，成功与失败响应都要覆盖，并附带请求目标和 HTTP 状态码。
+- **Response body 不脱敏、不截断、不省略字段，不得只打印字段结构、摘要或长度，也不得用 base64 占位符替换正文。** 原样保留服务端响应，便于核对实际协议。
+- 遵循 `code-style.md`：先判断模块日志器的 `isDebugEnabled`，再构造完整日志消息。上述规则针对开发日志，用户界面的错误展示仍遵循 `error-handling.md`。
+
 ## 工具描述与 schema
 
 - **修改 tool description 前必须获得用户明确确认**：包括工具整体描述和 input schema 中的参数 `description`。先说明拟修改的具体文案及原因，确认后再改；修复工具行为或增加容错不代表获准同步修改描述。

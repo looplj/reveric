@@ -16,12 +16,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/components/reveric_button.dart';
 import '../../../shared/database/novel_content_database.dart';
-import '../../../shared/database/app_database.dart' show GenerationTask;
+import '../../../shared/database/app_database.dart'
+    show GenerationTask, GenerationTaskRequest;
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/providers/production_images.dart';
 import '../../../shared/services/production/canvas_service.dart';
 import 'history.dart';
+import 'image_candidates.dart';
 import 'support.dart';
 
 class ProductionImageHistory extends HookConsumerWidget {
@@ -61,7 +63,9 @@ class ProductionImageHistory extends HookConsumerWidget {
       failed: runs.hasError,
       picked:
           list.any(
-            (r) => canAdoptProductionTask(r) && r.resultAssetId == selected,
+            (r) =>
+                canAdoptProductionTask(r) &&
+                r.resultAssetIds.contains(selected),
           )
           ? null
           : selected,
@@ -74,7 +78,9 @@ class ProductionImageHistory extends HookConsumerWidget {
             builder: (context) {
               final run = list[i];
               final result = run.resultAssetId;
-              final inUse = canAdoptProductionTask(run) && result == selected;
+              final inUse =
+                  canAdoptProductionTask(run) &&
+                  run.resultAssetIds.contains(selected);
               final failed = [
                 'failed',
                 'cancelled',
@@ -83,7 +89,7 @@ class ProductionImageHistory extends HookConsumerWidget {
               final refetch = run.status.name == 'action_required'
                   ? productionImageRefetch(run.errorCode)
                   : null;
-              return ProductionResultRow(
+              final row = ProductionResultRow(
                 service: service,
                 assetId: result,
                 failed: failed,
@@ -105,7 +111,9 @@ class ProductionImageHistory extends HookConsumerWidget {
                     : run.errorMessage,
                 inUse: inUse,
                 actions: [
-                  if (canAdoptProductionTask(run) && !inUse)
+                  if (canAdoptProductionTask(run) &&
+                      !inUse &&
+                      run.resultAssetIds.length == 1)
                     RevericButton.secondary(
                       label: context.t(LocaleKeys.productionResultsSwitch),
                       size: RevericButtonSize.compact,
@@ -137,6 +145,28 @@ class ProductionImageHistory extends HookConsumerWidget {
                       onPressed: () =>
                           productionRun(context, () => jobs.cancel(run.id)),
                     ),
+                ],
+              );
+              if (run.resultAssetIds.length <= 1) {
+                return row;
+              }
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  row,
+                  ProductionImageCandidates(
+                    service: service,
+                    task: run,
+                    selected: selected,
+                    onAdopt: (assetId) async {
+                      await service.adoptGenerated(
+                        node.id,
+                        run.id,
+                        assetId: assetId,
+                      );
+                      onAdopted();
+                    },
+                  ),
                 ],
               );
             },

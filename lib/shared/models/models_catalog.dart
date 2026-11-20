@@ -1,4 +1,4 @@
-// 职责: 从本地模型目录查询上下文限制、推理参数与输入模态。
+// 职责: 从本地模型目录查询上下文限制、推理参数、采样温度与输入模态。
 // 关联文件:
 //   lib/shared/models/ai_provider.dart
 
@@ -21,6 +21,18 @@ class ModelCatalogModalities {
   const ModelCatalogModalities({this.input});
 }
 
+/// 模型对请求参数 `temperature` 的接受方式。
+enum ModelTemperatureSupport {
+  /// 按调用方配置发送。
+  adjustable,
+
+  /// 采样温度由模型固定。传入其他值会被拒绝，因此省略。
+  fixed,
+
+  /// 思考或推理档位开启时省略；关闭或未指定时按配置发送。
+  omitted_while_thinking,
+}
+
 /// 本地模型目录条目，记录该模型已知的推理参数与输入模态。
 class ModelCatalogEntry {
   /// 基础 ID 之外的匹配项：精确别名或含一个 `*` 的通配模式。
@@ -40,6 +52,15 @@ class ModelCatalogEntry {
   /// Anthropic 的 `budget_tokens`。
   final bool useThinkingField;
 
+  /// 使用 Gemini thinkingLevel；旧模型继续使用 thinkingBudget。
+  final bool useThinkingLevel;
+
+  /// 工具结果中的图片可嵌入原生 functionResponse.parts。
+  final bool supportsMultimodalToolResults;
+
+  /// 请求采样温度的接受方式，与模型别名共用同一匹配规则。
+  final ModelTemperatureSupport temperatureSupport;
+
   /// 上下文/输出长度限制；null 表示未知（调用方自行取保守默认）。
   /// 数值按各 provider 官方文档的家族沿袭值维护。
   final ModelCatalogLimit? limit;
@@ -51,6 +72,9 @@ class ModelCatalogEntry {
     this.reasoningEfforts,
     this.budgetTokenMap,
     this.useThinkingField = false,
+    this.useThinkingLevel = false,
+    this.supportsMultimodalToolResults = false,
+    this.temperatureSupport = ModelTemperatureSupport.adjustable,
     this.limit,
     this.modalities,
   });
@@ -116,7 +140,6 @@ class ModelCatalogMatcher {
 const _8k = 8192;
 const _32k = 32000;
 const _64k = 64000;
-const _100k = 100000;
 const _128k = 128000;
 const _192k = 192000;
 const _200k = 200000;
@@ -127,6 +150,10 @@ const _560k = 560000;
 const _1m = 1000000;
 
 const _gptLargeContextLimit = ModelCatalogLimit(context: _560k, output: _128k);
+const _gemini4Limit = ModelCatalogLimit(context: _1m, output: _64k);
+const _geminiInputModalities = ModelCatalogModalities(
+  input: ['text', 'image', 'audio', 'video'],
+);
 
 /// 本地常见 AI 模型参数目录。
 ///
@@ -141,44 +168,59 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // https://developers.openai.com/api/docs/models/gpt-6-astra
   // https://developers.openai.com/api/docs/guides/latest-model
   'gpt-6-astra': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['gpt-6-astra-*', 'gpt-6.1-sol', 'gpt-6.1-sol-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     limit: _gptLargeContextLimit,
   ),
   'gpt-5.4': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['gpt-5.4-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
     limit: ModelCatalogLimit(context: _256k, output: _128k),
   ),
   'gpt-5': ModelCatalogEntry(
-    matches: ['gpt-5-*', 'gpt-5.*'],
+    temperatureSupport: ModelTemperatureSupport.fixed,
+    matches: ['gpt-5-*', 'gpt-5.0', 'gpt-5.0-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
     limit: ModelCatalogLimit(context: _256k, output: _128k),
   ),
-  'o3': ModelCatalogEntry(
-    matches: ['o3-*'],
+
+  'gpt-5.1': ModelCatalogEntry(
+    matches: [
+      'gpt-5.1-*',
+      'gpt-5.2',
+      'gpt-5.2-*',
+      'gpt-5.3',
+      'gpt-5.3-*',
+      'gpt-5.5',
+      'gpt-5.5-*',
+    ],
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
-    limit: ModelCatalogLimit(context: _200k, output: _100k),
+    limit: ModelCatalogLimit(context: _256k, output: _128k),
   ),
-  'o4-mini': ModelCatalogEntry(
-    matches: ['o4-mini-*'],
+  'gpt-6': ModelCatalogEntry(
+    matches: ['gpt-6-*'],
+    temperatureSupport: ModelTemperatureSupport.fixed,
     modalities: ModelCatalogModalities(input: ['text', 'image']),
-    reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
-    limit: ModelCatalogLimit(context: _200k, output: _100k),
+    limit: _gptLargeContextLimit,
+  ),
+  'gpt-6-sol': ModelCatalogEntry(
+    matches: ['gpt-6-sol-*', 'gpt-6-luna', 'gpt-6-luna-*'],
+    temperatureSupport: ModelTemperatureSupport.fixed,
+    modalities: ModelCatalogModalities(input: ['text', 'image']),
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    limit: _gptLargeContextLimit,
   ),
   // Alias "gpt-5.6" → gpt-5.6-sol, https://platform.openai.com/docs/models
   'gpt-5.6': ModelCatalogEntry(
-    matches: [
-      'gpt-5.6-*',
-      'gpt-6-sol',
-      'gpt-6-sol-*',
-      'gpt-6-luna',
-      'gpt-6-luna-*',
-    ],
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
+    matches: ['gpt-5.6-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
     limit: _gptLargeContextLimit,
@@ -187,48 +229,56 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // https://platform.claude.com/docs/en/models/overview
   // https://platform.claude.com/docs/en/build-with-claude/effort
   'claude-opus-5': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['claude-opus-5-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'claude-sonnet-5': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['claude-sonnet-5-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'claude-fable-5': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['claude-fable-5-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'claude-opus-4-8': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['claude-opus-4-8-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'claude-opus-4-7': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['claude-opus-4-7-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'claude-opus-4-6': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['claude-opus-4-6-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'claude-sonnet-4-6': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['claude-sonnet-4-6-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'claude-haiku-4-6': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['claude-haiku-4-6-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high'],
@@ -236,6 +286,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _200k, output: _64k),
   ),
   'claude-sonnet-4-5': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['claude-sonnet-4-5-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high'],
@@ -243,6 +294,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _200k, output: _64k),
   ),
   'claude-haiku-4-5': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['claude-haiku-4-5-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high'],
@@ -250,6 +302,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _200k, output: _64k),
   ),
   'claude-opus-4-5': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['claude-opus-4-5-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'medium', 'high'],
@@ -257,12 +310,35 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   ),
 
   // ── Gemini ────────────────────────────────────────────────────────────────
+  // https://ai.google.dev/gemini-api/docs/models
+  // https://aistudio.google.com/learn/gemini-4-carbon-developer-guide
+  // 单段输出上限 64K；输入、思考和输出共用 1M 窗口。
+  // 同能力型号增加 matches；能力有差异时独立配置，精确匹配优先。
+  'gemini-4-carbon': ModelCatalogEntry(
+    matches: ['gemini-4-carbon-*', 'gemini-4-argon', 'gemini-4-argon-*'],
+    modalities: _geminiInputModalities,
+    reasoningEfforts: ['low', 'medium', 'high'],
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
+    limit: _gemini4Limit,
+  ),
+  // https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-hydrogen
+  'gemini-4-hydrogen': ModelCatalogEntry(
+    matches: ['gemini-4-hydrogen-*'],
+    modalities: _geminiInputModalities,
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
+    limit: _gemini4Limit,
+  ),
   // https://ai.google.dev/gemini-api/docs/thinking
   'gemini-3.8-flash': ModelCatalogEntry(
     matches: ['gemini-3.8-flash-*'],
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -271,6 +347,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -279,6 +357,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -287,6 +367,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['low', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -295,6 +377,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['low', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -303,6 +387,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -311,6 +397,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -319,6 +407,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     modalities: ModelCatalogModalities(
       input: ['text', 'image', 'audio', 'video'],
     ),
+    useThinkingLevel: true,
+    supportsMultimodalToolResults: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
@@ -353,6 +443,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // https://api-docs.deepseek.com/guides/thinking_mode
   // https://api-docs.deepseek.com/guides/vision/
   'deepseek-flash': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'deepseek-flash-*',
       'deepseek-v4.1-flash',
@@ -364,6 +455,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _1m, output: _384k),
   ),
   'deepseek-v4-flash': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['deepseek-v4-flash-*'],
     modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: ['none', 'low', 'high', 'max'],
@@ -371,6 +463,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _1m, output: _384k),
   ),
   'deepseek-v4-pro': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['deepseek-v4-pro-*'],
     modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: ['none', 'high', 'max'],
@@ -384,6 +477,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _128k, output: _32k),
   ),
   'deepseek-reasoner': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['deepseek-reasoner-*'],
     modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: [],
@@ -401,12 +495,14 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // https://help.aliyun.com/zh/model-studio/qwen3-8-flash
   // https://help.aliyun.com/zh/model-studio/anthropic-api-messages
   'qwen3.8-max': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.8-max-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'xhigh'],
     limit: ModelCatalogLimit(context: _1m, output: _128k),
   ),
   'qwen3.8-flash': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.8-flash-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'xhigh'],
@@ -414,6 +510,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   ),
   // https://help.aliyun.com/zh/model-studio/qwen3-7-flash
   'qwen3.7-flash': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.7-flash-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'high'],
@@ -423,54 +520,63 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // Qwen3.6/3.5 (previous gen): plus/flash = 1M, max = 256K
   //   https://help.aliyun.com/zh/model-studio/text-generation-model/
   'qwen3.7-max': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.7-max-*'],
     modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
   'qwen3.7-plus': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.7-plus-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
   'qwen3.6-max': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.6-max-*'],
     modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _256k, output: _64k),
   ),
   'qwen3.6-plus': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.6-plus-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
   'qwen3.6-flash': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.6-flash-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
   'qwen3.5-max': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.5-max-*'],
     modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _256k, output: _64k),
   ),
   'qwen3.5-plus': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.5-plus-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
   'qwen3.5-flash': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.5-flash-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['low', 'medium', 'high'],
     limit: ModelCatalogLimit(context: _1m, output: _64k),
   ),
   'qwen3.1-max': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['qwen3.1-max-*'],
     modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: ['low', 'medium', 'high'],
@@ -481,12 +587,14 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // K2 使用 thinking field toggle；K3 始终推理，使用标准 reasoning_effort。
   // https://www.kimi.ai/help/kimi-api/api-troubleshooting
   'kimi-k3': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['kimi-k3-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     reasoningEfforts: ['low', 'high', 'max'],
     limit: ModelCatalogLimit(context: _1m, output: _1m),
   ),
   'kimi-k2.6': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['kimi-k2.6-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['none'],
@@ -494,6 +602,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _256k, output: _32k),
   ),
   'kimi-k2.5': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['kimi-k2.5-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['none'],
@@ -501,15 +610,9 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _256k, output: _32k),
   ),
   'kimi-k2.7-code': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.fixed,
     matches: ['kimi-k2.7-code-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image']),
-    reasoningEfforts: ['none'],
-    useThinkingField: true,
-    limit: ModelCatalogLimit(context: _256k, output: _32k),
-  ),
-  'kimi-k2-thinking': ModelCatalogEntry(
-    matches: ['kimi-k2-thinking-*'],
-    modalities: ModelCatalogModalities(input: ['text']),
     reasoningEfforts: ['none'],
     useThinkingField: true,
     limit: ModelCatalogLimit(context: _256k, output: _32k),
@@ -608,6 +711,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
   // minimal 与 none 均关闭思考；统一提供 none，由 thinking.type 控制开关。
   // 目录只暴露模型支持的原生推理档位。
   'doubao-seed-evolving': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: ['doubao-seed-evolving-*'],
     modalities: ModelCatalogModalities(input: ['text', 'image', 'video']),
     reasoningEfforts: ['none', 'low', 'medium', 'high'],
@@ -615,6 +719,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _1m, output: _256k),
   ),
   'doubao-seed-2-1-pro': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'doubao-seed-2-1-pro-*',
       'doubao-seed-2.1-pro',
@@ -626,6 +731,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _1m, output: _256k),
   ),
   'doubao-seed-2-1-lite': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'doubao-seed-2-1-lite-*',
       'doubao-seed-2.1-lite',
@@ -639,6 +745,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _1m, output: _256k),
   ),
   'doubao-seed-2-1-turbo': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'doubao-seed-2-1-turbo-*',
       'doubao-seed-2.1-turbo',
@@ -650,6 +757,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _256k, output: _256k),
   ),
   'doubao-seed-2-0-pro': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'doubao-seed-2-0-pro-*',
       'doubao-seed-2.0-pro',
@@ -661,6 +769,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _256k, output: _128k),
   ),
   'doubao-seed-2-0-lite': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'doubao-seed-2-0-lite-*',
       'doubao-seed-2.0-lite',
@@ -672,6 +781,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _256k, output: _128k),
   ),
   'doubao-seed-2-0-mini': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'doubao-seed-2-0-mini-*',
       'doubao-seed-2.0-mini',
@@ -683,6 +793,7 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _256k, output: _128k),
   ),
   'doubao-seed-2-0-code': ModelCatalogEntry(
+    temperatureSupport: ModelTemperatureSupport.omitted_while_thinking,
     matches: [
       'doubao-seed-2-0-code-*',
       'doubao-seed-2.0-code',
@@ -856,6 +967,38 @@ bool useThinkingField(String? modelId) {
   final entry = _catalogEntry(modelId);
   return entry?.useThinkingField ?? false;
 }
+
+/// 返回应写入请求的 temperature。null 表示省略该字段。
+double? resolveRequestTemperature({
+  required String? modelId,
+  required double temperature,
+  String? reasoningEffort,
+  int? reasoningBudget,
+}) {
+  // none 明确关闭思考。仅有 budget、没有档位时，Anthropic / Gemini 仍会开启思考。
+  final thinking =
+      reasoningEffort != 'none' &&
+      (reasoningEffort != null || reasoningBudget != null);
+  return switch (lookupTemperatureSupport(modelId)) {
+    ModelTemperatureSupport.adjustable => temperature,
+    ModelTemperatureSupport.fixed => null,
+    ModelTemperatureSupport.omitted_while_thinking =>
+      thinking ? null : temperature,
+  };
+}
+
+/// 未收录的自定义模型保持可调，避免误伤兼容网关。
+ModelTemperatureSupport lookupTemperatureSupport(String? modelId) =>
+    (modelId == null ? null : _catalogEntry(modelId)?.temperatureSupport) ??
+    ModelTemperatureSupport.adjustable;
+
+/// Gemini 原生档位由模型目录声明，避免客户端重复维护型号判断。
+bool useThinkingLevel(String? modelId) =>
+    modelId != null && (_catalogEntry(modelId)?.useThinkingLevel ?? false);
+
+bool supportsMultimodalToolResults(String? modelId) =>
+    modelId != null &&
+    (_catalogEntry(modelId)?.supportsMultimodalToolResults ?? false);
 
 final _imageInputSeriesPattern = RegExp(
   r'^(?:(?:claude-)?(sonnet|opus|fable)-|(gpt|gemini)-|(kimi)-k?)(\d+)(?:[.-]|$)',

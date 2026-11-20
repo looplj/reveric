@@ -6,6 +6,21 @@ import 'dart:io';
 
 import 'generated_bindings.dart';
 
+/// Reveric: on macOS the plugin already links fvp/mdk at launch. Debug builds
+/// resolve that link from the SwiftPM build directory, while opening the
+/// relative framework path loads a second copy from the app bundle; the two
+/// copies do not share callback ports or player state, and switching videos
+/// can hang the main thread. Reuse the copy already in the process.
+DynamicLibrary _loadedOrOpen(String name, String symbol) {
+  if (Platform.isMacOS) {
+    final process = DynamicLibrary.process();
+    if (process.providesSymbol(symbol)) {
+      return process;
+    }
+  }
+  return DynamicLibrary.open(name);
+}
+
 abstract class Libmdk {
   static DynamicLibrary _load() {
     String name;
@@ -26,11 +41,7 @@ abstract class Libmdk {
           'Unsupported operating system: ${Platform.operatingSystem}.',
         );
     }
-    try {
-      return DynamicLibrary.open(name);
-    } catch (e) {
-      rethrow;
-    }
+    return _loadedOrOpen(name, 'MDK_version');
   }
 
   static final instance = NativeLibrary(_load());
@@ -52,11 +63,7 @@ abstract class Libfvp {
         'Unsupported operating system: ${Platform.operatingSystem}.',
       );
     }
-    try {
-      return DynamicLibrary.open(name);
-    } catch (e) {
-      rethrow;
-    }
+    return _loadedOrOpen(name, 'MdkSetKey');
   }
 
   static final instance = _load();

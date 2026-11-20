@@ -88,6 +88,60 @@ class StagingEditService {
         return require(id);
       });
 
+  Future<VideoStagingRow> duplicate(
+    String id, {
+    String? title,
+    int? expectedVersion,
+  }) async {
+    await VideoStagingBinding.openFor(database.screenplayDao, id)?.flush();
+    return database.screenplayDao.serializeStaging(id, () async {
+      final source = await require(id);
+      if (expectedVersion != null && source.version != expectedVersion) {
+        throw const DocumentError('version', 'conflict');
+      }
+      if (source.document == null) {
+        throw const DocumentError('document', 'not_initialized');
+      }
+      final parsed = DirectorDocument.fromJson(source.document!);
+      final nextTitle = title ?? _defaultCopyTitle(parsed.title);
+      final duplicated = parsed.instantiate().mutate(
+        (j) => j['title'] = nextTitle,
+      );
+      await validateReferences(duplicated);
+      return StoryboardService(database).write(
+        'CREATE_STAGING',
+        duplicated.title,
+        () async {
+          final newId = const Uuid().v4();
+          await database.screenplayDao.createStaging(newId, duplicated.title);
+          await database.screenplayDao.saveStaging(
+            newId,
+            duplicated.toJson(),
+            title: duplicated.title,
+            savedAt: DateTime.now(),
+          );
+          return require(newId);
+        },
+      );
+    });
+  }
+
+  static String _defaultCopyTitle(String base) {
+    const suffix = ' Copy';
+    final trimmed = base.trim();
+    if (trimmed.isEmpty) {
+      return 'Staging Copy';
+    }
+    final candidate = '$trimmed$suffix';
+    if (candidate.runes.length <= 80) {
+      return candidate;
+    }
+    final prefix = String.fromCharCodes(
+      trimmed.runes.take(80 - suffix.length),
+    ).trimRight();
+    return prefix.isEmpty ? 'Staging Copy' : '$prefix$suffix';
+  }
+
   Future<VideoStagingRow> save(
     String id, {
     required String turnId,

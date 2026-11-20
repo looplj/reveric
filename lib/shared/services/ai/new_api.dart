@@ -18,8 +18,10 @@ import '../../models/ai_provider.dart';
 import '../../models/new_api.dart';
 import '../../models/models_catalog.dart';
 import '../../models/audio/channels.dart';
+import '../../models/audio/catalog.dart';
 import '../../models/image/channels.dart';
 import '../../models/video/channels.dart';
+import '../../models/video/catalog.dart';
 import 'media_diagnostics.dart';
 import 'image/new_api.dart';
 import 'audio/client.dart';
@@ -52,6 +54,11 @@ class NewApiClient {
       final response = await (() async => http.Response.fromStream(
         await transport.send(request),
       ))().timeout(const Duration(seconds: 30));
+      if (_log.isDebugEnabled) {
+        _log.debug(
+          'GET $uri status=${response.statusCode} body=${response.body}',
+        );
+      }
       if (response.statusCode != 200) {
         throw StateError(
           'GET ${uri.origin}${uri.path}: HTTP ${response.statusCode} '
@@ -81,12 +88,17 @@ class NewApiClient {
         .where((model) {
           final image = lookupImageChannelModel(config.type, model.id) != null;
           final audio = lookupAudioChannelModel(config.type, model.id) != null;
-          final video = lookupVideoChannelModel(config.type, model.id) != null;
+          final video =
+              isNewApiVideoModel(model.id) ||
+              lookupVideoChannelModel(config.type, model.id) != null ||
+              model.endpointTypes.contains('openai-video') ||
+              model.endpointTypes.contains('video-generation');
           return switch (kind) {
             AiModelKind.image =>
-              image &&
-                  (model.endpointTypes.contains('image-generation') ||
-                      model.endpointTypes.contains('gemini')),
+              model.id == 'mj_imagine' ||
+                  model.endpointTypes.contains('image-generation') ||
+                  model.endpointTypes.contains('image-edit') ||
+                  (model.endpointTypes.contains('gemini') && !audio && !video),
             AiModelKind.audio =>
               audio &&
                   model.endpointTypes.contains(
@@ -97,22 +109,29 @@ class NewApiClient {
                         ? 'gemini'
                         : 'openai',
                   ),
-            AiModelKind.video =>
-              video && model.endpointTypes.contains('openai-video'),
+            AiModelKind.video => video,
             AiModelKind.chat =>
               !image &&
                   !audio &&
                   !video &&
+                  lookupImageModel(model.id) == null &&
+                  lookupAudioModel(model.id) == null &&
+                  !audioChannelModels[AudioProtocol.new_api_speech]!
+                      .containsKey(model.id) &&
+                  lookupVideoModel(model.id) == null &&
                   !model.endpointTypes.contains('image-generation') &&
+                  !model.endpointTypes.contains('image-edit') &&
                   !model.endpointTypes.contains('openai-video') &&
-                  model.endpointTypes.any(
-                    {
-                      'openai',
-                      'openai-response',
-                      'anthropic',
-                      'gemini',
-                    }.contains,
-                  ),
+                  !model.endpointTypes.contains('video-generation') &&
+                  (model.endpointTypes.isEmpty ||
+                      model.endpointTypes.any(
+                        {
+                          'openai',
+                          'openai-response',
+                          'anthropic',
+                          'gemini',
+                        }.contains,
+                      )),
           };
         })
         .map((model) => model.id)

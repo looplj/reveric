@@ -145,6 +145,7 @@ class OpenAiClient implements ProviderClient {
     bool stream = false,
   }) {
     final effort = opts.reasoningEffort;
+    final temperature = opts.requestTemperature(model);
     // none/on 是思考开关值，不作为 reasoning_effort 级别发送。
     final isToggle = effort == 'none' || effort == 'on';
     final levelEffort = isToggle ? null : effort;
@@ -164,7 +165,7 @@ class OpenAiClient implements ProviderClient {
         messages: convertMessages(messages),
         tools: tools?.map(_toOpenAiTool).toList(),
         parallelToolCalls: true,
-        temperature: opts.temperature,
+        temperature: temperature,
         maxTokens: opts.maxTokens,
         streamOptions: streamOptions,
         openRouterReasoning: switch (effort) {
@@ -181,7 +182,7 @@ class OpenAiClient implements ProviderClient {
         messages: convertMessages(messages),
         tools: tools?.map(_toOpenAiTool).toList(),
         parallelToolCalls: true,
-        temperature: opts.temperature,
+        temperature: temperature,
         maxTokens: opts.maxTokens,
         reasoningEffort: parsedEffort,
         streamOptions: streamOptions,
@@ -193,7 +194,7 @@ class OpenAiClient implements ProviderClient {
       messages: convertMessages(messages),
       tools: tools?.map(_toOpenAiTool).toList(),
       parallelToolCalls: true,
-      temperature: opts.temperature,
+      temperature: temperature,
       maxTokens: opts.maxTokens,
       streamOptions: streamOptions,
       reasoningEffortWire: levelEffort,
@@ -501,7 +502,8 @@ class OpenAiClient implements ProviderClient {
       _log.info(
         'chat completions stream start id=$streamId model=${model ?? 'none'} '
         'messages=${messages.length} tools=${tools?.length ?? 0} '
-        'temperature=${opts.temperature} maxTokens=${opts.maxTokens} '
+        'temperature=${opts.requestTemperature(model) ?? 'omitted'} '
+        'maxTokens=${opts.maxTokens} '
         'reasoningEffort=${opts.reasoningEffort ?? 'none'} '
         'useThinkingField=$useThinkingField',
       );

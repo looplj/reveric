@@ -53,7 +53,7 @@ void main() {
       final storage = ReferenceStorageService(
         database: db,
         storage: ObjectStorageService(database: db),
-        probe: (_) async => const MediaInfo(
+        probe: (_, {cancellation}) async => const MediaInfo(
           duration: Duration.zero,
           hasAudio: false,
           hasVideo: true,

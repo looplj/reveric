@@ -8,12 +8,18 @@
 //   lib/shared/agent/client/provider_history_preflight.dart
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:googleai_dart/googleai_dart.dart' as gai;
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 
 import '../../logger/app_logger.dart';
+import '../../models/models_catalog.dart'
+    show
+        lookupCatalogReasoningEfforts,
+        supportsMultimodalToolResults,
+        useThinkingLevel;
 import '../client.dart';
 import '../message.dart'
     show
@@ -51,6 +57,29 @@ class _DiagnosticHttpClient extends http.BaseClient {
     try {
       final response = await inner.send(request);
       _log.info('http response id=$id status=${response.statusCode}');
+      if (_log.isDebugEnabled) {
+        return http.StreamedResponse(
+          response.stream
+              .transform(utf8.decoder)
+              .map((body) {
+                if (_log.isDebugEnabled) {
+                  _log.debug(
+                    'http response body id=$id target=$target '
+                    'status=${response.statusCode} body=$body',
+                  );
+                }
+                return body;
+              })
+              .transform(utf8.encoder),
+          response.statusCode,
+          contentLength: response.contentLength,
+          request: response.request,
+          headers: response.headers,
+          isRedirect: response.isRedirect,
+          persistentConnection: response.persistentConnection,
+          reasonPhrase: response.reasonPhrase,
+        );
+      }
       return response;
     } catch (error, stackTrace) {
       _log.error(
@@ -158,16 +187,18 @@ class GeminiClient implements ProviderClient {
     return '${name}_${DateTime.now().millisecondsSinceEpoch}_${++_toolCallCounter}';
   }
 
-  /// 追加一个 Content；Gemini 多轮请求要求 user/model 角色交替，而域层
-  /// 历史可能含连续同角色消息（incomplete 恢复留下的 partial + 续跑结果、
-  /// 空响应续跑时的连续 user），发送前并入上一个同角色 Content。
+  /// 合并同类同角色消息，但保留工具响应与新用户输入的边界。
+  /// 将追加文本并入 functionResponse 会使 Gemini 拒绝已闭合的工具轮。
   void _appendContent(
     List<gai.Content> contents,
     String role,
     List<gai.Part> parts,
   ) {
     final last = contents.isNotEmpty ? contents.last : null;
-    if (last != null && last.role == role) {
+    if (last != null &&
+        last.role == role &&
+        last.parts.any((part) => part is gai.FunctionResponsePart) ==
+            parts.any((part) => part is gai.FunctionResponsePart)) {
       last.parts.addAll(parts);
       return;
     }
@@ -178,6 +209,7 @@ class GeminiClient implements ProviderClient {
   List<gai.Content> convertMessages(List<AgentMessage> messages) {
     preflightProviderHistory(messages, ProviderHistoryPolicy.gemini);
     final contents = <gai.Content>[];
+    final nestedToolMedia = supportsMultimodalToolResults(model);
 
     for (final msg in messages.where(
       (m) => m.role != AgentMessageRole.system,
@@ -212,14 +244,27 @@ class GeminiClient implements ProviderClient {
                       ? {'error': responseValue}
                       : {'output': responseValue},
                   id: tr.toolCallId,
+                  parts: nestedToolMedia && imgs.isNotEmpty
+                      ? [
+                          for (final img in imgs)
+                            gai.FunctionResponseInlinePart(
+                              inlineData: gai.FunctionResponseBlob(
+                                mimeType: img.mimeType,
+                                data: img.data,
+                              ),
+                            ),
+                        ]
+                      : null,
                 ),
               ),
             );
-            for (final img in imgs) {
-              parts.add(_imageToPart(img));
+            if (!nestedToolMedia) {
+              for (final img in imgs) {
+                parts.add(_imageToPart(img));
+              }
             }
           }
-          // 连续 tool_result / user 消息并入同一个 user turn（角色交替约束）
+          // 同轮工具结果合并；后续普通 user 消息另起 Content。
           _appendContent(contents, 'user', parts);
           continue;
         }
@@ -260,12 +305,14 @@ class GeminiClient implements ProviderClient {
               :final encryptedContents,
             ):
               if (encryptedContents.isNotEmpty) break;
-              if (text.isEmpty) break;
-              if (signature != null) {
+              if (text.isEmpty && (signature == null || signature.isEmpty)) {
+                break;
+              }
+              if (signature != null && signature.isNotEmpty) {
                 parts.add(
                   gai.TextPart(
                     sanitizeSurrogates(text),
-                    thought: true,
+                    thought: text.isNotEmpty ? true : null,
                     thoughtSignature: signature.codeUnits,
                   ),
                 );
@@ -316,11 +363,30 @@ class GeminiClient implements ProviderClient {
 
     gai.ThinkingConfig? thinkingConfig;
     final effort = opts.reasoningEffort;
+    final levelMode = useThinkingLevel(model);
+    if (levelMode && opts.reasoningBudget != null) {
+      throw ArgumentError(
+        'Gemini thinkingLevel models do not support thinkingBudget',
+      );
+    }
+    final hasLevel = effort != null && effort != 'none' && effort != 'on';
+    if (levelMode &&
+        hasLevel &&
+        !(lookupCatalogReasoningEfforts(model!)?.contains(effort) ?? false)) {
+      throw ArgumentError.value(
+        effort,
+        'reasoningEffort',
+        'Unsupported for $model',
+      );
+    }
     if (effort != null || opts.reasoningBudget != null) {
       thinkingConfig = gai.ThinkingConfig(
         // 'none' = 关闭推理：不回传 thoughts
         includeThoughts: effort != null && effort != 'none',
         thinkingBudget: opts.reasoningBudget,
+        thinkingLevel: levelMode && hasLevel
+            ? gai.thinkingLevelFromString(effort)
+            : null,
       );
     }
 
@@ -331,7 +397,7 @@ class GeminiClient implements ProviderClient {
     return gai.GenerateContentRequest(
       contents: convertMessages(messages),
       generationConfig: gai.GenerationConfig(
-        temperature: opts.temperature,
+        temperature: opts.requestTemperature(model),
         maxOutputTokens: opts.maxTokens,
         thinkingConfig: thinkingConfig,
       ),
@@ -387,6 +453,7 @@ class GeminiClient implements ProviderClient {
   ChatResponse _parseGeminiResponse(gai.GenerateContentResponse response) {
     final textBuf = StringBuffer();
     final thinkBuf = StringBuffer();
+    String? signature;
     final toolCalls = <ToolCall>[];
     final blockReason = response.promptFeedback?.blockReason;
     StreamFinishReason? finishReason = blockReason == null
@@ -405,21 +472,21 @@ class GeminiClient implements ProviderClient {
             :final thought,
             :final thoughtSignature,
           ):
+            if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+              signature = String.fromCharCodes(thoughtSignature);
+            }
             if (thought == true) {
-              if (thoughtSignature != null) {
-                thinkBuf.write(
-                  '[signature: ${String.fromCharCodes(thoughtSignature)}] ',
-                );
-              }
               thinkBuf.write(text);
             } else {
               textBuf.write(text);
             }
           case gai.ThoughtPart(:final thoughtSignature):
-            if (thoughtSignature != null) {
-              thinkBuf.write(
-                '[signature: ${String.fromCharCodes(thoughtSignature)}] ',
-              );
+            if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+              signature = String.fromCharCodes(thoughtSignature);
+            }
+          case gai.ThoughtSignaturePart(:final thoughtSignature):
+            if (thoughtSignature.isNotEmpty) {
+              signature = String.fromCharCodes(thoughtSignature);
             }
           case gai.FunctionCallPart(
             :final functionCall,
@@ -442,6 +509,7 @@ class GeminiClient implements ProviderClient {
     return ChatResponse(
       text: textBuf.toString(),
       thinking: thinkBuf.toString(),
+      signature: signature,
       toolCalls: toolCalls,
       usage: _convertUsage(response.usageMetadata),
       finishReason: finishReason,
@@ -511,17 +579,22 @@ class GeminiClient implements ProviderClient {
                 :final thoughtSignature,
               ):
                 if (thought == true) {
-                  if (text.isNotEmpty) yield ThinkingDelta(text);
-                  if (thoughtSignature != null) {
-                    yield SignatureDelta(
-                      String.fromCharCodes(thoughtSignature),
-                    );
+                  if (text.isNotEmpty) {
+                    yield ThinkingDelta(text);
                   }
-                } else {
-                  if (text.isNotEmpty) yield TextDelta(text);
+                } else if (text.isNotEmpty) {
+                  yield TextDelta(text);
+                }
+                // Signatures can accompany ordinary or empty text parts.
+                if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+                  yield SignatureDelta(String.fromCharCodes(thoughtSignature));
                 }
               case gai.ThoughtPart(:final thoughtSignature):
-                if (thoughtSignature != null) {
+                if (thoughtSignature != null && thoughtSignature.isNotEmpty) {
+                  yield SignatureDelta(String.fromCharCodes(thoughtSignature));
+                }
+              case gai.ThoughtSignaturePart(:final thoughtSignature):
+                if (thoughtSignature.isNotEmpty) {
                   yield SignatureDelta(String.fromCharCodes(thoughtSignature));
                 }
               case gai.FunctionCallPart(

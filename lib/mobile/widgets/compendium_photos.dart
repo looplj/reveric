@@ -34,10 +34,12 @@ class MobileCompendiumPhotos extends HookConsumerWidget {
   const MobileCompendiumPhotos({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.item,
   });
 
   final String databasePath;
+  final String novelId;
   final Item item;
 
   @override
@@ -45,7 +47,9 @@ class MobileCompendiumPhotos extends HookConsumerWidget {
     final busy = useState(false);
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final content = ref.read(novelContentServiceProvider(databasePath));
+    final content = ref
+        .read(novelContentServiceProvider(databasePath))
+        .forNovel(novelId);
 
     Future<void> run(Future<void> Function() action) async {
       if (busy.value) {

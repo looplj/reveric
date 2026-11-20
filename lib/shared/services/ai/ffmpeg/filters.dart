@@ -157,6 +157,12 @@ class FfmpegFilterGraph {
   }
   final String text;
   final dependencies = <String>{};
+
+  /// 未指定 fontfile 的 drawtext 由 [rewrite] 补上内置字体，AI 不必猜本机字体路径。
+  bool get usesDefaultFont =>
+      _rewrites.values.any((spec) => _needsFont(spec.name, spec.options));
+  static bool _needsFont(String name, List<(String, String)> options) =>
+      name == 'drawtext' && !options.any((option) => option.$1 == 'fontfile');
   late final List<String> _parts;
   final _rewrites =
       <
@@ -169,20 +175,28 @@ class FfmpegFilterGraph {
         })
       >{};
 
-  String rewrite(Map<String, String> paths) {
+  String rewrite(Map<String, String> paths, {String? defaultFont}) {
     final parts = _parts.toList();
     for (final entry in _rewrites.entries) {
       final spec = entry.value;
-      final options = spec.options
-          .map((option) {
-            final (key, value) = option;
-            final path = ffmpegFilterFileOptions[spec.name]!.contains(key);
-            if (path && !paths.containsKey(value)) {
-              throw StateError('Missing resolved filter dependency');
-            }
-            return '$key=${ffmpegFilterValue(path ? paths[value]! : value)}';
-          })
-          .join(':');
+      final needsFont = _needsFont(spec.name, spec.options);
+      if (needsFont && defaultFont == null) {
+        throw StateError('Missing default drawtext font');
+      }
+      final options =
+          [if (needsFont) ('fontfile', defaultFont!), ...spec.options]
+              .map((option) {
+                final (key, value) = option;
+                final injected = needsFont && key == 'fontfile';
+                final path =
+                    !injected &&
+                    ffmpegFilterFileOptions[spec.name]!.contains(key);
+                if (path && !paths.containsKey(value)) {
+                  throw StateError('Missing resolved filter dependency');
+                }
+                return '$key=${ffmpegFilterValue(path ? paths[value]! : value)}';
+              })
+              .join(':');
       parts[entry.key] =
           '${spec.prefix}${options.isEmpty ? '' : '=$options'}${spec.suffix}';
     }

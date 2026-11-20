@@ -38,11 +38,22 @@ const _textIndent = _tileSize + RevericSpacing.md;
 const _briefFacts = 3;
 const _briefFactMaxLength = 32;
 
+/// 把承载审批卡的消息滚进构建范围；参数为审批 id 与审批卡挂靠的工具调用 id。
+typedef ToolApprovalRevealer =
+    Future<void> Function(String approvalId, String hostCallId);
+
 /// 待审批卡的锚点：运行条据此滚到卡片并短暂高亮。
 class ToolApprovalLocator {
   final _anchors = <String, GlobalKey>{};
+  final _revealers = <ToolApprovalRevealer>{};
   final focused = ValueNotifier<String?>(null);
   Timer? _focusTimer;
+
+  /// 懒加载的消息列表注册揭示器：卡片所在消息不在构建范围时由列表先滚过去。
+  void addRevealer(ToolApprovalRevealer revealer) => _revealers.add(revealer);
+
+  void removeRevealer(ToolApprovalRevealer revealer) =>
+      _revealers.remove(revealer);
 
   /// 同一审批可能在多个聊天视图里各有一张卡；最后挂载的那张作为定位目标。
   void register(String approvalId, GlobalKey key) => _anchors[approvalId] = key;
@@ -53,10 +64,20 @@ class ToolApprovalLocator {
     }
   }
 
-  void locate(String approvalId) {
+  void locate(String approvalId, {required String hostCallId}) {
+    if (focus(approvalId)) {
+      return;
+    }
+    for (final reveal in _revealers.toList()) {
+      unawaited(reveal(approvalId, hostCallId));
+    }
+  }
+
+  /// 卡片已挂载时滚到卡片并高亮；未挂载返回 false。
+  bool focus(String approvalId) {
     final target = _anchors[approvalId]?.currentContext;
     if (target == null) {
-      return;
+      return false;
     }
     unawaited(
       Scrollable.ensureVisible(
@@ -71,6 +92,7 @@ class ToolApprovalLocator {
     _focusTimer = Timer(const Duration(milliseconds: 1600), () {
       focused.value = null;
     });
+    return true;
   }
 
   void dispose() {

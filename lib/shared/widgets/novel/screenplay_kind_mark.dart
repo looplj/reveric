@@ -1,4 +1,4 @@
-// 职责: 在小说与剧本混排的作品库里标出剧本；小说是默认类型，不加标记。
+// 职责: 在作品库中标出剧本或画布类型，小说保持无标记。
 // 关联文件:
 //   lib/shared/models/content_kind.dart
 //   lib/desktop/widgets/novel_list.dart
@@ -12,9 +12,14 @@ import 'package:flutter/material.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../theme/theme.dart';
+import '../../models/content_kind.dart';
 
 class ScreenplayKindMark extends StatelessWidget {
-  const ScreenplayKindMark({super.key});
+  const ScreenplayKindMark({
+    super.key,
+    this.contentKind = contentKindScreenplay,
+  });
+  final String contentKind;
 
   @override
   Widget build(BuildContext context) {
@@ -38,13 +43,21 @@ class ScreenplayKindMark extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(right: 2),
                 child: RevericIcon(
-                  RevericIcons.movie_outlined,
+                  contentKind == contentKindCanvas
+                      ? RevericIcons.flow_arrow
+                      : RevericIcons.movie_outlined,
                   size: 11,
                   color: colors.textMuted,
                 ),
               ),
             ),
-            TextSpan(text: context.t(LocaleKeys.libraryContentKindScreenplay)),
+            TextSpan(
+              text: context.t(
+                contentKind == contentKindCanvas
+                    ? LocaleKeys.libraryContentKindCanvas
+                    : LocaleKeys.libraryContentKindScreenplay,
+              ),
+            ),
           ],
         ),
         maxLines: 1,

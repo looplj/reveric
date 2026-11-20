@@ -15,6 +15,8 @@
 //   assets/translations/zh-CN/common.json
 //   assets/translations/en/assets.json
 //   assets/translations/zh-CN/assets.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
@@ -26,10 +28,11 @@ import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/theme/theme.dart';
 import '../canvas/widgets/floating_cluster.dart';
 import '../canvas/widgets/glass.dart';
+import 'history_region.dart';
+import 'history_actions.dart';
 
-/// 「＋」菜单里的节点类型。素材类先从资产库选内容再落到画布。
+/// 「＋」菜单里的节点类型。素材类先从资产库选内容再落到画布；分镜从场次色带底部添加。
 enum ProductionAddKind {
-  segment,
   video,
   image,
   character,
@@ -37,6 +40,8 @@ enum ProductionAddKind {
   compendium,
   audio,
   director,
+  editing,
+  text,
 }
 
 /// 左下角工具簇里跟在缩放后面的一组：从资产库放素材、导入文件。
@@ -53,6 +58,37 @@ class ProductionCanvasTools extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (ProductionHistoryScope.maybeOf(context)?.history
+            case final history?)
+          ListenableBuilder(
+            listenable: history,
+            builder: (context, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CanvasFloatingButton(
+                  icon: RevericIcons.undo,
+                  tooltip: context.t(LocaleKeys.commonUndo),
+                  onTap: history.canUndo
+                      ? () => Actions.invoke(
+                          context,
+                          const ProductionUndoIntent(),
+                        )
+                      : null,
+                  divider: true,
+                ),
+                CanvasFloatingButton(
+                  icon: RevericIcons.redo,
+                  tooltip: context.t(LocaleKeys.commonRedo),
+                  onTap: history.canRedo
+                      ? () => Actions.invoke(
+                          context,
+                          const ProductionRedoIntent(),
+                        )
+                      : null,
+                ),
+              ],
+            ),
+          ),
         CanvasFloatingButton(
           icon: RevericIcons.folder_outlined,
           tooltip: context.t(LocaleKeys.productionAssets),
@@ -79,9 +115,12 @@ class ProductionAddDock extends StatefulWidget {
     required this.enabled,
     required this.onAdd,
     required this.onImport,
+    this.canvasWork = false,
   });
 
-  /// 各类型当前是否可建（片段、导演台需要第二栏选中场次）。
+  final bool canvasWork;
+
+  /// 各类型当前是否可建。
   final bool Function(ProductionAddKind kind) enabled;
   final ValueChanged<ProductionAddKind> onAdd;
   final VoidCallback onImport;
@@ -98,12 +137,6 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
     final box = context.findRenderObject()! as RenderBox;
     final anchor = box.localToGlobal(Offset(box.size.width / 2, -12));
     final items = [
-      (
-        ProductionAddKind.segment,
-        RevericIcons.movie_outlined,
-        LocaleKeys.productionAddSegment,
-        LocaleKeys.productionAddSegmentHint,
-      ),
       (
         ProductionAddKind.video,
         RevericIcons.video_camera,
@@ -146,7 +179,27 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
         LocaleKeys.directorTitle,
         LocaleKeys.productionAddDirectorHint,
       ),
+      (
+        ProductionAddKind.text,
+        RevericIcons.file_text,
+        LocaleKeys.productionText,
+        LocaleKeys.productionAddTextHint,
+      ),
     ];
+    if (widget.canvasWork) {
+      items.removeWhere(
+        (item) => const {
+          ProductionAddKind.location,
+          ProductionAddKind.compendium,
+        }.contains(item.$1),
+      );
+      items.add((
+        ProductionAddKind.editing,
+        RevericIcons.scissors_outlined,
+        LocaleKeys.editingTitle,
+        LocaleKeys.productionAddEditingHint,
+      ));
+    }
     setState(() => _open = true);
     await showRevericContextMenu(
       context: context,
@@ -168,11 +221,7 @@ class _ProductionAddDockState extends State<ProductionAddDock> {
                 borderRadius: BorderRadius.circular(RevericRadius.xl),
               ),
               child: Center(
-                child: RevericIcon(
-                  icon,
-                  size: 18,
-                  color: colors.textSecondary,
-                ),
+                child: RevericIcon(icon, size: 18, color: colors.textSecondary),
               ),
             ),
             onTap: () => widget.onAdd(kind),

@@ -12,6 +12,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:crypto/crypto.dart';
+
 import '../../agent/client.dart'
     show
         AiUsage,
@@ -25,6 +27,7 @@ import '../../agent/client/provider_history_preflight.dart'
 import '../../agent/hooks/todo_continuation_hook.dart'
     show UnfinishedTodoSnapshot;
 import '../../app_config.dart' show appVersion;
+import '../../database/app_database.dart' show GenerationTask;
 import '../../logger/app_logger.dart';
 import '../anonymous_outbox_service.dart';
 import '../device_id_service.dart';
@@ -191,6 +194,7 @@ class TraceReporterService {
     int cacheWriteTokens = 0,
     int reasoningTokens = 0,
     String message = '',
+    String? eventId,
   }) async {
     final occurredAt = DateTime.now().toUtc();
     final deviceId = await _deviceIdService.getOrCreate();
@@ -200,6 +204,7 @@ class TraceReporterService {
         endpoint: AnonymousOutboxEndpoint.trace,
         deviceId: deviceId,
         occurredAt: occurredAt,
+        eventId: eventId,
         payload: {
           'device_id': deviceId,
           'session_id': sessionId,
@@ -223,6 +228,35 @@ class TraceReporterService {
     );
     if (_log.isDebugEnabled) {
       _log.debug('enqueue type=$eventType');
+    }
+  }
+
+  /// 记录用户发起的图像或视频生成，任务结果不影响这条使用记录。
+  Future<void> onMediaGenerationAttempt(GenerationTask task) async {
+    try {
+      if (!_outbox.canEnqueue) {
+        return;
+      }
+      final identity = sha256.convert(
+        utf8.encode('${task.id}:${task.createdAt.millisecondsSinceEpoch}'),
+      );
+      final eventId = 'media-generation:$identity';
+      await _enqueue(
+        sessionId: eventId,
+        eventId: eventId,
+        model: task.modelId,
+        providerId: task.providerId,
+        sessionMode: 'production',
+        eventType: 'media_generation_attempted',
+        message: jsonEncode({
+          'media_kind': task.kind.name,
+          'provider_type': task.providerType,
+        }),
+      );
+    } catch (error, stack) {
+      _log.warning(
+        'Failed to queue media generation trace error=$error\n$stack',
+      );
     }
   }
 

@@ -21,6 +21,7 @@ import 'dart:io';
 
 import 'package:archive/archive_io.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/services/backup_service.dart';
 import 'package:reveric/shared/models/mcp/config.dart';
@@ -98,6 +99,39 @@ void main() {
       await tempRoot.delete(recursive: true);
     }
   });
+
+  test(
+    'corrupt deflate logs failing entry and original error before rejecting restore',
+    () async {
+      final messages = <String>[];
+      final originalPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          messages.add(message);
+        }
+      };
+      addTearDown(() => debugPrint = originalPrint);
+      final archive = Archive()
+        ..addFile(ArchiveFile.string('avatars/broken.bin', 'payload' * 100));
+      final bytes = ZipEncoder().encode(archive);
+      // The first local file header gives the name and extra-field lengths.
+      final nameLength = bytes[26] | (bytes[27] << 8);
+      final extraLength = bytes[28] | (bytes[29] << 8);
+      final payloadOffset = 30 + nameLength + extraLength;
+      bytes[payloadOffset] =
+          7; // Reserved DEFLATE block type: deterministic bad data.
+      final zip = File(p.join(outputDir.path, 'broken.zip'));
+      await zip.writeAsBytes(bytes);
+      final result = await BackupService().inspectBackup(zip.path);
+      expect(result.failureReason, RestoreFailureReason.invalidBackup);
+      final log = messages.join('\n');
+      expect(log, contains('stage=decompress'));
+      expect(log, contains('entry="avatars/broken.bin"'));
+      expect(log, contains('expectedCrc32='));
+      expect(log, contains('Filter error, bad data'));
+      expect(tempDir.listSync(), isEmpty);
+    },
+  );
 
   File packSource(Directory source, {int version = 1}) {
     final archive = Archive()

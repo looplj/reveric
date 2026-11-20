@@ -1,4 +1,4 @@
-// 职责: 一次性预置 DeepSeek、88API 和秘塔 供应商，保留已有配置与软删除记录。
+// 职责: 一次性预置第三方供应商，保留已有配置与软删除记录。
 // 关联文件:
 //   lib/shared/services/app_initialization.dart
 //   lib/shared/models/ai_provider.dart
@@ -30,6 +30,16 @@ Future<void> seedDefaultApi88Provider(AppDatabase database) async {
   });
 }
 
+Future<void> seedDefaultToken91Provider(AppDatabase database) async {
+  await database.transaction(() async {
+    final existing = await database.aiProviderDao.getAllIncludingDeleted();
+    if (existing.any((provider) => provider.id == 'token91')) {
+      return;
+    }
+    await database.aiProviderDao.upsert(aiProviderBuiltinById('token91')!);
+  });
+}
+
 Future<void> seedDefaultMetasoProvider(AppDatabase database) async {
   await database.transaction(() async {
     final existing = await database.aiProviderDao.getAllIncludingDeleted();
@@ -37,5 +47,15 @@ Future<void> seedDefaultMetasoProvider(AppDatabase database) async {
       return;
     }
     await database.aiProviderDao.upsert(aiProviderBuiltinById('metaso')!);
+  });
+}
+
+Future<void> seedDefaultApikeyProvider(AppDatabase database) async {
+  await database.transaction(() async {
+    final existing = await database.aiProviderDao.getAllIncludingDeleted();
+    if (existing.any((provider) => provider.id == 'apikey')) {
+      return;
+    }
+    await database.aiProviderDao.upsert(aiProviderBuiltinById('apikey')!);
   });
 }

@@ -5,9 +5,15 @@
 //   lib/shared/services/ai/audio/gemini.dart
 //   lib/shared/services/ai/video/new_api.dart
 import 'dart:async';
+import 'package:drift/native.dart';
+import 'package:reveric/shared/database/app_database.dart';
+import 'package:reveric/shared/models/production/media.dart';
+import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
+import '../../../helpers/fake_object_storage.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -81,44 +87,137 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  for (final (type, model) in [
+    ('api88', 'gpt-image-2'),
+    ('token91', 'new-image-model'),
+    ('token91', 'gpt-image-2.5-flare'),
+  ]) {
+    test(
+      '$type $model OpenAI image generation and multipart edits preserve pixels and auth',
+      () async {
+        final lines = <String>[];
+        final originalPrint = debugPrint;
+        debugPrint = (message, {wrapWidth}) {
+          if (message != null) {
+            lines.add(message);
+          }
+        };
+        addTearDown(() => debugPrint = originalPrint);
+        final paths = <String>[];
+        await http.runWithClient(
+          () async {
+            final service = AiImageGenerationService(
+              _provider(type),
+              model: model,
+            );
+            final generated = await service.generateImage(
+              'cover',
+              size: '1024x1024',
+            );
+            expect(
+              await File(generated.localFilePath!).readAsBytes(),
+              base64Decode(_png),
+            );
+            await service.editImage(
+              'edit',
+              imageData: 'data:image/png;base64,$_png',
+              size: '1024x1024',
+            );
+          },
+          () => MockClient((request) async {
+            paths.add(request.url.path);
+            expect(
+              request.url.host,
+              type == 'token91' ? 'api-no.91token.com' : 'api.88api.ai',
+            );
+            expect(request.headers['Authorization'], 'Bearer test-key');
+            if (request.url.path.endsWith('edits')) {
+              expect(
+                request.headers['content-type'],
+                startsWith('multipart/form-data'),
+              );
+              final body = utf8.decode(request.bodyBytes, allowMalformed: true);
+              expect(body, contains('name="image[]"'));
+              expect(body, contains(model));
+            } else {
+              expect((jsonDecode(request.body) as Map)['size'], '1024x1024');
+            }
+            return _json({
+              'data': [
+                {'b64_json': _png},
+              ],
+            });
+          }),
+        );
+        for (final path in paths) {
+          expect(
+            lines.any(
+              (line) =>
+                  line.contains('$path status=200 body=') &&
+                  line.contains(_png),
+            ),
+            isTrue,
+          );
+        }
+        expect(paths, ['/v1/images/generations', '/v1/images/edits']);
+      },
+    );
+  }
+
   test(
-    'OpenAI image generation and multipart edits preserve pixels and auth',
+    'Seedream downloads URL references and sends declared file bytes in JSON',
     () async {
-      final paths = <String>[];
+      final database = AppDatabase.forTest(NativeDatabase.memory());
+      final references = ReferenceStorageService(
+        database: database,
+        storage: FakeObjectStorage(
+          database,
+          ({
+            required file,
+            required sha256,
+            required mimeType,
+            required fileSize,
+          }) async =>
+              (url: 'https://reference.test/image.png', expiresAt: null),
+        ),
+        probe: (_, {cancellation}) async => const MediaInfo(
+          duration: Duration.zero,
+          hasAudio: false,
+          hasVideo: true,
+          width: 1,
+          height: 1,
+        ),
+      );
+      addTearDown(() async {
+        references.dispose();
+        await database.close();
+      });
       await http.runWithClient(
         () async {
-          final service = AiImageGenerationService(
+          await AiImageGenerationService(
             _provider(),
-            model: 'gpt-image-2',
-          );
-          final generated = await service.generateImage(
-            'cover',
-            size: '1024x1024',
-          );
-          expect(
-            await File(generated.localFilePath!).readAsBytes(),
-            base64Decode(_png),
-          );
-          await service.editImage(
+            model: 'doubao-seedream-5-0-pro',
+            referenceStorage: references,
+          ).editImage(
             'edit',
-            imageData: 'data:image/png;base64,$_png',
+            imageData: 'https://reference.test/image.png',
             size: '1024x1024',
           );
         },
         () => MockClient((request) async {
-          paths.add(request.url.path);
-          expect(request.headers['Authorization'], 'Bearer test-key');
-          if (request.url.path.endsWith('edits')) {
-            expect(
-              request.headers['content-type'],
-              startsWith('multipart/form-data'),
+          if (request.url.toString() == 'https://reference.test/image.png') {
+            expect(request.headers['authorization'], isNull);
+            return http.Response.bytes(
+              base64Decode(_png),
+              200,
+              headers: {'content-type': 'image/png'},
             );
-            final body = utf8.decode(request.bodyBytes, allowMalformed: true);
-            expect(body, contains('name="image[]"'));
-            expect(body, contains('gpt-image-2'));
-          } else {
-            expect((jsonDecode(request.body) as Map)['size'], '1024x1024');
           }
+          expect(request.url.origin, 'https://api.88api.ai');
+          expect(request.url.path, '/v1/images/generations');
+          expect((jsonDecode(request.body) as Map)['image'], [
+            'data:image/png;base64,$_png',
+          ]);
           return _json({
             'data': [
               {'b64_json': _png},
@@ -126,37 +225,10 @@ void main() {
           });
         }),
       );
-      expect(paths, ['/v1/images/generations', '/v1/images/edits']);
     },
   );
 
-  test('Seedream sends reference URLs in image generations JSON', () async {
-    await http.runWithClient(
-      () async {
-        await AiImageGenerationService(
-          _provider(),
-          model: 'doubao-seedream-5-0-pro',
-        ).editImage(
-          'edit',
-          imageData: 'https://reference.test/image.png',
-          size: '1024x1024',
-        );
-      },
-      () => MockClient((request) async {
-        expect(request.url.path, '/v1/images/generations');
-        expect((jsonDecode(request.body) as Map)['image'], [
-          'https://reference.test/image.png',
-        ]);
-        return _json({
-          'data': [
-            {'b64_json': _png},
-          ],
-        });
-      }),
-    );
-  });
-
-  for (final type in ['gemini', 'api88']) {
+  for (final type in ['gemini', 'api88', 'token91']) {
     test(
       '$type image reuses Gemini generateContent and saves the result',
       () async {
@@ -184,6 +256,8 @@ void main() {
               request.url.host,
               type == 'gemini'
                   ? 'generativelanguage.googleapis.com'
+                  : type == 'token91'
+                  ? 'api-no.91token.com'
                   : 'api.88api.ai',
             );
             expect(
@@ -435,11 +509,11 @@ void main() {
       });
       addTearDown(transport.close);
       final client = NewApiClient(_provider()).video(transport);
-      final task = await client.submit(
+      final task = await client.submitNative(
         _video('seedance-2.0官方版', mode: VideoMode.first_frame, audio: true),
         [_reference()],
       );
-      final result = await client.query(task);
+      final result = await client.queryNative(task);
       expect(result.status, VideoRemoteStatus.succeeded);
       expect(
         await (await client.download(
@@ -457,6 +531,40 @@ void main() {
           task,
         ),
         throwsA(isA<VideoException>()),
+      );
+    },
+  );
+
+  test(
+    '91Token Seedance submits and polls through the shared New API route',
+    () async {
+      final provider = _provider('token91');
+      final transport = MockClient((request) async {
+        expect(request.url.host, 'api.91token.com');
+        expect(request.headers['Authorization'], 'Bearer test-key');
+        const path = '/v1/videos';
+        if (request.method == 'POST') {
+          expect(request.url.path, path);
+          final body = jsonDecode(request.body) as Map;
+          expect(body['model'], 'doubao-seedance-2-0');
+          expect(body['metadata']['content'][1]['role'], 'first_frame');
+          expect(body['metadata']['generate_audio'], true);
+          return _json({'id': 'task_91', 'status': 'queued'});
+        }
+        expect(request.url.path, '$path/task_91');
+        return _json({'status': 'completed', 'id': 'task_91'});
+      });
+      addTearDown(transport.close);
+      final client = NewApiClient(provider).video(transport);
+      final task = await client.submitNative(
+        _video('doubao-seedance-2-0', mode: VideoMode.first_frame, audio: true),
+        [_reference()],
+      );
+      final result = await client.queryNative(task);
+      expect(result.status, VideoRemoteStatus.succeeded);
+      expect(
+        result.videoUrl.toString(),
+        'https://api.91token.com/v1/videos/task_91/content',
       );
     },
   );
@@ -502,6 +610,35 @@ void main() {
   });
 
   test(
+    '88API submits a discovered Seedance alias with its original ID',
+    () async {
+      const model = 'vendor/seedance-2.5-flash-20261115';
+      final transport = MockClient((request) async {
+        expect(request.url.toString(), 'https://api.88api.ai/v1/videos');
+        final body = jsonDecode(request.body) as Map;
+        expect(body['model'], model);
+        expect(body['metadata']['generate_audio'], true);
+        expect(body['metadata']['content'][1]['role'], 'reference_image');
+        expect(body['metadata'], isNot(contains('omni_reference_task_type')));
+        return _json({'id': 'task_flash', 'status': 'queued'});
+      });
+      addTearDown(transport.close);
+      final task = await NewApiClient(_provider())
+          .video(transport)
+          .submitNative(_video(model, mode: VideoMode.reference, audio: true), [
+            VideoReference(
+              role: VideoInputRole.reference_image,
+              url: 'https://reference.test/image.png',
+              mimeType: 'image/png',
+              fileSize: 100,
+              mediaInfo: const VideoMediaInfo(width: 1280, height: 720),
+            ),
+          ]);
+      expect(task.taskId, 'task_flash');
+    },
+  );
+
+  test(
     'Veo resolves reference URL into inline images before charging submission',
     () async {
       final transport = MockClient((request) async {
@@ -516,7 +653,7 @@ void main() {
         return _json({'id': 'task_2', 'status': 'queued'});
       });
       addTearDown(transport.close);
-      await NewApiClient(_provider()).video(transport).submit(
+      await NewApiClient(_provider()).video(transport).submitNative(
         _video('veo-3.1', mode: VideoMode.first_frame),
         [_reference()],
       );
@@ -537,7 +674,7 @@ void main() {
       apiKey: 'key',
     );
     await expectLater(
-      client.submit(_video('veo-3.1'), []),
+      client.submitNative(_video('veo-3.1'), []),
       throwsA(
         isA<VideoException>().having(
           (e) => e.code,

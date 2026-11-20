@@ -17,16 +17,50 @@ import '../../utils/storage_paths.dart';
 import 'ffmpeg_runner.dart';
 import 'import_orchestrator.dart';
 import 'media_service.dart';
+import 'video_thumbnail_cache.dart';
 
 final _log = AppLogger.forModule('MediaLibrary');
 
-class MediaLibraryService {
+/// 受控媒体路径解析接口；用于把媒体预览等只读组件与完整素材库解耦。
+abstract interface class MediaPathResolver {
+  String resolvePath(String stored);
+}
+
+class MediaLibraryService implements MediaPathResolver {
   MediaLibraryService(this.database, this.media, this.root);
   final AppDatabase database;
   final MediaService media;
   final Directory root;
 
   final _metadata = <(String, int, DateTime), Future<MediaInfo>>{};
+  late final VideoThumbnailCache _videoThumbnails = VideoThumbnailCache(
+    media: media,
+    root: root,
+  );
+
+  /// 仅读取已缓存的视频第 0 帧 PNG 缩略图，未命中返回 null 且不触发 ffmpeg。
+  Future<File?> cachedVideoThumbnail(String stored) {
+    final path = relativePath(stored);
+    final resolved = resolvePath(path);
+    return _videoThumbnails.getIfCached(
+      relativePath: path,
+      resolvedPath: resolved,
+    );
+  }
+
+  /// 抽取并缓存视频第 0 帧 PNG 缩略图，源文件大小或修改时间变更时自动失效。
+  Future<File> videoThumbnail(
+    String stored, {
+    MediaCancellation? cancellation,
+  }) {
+    final path = relativePath(stored);
+    final resolved = resolvePath(path);
+    return _videoThumbnails.getOrCreate(
+      relativePath: path,
+      resolvedPath: resolved,
+      cancellation: cancellation,
+    );
+  }
 
   /// Managed outputs are immutable; stat keys also invalidate replaced/imported files.
   Future<MediaInfo> probePath(String stored) async {
@@ -79,6 +113,7 @@ class MediaLibraryService {
     String? batchId,
     String? prompt,
     String? model,
+    void Function(double progress)? onProgress,
   }) => MediaImportOrchestrator().run(
     database: database,
     root: root,
@@ -93,6 +128,7 @@ class MediaLibraryService {
     batchId: batchId,
     prompt: prompt,
     model: model,
+    onProgress: onProgress,
   );
 
   String resolve(AssetRow asset) {
@@ -107,6 +143,7 @@ class MediaLibraryService {
     p.split(p.relative(resolvePath(stored), from: root.path)),
   );
 
+  @override
   String resolvePath(String stored) {
     if (stored.trim().isEmpty || stored.contains('://')) {
       throw const MediaException(MediaFailure.invalid_media);

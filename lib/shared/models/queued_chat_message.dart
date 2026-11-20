@@ -109,8 +109,8 @@ class PendingChatHandoff {
 
 /// in-flight 期间再次发送时排队的消息。
 ///
-/// 默认等本轮结束后由 ChatSessionController 接力发送；用户选择「立刻发送」后
-/// [sendOnNextTurn] 为 true，改为 stage 进下一轮 LLM 请求。
+/// 默认等本轮结束后由 ChatSessionController 接力发送。「立刻发送」会中断当前回复。
+/// 聊天界面卸载时，[sendOnNextTurn] 标记已交给后台 Agent 下一轮消费的消息。
 class QueuedChatMessage {
   const QueuedChatMessage({
     required this.text,

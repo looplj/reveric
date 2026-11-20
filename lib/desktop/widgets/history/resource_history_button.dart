@@ -15,11 +15,13 @@ class ResourceHistoryButton extends StatelessWidget {
   const ResourceHistoryButton({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.resourceId,
     required this.resourceLabel,
   });
 
   final String databasePath;
+  final String novelId;
   final String resourceId;
   final String resourceLabel;
 
@@ -36,6 +38,7 @@ class ResourceHistoryButton extends StatelessWidget {
       onPressed: () => showResourceHistoryDialog(
         context,
         databasePath: databasePath,
+        novelId: novelId,
         resourceId: resourceId,
         resourceLabel: resourceLabel,
       ),
@@ -46,6 +49,7 @@ class ResourceHistoryButton extends StatelessWidget {
 Future<void> showResourceHistoryDialog(
   BuildContext context, {
   required String databasePath,
+  required String novelId,
   required String resourceId,
   required String resourceLabel,
 }) {
@@ -60,6 +64,7 @@ Future<void> showResourceHistoryDialog(
           height: 720,
           child: DialogFeedback(
             builder: (context) => ChangeHistoryPanel(
+              novelId: novelId,
               databasePath: databasePath,
               resourceId: resourceId,
               resourceLabel: resourceLabel,

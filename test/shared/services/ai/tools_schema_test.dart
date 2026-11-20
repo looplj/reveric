@@ -2,6 +2,8 @@
 // 关联文件:
 //   lib/shared/services/ai/tools_schema.dart
 //   lib/shared/services/ai/tools.dart
+import 'dart:convert';
+
 import 'package:reveric/shared/app_config.dart';
 import 'package:drift/native.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -14,7 +16,192 @@ import 'package:reveric/shared/models/canvas_layout.dart'
 import 'package:reveric/shared/services/ai/tools.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
+  test(
+    'subqueries disclose one field table without expanded operation schemas',
+    () async {
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      addTearDown(db.close);
+      final manager = _manager(db, 'canvas');
+      addTearDown(manager.dispose);
+      Future<Map<String, dynamic>> raw(String path) =>
+          manager.executeTool(name: 'Read', input: {'path': path});
+      final root = await raw('/_schema/production');
+      expect(root['ok'], isTrue);
+      final children = (root['subresources'] as List).cast<Map>();
+      expect(children.map((entry) => entry['path']), [
+        '/_schema/production/settings',
+        '/_schema/production/canvas',
+        '/_schema/production/clips',
+      ]);
+      expect(children.every((entry) => !entry.containsKey('fields')), isTrue);
+      expect(jsonEncode(root).length, lessThan(2500));
+
+      final clips = await raw('/_schema/production/clips');
+      expect(clips['resource_path'], 'production/clips/{clip_id}');
+      final text = clips['contract'] as String;
+      expect(text, contains('inputs（array<object>）'));
+      expect(text, contains('"required":["id","ref_type","ref_id","role"]'));
+      expect(text, contains('first_frame'));
+      expect(text, contains('Create默认 "video"'));
+      expect(text, contains('nullable'));
+      expect(text, contains('列表(可选)'));
+      expect(text, contains('字段Edit'));
+      expect(text, contains('"view"'));
+      for (final name
+          in (resourceContractForTesting('/_schema/production/clips')['fields']
+                  as Map)
+              .keys) {
+        expect(
+          RegExp(
+            '^  - ${RegExp.escape(name as String)}'
+            r'(?:[（：*]|\s|$)',
+            multiLine: true,
+          ).allMatches(text),
+          hasLength(1),
+          reason: name,
+        );
+      }
+      expect(clips, isNot(contains('operation_contracts')));
+      expect(clips, isNot(contains('content')));
+      expect(text, isNot(contains('字段：未标类型')));
+      expect(text, isNot(contains('列表分页：')));
+      expect(jsonEncode(clips), isNot(contains(r'"$ref"')));
+      expect(jsonEncode(clips), isNot(contains('output_schema')));
+      expect(jsonEncode(clips).length, lessThan(4000));
+
+      for (final (path, resource) in [
+        ('production/settings', 'production/settings'),
+        ('production/canvas/nodes', 'production/canvas/nodes/{node_id}'),
+        (
+          'production/clips/generations',
+          'production/clips/{clip_id}/generations/{task_id}',
+        ),
+        (
+          'episodes/production/canvas/nodes',
+          'episodes/{episode_id}/production/canvas/nodes/{node_id}',
+        ),
+        ('outlines/beats', 'outlines/{title}/beats/{beat_id}'),
+      ]) {
+        final result = await raw('/_schema/$path');
+        expect(result['ok'], isTrue, reason: path);
+        expect(result['resource_path'], resource);
+        if (result['singleton'] == false) {
+          expect(
+            result['listing_path'],
+            resource.substring(0, resource.lastIndexOf('/')),
+          );
+        }
+        expect(result['contract'], isA<String>());
+      }
+      final group = await raw('/_schema/groups/canvas');
+      expect((group['contracts'] as List).single['collection'], 'production');
+      for (final path in [
+        '/_schema/production/clips/unknown',
+        '/_schema/production/clips/clip_id/generations',
+        '/_schema/production/clips?kind=video',
+        '/works/missing/_schema/production/clips',
+      ]) {
+        expect((await raw(path))['ok'], isFalse, reason: path);
+      }
+      expect(
+        pathSchemaFieldNotes(kind: 'canvas'),
+        isNot(contains('production')),
+      );
+    },
+  );
+
+  test(
+    'compact tables retain constraints, defaults and nested input variants',
+    () async {
+      final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+      addTearDown(db.close);
+      final manager = _manager(db, 'novel');
+      addTearDown(manager.dispose);
+      final index = await manager.executeTool(
+        name: 'Read',
+        input: {'path': '/_schema'},
+      );
+      final pending = [
+        for (final entry in index['entries'] as List) entry['path'] as String,
+      ];
+      while (pending.isNotEmpty) {
+        final path = pending.removeLast();
+        final actual = await manager.executeTool(
+          name: 'Read',
+          input: {'path': path},
+        );
+        expect(actual['ok'], true, reason: path);
+        final text = actual['contract'] as String;
+        final facts = resourceContractForTesting(path);
+        expectCompactContractMatchesFacts(actual, facts);
+        for (final entry in (facts['fields'] as Map).entries) {
+          final field = entry.value as Map;
+          final rows = text
+              .split('\n')
+              .where(
+                (line) => RegExp(
+                  '^  - ${RegExp.escape(entry.key as String)}'
+                  r'(?:[（：*]|\s|$)',
+                ).hasMatch(line),
+              );
+          expect(rows, hasLength(1), reason: '$path/${entry.key}');
+          final row = rows.single;
+          if (field['description'] case final String description) {
+            expect(row, contains(description));
+          }
+          if (field['nullable'] == true) {
+            expect(row, contains('nullable'), reason: '$path/${entry.key}');
+          }
+          for (final (key, label) in [
+            ('create_default', 'Create默认'),
+            ('write_default', 'Write默认'),
+          ]) {
+            if (field.containsKey(key)) {
+              expect(
+                row,
+                contains('$label ${jsonEncode(field[key])}'),
+                reason: '$path/${entry.key}',
+              );
+            }
+          }
+        }
+        for (final operation in facts['operation_contracts'] as List) {
+          if ((operation['constraints'] as List).isNotEmpty) {
+            expect(
+              text,
+              contains(jsonEncode(operation['constraints'])),
+              reason: '$path ${operation['tool']} ${operation['field']}',
+            );
+          }
+        }
+        if (path == '/_schema/outlines/beats') {
+          expect(text, contains('value=array<本表字段>'));
+          expect(text, contains('identity=optional_existing_id'));
+          expect(text, contains('元素必填=；'));
+          expect(text, contains('title*'));
+        }
+        if (path == '/_schema/outlines') {
+          expect(text, contains('"identity":"new_items"'));
+        }
+        if (path == '/_schema/scenes/elements') {
+          expect(text, contains('target_requirement'));
+          expect(text, contains('"when_field":"type"'));
+        }
+        if (path == '/_schema/canvas') {
+          expect(text, contains('Write/field/layout'));
+          expect(text, contains('"updated"'));
+          expect(text, contains('Write结构'));
+        }
+        for (final child in actual['subresources'] as List) {
+          pending.add(child['path'] as String);
+        }
+      }
+    },
+  );
+
   test(
     'sub-agent control contracts stay static and are excluded from child tools',
     () async {
@@ -69,10 +256,7 @@ void main() {
       addTearDown(db.close);
       final manager = _manager(db, 'novel');
       addTearDown(manager.dispose);
-      final contract = await manager.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/chapters'},
-      );
+      final contract = resourceContractTreeForTesting('/_schema/chapters');
       final emotion = contract['fields']['emotion']['example'];
       expect(emotion, ['紧张', '决绝']);
       final tension = contract['fields']['tension'] as Map;
@@ -275,9 +459,8 @@ void main() {
       }
 
       for (final entry in (index['entries'] as List).cast<Map>()) {
-        final contract = await manager.executeTool(
-          name: 'Read',
-          input: {'path': entry['path']},
+        final contract = resourceContractTreeForTesting(
+          entry['path'] as String,
         );
         checkNode(contract, singleton: contract['singleton'] as bool);
       }
@@ -287,10 +470,7 @@ void main() {
           'canvas/{name}/open',
         ],
       });
-      final chapters = await manager.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/chapters'},
-      );
+      final chapters = resourceContractTreeForTesting('/_schema/chapters');
       expect(chapters['fields']['tension']['type'], 'integer');
       expect(chapters['fields']['tension']['minimum'], 1);
       expect(chapters['fields']['tension']['maximum'], 10);
@@ -304,10 +484,7 @@ void main() {
       addTearDown(db.close);
       final manager = _manager(db, 'novel');
       addTearDown(manager.dispose);
-      final canvas = await manager.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/canvas'},
-      );
+      final canvas = resourceContractTreeForTesting('/_schema/canvas');
       if (!ideationCanvasEnabled) {
         expect(canvas, contains('error'));
         return;
@@ -485,10 +662,7 @@ void main() {
       addTearDown(db.close);
       final manager = _manager(db, 'novel');
       addTearDown(manager.dispose);
-      final outline = await manager.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/outlines'},
-      );
+      final outline = resourceContractTreeForTesting('/_schema/outlines');
       final beat = (outline['subresources'] as List).single as Map;
       expect(beat['address'], {'kind': 'id', 'item_token': 'beat_id'});
       expect(beat['operations'], contains('Remove'));
@@ -543,10 +717,7 @@ void main() {
       addTearDown(db.close);
       final manager = _manager(db, 'screenplay');
       addTearDown(manager.dispose);
-      final scenes = await manager.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/scenes'},
-      );
+      final scenes = resourceContractTreeForTesting('/_schema/scenes');
       final fields = scenes['fields'] as Map;
       expect(fields, isNot(contains('search')));
       expect(fields, isNot(contains('before_scene_id')));
@@ -572,19 +743,13 @@ void main() {
         'string',
       );
       expect(element['fields'], isNot(contains('after_element_id')));
-      final seasons = await manager.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/seasons'},
-      );
+      final seasons = resourceContractTreeForTesting('/_schema/seasons');
       final create = (seasons['operation_contracts'] as List)
           .cast<Map>()
           .singleWhere((op) => op['tool'] == 'Create');
       expect(create['input']['required'], isEmpty);
       expect(seasons['operations'], isNot(contains('Remove')));
-      final singleton = await manager.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/screenplay'},
-      );
+      final singleton = resourceContractTreeForTesting('/_schema/screenplay');
       expect(singleton['operations'], ['Read', 'Create', 'Write', 'Edit']);
       expect(singleton['fields']['style_id']['write_path'], isTrue);
       for (final name in ['ratio', 'resolution']) {
@@ -634,6 +799,19 @@ void main() {
       expect(await read(managers.last, '/_schema'), index);
       final entries = (index['entries'] as List).cast<Map>();
       expect(
+        entries,
+        contains(
+          allOf(
+            containsPair('collection', 'works'),
+            containsPair('group', 'shared'),
+            containsPair('path', '/_schema/works'),
+          ),
+        ),
+      );
+      final works = await read(managers.first, '/_schema/works');
+      expect(works['resource_path'], '/works/{work_id}');
+      expect(works['listing_path'], '/works');
+      expect(
         entries.where((entry) => entry['collection'] == 'clips'),
         hasLength(1),
       );
@@ -671,62 +849,26 @@ void main() {
         (await read(managers.first, '/_schema/screenplay'))['subresources'],
         isEmpty,
       );
-      expect(
-        (await read(managers.first, '/_schema/canvas'))[ideationCanvasEnabled
-            ? 'fields'
-            : 'error'],
-        isNotNull,
-      );
+      final canvas = await read(managers.first, '/_schema/canvas');
+      expect(canvas[ideationCanvasEnabled ? 'contract' : 'error'], isNotNull);
       for (final collection in ['seasons', 'episodes', 'scenes']) {
         final contract = await read(managers.first, '/_schema/$collection');
-        final fields = contract['fields'] as Map;
-        expect(fields, contains('id'));
-        expect(fields['id']['write'], isFalse);
+        expect(contract['contract'], contains('  - id（readonly）'));
         final token = '${collection.substring(0, collection.length - 1)}_id';
-        expect(fields, isNot(contains(token)));
         expect(contract['resource_path'], '$collection/{$token}');
       }
       final sceneContract = await read(managers.first, '/_schema/scenes');
-      final sceneFields = sceneContract['fields'] as Map;
-      expect(sceneFields, contains('episode_id'));
-      expect(sceneFields, isNot(contains('beat_id')));
-      final elementContract = (sceneContract['subresources'] as List).single;
+      expect(sceneContract['contract'], contains('episode_id'));
+      final elementPath =
+          (sceneContract['subresources'] as List).single['path'] as String;
+      final elementContract = await read(managers.first, elementPath);
       expect(
         elementContract['resource_path'],
         'scenes/{scene_id}/elements/{element_id}',
       );
-      expect(elementContract['fields'], contains('id'));
-      expect(elementContract['fields'], isNot(contains('element_id')));
-      expect(elementContract['fields']['id']['create'], isTrue);
-      expect(elementContract['fields'], contains('character_id'));
-      final characterIdField = elementContract['fields']['character_id'];
-      expect(characterIdField['read_path'], isTrue);
-      expect(characterIdField['search'], ['short_text']);
-      expect(characterIdField['edit'], isFalse);
-      final textRead = elementContract['fields']['text']['read_constraints'];
-      expect(textRead, [
-        {
-          'kind': 'target_requirement',
-          'when_field': 'type',
-          'when_values': [
-            'action',
-            'parenthetical',
-            'dialogue',
-            'transition',
-            'note',
-            'subtitle',
-          ],
-        },
-      ]);
-      for (final field in ['character_id', 'extension', 'name']) {
-        expect(elementContract['fields'][field]['read_constraints'], [
-          {
-            'kind': 'target_requirement',
-            'when_field': 'type',
-            'when_values': ['character'],
-          },
-        ]);
-      }
+      expect(elementContract['contract'], contains('character_id'));
+      expect(elementContract['contract'], contains('target_requirement'));
+      expect(elementContract, isNot(contains('fields')));
       for (final path in [
         '/_schema/groups',
         '/_schema/groups/unknown',
@@ -756,6 +898,45 @@ void main() {
       }
     },
   );
+
+  test('validation hints point to readable subresource contracts', () async {
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    addTearDown(db.close);
+    for (final (kind, path, contract) in [
+      ('canvas', 'production', '/_schema/production'),
+      ('canvas', 'production/clips', '/_schema/production/clips'),
+      ('canvas', 'production/canvas/nodes', '/_schema/production/canvas/nodes'),
+      (
+        'canvas',
+        'production/clips/clip_1/generations',
+        '/_schema/production/clips/generations',
+      ),
+      (
+        'screenplay',
+        'episodes/episode_1/production/canvas/nodes',
+        '/_schema/episodes/production/canvas/nodes',
+      ),
+    ]) {
+      final manager = _manager(db, kind);
+      addTearDown(manager.dispose);
+      final result = await manager.executeTool(
+        name: 'Read',
+        input: {'path': '$path?unknown_parameter=true'},
+      );
+      expect(
+        result['error_code'],
+        'invalid_argument',
+        reason: '$path: $result',
+      );
+      expect(result['hint'], contains('Read $contract.'), reason: path);
+      final schema = await manager.executeTool(
+        name: 'Read',
+        input: {'path': contract},
+      );
+      expect(schema['ok'], isTrue, reason: '$contract: $schema');
+      expect(schema['path'], contract);
+    }
+  });
 
   test(
     'legacy work aliases and nested screenplay paths fail explicitly',

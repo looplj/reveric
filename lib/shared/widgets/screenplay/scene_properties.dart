@@ -26,12 +26,14 @@ import 'scene_properties_form.dart';
 Future<void> showSceneProperties(
   BuildContext context, {
   required String databasePath,
+  required String novelId,
   required String sceneId,
   required String episodeId,
   bool mobile = false,
   ScreenplayDocumentSession? session,
 }) {
   final content = ScreenplaySceneProperties(
+    novelId: novelId,
     databasePath: databasePath,
     sceneId: sceneId,
     episodeId: episodeId,
@@ -58,23 +60,27 @@ class ScreenplaySceneProperties extends HookConsumerWidget {
   const ScreenplaySceneProperties({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.sceneId,
     required this.episodeId,
     this.session,
   });
   final String databasePath;
+  final String novelId;
   final String sceneId;
   final String episodeId;
   final ScreenplayDocumentSession? session;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final service = ref.watch(screenplayServiceProvider(databasePath));
+    final service = ref.watch(
+      screenplayServiceProvider(databasePath, novelId: novelId),
+    );
     final future = useMemoized(
       () => session == null
           ? service.readDocument(episodeId, sceneIds: {sceneId})
           : Future.value(session!.controller.screenplay!),
-      [databasePath, sceneId, episodeId, session],
+      [databasePath, novelId, sceneId, episodeId, session],
     );
     final snapshot = useFuture(future);
     if (!snapshot.hasData) {
@@ -89,6 +95,7 @@ class ScreenplaySceneProperties extends HookConsumerWidget {
       );
     }
     return _LoadedProperties(
+      novelId: novelId,
       databasePath: databasePath,
       sceneId: sceneId,
       document: snapshot.data!,
@@ -100,11 +107,13 @@ class ScreenplaySceneProperties extends HookConsumerWidget {
 class _LoadedProperties extends HookConsumerWidget {
   const _LoadedProperties({
     required this.databasePath,
+    required this.novelId,
     required this.sceneId,
     required this.document,
     this.session,
   });
   final String databasePath;
+  final String novelId;
   final String sceneId;
   final ScreenplayDocument document;
   final ScreenplayDocumentSession? session;
@@ -112,8 +121,12 @@ class _LoadedProperties extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final database = ref.watch(novelContentDatabaseProvider(databasePath));
-    final service = ref.watch(screenplayServiceProvider(databasePath));
-    final overlay = ref.watch(workingOverlayServiceProvider(databasePath));
+    final service = ref.watch(
+      screenplayServiceProvider(databasePath, novelId: novelId),
+    );
+    final overlay = ref.watch(
+      workOverlayServiceProvider((path: databasePath, novelId: novelId)),
+    );
     final editing = useMemoized(
       () =>
           session ??

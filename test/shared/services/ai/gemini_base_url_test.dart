@@ -11,8 +11,6 @@ import 'package:http/testing.dart';
 import 'package:reveric/shared/agent/client/gemini_client.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/services/ai/image.dart';
-import 'package:reveric/shared/services/ai/image/client.dart';
-import 'package:reveric/shared/services/ai/image/gemini.dart';
 
 const _relay = ' https://relay.example/proxy/v1beta/?route=chat ';
 
@@ -43,12 +41,10 @@ void main() {
     await http.runWithClient(
       () async {
         await expectLater(
-          GeminiImageClient(_provider).generate(
-            const ImageGenerationRequest(
-              prompt: 'a bird',
-              model: 'gemini-image-test',
-            ),
-          ),
+          AiImageGenerationService(
+            _provider,
+            model: 'gemini-image-test',
+          ).generateImage('a bird'),
           throwsA(isA<AiImageGenerationException>()),
         );
       },

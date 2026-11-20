@@ -50,6 +50,7 @@ class RecentChangesLog extends ConsumerStatefulWidget {
   const RecentChangesLog({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.changes,
     this.showRollbackAll = true,
     this.bounded = true,
@@ -57,6 +58,7 @@ class RecentChangesLog extends ConsumerStatefulWidget {
   });
 
   final String databasePath;
+  final String novelId;
   final List<WorkingChange> changes;
   final bool showRollbackAll;
   final bool bounded;
@@ -173,7 +175,10 @@ class _RecentChangesLogState extends ConsumerState<RecentChangesLog> {
   /// 将选中改动恢复到各自的历史目标。
   Future<void> _rollback(List<WorkingFieldReview> reviews) async {
     final service = ref.read(
-      workingOverlayServiceProvider(widget.databasePath),
+      workOverlayServiceProvider((
+        path: widget.databasePath,
+        novelId: widget.novelId,
+      )),
     );
     final result = await service.rollbackFields(reviews);
     if (mounted) {

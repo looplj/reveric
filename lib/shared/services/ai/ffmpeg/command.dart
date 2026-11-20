@@ -15,6 +15,8 @@ import '../../../models/tool_permission.dart';
 import '../../../models/production/media.dart';
 import '../../production/ffmpeg_runner.dart';
 import '../../production/contact_sheet.dart';
+import '../../production/audio_inspection.dart';
+import '../../../models/editing/document.dart' show editingSampleRate;
 import '../../production/frame_capture.dart';
 import '../media/frames.dart';
 import '../files/session_files.dart';
@@ -32,6 +34,82 @@ class FfmpegCommand {
   final Duration executionTimeout;
   final SessionFiles files;
   final FfmpegRunner runner;
+
+  Future<Map<String, dynamic>> inspectAudio(
+    String path,
+    Map<String, dynamic> options,
+    MediaCancellation cancellation,
+  ) async {
+    final start = options['start_ms'], end = options['end_ms'];
+    final window = options['window_ms'] ?? 100;
+    if (start is! int ||
+        end is! int ||
+        start < 0 ||
+        end <= start ||
+        end - start > audioInspectionMaxSeconds * 1000 ||
+        window is! int ||
+        window < 10 ||
+        window > 1000) {
+      throw const FormatException(
+        'Use a positive interval of up to 10000 ms and window_ms from 10 to 1000.',
+      );
+    }
+    final source = await CommandPaths(files).resolve(path);
+    final dir = await Directory.systemTemp.createTemp('reveric_ffmpeg_audio_');
+    try {
+      final output = File('${dir.path}/source.f32');
+      await runner.execute(
+        [
+          '-v',
+          'error',
+          '-protocol_whitelist',
+          'file',
+          '-format_whitelist',
+          ffmpegFileDemuxers,
+          '-ss',
+          '${start}ms',
+          '-i',
+          source.path,
+          '-t',
+          '${end - start}ms',
+          '-map',
+          '0:a:0',
+          '-ar',
+          '$editingSampleRate',
+          '-ac',
+          '2',
+          '-f',
+          'f32le',
+          output.path,
+        ],
+        probe: false,
+        cancellation: cancellation,
+      );
+      final bytes = await output.readAsBytes();
+      const samplesPerMs = editingSampleRate ~/ 1000;
+      if (bytes.length != (end - start) * samplesPerMs * 8) {
+        throw const FormatException(
+          'The audio stream does not cover the full requested interval.',
+        );
+      }
+      final audio = InspectionAudio(bytes);
+      return {
+        'ok': true,
+        'source_file_path': path,
+        'start_ms': start,
+        'end_ms': end,
+        'window_ms': window,
+        ...audio.levels(
+          origin: start,
+          samplesPerUnit: samplesPerMs,
+          window: window,
+          unit: 'ms',
+        ),
+      };
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  }
 
   Future<Map<String, dynamic>> frames(
     String sessionId,
@@ -133,6 +211,7 @@ class FfmpegCommand {
             File('${temporary.path}/frame-$i.png'),
             cancellation,
             timestampUs: positions[i] * 1000,
+            detailMaxSide: positions.length == 1 ? contactSheetMaxSide : null,
           ),
         );
       }
@@ -218,6 +297,7 @@ class FfmpegCommand {
         for (final filter in ffmpegFilterFileOptions.entries)
           for (final option in filter.value) '${filter.key}:$option',
       ],
+      'drawtext_default_font': 'built-in CJK font when fontfile is omitted',
       'concat_input': true,
       'generated_inputs': false,
       'null_output': true,
@@ -281,7 +361,13 @@ class FfmpegCommand {
       await plan.resolveArguments(sessionId, actual, cancellation);
       await outputs.prepare(actual);
       await outputs.validateInputs(plan.paths);
-      final command = <String>[if (!parsed.probe) '-nostdin'];
+      final command = <String>[
+        if (!parsed.probe) ...[
+          '-nostdin',
+          // The version banner is ~19 KB of build flags and local paths per run.
+          if (!actual.contains('-hide_banner')) '-hide_banner',
+        ],
+      ];
       for (var index = 0; index < actual.length; index++) {
         if (outputs.defaultPassLog case final prefix?
             when parsed.outputs.containsKey(index) ||
@@ -378,12 +464,17 @@ class FfmpegCommand {
           ? 'cancelled'
           : result.errorCode ?? (result.exitCode == 0 ? 'completed' : 'failed');
       final log = result.output;
+      // Successful runs only need the closing summary; failures keep more
+      // context for the diagnostic.
+      final logLimit = status == 'completed' ? 2048 : 16384;
       return {
         'ok': status == 'completed',
         'status': status,
         'exit_code': result.exitCode,
-        'log': log.length > 65536 ? log.substring(log.length - 65536) : log,
-        'log_truncated': log.length > 65536,
+        'log': log.length > logLimit
+            ? log.substring(log.length - logLimit)
+            : log,
+        'log_truncated': log.length > logLimit,
         if (status == 'cancelled') 'cancelled': true,
         if (budgetFailure != null) ...{
           'error_code': budgetFailure is ToolOperationException

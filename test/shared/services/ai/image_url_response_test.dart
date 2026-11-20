@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/services/ai/image.dart';
 
 const _pngBytes = <int>[
@@ -116,7 +117,10 @@ void main() {
     imageStatus = 200;
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     baseUrl = 'http://127.0.0.1:${server.port}/v1';
+    HttpOverrides.global = _FixtureHttpOverrides(server.port);
     server.listen((request) async {
+      expect(request.connectionInfo!.remoteAddress.isLoopback, isTrue);
+      expect(request.headers.host, '127.0.0.1');
       if (request.method == 'POST' &&
           request.uri.path == '/v1/images/generations') {
         final raw = await utf8.decoder.bind(request).join();
@@ -140,9 +144,17 @@ void main() {
         await request.response.close();
         return;
       }
-      if (request.method == 'GET' && request.uri.path == '/generated.png') {
-        request.response.statusCode = imageStatus;
-        if (imageStatus == 200) {
+      if (request.method == 'GET' &&
+          {'/generated.png', '/image.png'}.contains(request.uri.path)) {
+        final status = request.uri.path == '/generated.png' ? imageStatus : 200;
+        if (request.uri.path == '/image.png') {
+          expect(
+            request.headers.value(HttpHeaders.authorizationHeader),
+            isNull,
+          );
+        }
+        request.response.statusCode = status;
+        if (status == 200) {
           request.response.headers.contentType = ContentType('image', 'png');
           request.response.add(_pngBytes);
         }
@@ -168,10 +180,14 @@ void main() {
 
   for (final model in imageModelsForProvider('agnes')) {
     test('$model generates and edits through Agnes JSON generations', () async {
-      final service = AiImageGenerationService(
-        _openAiCompatibleProvider(baseUrl).copyWith(type: 'agnes'),
-        model: model,
+      final configured = _openAiCompatibleProvider(
+        baseUrl,
+      ).copyWith(type: 'agnes', baseUrl: baseUrl);
+      expect(
+        Uri.parse(configured.effectiveBaseUrl).host,
+        configured.type == 'agnes' ? 'apihub.agnes-ai.com' : '127.0.0.1',
       );
+      final service = AiImageGenerationService(configured, model: model);
       final modern = model != 'agnes-image-2.0-flash';
       final result = await service.generateImage(
         'a cover',
@@ -196,7 +212,10 @@ void main() {
         'prompt': 'combine',
         'size': modern ? '1K' : '1024x1024',
         if (modern) 'ratio': '1:1',
-        'extra_body': {'response_format': 'b64_json', 'image': inputs},
+        'extra_body': {
+          'response_format': 'b64_json',
+          'image': [inputs.first, inputs.first],
+        },
       });
     });
   }
@@ -229,13 +248,19 @@ void main() {
         }
         await request.response.close();
       });
+      final configured = _openAiCompatibleProvider(baseUrl).copyWith(
+        type: type,
+        baseUrl: baseUrl,
+        proxyUrl: 'http://127.0.0.1:${proxy.port}',
+        proxyUsername: 'user',
+        proxyPassword: 'secret',
+      );
+      expect(
+        Uri.parse(configured.effectiveBaseUrl).host,
+        configured.type == 'agnes' ? 'apihub.agnes-ai.com' : '127.0.0.1',
+      );
       final service = AiImageGenerationService(
-        _openAiCompatibleProvider(baseUrl).copyWith(
-          type: type,
-          proxyUrl: 'http://127.0.0.1:${proxy.port}',
-          proxyUsername: 'user',
-          proxyPassword: 'secret',
-        ),
+        configured,
         model: type == 'agnes' ? 'agnes-image-2.0-flash' : 'image-advance',
       );
       final generated = await service.generateImage('cover');
@@ -249,16 +274,14 @@ void main() {
         imageData: ['http://127.0.0.1:${server.port}/reference.png'],
       );
       expect(File(edited.localFilePath!).readAsBytesSync(), _pngBytes);
-      expect(
-        calls.skip(2).map((c) => (c.$1, c.$2)),
-        type == 'agnes'
-            ? [('POST', '/v1/images/generations'), ('GET', '/generated.png')]
-            : [
-                ('GET', '/reference.png'),
-                ('POST', '/v1/images/edits'),
-                ('GET', '/generated.png'),
-              ],
-      );
+      expect(calls.skip(2).map((c) => (c.$1, c.$2)), [
+        ('GET', '/reference.png'),
+        (
+          'POST',
+          type == 'agnes' ? '/v1/images/generations' : '/v1/images/edits',
+        ),
+        ('GET', '/generated.png'),
+      ]);
       for (final call in calls) {
         expect(call.$3, call.$1 == 'POST' ? 'Bearer test-api-key' : null);
         expect(call.$4, 'Basic ${base64Encode(utf8.encode('user:secret'))}');
@@ -276,7 +299,7 @@ void main() {
 
     final result = await service.generateImage('a cover');
 
-    expect(requestedResponseFormat, 'b64_json');
+    expect(requestedResponseFormat, isNull);
     expect(result.imageBase64, isNull);
     expect(result.imageUrl, 'http://127.0.0.1:${server.port}/generated.png');
     expect(result.localFilePath, isNotNull);
@@ -339,4 +362,64 @@ AiProvider _openAiCompatibleProvider(String baseUrl) {
     updatedAt: DateTime(2026, 1, 1),
     deletedAt: notDeletedSentinel,
   );
+}
+
+class _FixtureHttpOverrides extends HttpOverrides {
+  _FixtureHttpOverrides(this.port);
+  final int port;
+  @override
+  HttpClient createHttpClient(SecurityContext? context) =>
+      _FixtureHttpClient(super.createHttpClient(context), port);
+}
+
+class _FixtureHttpClient implements HttpClient {
+  _FixtureHttpClient(this.inner, this.port) {
+    inner.findProxy = (_) => 'DIRECT';
+  }
+  final HttpClient inner;
+  final int port;
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) {
+    if (!{
+      '127.0.0.1',
+      'apihub.agnes-ai.com',
+      'results.invalid',
+      'reference.example',
+    }.contains(url.host)) {
+      throw StateError('Unexpected test network target: $url');
+    }
+    final target = url.replace(scheme: 'http', host: '127.0.0.1', port: port);
+    expect(target.host, '127.0.0.1');
+    return inner.openUrl(method, target);
+  }
+
+  @override
+  set findProxy(String Function(Uri)? value) {
+    inner.findProxy = value;
+  }
+
+  @override
+  Duration? get connectionTimeout => inner.connectionTimeout;
+  @override
+  set connectionTimeout(Duration? value) {
+    inner.connectionTimeout = value;
+  }
+
+  @override
+  set idleTimeout(Duration value) {
+    inner.idleTimeout = value;
+  }
+
+  @override
+  set autoUncompress(bool value) {
+    inner.autoUncompress = value;
+  }
+
+  @override
+  void close({bool force = false}) {
+    inner.close(force: force);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

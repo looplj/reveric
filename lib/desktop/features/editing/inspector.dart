@@ -1,4 +1,4 @@
-// 职责: 右栏「属性」：未选中时显示工程概况，选中片段时按轨道类型编辑文字、音量、不透明度、大小与淡入淡出。
+// 职责: 右栏「属性」：未选中时显示工程概况，选中片段时按轨道类型编辑文字、倍速、音量、不透明度、大小、位置与淡入淡出。
 // 关联文件:
 //   lib/desktop/features/editing/controller.dart
 //   lib/shared/services/editing/commands.dart
@@ -121,12 +121,14 @@ class EditingInspector extends StatelessWidget {
               context.t(LocaleKeys.editingKeySpace),
               context.t(LocaleKeys.commonPlay),
             ),
-            key('S', context.t(LocaleKeys.editingSplit)),
-            key('⌫', context.t(LocaleKeys.commonDelete)),
-            key(
-              Platform.isMacOS ? '⌘Z' : 'Ctrl+Z',
-              context.t(LocaleKeys.editingUndo),
-            ),
+            if (!controller.readOnly) ...[
+              key('S', context.t(LocaleKeys.editingSplit)),
+              key('⌫', context.t(LocaleKeys.commonDelete)),
+              key(
+                Platform.isMacOS ? '⌘Z' : 'Ctrl+Z',
+                context.t(LocaleKeys.editingUndo),
+              ),
+            ],
           ],
         ),
       ),
@@ -136,7 +138,7 @@ class EditingInspector extends StatelessWidget {
   List<Widget> _clip(BuildContext context, EditingDocument doc, EditingClip c) {
     final track = doc.track(c.trackId);
     final content = c.content;
-    final locked = track.locked;
+    final locked = track.locked || controller.readOnly;
     void set(EditingClip next) => editingRun(
       context,
       () => controller.session.commit(EditingCommands.update(doc, next)),
@@ -184,6 +186,68 @@ class EditingInspector extends StatelessWidget {
       );
     }
 
+    /// 九宫格按锚点贴边摆放，水平、垂直滑块再微调锚点所在的画面坐标。
+    List<Widget> placement(
+      EditingTransform t,
+      double edgeY,
+      void Function(EditingTransform) apply,
+    ) {
+      String percent(double v) => '${v.round()}%';
+      return [
+        _Row(
+          label: context.t(LocaleKeys.editingPosition),
+          child: _AnchorGrid(
+            anchorX: t.anchorX,
+            anchorY: t.anchorY,
+            onSelect: locked
+                ? null
+                : (ax, ay) => apply(
+                    t.copyWith(
+                      anchorX: ax,
+                      anchorY: ay,
+                      x: .06 + ax * .88,
+                      y: edgeY + ay * (1 - 2 * edgeY),
+                    ),
+                  ),
+          ),
+        ),
+        _Row(
+          label: context.t(LocaleKeys.editingHorizontal),
+          child: _Range(
+            value: t.x * 100,
+            min: 0,
+            max: 100,
+            step: 1,
+            format: percent,
+            onCommit: locked ? null : (v) => apply(t.copyWith(x: v / 100)),
+          ),
+        ),
+        _Row(
+          label: context.t(LocaleKeys.editingVertical),
+          child: _Range(
+            value: t.y * 100,
+            min: 0,
+            max: 100,
+            step: 1,
+            format: percent,
+            onCommit: locked ? null : (v) => apply(t.copyWith(y: v / 100)),
+          ),
+        ),
+      ];
+    }
+
+    Widget opacity(double value, void Function(double) apply) => _Row(
+      label: context.t(LocaleKeys.editingOpacity),
+      child: _Range(
+        value: value * 100,
+        min: 0,
+        max: 100,
+        step: 1,
+        format: (v) => '${v.round()}%',
+        onCommit: locked ? null : (v) => apply(v / 100),
+      ),
+    );
+
     if (content is EditingTextContent) {
       return [
         head,
@@ -208,37 +272,35 @@ class EditingInspector extends StatelessWidget {
                 label: context.t(LocaleKeys.editingStyleTitle),
               ),
             ],
-            onChanged: (v) => locked
+            onChanged: (v) =>
+                locked ? null : setContent(content.copyWith(style: v)),
+          ),
+        ),
+        _Row(
+          label: context.t(LocaleKeys.editingSize),
+          child: _Range(
+            value: content.transform.scale * 100,
+            min: 20,
+            max: 200,
+            step: 5,
+            format: (v) => '${v.round()}%',
+            onCommit: locked
                 ? null
-                : setContent(
+                : (v) => setContent(
                     content.copyWith(
-                      style: v,
-                      position: v == 'title' ? 'center' : 'bottom',
+                      transform: content.transform.copyWith(scale: v / 100),
                     ),
                   ),
           ),
         ),
-        _Row(
-          label: context.t(LocaleKeys.editingPosition),
-          child: RevericSegmentedControl<String>(
-            selected: content.position,
-            segments: [
-              RevericSegment(
-                value: 'top',
-                label: context.t(LocaleKeys.editingPositionTop),
-              ),
-              RevericSegment(
-                value: 'center',
-                label: context.t(LocaleKeys.editingPositionCenter),
-              ),
-              RevericSegment(
-                value: 'bottom',
-                label: context.t(LocaleKeys.editingPositionBottom),
-              ),
-            ],
-            onChanged: (v) =>
-                locked ? null : setContent(content.copyWith(position: v)),
-          ),
+        opacity(
+          content.opacity,
+          (v) => setContent(content.copyWith(opacity: v)),
+        ),
+        ...placement(
+          content.transform,
+          .09,
+          (t) => setContent(content.copyWith(transform: t)),
         ),
       ];
     }
@@ -277,7 +339,8 @@ class EditingInspector extends StatelessWidget {
                 ? null
                 : (v) => setContent(media.copyWith(gainDb: v)),
           ),
-          if (media is EditingVideoContent &&
+          if (!controller.readOnly &&
+              media is EditingVideoContent &&
               source.hasAudio &&
               !media.audioDetached)
             RevericButton.text(
@@ -302,10 +365,35 @@ class EditingInspector extends StatelessWidget {
       name: c.name.isEmpty ? controller.sourceName(source) : c.name,
       detail: used,
     );
+    final speed = source.mediaType == 'image'
+        ? null
+        : _Row(
+            label: context.t(LocaleKeys.editingSpeed),
+            child: _Range(
+              value: media.speed,
+              min: EditingSourceContent.minSpeed,
+              max: EditingSourceContent.maxSpeed,
+              step: .05,
+              format: editingSpeedLabel,
+              onCommit: locked
+                  ? null
+                  : (v) => editingRun(
+                      context,
+                      () => controller.session.commit(
+                        EditingCommands.retime(
+                          doc,
+                          c.id,
+                          (v * 100).round() / 100,
+                        ),
+                      ),
+                    ),
+            ),
+          );
     if (media is EditingAudioContent) {
       return [
         head,
         sourceRow,
+        ?speed,
         volume,
         fade(
           context.t(LocaleKeys.editingFadeIn),
@@ -325,20 +413,9 @@ class EditingInspector extends StatelessWidget {
     return [
       head,
       sourceRow,
+      ?speed,
       if (!track.main) ...[
-        _Row(
-          label: context.t(LocaleKeys.editingOpacity),
-          child: _Range(
-            value: video.opacity * 100,
-            min: 0,
-            max: 100,
-            step: 1,
-            format: (v) => '${v.round()}%',
-            onCommit: locked
-                ? null
-                : (v) => setContent(video.copyWith(opacity: v / 100)),
-          ),
-        ),
+        opacity(video.opacity, (v) => setContent(video.copyWith(opacity: v))),
         _Row(
           label: context.t(LocaleKeys.editingSize),
           child: _Range(
@@ -353,14 +430,15 @@ class EditingInspector extends StatelessWidget {
                 ? null
                 : (v) => setContent(
                     video.copyWith(
-                      transform: EditingTransform(
-                        scale: v / 100,
-                        x: video.transform.x,
-                        y: video.transform.y,
-                      ),
+                      transform: video.transform.copyWith(scale: v / 100),
                     ),
                   ),
           ),
+        ),
+        ...placement(
+          video.transform,
+          .06,
+          (t) => setContent(video.copyWith(transform: t)),
         ),
         fade(
           context.t(LocaleKeys.editingFadeIn),
@@ -376,7 +454,7 @@ class EditingInspector extends StatelessWidget {
         ),
       ],
       if (source.mediaType == 'video' && !video.audioDetached) volume,
-      if (track.main)
+      if (track.main && !controller.readOnly)
         Padding(
           padding: const EdgeInsets.only(top: RevericSpacing.md),
           child: Align(
@@ -468,6 +546,86 @@ class _Row extends StatelessWidget {
                 hint!,
                 style: typo.uiTiny.copyWith(color: colors.textSubtle),
               ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 锚点九宫格：选中格对应图层框上落在画面坐标处的那个点。
+class _AnchorGrid extends StatelessWidget {
+  const _AnchorGrid({
+    required this.anchorX,
+    required this.anchorY,
+    required this.onSelect,
+  });
+  final double anchorX, anchorY;
+  final void Function(double anchorX, double anchorY)? onSelect;
+  static const _labels = [
+    [
+      LocaleKeys.editingPositionTopLeft,
+      LocaleKeys.editingPositionTop,
+      LocaleKeys.editingPositionTopRight,
+    ],
+    [
+      LocaleKeys.editingPositionLeft,
+      LocaleKeys.editingPositionCenter,
+      LocaleKeys.editingPositionRight,
+    ],
+    [
+      LocaleKeys.editingPositionBottomLeft,
+      LocaleKeys.editingPositionBottom,
+      LocaleKeys.editingPositionBottomRight,
+    ],
+  ];
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    Widget cell(int row, int column) {
+      final ax = column / 2, ay = row / 2;
+      final selected = ax == anchorX && ay == anchorY;
+      return Tooltip(
+        message: context.t(_labels[row][column]),
+        child: InkWell(
+          key: ValueKey('editing-anchor-$column-$row'),
+          onTap: onSelect == null ? null : () => onSelect!(ax, ay),
+          borderRadius: BorderRadius.circular(RevericRadius.small),
+          child: SizedBox.square(
+            dimension: 20,
+            child: Center(
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: selected ? colors.accent : colors.surfaceContainerHigh,
+                  border: Border.all(
+                    color: selected ? colors.accent : colors.borderInput,
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.borderInput),
+        borderRadius: BorderRadius.circular(RevericRadius.small),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var row = 0; row < 3; row++)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var column = 0; column < 3; column++) cell(row, column),
+              ],
             ),
         ],
       ),

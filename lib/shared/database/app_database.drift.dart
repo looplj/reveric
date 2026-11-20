@@ -2343,7 +2343,7 @@ class NovelCollection extends DataClass implements Insertable<NovelCollection> {
   final String filterMode;
   final CollectionFilter? filter;
 
-  /// 集合所属的作品类型；null 表示小说库和剧本库共用（只有默认集合）。
+  /// 集合所属的作品类型。null 只留给各库共用的内置「全部」。
   /// 取值由 Dart 侧 [validateContentKind] 校验。
   final String? contentKind;
   final DateTime createdAt;
@@ -7930,6 +7930,15 @@ class $AiProvidersTable extends AiProviders
     requiredDuringInsert: false,
     defaultValue: const Constant(0.7),
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<AiProviderConfig?, String>
+  config = GeneratedColumn<String>(
+    'config',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<AiProviderConfig?>($AiProvidersTable.$converterconfign);
   static const VerificationMeta _maxTurnsMeta = const VerificationMeta(
     'maxTurns',
   );
@@ -8062,6 +8071,7 @@ class $AiProvidersTable extends AiProviders
     videoModels,
     embeddingModels,
     temperature,
+    config,
     maxTurns,
     reasoningEffort,
     proxyUrl,
@@ -8288,6 +8298,12 @@ class $AiProvidersTable extends AiProviders
         DriftSqlType.double,
         data['${effectivePrefix}temperature'],
       )!,
+      config: $AiProvidersTable.$converterconfign.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}config'],
+        ),
+      ),
       maxTurns: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}max_turns'],
@@ -8346,6 +8362,10 @@ class $AiProvidersTable extends AiProviders
       const StringListConverter();
   static TypeConverter<List<String>, String> $converterembeddingModels =
       const StringListConverter();
+  static TypeConverter<AiProviderConfig, String> $converterconfig =
+      const AiProviderConfigConverter();
+  static TypeConverter<AiProviderConfig?, String?> $converterconfign =
+      NullAwareTypeConverter.wrap($converterconfig);
 }
 
 class AiProvider extends DataClass implements Insertable<AiProvider> {
@@ -8362,6 +8382,9 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
   final List<String> videoModels;
   final List<String> embeddingModels;
   final double temperature;
+
+  /// 扩展配置。空值用默认：enableTemperature 为 false，请求不带温度。
+  final AiProviderConfig? config;
   final int maxTurns;
   final String? reasoningEffort;
   final String proxyUrl;
@@ -8388,6 +8411,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     required this.videoModels,
     required this.embeddingModels,
     required this.temperature,
+    this.config,
     required this.maxTurns,
     this.reasoningEffort,
     required this.proxyUrl,
@@ -8435,6 +8459,11 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       );
     }
     map['temperature'] = Variable<double>(temperature);
+    if (!nullToAbsent || config != null) {
+      map['config'] = Variable<String>(
+        $AiProvidersTable.$converterconfign.toSql(config),
+      );
+    }
     map['max_turns'] = Variable<int>(maxTurns);
     if (!nullToAbsent || reasoningEffort != null) {
       map['reasoning_effort'] = Variable<String>(reasoningEffort);
@@ -8471,6 +8500,9 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       videoModels: Value(videoModels),
       embeddingModels: Value(embeddingModels),
       temperature: Value(temperature),
+      config: config == null && nullToAbsent
+          ? const Value.absent()
+          : Value(config),
       maxTurns: Value(maxTurns),
       reasoningEffort: reasoningEffort == null && nullToAbsent
           ? const Value.absent()
@@ -8513,6 +8545,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
         json['embeddingModels'],
       ),
       temperature: serializer.fromJson<double>(json['temperature']),
+      config: serializer.fromJson<AiProviderConfig?>(json['config']),
       maxTurns: serializer.fromJson<int>(json['maxTurns']),
       reasoningEffort: serializer.fromJson<String?>(json['reasoningEffort']),
       proxyUrl: serializer.fromJson<String>(json['proxyUrl']),
@@ -8542,6 +8575,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       'videoModels': serializer.toJson<List<String>>(videoModels),
       'embeddingModels': serializer.toJson<List<String>>(embeddingModels),
       'temperature': serializer.toJson<double>(temperature),
+      'config': serializer.toJson<AiProviderConfig?>(config),
       'maxTurns': serializer.toJson<int>(maxTurns),
       'reasoningEffort': serializer.toJson<String?>(reasoningEffort),
       'proxyUrl': serializer.toJson<String>(proxyUrl),
@@ -8569,6 +8603,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     List<String>? videoModels,
     List<String>? embeddingModels,
     double? temperature,
+    Value<AiProviderConfig?> config = const Value.absent(),
     int? maxTurns,
     Value<String?> reasoningEffort = const Value.absent(),
     String? proxyUrl,
@@ -8593,6 +8628,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     videoModels: videoModels ?? this.videoModels,
     embeddingModels: embeddingModels ?? this.embeddingModels,
     temperature: temperature ?? this.temperature,
+    config: config.present ? config.value : this.config,
     maxTurns: maxTurns ?? this.maxTurns,
     reasoningEffort: reasoningEffort.present
         ? reasoningEffort.value
@@ -8635,6 +8671,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       temperature: data.temperature.present
           ? data.temperature.value
           : this.temperature,
+      config: data.config.present ? data.config.value : this.config,
       maxTurns: data.maxTurns.present ? data.maxTurns.value : this.maxTurns,
       reasoningEffort: data.reasoningEffort.present
           ? data.reasoningEffort.value
@@ -8676,6 +8713,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
           ..write('videoModels: $videoModels, ')
           ..write('embeddingModels: $embeddingModels, ')
           ..write('temperature: $temperature, ')
+          ..write('config: $config, ')
           ..write('maxTurns: $maxTurns, ')
           ..write('reasoningEffort: $reasoningEffort, ')
           ..write('proxyUrl: $proxyUrl, ')
@@ -8705,6 +8743,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     videoModels,
     embeddingModels,
     temperature,
+    config,
     maxTurns,
     reasoningEffort,
     proxyUrl,
@@ -8733,6 +8772,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
           other.videoModels == this.videoModels &&
           other.embeddingModels == this.embeddingModels &&
           other.temperature == this.temperature &&
+          other.config == this.config &&
           other.maxTurns == this.maxTurns &&
           other.reasoningEffort == this.reasoningEffort &&
           other.proxyUrl == this.proxyUrl &&
@@ -8759,6 +8799,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
   final Value<List<String>> videoModels;
   final Value<List<String>> embeddingModels;
   final Value<double> temperature;
+  final Value<AiProviderConfig?> config;
   final Value<int> maxTurns;
   final Value<String?> reasoningEffort;
   final Value<String> proxyUrl;
@@ -8784,6 +8825,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     this.videoModels = const Value.absent(),
     this.embeddingModels = const Value.absent(),
     this.temperature = const Value.absent(),
+    this.config = const Value.absent(),
     this.maxTurns = const Value.absent(),
     this.reasoningEffort = const Value.absent(),
     this.proxyUrl = const Value.absent(),
@@ -8810,6 +8852,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     this.videoModels = const Value.absent(),
     this.embeddingModels = const Value.absent(),
     this.temperature = const Value.absent(),
+    this.config = const Value.absent(),
     this.maxTurns = const Value.absent(),
     this.reasoningEffort = const Value.absent(),
     this.proxyUrl = const Value.absent(),
@@ -8838,6 +8881,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     Expression<String>? videoModels,
     Expression<String>? embeddingModels,
     Expression<double>? temperature,
+    Expression<String>? config,
     Expression<int>? maxTurns,
     Expression<String>? reasoningEffort,
     Expression<String>? proxyUrl,
@@ -8864,6 +8908,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
       if (videoModels != null) 'video_models': videoModels,
       if (embeddingModels != null) 'embedding_models': embeddingModels,
       if (temperature != null) 'temperature': temperature,
+      if (config != null) 'config': config,
       if (maxTurns != null) 'max_turns': maxTurns,
       if (reasoningEffort != null) 'reasoning_effort': reasoningEffort,
       if (proxyUrl != null) 'proxy_url': proxyUrl,
@@ -8892,6 +8937,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     Value<List<String>>? videoModels,
     Value<List<String>>? embeddingModels,
     Value<double>? temperature,
+    Value<AiProviderConfig?>? config,
     Value<int>? maxTurns,
     Value<String?>? reasoningEffort,
     Value<String>? proxyUrl,
@@ -8918,6 +8964,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
       videoModels: videoModels ?? this.videoModels,
       embeddingModels: embeddingModels ?? this.embeddingModels,
       temperature: temperature ?? this.temperature,
+      config: config ?? this.config,
       maxTurns: maxTurns ?? this.maxTurns,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       proxyUrl: proxyUrl ?? this.proxyUrl,
@@ -8986,6 +9033,11 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     if (temperature.present) {
       map['temperature'] = Variable<double>(temperature.value);
     }
+    if (config.present) {
+      map['config'] = Variable<String>(
+        $AiProvidersTable.$converterconfign.toSql(config.value),
+      );
+    }
     if (maxTurns.present) {
       map['max_turns'] = Variable<int>(maxTurns.value);
     }
@@ -9038,6 +9090,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
           ..write('videoModels: $videoModels, ')
           ..write('embeddingModels: $embeddingModels, ')
           ..write('temperature: $temperature, ')
+          ..write('config: $config, ')
           ..write('maxTurns: $maxTurns, ')
           ..write('reasoningEffort: $reasoningEffort, ')
           ..write('proxyUrl: $proxyUrl, ')
@@ -9060,6 +9113,30 @@ class $GenerationTasksTable extends GenerationTasks
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $GenerationTasksTable(this.attachedDatabase, [this._alias]);
+  @override
+  late final GeneratedColumnWithTypeConverter<Map<String, dynamic>?, String>
+  providerState =
+      GeneratedColumn<String>(
+        'provider_state',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<Map<String, dynamic>?>(
+        $GenerationTasksTable.$converterproviderStaten,
+      );
+  @override
+  late final GeneratedColumnWithTypeConverter<ImageTaskOutputs?, String>
+  imageOutputs =
+      GeneratedColumn<String>(
+        'image_outputs',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<ImageTaskOutputs?>(
+        $GenerationTasksTable.$converterimageOutputsn,
+      );
   @override
   late final GeneratedColumnWithTypeConverter<GenerationKind, String> kind =
       GeneratedColumn<String>(
@@ -9368,6 +9445,8 @@ class $GenerationTasksTable extends GenerationTasks
   );
   @override
   List<GeneratedColumn> get $columns => [
+    providerState,
+    imageOutputs,
     kind,
     id,
     draft,
@@ -9609,6 +9688,18 @@ class $GenerationTasksTable extends GenerationTasks
   GenerationTask map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return GenerationTask(
+      providerState: $GenerationTasksTable.$converterproviderStaten.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}provider_state'],
+        ),
+      ),
+      imageOutputs: $GenerationTasksTable.$converterimageOutputsn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}image_outputs'],
+        ),
+      ),
       kind: $GenerationTasksTable.$converterkind.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -9735,6 +9826,16 @@ class $GenerationTasksTable extends GenerationTasks
     return $GenerationTasksTable(attachedDatabase, alias);
   }
 
+  static TypeConverter<Map<String, dynamic>, String> $converterproviderState =
+      const ProviderStateConverter();
+  static TypeConverter<Map<String, dynamic>?, String?>
+  $converterproviderStaten = NullAwareTypeConverter.wrap(
+    $converterproviderState,
+  );
+  static TypeConverter<ImageTaskOutputs, String> $converterimageOutputs =
+      const ImageTaskOutputsConverter();
+  static TypeConverter<ImageTaskOutputs?, String?> $converterimageOutputsn =
+      NullAwareTypeConverter.wrap($converterimageOutputs);
   static JsonTypeConverter2<GenerationKind, String, String> $converterkind =
       const EnumNameConverter<GenerationKind>(GenerationKind.values);
   static JsonTypeConverter2<GenerationTaskStatus, String, String>
@@ -9746,6 +9847,8 @@ class $GenerationTasksTable extends GenerationTasks
 }
 
 class GenerationTask extends DataClass implements Insertable<GenerationTask> {
+  final Map<String, dynamic>? providerState;
+  final ImageTaskOutputs? imageOutputs;
   final GenerationKind kind;
   final String id;
 
@@ -9781,6 +9884,8 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   final DateTime updatedAt;
   final DateTime deletedAt;
   const GenerationTask({
+    this.providerState,
+    this.imageOutputs,
     required this.kind,
     required this.id,
     required this.draft,
@@ -9813,6 +9918,16 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (!nullToAbsent || providerState != null) {
+      map['provider_state'] = Variable<String>(
+        $GenerationTasksTable.$converterproviderStaten.toSql(providerState),
+      );
+    }
+    if (!nullToAbsent || imageOutputs != null) {
+      map['image_outputs'] = Variable<String>(
+        $GenerationTasksTable.$converterimageOutputsn.toSql(imageOutputs),
+      );
+    }
     {
       map['kind'] = Variable<String>(
         $GenerationTasksTable.$converterkind.toSql(kind),
@@ -9886,6 +10001,12 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
 
   GenerationTasksCompanion toCompanion(bool nullToAbsent) {
     return GenerationTasksCompanion(
+      providerState: providerState == null && nullToAbsent
+          ? const Value.absent()
+          : Value(providerState),
+      imageOutputs: imageOutputs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageOutputs),
       kind: Value(kind),
       id: Value(id),
       draft: Value(draft),
@@ -9949,6 +10070,12 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return GenerationTask(
+      providerState: serializer.fromJson<Map<String, dynamic>?>(
+        json['providerState'],
+      ),
+      imageOutputs: serializer.fromJson<ImageTaskOutputs?>(
+        json['imageOutputs'],
+      ),
       kind: $GenerationTasksTable.$converterkind.fromJson(
         serializer.fromJson<String>(json['kind']),
       ),
@@ -9989,6 +10116,8 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'providerState': serializer.toJson<Map<String, dynamic>?>(providerState),
+      'imageOutputs': serializer.toJson<ImageTaskOutputs?>(imageOutputs),
       'kind': serializer.toJson<String>(
         $GenerationTasksTable.$converterkind.toJson(kind),
       ),
@@ -10025,6 +10154,8 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   }
 
   GenerationTask copyWith({
+    Value<Map<String, dynamic>?> providerState = const Value.absent(),
+    Value<ImageTaskOutputs?> imageOutputs = const Value.absent(),
     GenerationKind? kind,
     String? id,
     bool? draft,
@@ -10054,6 +10185,10 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
     DateTime? updatedAt,
     DateTime? deletedAt,
   }) => GenerationTask(
+    providerState: providerState.present
+        ? providerState.value
+        : this.providerState,
+    imageOutputs: imageOutputs.present ? imageOutputs.value : this.imageOutputs,
     kind: kind ?? this.kind,
     id: id ?? this.id,
     draft: draft ?? this.draft,
@@ -10091,6 +10226,12 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   );
   GenerationTask copyWithCompanion(GenerationTasksCompanion data) {
     return GenerationTask(
+      providerState: data.providerState.present
+          ? data.providerState.value
+          : this.providerState,
+      imageOutputs: data.imageOutputs.present
+          ? data.imageOutputs.value
+          : this.imageOutputs,
       kind: data.kind.present ? data.kind.value : this.kind,
       id: data.id.present ? data.id.value : this.id,
       draft: data.draft.present ? data.draft.value : this.draft,
@@ -10155,6 +10296,8 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   @override
   String toString() {
     return (StringBuffer('GenerationTask(')
+          ..write('providerState: $providerState, ')
+          ..write('imageOutputs: $imageOutputs, ')
           ..write('kind: $kind, ')
           ..write('id: $id, ')
           ..write('draft: $draft, ')
@@ -10189,6 +10332,8 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
 
   @override
   int get hashCode => Object.hashAll([
+    providerState,
+    imageOutputs,
     kind,
     id,
     draft,
@@ -10222,6 +10367,8 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is GenerationTask &&
+          other.providerState == this.providerState &&
+          other.imageOutputs == this.imageOutputs &&
           other.kind == this.kind &&
           other.id == this.id &&
           other.draft == this.draft &&
@@ -10253,6 +10400,8 @@ class GenerationTask extends DataClass implements Insertable<GenerationTask> {
 }
 
 class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
+  final Value<Map<String, dynamic>?> providerState;
+  final Value<ImageTaskOutputs?> imageOutputs;
   final Value<GenerationKind> kind;
   final Value<String> id;
   final Value<bool> draft;
@@ -10283,6 +10432,8 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   final Value<DateTime> deletedAt;
   final Value<int> rowid;
   const GenerationTasksCompanion({
+    this.providerState = const Value.absent(),
+    this.imageOutputs = const Value.absent(),
     this.kind = const Value.absent(),
     this.id = const Value.absent(),
     this.draft = const Value.absent(),
@@ -10314,6 +10465,8 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
     this.rowid = const Value.absent(),
   });
   GenerationTasksCompanion.insert({
+    this.providerState = const Value.absent(),
+    this.imageOutputs = const Value.absent(),
     required GenerationKind kind,
     required String id,
     this.draft = const Value.absent(),
@@ -10354,6 +10507,8 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
        status = Value(status),
        requestJson = Value(requestJson);
   static Insertable<GenerationTask> custom({
+    Expression<String>? providerState,
+    Expression<String>? imageOutputs,
     Expression<String>? kind,
     Expression<String>? id,
     Expression<bool>? draft,
@@ -10385,6 +10540,8 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (providerState != null) 'provider_state': providerState,
+      if (imageOutputs != null) 'image_outputs': imageOutputs,
       if (kind != null) 'kind': kind,
       if (id != null) 'id': id,
       if (draft != null) 'draft': draft,
@@ -10418,6 +10575,8 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   }
 
   GenerationTasksCompanion copyWith({
+    Value<Map<String, dynamic>?>? providerState,
+    Value<ImageTaskOutputs?>? imageOutputs,
     Value<GenerationKind>? kind,
     Value<String>? id,
     Value<bool>? draft,
@@ -10449,6 +10608,8 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
     Value<int>? rowid,
   }) {
     return GenerationTasksCompanion(
+      providerState: providerState ?? this.providerState,
+      imageOutputs: imageOutputs ?? this.imageOutputs,
       kind: kind ?? this.kind,
       id: id ?? this.id,
       draft: draft ?? this.draft,
@@ -10484,6 +10645,18 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (providerState.present) {
+      map['provider_state'] = Variable<String>(
+        $GenerationTasksTable.$converterproviderStaten.toSql(
+          providerState.value,
+        ),
+      );
+    }
+    if (imageOutputs.present) {
+      map['image_outputs'] = Variable<String>(
+        $GenerationTasksTable.$converterimageOutputsn.toSql(imageOutputs.value),
+      );
+    }
     if (kind.present) {
       map['kind'] = Variable<String>(
         $GenerationTasksTable.$converterkind.toSql(kind.value),
@@ -10583,6 +10756,8 @@ class GenerationTasksCompanion extends UpdateCompanion<GenerationTask> {
   @override
   String toString() {
     return (StringBuffer('GenerationTasksCompanion(')
+          ..write('providerState: $providerState, ')
+          ..write('imageOutputs: $imageOutputs, ')
           ..write('kind: $kind, ')
           ..write('id: $id, ')
           ..write('draft: $draft, ')
@@ -17323,17 +17498,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _productCodeMeta = const VerificationMeta(
-    'productCode',
-  );
-  @override
-  late final GeneratedColumn<String> productCode = GeneratedColumn<String>(
-    'product_code',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
   static const VerificationMeta _deviceIdMeta = const VerificationMeta(
     'deviceId',
   );
@@ -17410,7 +17574,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
     channel,
     priority,
     endpoint,
-    productCode,
     deviceId,
     payloadJson,
     occurredAt,
@@ -17462,17 +17625,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
       );
     } else if (isInserting) {
       context.missing(_endpointMeta);
-    }
-    if (data.containsKey('product_code')) {
-      context.handle(
-        _productCodeMeta,
-        productCode.isAcceptableOrUnknown(
-          data['product_code']!,
-          _productCodeMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_productCodeMeta);
     }
     if (data.containsKey('device_id')) {
       context.handle(
@@ -17558,10 +17710,6 @@ class $AnonymousOutboxEventsTable extends AnonymousOutboxEvents
         DriftSqlType.string,
         data['${effectivePrefix}endpoint'],
       )!,
-      productCode: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}product_code'],
-      )!,
       deviceId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}device_id'],
@@ -17604,7 +17752,6 @@ class AnonymousOutboxEvent extends DataClass
   final String channel;
   final int priority;
   final String endpoint;
-  final String productCode;
   final String deviceId;
 
   /// 单条、endpoint 专属 payload，不持久化批请求体或签名。
@@ -17619,7 +17766,6 @@ class AnonymousOutboxEvent extends DataClass
     required this.channel,
     required this.priority,
     required this.endpoint,
-    required this.productCode,
     required this.deviceId,
     required this.payloadJson,
     required this.occurredAt,
@@ -17637,7 +17783,6 @@ class AnonymousOutboxEvent extends DataClass
     map['channel'] = Variable<String>(channel);
     map['priority'] = Variable<int>(priority);
     map['endpoint'] = Variable<String>(endpoint);
-    map['product_code'] = Variable<String>(productCode);
     map['device_id'] = Variable<String>(deviceId);
     map['payload_json'] = Variable<String>(payloadJson);
     map['occurred_at'] = Variable<DateTime>(occurredAt);
@@ -17656,7 +17801,6 @@ class AnonymousOutboxEvent extends DataClass
       channel: Value(channel),
       priority: Value(priority),
       endpoint: Value(endpoint),
-      productCode: Value(productCode),
       deviceId: Value(deviceId),
       payloadJson: Value(payloadJson),
       occurredAt: Value(occurredAt),
@@ -17677,7 +17821,6 @@ class AnonymousOutboxEvent extends DataClass
       channel: serializer.fromJson<String>(json['channel']),
       priority: serializer.fromJson<int>(json['priority']),
       endpoint: serializer.fromJson<String>(json['endpoint']),
-      productCode: serializer.fromJson<String>(json['productCode']),
       deviceId: serializer.fromJson<String>(json['deviceId']),
       payloadJson: serializer.fromJson<String>(json['payloadJson']),
       occurredAt: serializer.fromJson<DateTime>(json['occurredAt']),
@@ -17695,7 +17838,6 @@ class AnonymousOutboxEvent extends DataClass
       'channel': serializer.toJson<String>(channel),
       'priority': serializer.toJson<int>(priority),
       'endpoint': serializer.toJson<String>(endpoint),
-      'productCode': serializer.toJson<String>(productCode),
       'deviceId': serializer.toJson<String>(deviceId),
       'payloadJson': serializer.toJson<String>(payloadJson),
       'occurredAt': serializer.toJson<DateTime>(occurredAt),
@@ -17711,7 +17853,6 @@ class AnonymousOutboxEvent extends DataClass
     String? channel,
     int? priority,
     String? endpoint,
-    String? productCode,
     String? deviceId,
     String? payloadJson,
     DateTime? occurredAt,
@@ -17724,7 +17865,6 @@ class AnonymousOutboxEvent extends DataClass
     channel: channel ?? this.channel,
     priority: priority ?? this.priority,
     endpoint: endpoint ?? this.endpoint,
-    productCode: productCode ?? this.productCode,
     deviceId: deviceId ?? this.deviceId,
     payloadJson: payloadJson ?? this.payloadJson,
     occurredAt: occurredAt ?? this.occurredAt,
@@ -17739,9 +17879,6 @@ class AnonymousOutboxEvent extends DataClass
       channel: data.channel.present ? data.channel.value : this.channel,
       priority: data.priority.present ? data.priority.value : this.priority,
       endpoint: data.endpoint.present ? data.endpoint.value : this.endpoint,
-      productCode: data.productCode.present
-          ? data.productCode.value
-          : this.productCode,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       payloadJson: data.payloadJson.present
           ? data.payloadJson.value
@@ -17767,7 +17904,6 @@ class AnonymousOutboxEvent extends DataClass
           ..write('channel: $channel, ')
           ..write('priority: $priority, ')
           ..write('endpoint: $endpoint, ')
-          ..write('productCode: $productCode, ')
           ..write('deviceId: $deviceId, ')
           ..write('payloadJson: $payloadJson, ')
           ..write('occurredAt: $occurredAt, ')
@@ -17785,7 +17921,6 @@ class AnonymousOutboxEvent extends DataClass
     channel,
     priority,
     endpoint,
-    productCode,
     deviceId,
     payloadJson,
     occurredAt,
@@ -17802,7 +17937,6 @@ class AnonymousOutboxEvent extends DataClass
           other.channel == this.channel &&
           other.priority == this.priority &&
           other.endpoint == this.endpoint &&
-          other.productCode == this.productCode &&
           other.deviceId == this.deviceId &&
           other.payloadJson == this.payloadJson &&
           other.occurredAt == this.occurredAt &&
@@ -17818,7 +17952,6 @@ class AnonymousOutboxEventsCompanion
   final Value<String> channel;
   final Value<int> priority;
   final Value<String> endpoint;
-  final Value<String> productCode;
   final Value<String> deviceId;
   final Value<String> payloadJson;
   final Value<DateTime> occurredAt;
@@ -17831,7 +17964,6 @@ class AnonymousOutboxEventsCompanion
     this.channel = const Value.absent(),
     this.priority = const Value.absent(),
     this.endpoint = const Value.absent(),
-    this.productCode = const Value.absent(),
     this.deviceId = const Value.absent(),
     this.payloadJson = const Value.absent(),
     this.occurredAt = const Value.absent(),
@@ -17845,7 +17977,6 @@ class AnonymousOutboxEventsCompanion
     required String channel,
     required int priority,
     required String endpoint,
-    required String productCode,
     required String deviceId,
     required String payloadJson,
     required DateTime occurredAt,
@@ -17855,7 +17986,6 @@ class AnonymousOutboxEventsCompanion
   }) : channel = Value(channel),
        priority = Value(priority),
        endpoint = Value(endpoint),
-       productCode = Value(productCode),
        deviceId = Value(deviceId),
        payloadJson = Value(payloadJson),
        occurredAt = Value(occurredAt);
@@ -17865,7 +17995,6 @@ class AnonymousOutboxEventsCompanion
     Expression<String>? channel,
     Expression<int>? priority,
     Expression<String>? endpoint,
-    Expression<String>? productCode,
     Expression<String>? deviceId,
     Expression<String>? payloadJson,
     Expression<DateTime>? occurredAt,
@@ -17879,7 +18008,6 @@ class AnonymousOutboxEventsCompanion
       if (channel != null) 'channel': channel,
       if (priority != null) 'priority': priority,
       if (endpoint != null) 'endpoint': endpoint,
-      if (productCode != null) 'product_code': productCode,
       if (deviceId != null) 'device_id': deviceId,
       if (payloadJson != null) 'payload_json': payloadJson,
       if (occurredAt != null) 'occurred_at': occurredAt,
@@ -17895,7 +18023,6 @@ class AnonymousOutboxEventsCompanion
     Value<String>? channel,
     Value<int>? priority,
     Value<String>? endpoint,
-    Value<String>? productCode,
     Value<String>? deviceId,
     Value<String>? payloadJson,
     Value<DateTime>? occurredAt,
@@ -17909,7 +18036,6 @@ class AnonymousOutboxEventsCompanion
       channel: channel ?? this.channel,
       priority: priority ?? this.priority,
       endpoint: endpoint ?? this.endpoint,
-      productCode: productCode ?? this.productCode,
       deviceId: deviceId ?? this.deviceId,
       payloadJson: payloadJson ?? this.payloadJson,
       occurredAt: occurredAt ?? this.occurredAt,
@@ -17936,9 +18062,6 @@ class AnonymousOutboxEventsCompanion
     }
     if (endpoint.present) {
       map['endpoint'] = Variable<String>(endpoint.value);
-    }
-    if (productCode.present) {
-      map['product_code'] = Variable<String>(productCode.value);
     }
     if (deviceId.present) {
       map['device_id'] = Variable<String>(deviceId.value);
@@ -17969,7 +18092,6 @@ class AnonymousOutboxEventsCompanion
           ..write('channel: $channel, ')
           ..write('priority: $priority, ')
           ..write('endpoint: $endpoint, ')
-          ..write('productCode: $productCode, ')
           ..write('deviceId: $deviceId, ')
           ..write('payloadJson: $payloadJson, ')
           ..write('occurredAt: $occurredAt, ')
@@ -28859,6 +28981,7 @@ typedef $$AiProvidersTableCreateCompanionBuilder =
       Value<List<String>> videoModels,
       Value<List<String>> embeddingModels,
       Value<double> temperature,
+      Value<AiProviderConfig?> config,
       Value<int> maxTurns,
       Value<String?> reasoningEffort,
       Value<String> proxyUrl,
@@ -28886,6 +29009,7 @@ typedef $$AiProvidersTableUpdateCompanionBuilder =
       Value<List<String>> videoModels,
       Value<List<String>> embeddingModels,
       Value<double> temperature,
+      Value<AiProviderConfig?> config,
       Value<int> maxTurns,
       Value<String?> reasoningEffort,
       Value<String> proxyUrl,
@@ -28976,6 +29100,12 @@ class $$AiProvidersTableFilterComposer
   ColumnFilters<double> get temperature => $composableBuilder(
     column: $table.temperature,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<AiProviderConfig?, AiProviderConfig, String>
+  get config => $composableBuilder(
+    column: $table.config,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<int> get maxTurns => $composableBuilder(
@@ -29103,6 +29233,11 @@ class $$AiProvidersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get config => $composableBuilder(
+    column: $table.config,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get maxTurns => $composableBuilder(
     column: $table.maxTurns,
     builder: (column) => ColumnOrderings(column),
@@ -29216,6 +29351,9 @@ class $$AiProvidersTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumnWithTypeConverter<AiProviderConfig?, String> get config =>
+      $composableBuilder(column: $table.config, builder: (column) => column);
+
   GeneratedColumn<int> get maxTurns =>
       $composableBuilder(column: $table.maxTurns, builder: (column) => column);
 
@@ -29303,6 +29441,7 @@ class $$AiProvidersTableTableManager
                 Value<List<String>> videoModels = const Value.absent(),
                 Value<List<String>> embeddingModels = const Value.absent(),
                 Value<double> temperature = const Value.absent(),
+                Value<AiProviderConfig?> config = const Value.absent(),
                 Value<int> maxTurns = const Value.absent(),
                 Value<String?> reasoningEffort = const Value.absent(),
                 Value<String> proxyUrl = const Value.absent(),
@@ -29328,6 +29467,7 @@ class $$AiProvidersTableTableManager
                 videoModels: videoModels,
                 embeddingModels: embeddingModels,
                 temperature: temperature,
+                config: config,
                 maxTurns: maxTurns,
                 reasoningEffort: reasoningEffort,
                 proxyUrl: proxyUrl,
@@ -29355,6 +29495,7 @@ class $$AiProvidersTableTableManager
                 Value<List<String>> videoModels = const Value.absent(),
                 Value<List<String>> embeddingModels = const Value.absent(),
                 Value<double> temperature = const Value.absent(),
+                Value<AiProviderConfig?> config = const Value.absent(),
                 Value<int> maxTurns = const Value.absent(),
                 Value<String?> reasoningEffort = const Value.absent(),
                 Value<String> proxyUrl = const Value.absent(),
@@ -29380,6 +29521,7 @@ class $$AiProvidersTableTableManager
                 videoModels: videoModels,
                 embeddingModels: embeddingModels,
                 temperature: temperature,
+                config: config,
                 maxTurns: maxTurns,
                 reasoningEffort: reasoningEffort,
                 proxyUrl: proxyUrl,
@@ -29428,6 +29570,8 @@ typedef $$AiProvidersTableProcessedTableManager =
     >;
 typedef $$GenerationTasksTableCreateCompanionBuilder =
     GenerationTasksCompanion Function({
+      Value<Map<String, dynamic>?> providerState,
+      Value<ImageTaskOutputs?> imageOutputs,
       required GenerationKind kind,
       required String id,
       Value<bool> draft,
@@ -29460,6 +29604,8 @@ typedef $$GenerationTasksTableCreateCompanionBuilder =
     });
 typedef $$GenerationTasksTableUpdateCompanionBuilder =
     GenerationTasksCompanion Function({
+      Value<Map<String, dynamic>?> providerState,
+      Value<ImageTaskOutputs?> imageOutputs,
       Value<GenerationKind> kind,
       Value<String> id,
       Value<bool> draft,
@@ -29500,6 +29646,22 @@ class $$GenerationTasksTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnWithTypeConverterFilters<
+    Map<String, dynamic>?,
+    Map<String, dynamic>,
+    String
+  >
+  get providerState => $composableBuilder(
+    column: $table.providerState,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<ImageTaskOutputs?, ImageTaskOutputs, String>
+  get imageOutputs => $composableBuilder(
+    column: $table.imageOutputs,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   ColumnWithTypeConverterFilters<GenerationKind, GenerationKind, String>
   get kind => $composableBuilder(
     column: $table.kind,
@@ -29657,6 +29819,16 @@ class $$GenerationTasksTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<String> get providerState => $composableBuilder(
+    column: $table.providerState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imageOutputs => $composableBuilder(
+    column: $table.imageOutputs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get kind => $composableBuilder(
     column: $table.kind,
     builder: (column) => ColumnOrderings(column),
@@ -29807,6 +29979,18 @@ class $$GenerationTasksTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumnWithTypeConverter<Map<String, dynamic>?, String>
+  get providerState => $composableBuilder(
+    column: $table.providerState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<ImageTaskOutputs?, String>
+  get imageOutputs => $composableBuilder(
+    column: $table.imageOutputs,
+    builder: (column) => column,
+  );
+
   GeneratedColumnWithTypeConverter<GenerationKind, String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
 
@@ -29960,6 +30144,9 @@ class $$GenerationTasksTableTableManager
               $$GenerationTasksTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
+                Value<Map<String, dynamic>?> providerState =
+                    const Value.absent(),
+                Value<ImageTaskOutputs?> imageOutputs = const Value.absent(),
                 Value<GenerationKind> kind = const Value.absent(),
                 Value<String> id = const Value.absent(),
                 Value<bool> draft = const Value.absent(),
@@ -29990,6 +30177,8 @@ class $$GenerationTasksTableTableManager
                 Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => GenerationTasksCompanion(
+                providerState: providerState,
+                imageOutputs: imageOutputs,
                 kind: kind,
                 id: id,
                 draft: draft,
@@ -30022,6 +30211,9 @@ class $$GenerationTasksTableTableManager
               ),
           createCompanionCallback:
               ({
+                Value<Map<String, dynamic>?> providerState =
+                    const Value.absent(),
+                Value<ImageTaskOutputs?> imageOutputs = const Value.absent(),
                 required GenerationKind kind,
                 required String id,
                 Value<bool> draft = const Value.absent(),
@@ -30052,6 +30244,8 @@ class $$GenerationTasksTableTableManager
                 Value<DateTime> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => GenerationTasksCompanion.insert(
+                providerState: providerState,
+                imageOutputs: imageOutputs,
                 kind: kind,
                 id: id,
                 draft: draft,
@@ -33555,7 +33749,6 @@ typedef $$AnonymousOutboxEventsTableCreateCompanionBuilder =
       required String channel,
       required int priority,
       required String endpoint,
-      required String productCode,
       required String deviceId,
       required String payloadJson,
       required DateTime occurredAt,
@@ -33570,7 +33763,6 @@ typedef $$AnonymousOutboxEventsTableUpdateCompanionBuilder =
       Value<String> channel,
       Value<int> priority,
       Value<String> endpoint,
-      Value<String> productCode,
       Value<String> deviceId,
       Value<String> payloadJson,
       Value<DateTime> occurredAt,
@@ -33610,11 +33802,6 @@ class $$AnonymousOutboxEventsTableFilterComposer
 
   ColumnFilters<String> get endpoint => $composableBuilder(
     column: $table.endpoint,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get productCode => $composableBuilder(
-    column: $table.productCode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -33683,11 +33870,6 @@ class $$AnonymousOutboxEventsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get productCode => $composableBuilder(
-    column: $table.productCode,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get deviceId => $composableBuilder(
     column: $table.deviceId,
     builder: (column) => ColumnOrderings(column),
@@ -33742,11 +33924,6 @@ class $$AnonymousOutboxEventsTableAnnotationComposer
 
   GeneratedColumn<String> get endpoint =>
       $composableBuilder(column: $table.endpoint, builder: (column) => column);
-
-  GeneratedColumn<String> get productCode => $composableBuilder(
-    column: $table.productCode,
-    builder: (column) => column,
-  );
 
   GeneratedColumn<String> get deviceId =>
       $composableBuilder(column: $table.deviceId, builder: (column) => column);
@@ -33826,7 +34003,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 Value<String> channel = const Value.absent(),
                 Value<int> priority = const Value.absent(),
                 Value<String> endpoint = const Value.absent(),
-                Value<String> productCode = const Value.absent(),
                 Value<String> deviceId = const Value.absent(),
                 Value<String> payloadJson = const Value.absent(),
                 Value<DateTime> occurredAt = const Value.absent(),
@@ -33839,7 +34015,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 channel: channel,
                 priority: priority,
                 endpoint: endpoint,
-                productCode: productCode,
                 deviceId: deviceId,
                 payloadJson: payloadJson,
                 occurredAt: occurredAt,
@@ -33854,7 +34029,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 required String channel,
                 required int priority,
                 required String endpoint,
-                required String productCode,
                 required String deviceId,
                 required String payloadJson,
                 required DateTime occurredAt,
@@ -33867,7 +34041,6 @@ class $$AnonymousOutboxEventsTableTableManager
                 channel: channel,
                 priority: priority,
                 endpoint: endpoint,
-                productCode: productCode,
                 deviceId: deviceId,
                 payloadJson: payloadJson,
                 occurredAt: occurredAt,

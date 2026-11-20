@@ -7,25 +7,28 @@
 //   .agents/rules/service-naming.md
 import 'dart:io';
 import '../../database/novel_content_database.dart';
-import '../../models/ai_provider.dart' show aiProviderTypeConfigFor;
+import '../../logger/app_logger.dart';
+import '../../models/ai_provider.dart';
+import '../../models/provider_model.dart';
 import '../../models/storyboard/prompt.dart';
 import '../../models/video/request.dart';
-import '../../models/video/channels.dart';
 import '../../models/video/capabilities.dart';
 import '../../models/video/task_result.dart';
-import '../ai/video/draft.dart';
+import '../ai/media_diagnostics.dart';
 import '../ai/video/task_service.dart';
 import '../storyboard/service.dart';
 import 'canvas_service.dart';
 import 'voices.dart';
+
+final _log = AppLogger.forModule('ProductionVideo');
 
 VideoProtocol productionProtocol(String type) =>
     aiProviderTypeConfigFor(type)?.videoProtocol ??
     (throw const StoryboardException('invalid_config'));
 
 /// 制作只允许渠道登记了能力的型号；底层视频接口本身不拦截未登记型号。
-bool productionSupportsVideoModel(String providerType, String? modelId) =>
-    lookupVideoChannelModel(providerType, modelId) != null;
+bool productionSupportsVideoModel(AiProvider provider, String? modelId) =>
+    resolveVideoModel(provider, modelId) != null;
 
 VideoRequest shotVideoRequest(ProductionClipRow shot) => VideoRequest(
   modelId: shot.modelId ?? '',
@@ -37,13 +40,37 @@ VideoRequest shotVideoRequest(ProductionClipRow shot) => VideoRequest(
   audio: shot.generateAudio,
 );
 
-/// 用户只选两种生成方式：全参考（不挂输入就是文生视频）和首尾帧（只挂首帧是它的子集）。
-/// 接口用的方式由 [productionSubmitMode] 按实际发送的输入算。
-bool productionUsesFrames(VideoMode mode) => mode == VideoMode.first_last_frame;
+/// 内置保留原有编辑分组；插件直接暴露声明的模式与顺序。
+List<VideoMode> productionEditingModes(
+  AiProvider provider,
+  VideoModelSpec model,
+) {
+  final modes = model.capabilities.modes;
+  if (provider.isPluginProvider) {
+    return modes;
+  }
+  return [
+    if (modes.contains(VideoMode.reference))
+      VideoMode.reference
+    else if (modes.contains(VideoMode.text))
+      VideoMode.text,
+    if (modes.contains(VideoMode.first_last_frame))
+      VideoMode.first_last_frame
+    else if (modes.contains(VideoMode.first_frame))
+      VideoMode.first_frame,
+  ];
+}
+
+/// 帧模式的编辑器只接收对应帧用途；参考模式保留各类素材的编辑用途。
+bool productionUsesFrames(VideoMode mode) =>
+    mode == VideoMode.first_frame || mode == VideoMode.first_last_frame;
 
 /// 当前组别参与提交校验的用途；全参考模式保留各类帧的编辑用途。
-List<VideoInputRole> productionRoles(VideoMode mode) =>
-    productionUsesFrames(mode)
+List<VideoInputRole> productionRoles(VideoMode mode) => mode == VideoMode.text
+    ? const []
+    : mode == VideoMode.first_frame
+    ? const [VideoInputRole.first_frame]
+    : productionUsesFrames(mode)
     ? const [
         VideoInputRole.first_frame,
         VideoInputRole.middle_frame,
@@ -67,11 +94,14 @@ VideoInputRole productionSubmitRole(VideoMode mode, VideoInputRole role) =>
     ? VideoInputRole.reference_image
     : role;
 
-/// 组别 + 实际发送的输入 → 接口要求的生成方式。
+/// 内置编辑分组按输入映射提交方式；explicit 保留插件选定的模式。
 VideoMode productionSubmitMode(
   VideoMode mode,
-  Iterable<VideoInputRole> roles,
-) => productionUsesFrames(mode)
+  Iterable<VideoInputRole> roles, {
+  bool explicit = false,
+}) => explicit || mode == VideoMode.text || mode == VideoMode.first_frame
+    ? mode
+    : productionUsesFrames(mode)
     ? (roles.contains(VideoInputRole.last_frame) ||
               roles.contains(VideoInputRole.middle_frame)
           ? VideoMode.first_last_frame
@@ -82,7 +112,7 @@ VideoMode productionSubmitMode(
 List<ProductionInput> productionInputsWithVoices(
   List<ProductionInput> inputs,
 ) => [
-  for (final input in inputs) ...[
+  for (final input in inputs.where((input) => !input.isPrompt)) ...[
     input,
     if (input.voiceAssetId != null)
       ProductionInput(
@@ -103,7 +133,7 @@ class ResolvedProductionInput {
 }
 
 List<VideoReferenceSlot> productionSlots(
-  VideoProtocol protocol,
+  VideoProtocol? protocol,
   List<ResolvedProductionInput> inputs, {
   required VideoMode mode,
   bool indexedKeyframes = false,
@@ -160,18 +190,19 @@ List<VideoReferenceSlot> productionSlots(
 }
 
 VideoRequest compileProductionPrompt(
-  String providerType,
+  AiProvider provider,
   VideoRequest raw,
-  List<ResolvedProductionInput> inputs,
-) {
+  List<ResolvedProductionInput> inputs, {
+  Map<String, String> textInputs = const {},
+}) {
   final parsed = StoryboardPrompt.parse(raw.prompt);
   final slots = productionSlots(
-    productionProtocol(providerType),
+    provider.isPluginProvider ? null : productionProtocol(provider.type),
     inputs,
     mode: raw.mode,
     indexedKeyframes:
-        (lookupVideoChannelModel(
-              providerType,
+        (resolveVideoModel(
+              provider,
               raw.modelId,
             )?.capabilities.maxMiddleFrames ??
             0) >
@@ -180,16 +211,16 @@ VideoRequest compileProductionPrompt(
   if (inputs.map((s) => s.id).toSet().length != slots.length) {
     throw const StoryboardException('invalid_reference');
   }
-  final text = parsed.parts.map((part) {
-    if (!part.isReference) {
-      return part.text;
-    }
-    final slot = slots.where((s) => s.inputId == part.inputId).firstOrNull;
-    if (slot == null) {
-      throw const StoryboardException('invalid_reference');
-    }
-    return slot.slot;
-  }).join();
+  final text = parsed.render(
+    textInputs: textInputs,
+    reference: (part) {
+      final slot = slots.where((s) => s.inputId == part.inputId).firstOrNull;
+      if (slot == null) {
+        throw const StoryboardException('invalid_reference');
+      }
+      return slot.slot;
+    },
+  );
   final middleFrameIds = [
     for (final input in inputs)
       if (input.role == VideoInputRole.middle_frame) input.id,
@@ -223,10 +254,7 @@ VideoRequest compileProductionPrompt(
       '${imageSlot.slot} 中的角色使用 ${audioSlot.slot} 的音色。参考音频仅提供声线，台词与情绪以本次提示词为准。',
     );
   }
-  final defaults = lookupVideoChannelModel(
-    providerType,
-    raw.modelId,
-  )?.requestDefaults;
+  final defaults = resolveVideoModel(provider, raw.modelId)?.requestDefaults;
   return VideoRequest(
     modelId: raw.modelId,
     prompt: [
@@ -240,7 +268,10 @@ VideoRequest compileProductionPrompt(
     durationSeconds: raw.durationSeconds,
     audio: raw.audio ?? defaults?.audio,
     promptExtend: raw.promptExtend ?? defaults?.promptExtend,
-    originalPrompt: raw.prompt,
+    originalPrompt: parsed.render(
+      textInputs: textInputs,
+      reference: (part) => part.text,
+    ),
     referenceSlots: slots,
   );
 }
@@ -272,35 +303,68 @@ class ProductionGenerateOrchestrator {
     final shot = node.clipId == null
         ? null
         : await service.shots.getShot(node.clipId!);
-    final raw = shot == null ? null : shotVideoRequest(shot);
-    final providerId = shot?.providerId;
-    if (shot?.kind != 'video' ||
-        raw == null ||
-        providerId == null ||
-        (shot?.durationMs != null && shot!.durationMs! % 1000 != 0)) {
-      throw const StoryboardException('invalid_config');
+    if (shot == null || shot.kind != 'video') {
+      throw const StoryboardException(
+        'invalid_config',
+        'Only video clips can generate video.',
+      );
+    }
+    final raw = shotVideoRequest(shot);
+    final providerId = shot.providerId;
+    if (providerId == null) {
+      _log.warning(
+        'Video preview rejected clipId=${shot.id} '
+        'code=invalid_config reason=provider_not_selected',
+      );
+      throw const StoryboardException(
+        'invalid_config',
+        'provider_id and model_id are not set.',
+      );
+    }
+    final durationMs = shot.durationMs;
+    if (durationMs != null && durationMs % 1000 != 0) {
+      throw StoryboardException(
+        'invalid_config',
+        'duration_ms is in milliseconds and must be whole seconds '
+            '(4 s = 4000); current value: $durationMs.',
+      );
     }
     final provider = await service.library.database.aiProviderDao.getById(
       providerId,
     );
-    if (provider == null ||
-        !provider.enabled ||
-        !provider.videoModels.contains(raw.modelId) ||
-        !productionSupportsVideoModel(provider.type, raw.modelId)) {
+    final configurationFailure = switch (provider) {
+      null => 'provider_not_found',
+      AiProvider(enabled: false) => 'provider_disabled',
+      _ when raw.modelId.isEmpty => 'model_not_selected',
+      AiProvider(:final videoModels) when !videoModels.contains(raw.modelId) =>
+        'model_not_configured',
+      final AiProvider config
+          when !productionSupportsVideoModel(config, raw.modelId) =>
+        'model_not_recognized',
+      _ => null,
+    };
+    if (provider == null || configurationFailure != null) {
+      final model = safeMediaDiagnostic(
+        raw.modelId,
+        provider?.effectiveApiKey ?? '',
+      );
+      _log.warning(
+        'Video preview rejected clipId=${shot.id} providerId=$providerId '
+        'providerType=${provider?.type} modelId=$model '
+        'code=configuration_required reason=$configurationFailure',
+      );
       throw const VideoException(VideoErrorCode.configuration_required);
     }
     if (draft &&
-        lookupVideoChannelModel(
-              provider.type,
-              raw.modelId,
-            )?.protocolOptions.supportsDraft !=
-            true) {
+        resolveVideoModel(provider, raw.modelId)?.capabilities.draft == null) {
       throw const VideoException(
         VideoErrorCode.invalid_request,
         field: 'draft',
       );
     }
-    final savedInputs = await service.inputs(nodeId);
+    final allInputs = await service.inputs(nodeId);
+    final textInputs = await service.promptTexts(allInputs);
+    final savedInputs = allInputs.where((input) => !input.isPrompt).toList();
     for (final input in savedInputs.where((i) => i.voiceAssetId != null)) {
       if (productionUsesFrames(raw.mode)) {
         throw const VideoException(
@@ -358,30 +422,35 @@ class ProductionGenerateOrchestrator {
       );
     }
     final compiled = compileProductionPrompt(
-      provider.type,
+      provider,
       VideoRequest(
         modelId: raw.modelId,
         prompt: raw.prompt,
-        mode: productionSubmitMode(raw.mode, ordered.map((i) => i.role)),
-        resolution: draft ? videoDraftResolution : raw.resolution,
+        mode: productionSubmitMode(
+          raw.mode,
+          ordered.map((i) => i.role),
+          explicit: provider.isPluginProvider,
+        ),
+        resolution: draft
+            ? resolveVideoModel(
+                provider,
+                raw.modelId,
+              )!.capabilities.draft!.resolution
+            : raw.resolution,
         ratio: raw.ratio,
         durationSeconds: raw.durationSeconds,
-        audio:
-            lookupVideoChannelModel(
-                  provider.type,
-                  raw.modelId,
-                )?.requiresAudio ==
-                true
+        audio: resolveVideoModel(provider, raw.modelId)?.requiresAudio == true
             ? raw.audio
             : null,
       ),
       ordered,
+      textInputs: textInputs,
     );
-    final style = await service.effectiveStyle(shot!);
+    final style = await service.effectiveStyle(shot);
     final request = compiled.withPrompt(
       style?.assemble(compiled.prompt) ?? compiled.prompt,
     );
-    VideoCapabilities(provider.type).validate(request, references);
+    VideoCapabilities.forProvider(provider).validate(request, references);
     return ProductionPreview(node, providerId, request, inputs, draft: draft);
   }
 

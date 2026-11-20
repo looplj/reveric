@@ -13,9 +13,19 @@ class ProductionInput {
     required this.id,
     required this.refType,
     required this.refId,
-    required this.role,
+    required VideoInputRole role,
     this.voiceAssetId,
-  });
+  }) : _mediaRole = role;
+
+  const ProductionInput.prompt({required this.id, required this.refId})
+    : refType = ProductionInputType.node,
+      _mediaRole = null,
+      voiceAssetId = null;
+
+  factory ProductionInput.text(String nodeId) => ProductionInput.prompt(
+    id: buildShortEntityId(ShortEntityIdType.productionInput),
+    refId: nodeId,
+  );
 
   factory ProductionInput.asset(String assetId, VideoInputRole role) =>
       ProductionInput(
@@ -36,26 +46,46 @@ class ProductionInput {
   final String id;
   final ProductionInputType refType;
   final String refId;
-  final VideoInputRole role;
+  final VideoInputRole? _mediaRole;
+  bool get isPrompt => _mediaRole == null;
+  String get roleName => isPrompt ? 'prompt' : _mediaRole!.name;
+
+  /// 文本输入先展开为提示词，不能作为服务商媒体用途读取。
+  VideoInputRole get role =>
+      _mediaRole ?? (throw StateError('Prompt input has no media role'));
 
   /// 本次视频生成选用的角色音色；角色的共享音色集合不决定本次选择。
   final String? voiceAssetId;
   String get voiceInputId => '$id:voice';
 
   String get identity => id;
-  String get sourceIdentity => '${refType.name}:$refId:${role.name}';
+  String get sourceIdentity => '${refType.name}:$refId:$roleName';
   String? get sourceNodeId =>
       refType == ProductionInputType.node ? refId : null;
 
   /// 中间帧在有序输入中的一基序号，包含直接素材与节点引用。
   int? middleFrameIndex(List<ProductionInput> inputs) =>
-      role != VideoInputRole.middle_frame
+      isPrompt || role != VideoInputRole.middle_frame
       ? null
       : inputs
-                .where((input) => input.role == VideoInputRole.middle_frame)
+                .where(
+                  (input) =>
+                      !input.isPrompt &&
+                      input.role == VideoInputRole.middle_frame,
+                )
                 .takeWhile((input) => input.id != id)
                 .length +
             1;
+
+  ProductionInput withId(String value) => isPrompt
+      ? ProductionInput.prompt(id: value, refId: refId)
+      : ProductionInput(
+          id: value,
+          refType: refType,
+          refId: refId,
+          role: role,
+          voiceAssetId: voiceAssetId,
+        );
 
   ProductionInput withRole(VideoInputRole value) => ProductionInput(
     id: id,
@@ -77,7 +107,7 @@ class ProductionInput {
     'id': id,
     'ref_type': refType.name,
     'ref_id': refId,
-    'role': role.name,
+    'role': roleName,
     if (voiceAssetId != null) 'voice_asset_id': voiceAssetId,
   };
 
@@ -86,6 +116,14 @@ class ProductionInput {
     final refId = json['ref_id'] as String;
     if (id.trim().isEmpty || refId.trim().isEmpty) {
       throw const FormatException('Production input identity is required');
+    }
+    if (json['role'] == 'prompt') {
+      if (json['ref_type'] != 'node' || json['voice_asset_id'] != null) {
+        throw const FormatException(
+          'Prompt input requires a text node and cannot bind a voice',
+        );
+      }
+      return ProductionInput.prompt(id: id, refId: refId);
     }
     return ProductionInput(
       id: id,
@@ -98,6 +136,9 @@ class ProductionInput {
 
   static void validateList(List<ProductionInput> inputs) {
     for (final input in inputs) {
+      if (input.id.trim().isEmpty || input.refId.trim().isEmpty) {
+        throw const FormatException('Production input identity is required');
+      }
       if (input.voiceAssetId != null &&
           (input.voiceAssetId!.trim().isEmpty ||
               input.refType != ProductionInputType.node ||

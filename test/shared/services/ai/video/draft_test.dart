@@ -63,7 +63,7 @@ void main() {
           providerType: 'atlascloud',
           apiKey: 'key',
         );
-        await client.submit(
+        await client.submitNative(
           VideoRequest(
             modelId: 'bytedance/seedance-2.5',
             prompt: 'a bird',
@@ -105,7 +105,7 @@ void main() {
         providerType: 'atlascloud',
         apiKey: 'key',
       );
-      final receipt = await client.submit(
+      final receipt = await client.submitNative(
         const VideoRequest(
           modelId: 'bytedance/seedance-2.5',
           prompt: 'not sent',
@@ -138,7 +138,7 @@ void main() {
       );
       for (final model in ['bytedance/seedance-2.0', 'custom-model']) {
         await expectLater(
-          client.submit(
+          client.submitNative(
             VideoRequest(
               modelId: model,
               prompt: 'bird',
@@ -154,7 +154,7 @@ void main() {
         );
       }
       await expectLater(
-        client.submit(
+        client.submitNative(
           const VideoRequest(
             modelId: 'bytedance/seedance-2.5',
             prompt: 'bird',

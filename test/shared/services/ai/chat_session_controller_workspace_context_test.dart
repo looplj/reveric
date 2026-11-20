@@ -90,6 +90,20 @@ void main() {
   }
 
   group('workspace path context', () {
+    test(
+      'canvas context points to production without selected episode',
+      () async {
+        final view = await buildController(
+          contentKind: contentKindCanvas,
+          section: NovelWorkspaceSection.storyboard,
+          promptContext: const AiSessionContext(contentKind: contentKindCanvas),
+        ).resolveCurrentWorkspaceContextForTest();
+        expect(view?.path, '/production/canvas');
+        expect(view?.episodeId, isNull);
+        expect(view?.seasonId, isNull);
+      },
+    );
+
     for (final workId in ['', ' \t\n ']) {
       test('rejects a blank work ID ${workId.codeUnits}', () {
         expect(

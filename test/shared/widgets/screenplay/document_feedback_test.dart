@@ -40,6 +40,7 @@ void main() {
         (_, _) async => null,
         width < 600,
         'unused',
+        'work',
       );
       await tester.pumpWidget(
         EasyLocalization(
@@ -53,10 +54,8 @@ void main() {
               supportedLocales: context.supportedLocales,
               locale: context.locale,
               theme: RevericThemeData.reveric.toThemeData(),
-              builder: (_, child) => RevericTheme(
-                data: RevericThemeData.reveric,
-                child: child!,
-              ),
+              builder: (_, child) =>
+                  RevericTheme(data: RevericThemeData.reveric, child: child!),
               home: Scaffold(
                 body: Builder(
                   builder: (context) => TextButton(

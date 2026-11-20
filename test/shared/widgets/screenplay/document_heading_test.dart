@@ -78,6 +78,7 @@ void main() {
       (_, _) async => null,
       false,
       'memory:test',
+      'work',
     );
 
     await tester.pumpWidget(

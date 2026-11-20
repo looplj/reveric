@@ -39,6 +39,7 @@ enum ShortEntityIdType {
   canvasEdge,
   novel,
   screenplay,
+  canvas_work,
   screenplaySeason,
   screenplayEpisode,
   screenplayBeat,
@@ -73,6 +74,7 @@ const Map<ShortEntityIdType, String> shortEntityIdPrefixes = {
   ShortEntityIdType.canvasEdge: 'ced',
   ShortEntityIdType.novel: 'nov',
   ShortEntityIdType.screenplay: 'scr',
+  ShortEntityIdType.canvas_work: 'cnv',
   ShortEntityIdType.screenplaySeason: 'sea',
   ShortEntityIdType.screenplayEpisode: 'epi',
   ShortEntityIdType.screenplayBeat: 'sbt',
@@ -90,7 +92,7 @@ const Map<ShortEntityIdType, String> shortEntityIdPrefixes = {
 /// 关系变化记录 `rch`；
 /// lore 文档 `lrd`、文件夹 `lrf`；materials 文档 `mtd`、文件夹 `mtf`；
 /// 大纲 `out`、大纲节拍 `obt`；画布 `can`、节点 `cnd`、边 `ced`；
-/// novel 作品 `nov`、screenplay 作品 `scr`；剧本季 `sea`、集 `epi`、节拍
+/// novel 作品 `nov`、screenplay 作品 `scr`、canvas 作品 `cnv`；剧本季 `sea`、集 `epi`、节拍
 /// `sbt`、场次 `scn`、正文元素 `elm`；制片片段 `clip`、片段输入 `inp`、生成记录
 /// `gen`。制片画布、节点与连线和小说画布同属画布实体，沿用 `can`/`cnd`/`ced`。
 ///
@@ -98,7 +100,8 @@ const Map<ShortEntityIdType, String> shortEntityIdPrefixes = {
 /// 合并；调用方必须显式选择 [ShortEntityIdType]，不得用 `substring` 从类型名
 /// 推导前缀。通用 `buildRandomId` 服务于其他作用域和数据规模，必须保持原样。
 ///
-/// 返回格式为注册的小写前缀、下划线和六位 `A-Z0-9` 后缀。存储层负责检查
+/// 返回格式为注册的小写前缀、下划线和 `A-Z0-9` 后缀；生成记录使用十二位，
+/// 其他实体使用六位。存储层负责检查
 /// 有效行、软删除行、同批候选，并以严格 INSERT 处理最终的并发碰撞。
 String buildShortEntityId(
   ShortEntityIdType type, {
@@ -110,7 +113,10 @@ String buildShortEntityId(
   }
   final randomIndex = nextInt ?? _shortEntityIdRandom.nextInt;
   final buffer = StringBuffer(prefix)..write('_');
-  for (var i = 0; i < shortEntityIdSuffixLength; i++) {
+  final suffixLength = type == ShortEntityIdType.generationTask
+      ? 12
+      : shortEntityIdSuffixLength;
+  for (var i = 0; i < suffixLength; i++) {
     final index = randomIndex(_shortEntityIdAlphabet.length);
     if (index < 0 || index >= _shortEntityIdAlphabet.length) {
       throw RangeError.range(

@@ -1,7 +1,9 @@
-// 职责: 验证四层权限、规则身份复用、归属校验和并发设置。
+// 职责: 验证四层权限、归属校验、并发设置和排队审批的自动放行。
 // 关联文件:
 //   lib/shared/services/tool_permissions.dart
 //   lib/shared/database/daos/tool_permission_dao.dart
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:reveric/shared/agent/tool_approval.dart';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
@@ -153,6 +155,28 @@ void main() {
       expect(await db.select(db.toolPermissionRules).get(), hasLength(1));
     },
   );
+
+  test('blank episode id is not an episode scope', () async {
+    const canvas = ToolPermissionContext(
+      workId: 'work',
+      sessionId: 'session',
+      episodeId: '',
+    );
+    expect(canvas.scopes.map((scope) => scope.type), [
+      ToolPermissionScopeType.session,
+      ToolPermissionScopeType.work,
+      ToolPermissionScopeType.global,
+    ]);
+    await service.setRule(action, work, ToolPermissionDecision.allow);
+    expect((await service.resolve(action, canvas)).source, work);
+    const noSession = ToolPermissionContext(
+      workId: 'work',
+      sessionId: '',
+      episodeId: '',
+    );
+    expect((await service.resolve(action, noSession)).source, work);
+  });
+
   test(
     'approval binds frozen inputs, saves scope before execution and is single-use',
     () async {
@@ -260,6 +284,182 @@ void main() {
     expect(broker.pending, isEmpty);
   });
 
+  for (final scope in [session, episode, work, global]) {
+    test(
+      'saved ${scope.type.name} allowance releases matching queue',
+      () async {
+        final broker = AiToolApprovalController();
+        addTearDown(broker.dispose);
+        final gate = ToolPermissionGate(service, broker, enabled: true);
+        final executed = <String>[];
+        final verified = <String>[];
+        Future<void> authorize(
+          String id, {
+          String capability = action,
+          String owner = 'session',
+          ToolPermissionContext target = context,
+        }) => gate
+            .authorize(
+              request: ToolActionRequest(
+                action: capability,
+                context: target,
+                targetPath: '/clips/$id',
+                summary: const {},
+              ),
+              ownerSessionId: owner,
+              approvalId: id,
+              callId: id,
+              toolName: 'Run',
+              cancellation: AgentCancellationController().token,
+              verifyTarget: () async => verified.add(id),
+            )
+            .then((_) => executed.add(id));
+
+        final waiting = broker.stream.firstWhere(
+          (rows) => rows.length == (scope == global ? 7 : 8),
+        );
+        final batch = [for (var i = 0; i < 5; i++) authorize('batch-$i')];
+        final unrelated = expectLater(
+          authorize('audio', capability: 'generation.audio'),
+          throwsA(isA<ToolPermissionException>()),
+        );
+        final otherChat = expectLater(
+          authorize('other-chat', owner: 'other-chat'),
+          throwsA(isA<ToolPermissionException>()),
+        );
+        final outsideScope = scope == global
+            ? Future<void>.value()
+            : expectLater(
+                authorize(
+                  'outside-scope',
+                  target: const ToolPermissionContext(workId: 'other'),
+                ),
+                throwsA(isA<ToolPermissionException>()),
+              );
+        final pending = await waiting;
+        await broker.resolve(
+          pending.singleWhere((r) => r.approvalId == 'batch-0'),
+          allow: true,
+          scope: scope,
+        );
+        await Future.wait(batch);
+        expect(
+          executed,
+          unorderedEquals([for (var i = 0; i < 5; i++) 'batch-$i']),
+        );
+        expect(verified, unorderedEquals(executed));
+        expect(
+          broker.pending.map((r) => r.approvalId),
+          unorderedEquals([
+            'audio',
+            'other-chat',
+            if (scope != global) 'outside-scope',
+          ]),
+        );
+        await authorize('later');
+        expect(executed, contains('later'));
+        for (final request in broker.pending) {
+          await broker.resolve(request, allow: false);
+        }
+        await Future.wait([unrelated, otherChat, outsideScope]);
+      },
+    );
+  }
+
+  test('saved broad allowance preserves more specific ask and deny', () async {
+    final broker = AiToolApprovalController();
+    addTearDown(broker.dispose);
+    final gate = ToolPermissionGate(service, broker, enabled: true);
+    const otherContext = ToolPermissionContext(workId: 'other');
+    var executed = 0;
+    Future<void> authorize(String id, ToolPermissionContext target) => gate
+        .authorize(
+          request: ToolActionRequest(
+            action: action,
+            context: target,
+            targetPath: '/clips/$id',
+            summary: const {},
+          ),
+          ownerSessionId: 'session',
+          approvalId: id,
+          callId: id,
+          toolName: 'Run',
+          cancellation: AgentCancellationController().token,
+          verifyTarget: () async {},
+        )
+        .then((_) => executed++);
+    final waiting = broker.stream.firstWhere((rows) => rows.length == 3);
+    final first = authorize('first', context);
+    final ask = expectLater(
+      authorize('ask', context),
+      throwsA(isA<ToolPermissionException>()),
+    );
+    final deny = expectLater(
+      authorize('deny', otherContext),
+      throwsA(isA<ToolPermissionException>()),
+    );
+    final pending = await waiting;
+    await service.setRule(action, session, ToolPermissionDecision.ask);
+    await service.setRule(
+      action,
+      const ToolPermissionScope(
+        ToolPermissionScopeType.work,
+        workId: 'other',
+        id: 'other',
+      ),
+      ToolPermissionDecision.deny,
+    );
+    final asksAgain = broker.stream.firstWhere(
+      (rows) => rows.any((r) => r.approvalId == 'ask' && !pending.contains(r)),
+    );
+    await broker.resolve(
+      pending.singleWhere((r) => r.approvalId == 'first'),
+      allow: true,
+      scope: global,
+    );
+    await first;
+    await deny;
+    await asksAgain;
+    expect(executed, 1);
+    expect(broker.pending.single.approvalId, 'ask');
+    await broker.resolve(broker.pending.single, allow: false);
+    await ask;
+  });
+
+  test('allowance saved during lookup also releases a late enqueue', () async {
+    final broker = AiToolApprovalController();
+    addTearDown(broker.dispose);
+    final paused = _PausedPermissionService(service);
+    var verified = 0;
+    Future<void> authorize(String id, ToolPermissionService permissions) =>
+        ToolPermissionGate(permissions, broker, enabled: true).authorize(
+          request: ToolActionRequest(
+            action: action,
+            context: context,
+            targetPath: '/clips/$id',
+            summary: const {},
+          ),
+          ownerSessionId: 'session',
+          approvalId: id,
+          callId: id,
+          toolName: 'Run',
+          cancellation: AgentCancellationController().token,
+          verifyTarget: () async {
+            verified++;
+          },
+        );
+    final waiting = broker.stream.firstWhere((rows) => rows.isNotEmpty);
+    final first = authorize('first', service);
+    final pending = (await waiting).single;
+    final late = authorize('late', paused);
+    await paused.captured.future;
+    await broker.resolve(pending, allow: true, scope: session);
+    paused.resume.complete();
+    await Future.wait([first, late]);
+    expect(verified, 2);
+    expect(broker.pending, isEmpty);
+  });
+
   test(
     'failed persistent decision remains pending and cannot claim approval',
     () async {
@@ -267,8 +467,8 @@ void main() {
       addTearDown(broker.dispose);
       final gate = ToolPermissionGate(service, broker, enabled: true);
       final token = AgentCancellationController();
-      final waiting = broker.stream.firstWhere((rows) => rows.isNotEmpty);
-      final run = gate.authorize(
+      final waiting = broker.stream.firstWhere((rows) => rows.length == 2);
+      Future<void> authorize(String id) => gate.authorize(
         request: ToolActionRequest(
           action: action,
           context: context,
@@ -276,14 +476,22 @@ void main() {
           summary: const {},
         ),
         ownerSessionId: 'session',
-        approvalId: 'approval',
+        approvalId: id,
         callId: 'call',
         toolName: 'Create',
         cancellation: token.token,
         verifyTarget: () async {},
       );
-      final stopped = expectLater(run, throwsA(isA<ToolOperationException>()));
-      final pending = (await waiting).single;
+      final stopped = expectLater(
+        authorize('approval'),
+        throwsA(isA<ToolOperationException>()),
+      );
+      final otherStopped = expectLater(
+        authorize('other'),
+        throwsA(isA<ToolOperationException>()),
+      );
+      final requests = await waiting;
+      final pending = requests.first;
       await db.customStatement(
         "CREATE TRIGGER fail_rule BEFORE INSERT ON tool_permission_rules BEGIN SELECT RAISE(ABORT, 'injected'); END",
       );
@@ -293,12 +501,15 @@ void main() {
       );
       expect(pending.isResolved, false);
       expect(pending.saveFailed, true);
+      expect(broker.pending, requests);
+      expect(requests.every((r) => !r.isResolved), true);
       expect(
         (await service.resolve(action, context)).decision,
         ToolPermissionDecision.ask,
       );
       token.cancel();
       await stopped;
+      await otherStopped;
     },
   );
 
@@ -326,8 +537,9 @@ void main() {
             verifyTarget: () async {},
           )
           .then((_) => executed.add(approvalId));
-      final both = broker.stream.firstWhere((rows) => rows.length == 2);
+      final both = broker.stream.firstWhere((rows) => rows.length == 3);
       final first = authorize('first');
+      final third = authorize('third');
       final second = expectLater(
         authorize('second'),
         throwsA(
@@ -343,10 +555,14 @@ void main() {
       );
       expect(await broker.resolve(secondRequest, allow: false), true);
       await second;
-      expect(broker.pending, [firstRequest]);
+      expect(broker.pending, contains(firstRequest));
+      expect(broker.pending, hasLength(2));
       expect(await broker.resolve(firstRequest, allow: true), true);
       await first;
       expect(executed, ['first']);
+      expect(broker.pending.single.approvalId, 'third');
+      await broker.resolve(broker.pending.single, allow: true);
+      await third;
     },
   );
 
@@ -375,4 +591,25 @@ void main() {
       expect(broker.pending, isEmpty);
     },
   );
+}
+
+class _PausedPermissionService extends ToolPermissionService {
+  _PausedPermissionService(ToolPermissionService source)
+    : super(source.database, episodeExists: source.episodeExists);
+
+  final captured = Completer<void>();
+  final resume = Completer<void>();
+
+  @override
+  Future<EffectiveToolPermission> resolve(
+    String action,
+    ToolPermissionContext context,
+  ) async {
+    final result = await super.resolve(action, context);
+    if (!captured.isCompleted) {
+      captured.complete();
+      await resume.future;
+    }
+    return result;
+  }
 }

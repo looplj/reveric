@@ -7,12 +7,19 @@
 //   lib/mobile/pages/settings_page.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../shared/localization/app_localization.dart';
+import '../shared/localization/locale_keys.dart';
 import '../shared/models/content_kind.dart';
 import '../shared/theme/theme.dart';
+import '../shared/widgets/guide/tour.dart';
+import '../shared/widgets/guide/trigger.dart';
+import 'pages/ai_providers_settings_page.dart';
 import 'pages/library_page.dart';
 import 'pages/chat_page.dart';
 import 'pages/settings_page.dart';
@@ -29,6 +36,46 @@ class MobileApp extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final index = ref.watch(mobileTabIndexProvider);
     final pageController = usePageController(initialPage: index);
+    final tabKeys = useMemoized(() => List.generate(4, (_) => GlobalKey()));
+    useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.home,
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'mobile_home_novel',
+          targetKey: tabKeys[0],
+          icon: RevericIcons.menu_book_rounded,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeNovelTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeNovelBody),
+        ),
+        GuideStep(
+          id: 'mobile_home_screenplay',
+          targetKey: tabKeys[1],
+          icon: RevericIcons.movie_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeScreenplayTitle),
+          description: ctx.t(
+            LocaleKeys.onboardingGuideHomeMobileScreenplayBody,
+          ),
+        ),
+        GuideStep(
+          id: 'mobile_home_assistant',
+          targetKey: tabKeys[2],
+          icon: RevericIcons.auto_awesome,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeMobileAssistantTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeMobileAssistantBody),
+        ),
+        GuideStep(
+          id: 'mobile_home_settings',
+          targetKey: tabKeys[3],
+          icon: RevericIcons.settings_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeMobileSettingsTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeMobileSettingsBody),
+          primaryActionLabel: ctx.t(LocaleKeys.onboardingGuideGoProviders),
+          onPrimaryAction: () =>
+              unawaited(openMobileAiProvidersSettingsPage(context)),
+        ),
+      ],
+    );
 
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -66,6 +113,7 @@ class MobileApp extends HookConsumerWidget {
       ),
       bottomNavigationBar: MobileTabBar(
         currentIndex: index,
+        tabKeys: tabKeys,
         onTap: (i) => ref.read(mobileTabIndexProvider.notifier).set(i),
       ),
     );

@@ -235,47 +235,23 @@ class SkillSetupPanel extends HookConsumerWidget {
           return;
         }
 
-        var imported = 0;
-        var skipped = 0;
-        var failed = 0;
-        final notifier = ref.read(installedAgentSkillsProvider.notifier);
-        for (final candidate in selected) {
-          try {
-            await notifier.install(
-              InstallSkillInput(
-                sourceKind: AgentSkillSourceKind.novelLocal,
-                name: candidate.parsed.name,
-                whenToUse: candidate.parsed.whenToUse,
-                description: candidate.parsed.description,
-                prompt: candidate.parsed.body,
-                category: candidate.parsed.category,
-                tags: candidate.parsed.tags,
-                references: candidate.references,
-              ),
-            );
-            imported++;
-          } on NovelSkillNameConflictException {
-            skipped++;
-          } catch (error, stackTrace) {
-            _log.error(
-              'Import installed skill failed: ${candidate.filePath}',
-              error: error,
-              stackTrace: stackTrace,
-            );
-            failed++;
-          }
-        }
+        const transfer = AgentSkillTransferService();
+        final result = await transfer.importCandidates(
+          candidates: selected,
+          notifier: ref.read(installedAgentSkillsProvider.notifier),
+          existing: installed,
+        );
         if (!context.mounted) {
           return;
         }
-        if (failed > 0 || skipped > 0) {
+        if (result.failed > 0 || result.skipped > 0) {
           await flash(
             context.t(
               LocaleKeys.agentSkillImportPartial,
               namedArgs: {
-                'imported': '$imported',
-                'skipped': '$skipped',
-                'failed': '$failed',
+                'imported': '${result.imported}',
+                'skipped': '${result.skipped}',
+                'failed': '${result.failed}',
               },
             ),
           );
@@ -283,7 +259,7 @@ class SkillSetupPanel extends HookConsumerWidget {
           await flash(
             context.t(
               LocaleKeys.agentSkillImportSuccess,
-              namedArgs: {'imported': '$imported'},
+              namedArgs: {'imported': '${result.imported}'},
             ),
           );
         }

@@ -79,6 +79,33 @@ class StoryboardPrompt {
     return StoryboardPrompt._(List.unmodifiable(parts));
   }
 
+  /// 文本按标签位置展开；没有标签引用的文本依输入顺序前置，不再解析插入的文本。
+  String render({
+    Map<String, String> textInputs = const {},
+    required String Function(PromptPart part) reference,
+  }) {
+    final used = <String>{};
+    final body = parts.map((part) {
+      if (!part.isReference) {
+        return part.text;
+      }
+      if (textInputs.containsKey(part.inputId)) {
+        used.add(part.inputId!);
+        return textInputs[part.inputId]!;
+      }
+      return reference(part);
+    }).join();
+    final prefix = textInputs.entries
+        .where((entry) => !used.contains(entry.key) && entry.value.isNotEmpty)
+        .map((entry) => entry.value)
+        .join('\n');
+    return prefix.isEmpty
+        ? body
+        : body.isEmpty
+        ? prefix
+        : '$prefix\n$body';
+  }
+
   static String reference(String inputId, String label) =>
       '<ref input_id="${escapeXmlAttribute(inputId)}" label="${escapeXmlAttribute(label)}" />';
 
@@ -128,7 +155,10 @@ class StoryboardPrompt {
     for (final ref in references) {
       if (!validIds.contains(ref.inputId)) {
         throw FormatException(
-          'Unknown prompt reference input_id: ${ref.inputId}.',
+          'Unknown prompt reference input_id: ${ref.inputId}. '
+          'Available input IDs: ${validIds.isEmpty ? 'none' : validIds.join(', ')}. '
+          'Each <ref input_id> must name an input of this clip; when creating '
+          'the clip, pass the referenced inputs in the same call\'s inputs.',
         );
       }
     }

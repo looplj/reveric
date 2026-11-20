@@ -115,7 +115,7 @@ void main() {
       });
       // 桌面端 AI 管理页已移到首页，设置弹窗不再承载它们。
       expect(
-        SettingsDialog.navigableSections.intersection({
+        SettingsRegion.navigableSections.intersection({
           'ai_agents',
           'providers',
           'mcp',
@@ -203,6 +203,10 @@ void main() {
         navigation.open('general');
         await tester.pumpAndSettle();
         expect(find.byType(GeneralSettingsSection), findsOneWidget);
+        if (!mobile) {
+          // 桌面端只展示目标分区，不带整套设置导航。
+          expect(find.byType(SettingsRegion), findsNothing);
+        }
         navigatorKey.currentState!.pop();
         await tester.pumpAndSettle();
         if (mobile) {
@@ -225,7 +229,7 @@ void main() {
         navigation.open('providers');
         await tester.pumpAndSettle();
         expect(find.byType(AiProvidersPage), findsOneWidget);
-        expect(find.byType(SettingsDialog), findsNothing);
+        expect(find.byType(SettingsRegion), findsNothing);
         await tester.tap(find.byTooltip('Close'));
         await tester.pumpAndSettle();
         expect(find.byType(AiProvidersPage), findsNothing);
@@ -233,6 +237,9 @@ void main() {
         navigation.open('providers');
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Add Custom'));
+        await tester.pumpAndSettle();
+        // 类型选择器默认展示预设平台，OpenAI 兼容在「接入协议」分段。
+        await tester.tap(find.text('API formats'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('OpenAI Compatible'));
         await tester.pumpAndSettle();

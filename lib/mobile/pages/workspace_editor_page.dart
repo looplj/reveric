@@ -5,6 +5,9 @@
 //   lib/shared/models/content_kind.dart
 //   lib/shared/database/app_database.dart
 //   lib/mobile/pages/novel_chat_page.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 
@@ -17,6 +20,8 @@ import '../../shared/models/queued_chat_message.dart';
 import '../features/screenplay/editor_page.dart';
 import 'novel_editor_page.dart';
 import 'novel_chat_page.dart';
+import '../../shared/localization/app_localization.dart';
+import '../../shared/localization/locale_keys.dart';
 
 class MobileWorkspaceEditorPage extends HookWidget {
   const MobileWorkspaceEditorPage({
@@ -24,6 +29,7 @@ class MobileWorkspaceEditorPage extends HookWidget {
     required this.novel,
     this.initialChatKickoffPrompt,
     this.initialChatKickoffTitle,
+    this.initialChatHandoff,
     this.openChatOnEntry = false,
   });
 
@@ -32,6 +38,7 @@ class MobileWorkspaceEditorPage extends HookWidget {
 
   /// 剧本开场会话的标题（如「导入剧本」）。
   final String? initialChatKickoffTitle;
+  final PendingChatHandoff? initialChatHandoff;
   final bool openChatOnEntry;
 
   @override
@@ -40,11 +47,11 @@ class MobileWorkspaceEditorPage extends HookWidget {
     final path = novel.contentDatabasePath;
     final kickoffPrompt = initialChatKickoffPrompt?.trim();
     final hasKickoff = kickoffPrompt != null && kickoffPrompt.isNotEmpty;
+    final shouldOpenChat =
+        initialChatHandoff != null ||
+        (isScreenplay && (openChatOnEntry || hasKickoff));
     useEffect(() {
-      if (!isScreenplay ||
-          (!openChatOnEntry && !hasKickoff) ||
-          path == null ||
-          path.isEmpty) {
+      if (!shouldOpenChat || path == null || path.isEmpty) {
         return null;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -56,21 +63,32 @@ class MobileWorkspaceEditorPage extends HookWidget {
             builder: (_) => MobileNovelChatPage(
               novelId: novel.id,
               databasePath: path,
-              handoff: hasKickoff
-                  ? PendingChatHandoff(
-                      label: initialChatKickoffTitle ?? '',
-                      content: kickoffPrompt,
-                      initialText: kickoffPrompt,
-                      autoSend: true,
-                    )
-                  : null,
+              handoff:
+                  initialChatHandoff ??
+                  (hasKickoff
+                      ? PendingChatHandoff(
+                          label: initialChatKickoffTitle ?? '',
+                          content: kickoffPrompt,
+                          initialText: kickoffPrompt,
+                          autoSend: true,
+                        )
+                      : null),
             ),
           ),
         );
       });
       return null;
-    }, [novel.id, path, isScreenplay, openChatOnEntry, kickoffPrompt]);
+    }, [novel.id, path, shouldOpenChat, kickoffPrompt, initialChatHandoff]);
 
+    if (novel.contentKind == contentKindCanvas) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Text(context.t(LocaleKeys.productionCanvasDesktopOnly)),
+          ),
+        ),
+      );
+    }
     if (isScreenplay) {
       return MobileScreenplayEditorPage(novel: novel);
     }

@@ -15,6 +15,11 @@
 //   反查某个 key 是否已存在时，优先 Grep value 的片段，不要猜常量名。
 // - 新增或修改 key 必须同步 en 与 zh-CN 两份 JSON，规则见 .agents/rules/i18n.md。
 abstract final class LocaleKeys {
+  static const aiImageModelCurrentDraft = 'ai.image_model_current_draft';
+  static const productionImageCandidates =
+      'screenplay.production.imageCandidates';
+  static const productionImageCandidate =
+      'screenplay.production.imageCandidate';
   static const historyCommitMessagePluginUpdate =
       'history.commit_message.plugin_update';
 
@@ -446,6 +451,7 @@ abstract final class LocaleKeys {
   static const productionList = 'screenplay.production.list';
   static const productionImageInterrupted =
       'screenplay.production.imageInterrupted';
+  static const productionImageWaitCancelled = 'production.image_wait_cancelled';
   static const productionImageDownloadFailed =
       'screenplay.production.imageDownloadFailed';
   static const productionImageFetchFailed =
@@ -454,8 +460,6 @@ abstract final class LocaleKeys {
   static const productionImportHint = 'screenplay.production.importHint';
   static const productionAddNode = 'screenplay.production.addNode';
   static const productionAddSegment = 'screenplay.production.addSegment';
-  static const productionAddSegmentHint =
-      'screenplay.production.addSegmentHint';
   static const productionAddVideoHint = 'screenplay.production.addVideoHint';
   static const productionAddImageHint = 'screenplay.production.addImageHint';
   static const productionAddAudioHint = 'screenplay.production.addAudioHint';
@@ -552,6 +556,8 @@ abstract final class LocaleKeys {
       'screenplay.production.draftCompletionPending';
   static const productionDraftPendingHint =
       'screenplay.production.draftPendingHint';
+  static const productionDraftSnapshotMissing =
+      'screenplay.production.draftSnapshotMissing';
   static const productionDraftExpired = 'screenplay.production.draftExpired';
   static const productionDraftExpiredHint =
       'screenplay.production.draftExpiredHint';
@@ -582,6 +588,52 @@ abstract final class LocaleKeys {
   static const productionUpload = 'screenplay.production.upload';
   static const productionPrompt = 'screenplay.production.prompt';
   static const productionInvalid = 'screenplay.production.invalid';
+  static const productionDraftSaveUnknown =
+      'screenplay.production.draftSaveUnknown';
+  static const productionDraftSaveConfig =
+      'screenplay.production.draftSaveConfig';
+  static const productionDraftSaveModel =
+      'screenplay.production.draftSaveModel';
+  static const productionDraftSaveRatio =
+      'screenplay.production.draftSaveRatio';
+  static const productionDraftSaveResolution =
+      'screenplay.production.draftSaveResolution';
+  static const productionDraftSaveDuration =
+      'screenplay.production.draftSaveDuration';
+  static const productionDraftSaveMode = 'screenplay.production.draftSaveMode';
+  static const productionDraftSaveReference =
+      'screenplay.production.draftSaveReference';
+  static const productionDraftSaveDuplicate =
+      'screenplay.production.draftSaveDuplicate';
+  static const productionDraftSaveCycle =
+      'screenplay.production.draftSaveCycle';
+  static const productionDraftSaveImageOnly =
+      'screenplay.production.draftSaveImageOnly';
+  static const productionDraftSavePrompt =
+      'screenplay.production.draftSavePrompt';
+  static const productionDraftSaveVoice =
+      'screenplay.production.draftSaveVoice';
+  static const productionDraftSaveSource =
+      'screenplay.production.draftSaveSource';
+  static const productionDraftSaveAsset =
+      'screenplay.production.draftSaveAsset';
+  static const productionDraftSaveFile = 'screenplay.production.draftSaveFile';
+  static const productionDraftSaveConflict =
+      'screenplay.production.draftSaveConflict';
+  static const productionDraftSaveStorageFull =
+      'screenplay.production.draftSaveStorageFull';
+  static const productionDraftSaveStorageBusy =
+      'screenplay.production.draftSaveStorageBusy';
+  static const productionDraftSaveStorageReadOnly =
+      'screenplay.production.draftSaveStorageReadOnly';
+  static const productionDraftSaveStorage =
+      'screenplay.production.draftSaveStorage';
+  static const productionDraftSaveAudioFormat =
+      'screenplay.production.draftSaveAudioFormat';
+  static const productionDraftSaveAudioCount =
+      'screenplay.production.draftSaveAudioCount';
+  static const productionDraftSaveAudioModel =
+      'screenplay.production.draftSaveAudioModel';
   static const productionFailed = 'screenplay.production.failed';
   static const productionExport = 'screenplay.production.export';
   static const productionExportResult = 'screenplay.production.exportResult';
@@ -597,6 +649,7 @@ abstract final class LocaleKeys {
       'screenplay.production.middleFrameNumber';
   static const productionGenerateMiddleFramesUnsupported =
       'screenplay.production.generateMiddleFramesUnsupported';
+  static const productionTextVideo = 'screenplay.production.textVideo';
   static const productionFirstFrame = 'screenplay.production.firstFrame';
   static const productionLastFrame = 'screenplay.production.lastFrame';
   static const productionFirstFrameReference =
@@ -1289,6 +1342,16 @@ abstract final class LocaleKeys {
   static const aiImageGenUnavailable = 'ai.image_gen_unavailable';
   static const aiImageGenerated = 'ai.image_generated';
   static const aiImageGenerating = 'ai.image_generating';
+  static const aiImageCandidatesFetchFailed =
+      'ai.image_candidates_fetch_failed';
+  static const aiImageStagedUnconfirmed = 'ai.image_staged_unconfirmed';
+  static const aiImageSubmissionUnknown = 'ai.image_submission_unknown';
+  static const aiImageInvalidOutputs = 'ai.image_invalid_outputs';
+  static const aiImageParametersUnavailable = 'ai.image_parameters_unavailable';
+  static const aiImageReferenceUploadUnavailable =
+      'ai.image_reference_upload_unavailable';
+  static const aiImageReferenceUnrefreshable =
+      'ai.image_reference_unrefreshable';
   static const aiImageGenerationFailed = 'ai.image_generation_failed';
   static const aiCodexImageAuthFailed = 'ai.codex_image_auth_failed';
   static const aiCodexImageNeedsChatModel = 'ai.codex_image_needs_chat_model';
@@ -1716,6 +1779,7 @@ abstract final class LocaleKeys {
   static const editingProperties = 'screenplay.editing.properties';
   static const editingDuration = 'screenplay.editing.duration';
   static const editingOpacity = 'screenplay.editing.opacity';
+  static const editingSpeed = 'screenplay.editing.speed';
   static const editingFadeIn = 'screenplay.editing.fadeIn';
   static const editingFadeOut = 'screenplay.editing.fadeOut';
   static const editingLock = 'screenplay.editing.lock';
@@ -1750,6 +1814,7 @@ abstract final class LocaleKeys {
   static const editingNoFreeTrack = 'screenplay.editing.noFreeTrack';
   static const editingReplaced = 'screenplay.editing.replaced';
   static const editingNewSubtitle = 'screenplay.editing.newSubtitle';
+  static const editingNewText = 'screenplay.editing.newText';
   static const editingRoleMain = 'screenplay.editing.roleMain';
   static const editingRoleOverlay = 'screenplay.editing.roleOverlay';
   static const editingRoleSubtitle = 'screenplay.editing.roleSubtitle';
@@ -1757,14 +1822,17 @@ abstract final class LocaleKeys {
   static const editingRoleSfx = 'screenplay.editing.roleSfx';
   static const editingRoleMusic = 'screenplay.editing.roleMusic';
   static const editingRoleAudio = 'screenplay.editing.roleAudio';
+  static const editingRoleText = 'screenplay.editing.roleText';
   static const editingSnapOn = 'screenplay.editing.snapOn';
   static const editingSnapOff = 'screenplay.editing.snapOff';
   static const editingAudioTrack = 'screenplay.editing.audioTrack';
+  static const editingTextTrack = 'screenplay.editing.textTrack';
   static const editingZoomOut = 'screenplay.editing.zoomOut';
   static const editingZoomIn = 'screenplay.editing.zoomIn';
   static const editingFit = 'screenplay.editing.fit';
   static const editingMagnetHint = 'screenplay.editing.magnetHint';
   static const editingAddSubtitle = 'screenplay.editing.addSubtitle';
+  static const editingAddText = 'screenplay.editing.addText';
   static const editingRemoveTrack = 'screenplay.editing.removeTrack';
   static const editingUnlock = 'screenplay.editing.unlock';
   static const editingUnmute = 'screenplay.editing.unmute';
@@ -1785,9 +1853,19 @@ abstract final class LocaleKeys {
   static const editingText = 'screenplay.editing.text';
   static const editingStyle = 'screenplay.editing.style';
   static const editingPosition = 'screenplay.editing.position';
+  static const editingPositionTopLeft = 'screenplay.editing.positionTopLeft';
   static const editingPositionTop = 'screenplay.editing.positionTop';
+  static const editingPositionTopRight = 'screenplay.editing.positionTopRight';
+  static const editingPositionLeft = 'screenplay.editing.positionLeft';
   static const editingPositionCenter = 'screenplay.editing.positionCenter';
+  static const editingPositionRight = 'screenplay.editing.positionRight';
+  static const editingPositionBottomLeft =
+      'screenplay.editing.positionBottomLeft';
   static const editingPositionBottom = 'screenplay.editing.positionBottom';
+  static const editingPositionBottomRight =
+      'screenplay.editing.positionBottomRight';
+  static const editingHorizontal = 'screenplay.editing.horizontal';
+  static const editingVertical = 'screenplay.editing.vertical';
   static const editingSourceRange = 'screenplay.editing.sourceRange';
   static const editingVolume = 'screenplay.editing.volume';
   static const editingOriginalSound = 'screenplay.editing.originalSound';
@@ -1831,6 +1909,8 @@ abstract final class LocaleKeys {
   static const editingExported = 'screenplay.editing.exported';
   static const editingExportedSrt = 'screenplay.editing.exportedSrt';
   static const editingExportTitle = 'screenplay.editing.exportTitle';
+  static const editingExportNode = 'screenplay.editing.exportNode';
+  static const editingNodeExported = 'screenplay.editing.nodeExported';
   static const editingExportByTimeline = 'screenplay.editing.exportByTimeline';
   static const editingExporting = 'screenplay.editing.exporting';
   static const editingCancelExport = 'screenplay.editing.cancelExport';
@@ -1871,7 +1951,9 @@ abstract final class LocaleKeys {
   static const commonContinue = 'common.continue';
   static const commonContinueInBackground = 'common.continue_in_background';
   static const commonCopy = 'common.copy';
+  static const commonDuplicate = 'common.duplicate';
   static const commonCopied = 'common.copied';
+  static const commonCopyFailed = 'common.copy_failed';
   static const commonCover = 'common.cover';
   static const commonRequired = 'common.required';
   static const commonCreate = 'common.create';
@@ -1913,6 +1995,7 @@ abstract final class LocaleKeys {
   static const commonRename = 'common.rename';
   static const commonGenerate = 'common.generate';
   static const productionImageMethod = 'production.imageMethod';
+  static const productionAddToChat = 'production.addToChat';
   static const productionImagePresets = 'production.imagePresets';
   static const productionGridPresets = 'production.gridPresets';
   static const productionImagePresetGroups = 'production.imagePresetGroups';
@@ -1976,6 +2059,76 @@ abstract final class LocaleKeys {
   static const productionViewBrightness = 'production.brightness';
   static const productionViewTexture = 'production.texture';
   static const productionViewTemperature = 'production.temperature';
+  static const productionCanvasGallery = 'production.canvas_gallery';
+  static const productionGalleryPublish = 'production.gallery_publish';
+  static const productionGalleryPublishNow = 'production.gallery_publish_now';
+  static const productionGalleryPublished = 'production.gallery_published';
+  static const productionGalleryConfirmation =
+      'production.gallery_confirmation';
+  static const productionGalleryTitleInvalid =
+      'production.gallery_title_invalid';
+  static const productionGalleryDescriptionInvalid =
+      'production.gallery_description_invalid';
+  static const productionGalleryCoverCanvas = 'production.gallery_cover_canvas';
+  static const productionGalleryChooseConversations =
+      'production.gallery_choose_conversations';
+  static const productionGalleryConversationsNone =
+      'production.gallery_conversations_none';
+  static const productionGalleryConversationContents =
+      'production.gallery_conversation_contents';
+  static const productionGalleryConversationCount =
+      'production.gallery_conversation_count';
+  static const productionGalleryNodeCount = 'production.gallery_node_count';
+  static const productionGalleryAssetCount = 'production.gallery_asset_count';
+  static const productionGalleryPinned = 'production.gallery_pinned';
+  static const productionGalleryLatest = 'production.gallery_latest';
+  static const productionGalleryMore = 'production.gallery_more';
+  static const productionGalleryEmpty = 'production.gallery_empty';
+  static const productionGalleryLoadFailed = 'production.gallery_load_failed';
+  static const productionGallerySessionsFailed =
+      'production.gallery_sessions_failed';
+  static const productionGalleryLoadMore = 'production.gallery_load_more';
+  static const productionGalleryCopy = 'production.gallery_copy';
+  static const productionGalleryOpenConversations =
+      'production.gallery_open_conversations';
+  static const productionGalleryGenerations = 'production.gallery_generations';
+  static const productionGalleryPreparing = 'production.gallery_preparing';
+  static const productionGalleryUploading = 'production.gallery_uploading';
+  static const productionGalleryFinalizing = 'production.gallery_finalizing';
+  static const productionGalleryDownloading = 'production.gallery_downloading';
+  static const productionGalleryDownloadFailed =
+      'production.gallery_download_failed';
+  static const productionGalleryPreviewFailed =
+      'production.gallery_preview_failed';
+  static const productionGalleryPublishFailed =
+      'production.gallery_publish_failed';
+  static const productionGalleryUploadExpired =
+      'production.gallery_upload_expired';
+  static const productionGalleryUploadPaused =
+      'production.gallery_upload_paused';
+  static const productionGalleryUploadBusy = 'production.gallery_upload_busy';
+  static const productionGalleryUploadRejected =
+      'production.gallery_upload_rejected';
+  static const productionGalleryPackageTooLarge =
+      'production.gallery_package_too_large';
+  static const productionGalleryCoverFailed = 'production.gallery_cover_failed';
+  static const productionGalleryMissingMedia =
+      'production.gallery_missing_media';
+  static const productionGalleryMissingConversationFile =
+      'production.gallery_missing_conversation_file';
+  static const productionGalleryInvalidConversation =
+      'production.gallery_invalid_conversation';
+  static const productionGalleryMissingStyle =
+      'production.gallery_missing_style';
+  static const productionGalleryImportUpgrade =
+      'production.gallery_import_upgrade';
+  static const productionGalleryPreviewEstimate =
+      'production.gallery_preview_estimate';
+  static const productionGalleryModel = 'production.gallery_model';
+  static const productionGalleryAgent = 'production.gallery_agent';
+  static const productionGalleryOpening = 'production.gallery_opening';
+  static const productionGalleryComposerReadOnly =
+      'production.gallery_composer_read_only';
   static const productionViewDescription = 'production.description';
   static const productionViewPanoramaExit = 'production.panoramaExit';
   static const productionViewPanoramaReset = 'production.panoramaReset';
@@ -2016,6 +2169,7 @@ abstract final class LocaleKeys {
   static const commonSearchCharacters = 'common.search_characters';
   static const commonSearchLocations = 'common.search_locations';
   static const commonSelectAll = 'common.select_all';
+  static const commonDeselectAll = 'common.deselect_all';
   static const commonClearSelection = 'common.clear_selection';
   static const commonNoResults = 'common.no_results';
   static const commonFilterAll = 'common.filter_all';
@@ -2141,7 +2295,6 @@ abstract final class LocaleKeys {
       'screenplay.production_style_screenplay_tag';
   static const productionStyleScreenplayHint =
       'screenplay.production_style_screenplay_hint';
-  static const productionStyleClear = 'screenplay.production_style_clear';
   static const productionStyleInheritHint =
       'screenplay.production_style_inherit_hint';
   static const productionStyleOwnHint = 'screenplay.production_style_own_hint';
@@ -2780,6 +2933,9 @@ abstract final class LocaleKeys {
   static const homeResumeEyebrow = 'home.resume_eyebrow';
   static const homeResumeRecent = 'home.resume_recent';
   static const homeResumeLastWritten = 'home.resume_last_written';
+  static const homeResumeEyebrowCanvas = 'home.resume_eyebrow_canvas';
+  static const homeResumeOpenCanvas = 'home.resume_open_canvas';
+  static const homeResumeLastEdited = 'home.resume_last_edited';
   static const homeSortRecent = 'home.sort_recent';
   static const homeSortCreated = 'home.sort_created';
   static const homeSortTitle = 'home.sort_title';
@@ -2986,6 +3142,7 @@ abstract final class LocaleKeys {
   static const librarySelectCover = 'library.select_cover';
   static const libraryStartImport = 'library.start_import';
   static const librarySettings = 'library.settings';
+  static const libraryStatusActive = 'library.status_active';
   static const libraryStatusAbandoned = 'library.status_abandoned';
   static const libraryStatusArchived = 'library.status_archived';
   static const libraryStatusFinished = 'library.status_finished';
@@ -3399,6 +3556,77 @@ abstract final class LocaleKeys {
   static const onboardingModelDefaultsTitle = 'onboarding.model_defaults_title';
   static const onboardingModelDefaultsDescription =
       'onboarding.model_defaults_description';
+  static const onboardingGuideReplayTooltip = 'onboarding.guide.replay_tooltip';
+  static const onboardingGuideDone = 'onboarding.guide.done';
+  static const onboardingGuideGoProviders = 'onboarding.guide.go_providers';
+  static const onboardingGuideGoModelSettings =
+      'onboarding.guide.go_model_settings';
+  static const onboardingGuideProvidersListTitle =
+      'onboarding.guide.providers.list_title';
+  static const onboardingGuideProvidersListBody =
+      'onboarding.guide.providers.list_body';
+  static const onboardingGuideProvidersAddTitle =
+      'onboarding.guide.providers.add_title';
+  static const onboardingGuideProvidersAddBody =
+      'onboarding.guide.providers.add_body';
+  static const onboardingGuideProvidersCredentialsTitle =
+      'onboarding.guide.providers.credentials_title';
+  static const onboardingGuideProvidersCredentialsBody =
+      'onboarding.guide.providers.credentials_body';
+  static const onboardingGuideProvidersModelsTitle =
+      'onboarding.guide.providers.models_title';
+  static const onboardingGuideProvidersModelsBody =
+      'onboarding.guide.providers.models_body';
+  static const onboardingGuideProvidersEnableTitle =
+      'onboarding.guide.providers.enable_title';
+  static const onboardingGuideProvidersEnableBody =
+      'onboarding.guide.providers.enable_body';
+  static const onboardingGuideProvidersMobileDetailTitle =
+      'onboarding.guide.providers.mobile_detail_title';
+  static const onboardingGuideProvidersMobileDetailBody =
+      'onboarding.guide.providers.mobile_detail_body';
+  static const onboardingGuideProvidersMobileModelsTitle =
+      'onboarding.guide.providers.mobile_models_title';
+  static const onboardingGuideProvidersMobileModelsBody =
+      'onboarding.guide.providers.mobile_models_body';
+  static const onboardingGuideModelSettingsChatTitle =
+      'onboarding.guide.model_settings.chat_title';
+  static const onboardingGuideModelSettingsChatBody =
+      'onboarding.guide.model_settings.chat_body';
+  static const onboardingGuideModelSettingsImageTitle =
+      'onboarding.guide.model_settings.image_title';
+  static const onboardingGuideModelSettingsImageBody =
+      'onboarding.guide.model_settings.image_body';
+  static const onboardingGuideModelSettingsAgentsTitle =
+      'onboarding.guide.model_settings.agents_title';
+  static const onboardingGuideModelSettingsAgentsBody =
+      'onboarding.guide.model_settings.agents_body';
+  static const onboardingGuideHomeNovelTitle =
+      'onboarding.guide.home.novel_title';
+  static const onboardingGuideHomeNovelBody =
+      'onboarding.guide.home.novel_body';
+  static const onboardingGuideHomeScreenplayTitle =
+      'onboarding.guide.home.screenplay_title';
+  static const onboardingGuideHomeScreenplayBody =
+      'onboarding.guide.home.screenplay_body';
+  static const onboardingGuideHomeCanvasTitle =
+      'onboarding.guide.home.canvas_title';
+  static const onboardingGuideHomeCanvasBody =
+      'onboarding.guide.home.canvas_body';
+  static const onboardingGuideHomeModelsTitle =
+      'onboarding.guide.home.models_title';
+  static const onboardingGuideHomeModelsBody =
+      'onboarding.guide.home.models_body';
+  static const onboardingGuideHomeMobileScreenplayBody =
+      'onboarding.guide.home.mobile_screenplay_body';
+  static const onboardingGuideHomeMobileAssistantTitle =
+      'onboarding.guide.home.mobile_assistant_title';
+  static const onboardingGuideHomeMobileAssistantBody =
+      'onboarding.guide.home.mobile_assistant_body';
+  static const onboardingGuideHomeMobileSettingsTitle =
+      'onboarding.guide.home.mobile_settings_title';
+  static const onboardingGuideHomeMobileSettingsBody =
+      'onboarding.guide.home.mobile_settings_body';
   // ── plugin ────────────────────────────────────────
   static const pluginDescription = 'plugin.description';
   static const pluginEmpty = 'plugin.empty';
@@ -3496,6 +3724,34 @@ abstract final class LocaleKeys {
   static const pluginUnreviewed = 'plugin.unreviewed';
   static const pluginVersionUpgrade = 'plugin.version_upgrade';
   static const pluginUnsavedChangesMessage = 'plugin.unsaved_changes_message';
+  static const pluginTabInstalled = 'plugin.tab_installed';
+  static const pluginTabMarketplace = 'plugin.tab_marketplace';
+  static const pluginMarketplaceSearchHint = 'plugin.marketplace_search_hint';
+  static const pluginMarketplaceEmpty = 'plugin.marketplace_empty';
+  static const pluginMarketplaceEmptyDescription =
+      'plugin.marketplace_empty_description';
+  static const pluginMarketplaceSearchEmpty = 'plugin.marketplace_search_empty';
+  static const pluginMarketplaceLoadFailed = 'plugin.marketplace_load_failed';
+  static const pluginMarketplaceLoadFailedDescription =
+      'plugin.marketplace_load_failed_description';
+  static const pluginMarketplaceCachedWarning =
+      'plugin.marketplace_cached_warning';
+  static const pluginMarketplaceInstalled = 'plugin.marketplace_installed';
+  static const pluginMarketplaceInstalledVersion =
+      'plugin.marketplace_installed_version';
+  static const pluginMarketplaceUpdate = 'plugin.marketplace_update';
+  static const pluginMarketplaceUpdateVersion =
+      'plugin.marketplace_update_version';
+  static const pluginMarketplaceUnsupported = 'plugin.marketplace_unsupported';
+  static const pluginMarketplaceDownloadFailed =
+      'plugin.marketplace_download_failed';
+  static const pluginMarketplaceIntegrityFailed =
+      'plugin.marketplace_integrity_failed';
+  static const pluginMarketplaceSource = 'plugin.marketplace_source';
+  static const pluginMarketplaceRepository = 'plugin.marketplace_repository';
+  static const pluginMarketplaceReleaseNotes =
+      'plugin.marketplace_release_notes';
+  static const pluginMarketplaceDownloading = 'plugin.marketplace_downloading';
   // ── reading ────────────────────────────────────────
   static const readingTitle = 'reading.title';
   static const readingLibraryTitle = 'reading.library_title';
@@ -3534,6 +3790,29 @@ abstract final class LocaleKeys {
   static const readingChapterShort = 'reading.chapter_short';
 
   // ── provider ────────────────────────────────────────
+  static const providerInfistarCategory = 'provider.infistar_category';
+  static const providerInfistarTitle = 'provider.infistar_title';
+  static const providerInfistarSummary = 'provider.infistar_summary';
+  static const providerInfistarListTagline = 'provider.infistar_list_tagline';
+  static const providerInfistarModels = 'provider.infistar_models';
+  static const providerInfistarSetupTitle = 'provider.infistar_setup_title';
+  static const providerInfistarSetup = 'provider.infistar_setup';
+  static const providerInfistarLink = 'provider.infistar_link';
+  static const providerInfistarPricingLink = 'provider.infistar_pricing_link';
+  static const providerInfistarNote = 'provider.infistar_note';
+  static const providerDescriptionInfistar = 'provider.description_infistar';
+  static const providerTypeInfistar = 'provider.type_infistar';
+  static const providerApikeyCategory = 'provider.apikey_category';
+  static const providerApikeyTitle = 'provider.apikey_title';
+  static const providerApikeySummary = 'provider.apikey_summary';
+  static const providerApikeyListTagline = 'provider.apikey_list_tagline';
+  static const providerApikeyModels = 'provider.apikey_models';
+  static const providerApikeySetupTitle = 'provider.apikey_setup_title';
+  static const providerApikeySetup = 'provider.apikey_setup';
+  static const providerApikeyLink = 'provider.apikey_link';
+  static const providerApikeyPricingLink = 'provider.apikey_pricing_link';
+  static const providerApikeyNote = 'provider.apikey_note';
+  static const providerDescriptionApikey = 'provider.description_apikey';
   static const providerApi88DeepseekDiscount =
       'provider.api88_deepseek_discount';
   static const providerApi88DeepseekDetail = 'provider.api88_deepseek_detail';
@@ -3550,6 +3829,20 @@ abstract final class LocaleKeys {
   static const providerApi88VoiceModels = 'provider.api88_voice_models';
   static const providerApi88Link = 'provider.api88_link';
   static const providerApi88PricingNote = 'provider.api88_pricing_note';
+  static const providerToken91Category = 'provider.token91_category';
+  static const providerToken91Title = 'provider.token91_title';
+  static const providerToken91Summary = 'provider.token91_summary';
+  static const providerToken91ListTagline = 'provider.token91_list_tagline';
+  static const providerToken91ChatModels = 'provider.token91_chat_models';
+  static const providerToken91ImageModels = 'provider.token91_image_models';
+  static const providerToken91VideoModels = 'provider.token91_video_models';
+  static const providerToken91VideoModelsList =
+      'provider.token91_video_models_list';
+  static const providerToken91VoiceModels = 'provider.token91_voice_models';
+  static const providerToken91SetupTitle = 'provider.token91_setup_title';
+  static const providerToken91Setup = 'provider.token91_setup';
+  static const providerToken91Link = 'provider.token91_link';
+  static const providerToken91Note = 'provider.token91_note';
   static const providerSponsoredBadge = 'provider.sponsored_badge';
   static const providerMetasoLink = 'provider.metaso_link';
   static const providerMetasoCategory = 'provider.metaso_category';
@@ -3586,6 +3879,17 @@ abstract final class LocaleKeys {
       'provider.video_notice_priority_billing';
   static const providerTitle = 'provider.title';
   static const providerSummary = 'provider.summary';
+  static const providerPluginModelsInvalid = 'provider.plugin_models_invalid';
+  static const providerPluginModelsRefreshNeeded =
+      'provider.plugin_models_refresh_needed';
+  static const providerPluginModelUnavailable =
+      'provider.plugin_model_unavailable';
+  static const providerFetchModelsEmpty = 'provider.fetch_models_empty';
+  static const providerPluginUnavailable = 'provider.plugin_unavailable';
+  static const providerPluginSecretClearHint =
+      'provider.plugin_secret_clear_hint';
+  static const providerPluginCheckConnection =
+      'provider.plugin_check_connection';
   static const providerNameLabel = 'provider.name_label';
   static const providerNameHint = 'provider.name_hint';
   static const providerTypeLabel = 'provider.type_label';
@@ -3595,6 +3899,7 @@ abstract final class LocaleKeys {
       'provider.description_openai_compatible';
   static const providerDescriptionApi88 = 'provider.description_api88';
   static const providerDescriptionOoki = 'provider.description_ooki';
+  static const providerDescriptionToken91 = 'provider.description_token91';
   static const providerDescriptionOpenrouter =
       'provider.description_openrouter';
   static const providerDescriptionXai = 'provider.description_xai';
@@ -3648,7 +3953,10 @@ abstract final class LocaleKeys {
   static const providerProxySection = 'provider.proxy_section';
   static const providerSelectPlaceholder = 'provider.select_placeholder';
   static const providerTypePickerTitle = 'provider.type_picker_title';
-  static const providerTypeFixedUrl = 'provider.type_fixed_url';
+  static const providerTypePresets = 'provider.type_presets';
+  static const providerTypeProtocols = 'provider.type_protocols';
+  static const providerTypePlugins = 'provider.type_plugins';
+  static const providerTypePluginsEmpty = 'provider.type_plugins_empty';
   static const providerKindChat = 'provider.kind_chat';
   static const providerKindImage = 'provider.kind_image';
   static const providerKindVideo = 'provider.kind_video';
@@ -3658,7 +3966,6 @@ abstract final class LocaleKeys {
   static const providerTypeNoteMinimax = 'provider.type_note_minimax';
   static const providerTypeNoteDoubao = 'provider.type_note_doubao';
   static const providerDraftBadge = 'provider.draft_badge';
-  static const providerDraftTypeHint = 'provider.draft_type_hint';
   static const providerNewTitle = 'provider.new_title';
   static const providerTypeOpenaiCompatible = 'provider.type_openai_compatible';
   static const providerAudioModelsLabel = 'provider.audio_models_label';
@@ -3931,6 +4238,9 @@ abstract final class LocaleKeys {
       'settings.ai_provider_description';
   static const settingsAiProviderSection = 'settings.ai_provider_section';
   static const settingsAiTemperature = 'settings.ai_temperature';
+  static const settingsAiEnableTemperature = 'settings.ai_enable_temperature';
+  static const settingsAiEnableTemperatureDescription =
+      'settings.ai_enable_temperature_description';
   static const settingsAppearance = 'settings.appearance';
   static const settingsBackup = 'settings.backup';
   static const settingsBackupDescription = 'settings.backup_description';
@@ -4517,7 +4827,6 @@ abstract final class LocaleKeys {
   static const settingsProxyLoadFailed = 'settings.proxy.load_failed';
   static const settingsLanguageSection = 'settings.language_section';
   static const settingsPrivacySection = 'settings.privacy_section';
-  static const settingsPrivacyDescription = 'settings.privacy_description';
   static const settingsAnonymousReporting = 'settings.anonymous_reporting';
   static const settingsAnonymousReportingDescription =
       'settings.anonymous_reporting_description';
@@ -4750,6 +5059,9 @@ abstract final class LocaleKeys {
   static const settingsDebugCloseSection = 'settings.debug_close_section';
   static const settingsDebugMode = 'settings.debug_mode';
   static const settingsDebugModeDescription = 'settings.debug_mode_description';
+  static const settingsDebugForceGuide = 'settings.debug_force_guide';
+  static const settingsDebugForceGuideDescription =
+      'settings.debug_force_guide_description';
   static const settingsDebugResetOnboarding = 'settings.debug_reset_onboarding';
   static const settingsDebugResetOnboardingDescription =
       'settings.debug_reset_onboarding_description';
@@ -4990,6 +5302,9 @@ abstract final class LocaleKeys {
   static const todoRemaining = 'todo.remaining';
 
   // ── tool ────────────────────────────────────────
+  static const toolRunProduction = 'tool.run_production';
+  static const toolRunProductionCanvasPreview =
+      'tool.run_production_canvas_preview';
   static const toolRunProductionCapturePanorama =
       'tool.run_production_capture_panorama';
   static const toolRunProductionDeriveView = 'tool.run_production_derive_view';
@@ -5014,12 +5329,14 @@ abstract final class LocaleKeys {
   static const toolRunDirectorList = 'tool.run_director_list';
   static const toolRunDirectorRead = 'tool.run_director_read';
   static const toolRunDirectorCreate = 'tool.run_director_create';
+  static const toolRunDirectorDuplicate = 'tool.run_director_duplicate';
   static const toolRunDirectorApply = 'tool.run_director_apply';
   static const toolRunDirectorRestore = 'tool.run_director_restore';
   static const toolRunDirectorRemove = 'tool.run_director_remove';
   static const toolRunDirectorPreview = 'tool.run_director_preview';
   static const toolRunDirectorOutput = 'tool.run_director_output';
   static const toolRunDirectorFrames = 'tool.run_director_frames';
+  static const toolRunFiles = 'tool.run_files';
   static const toolRunFilesList = 'tool.run_files_list';
   static const toolRunFilesReadText = 'tool.run_files_read_text';
   static const toolRunViewImage = 'tool.run_view_image';
@@ -5027,6 +5344,7 @@ abstract final class LocaleKeys {
       'tool.run_files_read_video_metadata';
   static const toolRunFilesReadAudioMetadata =
       'tool.run_files_read_audio_metadata';
+  static const toolRunStyles = 'tool.run_styles';
   static const toolNameCodemode = 'tool.name_codemode';
   static const toolPending = 'tool.pending';
   static const toolProcessTitle = 'tool.process_title';
@@ -5086,6 +5404,31 @@ abstract final class LocaleKeys {
   static const toolPathCanvasEdges = 'tool.path_canvas_edges';
   static const toolPathCanvasLayout = 'tool.path_canvas_layout';
   static const toolPathCanvasNodes = 'tool.path_canvas_nodes';
+  static const toolPathProduction = 'tool.path_production';
+  static const toolPathEpisodeProduction = 'tool.path_episode_production';
+  static const toolPathProductionSettings = 'tool.path_production_settings';
+  static const toolPathProductionGenerations =
+      'tool.path_production_generations';
+  static const toolFieldRefType = 'tool.field_ref_type';
+  static const toolFieldRefId = 'tool.field_ref_id';
+  static const toolFieldPanorama = 'tool.field_panorama';
+  static const toolFieldImageMethod = 'tool.field_image_method';
+  static const toolFieldGroup = 'tool.field_group';
+  static const toolFieldX = 'tool.field_x';
+  static const toolFieldY = 'tool.field_y';
+  static const toolFieldStyle = 'tool.field_style';
+  static const toolFieldKind = 'tool.field_kind';
+  static const toolFieldInputs = 'tool.field_inputs';
+  static const toolFieldAdoptedAsset = 'tool.field_adopted_asset';
+  static const toolFieldProvider = 'tool.field_provider';
+  static const toolFieldGenerateAudio = 'tool.field_generate_audio';
+  static const toolFieldData = 'tool.field_data';
+  static const toolFieldPositions = 'tool.field_positions';
+  static const toolFieldRemoveTypes = 'tool.field_remove_types';
+  static const toolFieldCancelRequestedAt = 'tool.field_cancel_requested_at';
+  static const toolFieldResultAsset = 'tool.field_result_asset';
+  static const toolFieldResultFile = 'tool.field_result_file';
+  static const toolFieldResultApplied = 'tool.field_result_applied';
   static const toolActionGeneratingAvatar = 'tool.action_generating_avatar';
   static const toolActionGeneratingPhoto = 'tool.action_generating_photo';
   static const toolActionUpdatingTasks = 'tool.action_updating_tasks';
@@ -5233,14 +5576,20 @@ abstract final class LocaleKeys {
   static const toolNameStopAgent = 'tool.name_stop_agent';
   static const toolRunEditingList = 'tool.run_editing_list';
   static const toolRunEditingRead = 'tool.run_editing_read';
+  static const toolRunEditingDuplicate = 'tool.run_editing_duplicate';
   static const toolRunEditingApply = 'tool.run_editing_apply';
   static const toolRunEditingPreview = 'tool.run_editing_preview';
+  static const toolRunEditingFrames = 'tool.run_editing_frames';
+  static const toolRunEditingInspectAudio = 'tool.run_editing_inspect_audio';
   static const toolRunEditingExport = 'tool.run_editing_export';
+  static const toolRunOperations = 'tool.run_operations';
   static const toolRunOperationsList = 'tool.run_operations_list';
   static const toolRunOperationsRead = 'tool.run_operations_read';
   static const toolRunOperationsWait = 'tool.run_operations_wait';
+  static const toolRunFfmpeg = 'tool.run_ffmpeg';
   static const toolRunFfmpegCapabilities = 'tool.run_ffmpeg_capabilities';
   static const toolRunFfmpegProbe = 'tool.run_ffmpeg_probe';
+  static const toolRunFfmpegInspectAudio = 'tool.run_ffmpeg_inspect_audio';
   static const toolRunFfmpegFrames = 'tool.run_ffmpeg_frames';
   static const toolRunFfmpegExecute = 'tool.run_ffmpeg_execute';
 
@@ -5847,6 +6196,12 @@ abstract final class LocaleKeys {
   static const commonRestore = 'common.restore';
   static const commonIgnore = 'common.ignore';
   static const commonApply = 'common.apply';
+  static const productionBackToCanvas = 'production.back_to_canvas';
+  static const productionEditingMissing = 'production.editing_missing';
+  static const productionText = 'production.text';
+  static const productionHistoryConflict = 'production.history_conflict';
+  static const productionHistoryFailed = 'production.history_failed';
+
   static const commonUndo = 'common.undo';
   static const commonRedo = 'common.redo';
   static const directorUnsaved = 'director.unsaved';
@@ -6152,4 +6507,40 @@ abstract final class LocaleKeys {
       'settings.about_upload_logs_success';
   static const settingsAboutUploadLogsFailed =
       'settings.about_upload_logs_failed';
+  static const productionAddEditingHint = 'production.add_editing_hint';
+  static const productionCanvasStart = 'production.canvas_start';
+  static const productionUploadScript = 'production.upload_script';
+  static const productionWritePrompt = 'production.write_prompt';
+  static const productionImportMedia = 'production.import_media';
+  static const productionCanvasStartHint = 'production.canvas_start_hint';
+  static const productionUploadScriptHint = 'production.upload_script_hint';
+  static const productionWritePromptHint = 'production.write_prompt_hint';
+  static const productionImportMediaHint = 'production.import_media_hint';
+  static const productionImportCanvas = 'production.import_canvas';
+  static const productionExportCanvasEmpty = 'production.export_canvas_empty';
+  static const productionExportCanvasSaved = 'production.export_canvas_saved';
+  static const productionExportCanvasFailed = 'production.export_canvas_failed';
+  static const productionExportCanvasMissingMedia =
+      'production.export_canvas_missing_media';
+  static const productionImportCanvasFailed = 'production.import_canvas_failed';
+  static const productionImportCanvasInvalid =
+      'production.import_canvas_invalid';
+  static const productionImportCanvasCreated =
+      'production.import_canvas_created';
+  static const productionImportCanvasStyles = 'production.import_canvas_styles';
+  static const productionCanvasPackageCanvasOnly =
+      'production.canvas_package_canvas_only';
+  static const productionCanvasDesktopOnly = 'production.canvas_desktop_only';
+  static const libraryContentKindCanvas = 'library.content_kind_canvas';
+  static const libraryCreateCanvas = 'library.create_canvas';
+  static const libraryDefaultCanvasTitle = 'library.default_canvas_title';
+  static const homeCreateCanvasCardTitle = 'library.create_canvas_card_title';
+  static const homeCreateCanvasCardSubtitle =
+      'library.create_canvas_card_subtitle';
+  static const productionAddTextHint = 'production.add_text_hint';
+  static const productionTextAskHint = 'production.text_ask_hint';
+  static const productionTextTryWrite = 'production.text_try_write';
+  static const productionTextTryStoryboard = 'production.text_try_storyboard';
+  static const productionTextTrySetting = 'production.text_try_setting';
+  static const productionTextTryPolish = 'production.text_try_polish';
 }

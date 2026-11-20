@@ -64,7 +64,10 @@ void main() {
       ProviderScope(
         overrides: [
           appDatabaseProvider.overrideWithValue(app),
-          storyboardServiceProvider('test').overrideWithValue(service),
+          storyboardServiceProvider(
+            'test',
+            novelId: 'work',
+          ).overrideWithValue(service),
           workingOverlayServiceProvider('test').overrideWithValue(overlay),
         ],
         child: EasyLocalization(
@@ -92,6 +95,7 @@ void main() {
                         builder: (_) => RepaintBoundary(
                           key: boundary,
                           child: ShotEditForm(
+                            novelId: 'work',
                             path: 'test',
                             sceneId: scene,
                             shot: shot,

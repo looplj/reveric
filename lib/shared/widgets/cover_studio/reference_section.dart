@@ -26,7 +26,6 @@ import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../providers/cover_studio_providers.dart';
 import '../../providers/novel_providers.dart';
-import '../../services/cover_prompt_builder.dart';
 import '../../theme/theme.dart';
 import 'chips.dart';
 
@@ -57,7 +56,9 @@ class CoverReferenceSection extends HookConsumerWidget {
     final controller = ref.read(
       coverStudioControllerProvider(novelId).notifier,
     );
-    final atLimit = state.references.length >= coverReferenceLimit;
+    ref.watch(coverDraftImageChoicesProvider(novelId));
+    final limit = controller.referenceLimit;
+    final atLimit = limit != null && state.references.length >= limit;
     final byId = {for (final asset in libraryAssets) asset.id: asset};
 
     Future<void> pickFile() async {
@@ -76,7 +77,9 @@ class CoverReferenceSection extends HookConsumerWidget {
           final currentReferences = ref
               .read(coverStudioControllerProvider(novelId))
               .references;
-          if (currentReferences.length >= coverReferenceLimit) {
+          final currentLimit = controller.referenceLimit;
+          if (currentLimit != null &&
+              currentReferences.length >= currentLimit) {
             truncated = true;
             break;
           }
@@ -321,9 +324,7 @@ class _Picker extends HookConsumerWidget {
                   return GestureDetector(
                     onTap: () => controller.addReference(asset.id),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(
-                        RevericRadius.medium,
-                      ),
+                      borderRadius: BorderRadius.circular(RevericRadius.medium),
                       child: Image.file(
                         File(path),
                         width: 42,

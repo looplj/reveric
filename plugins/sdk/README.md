@@ -20,8 +20,18 @@
 ```sh
 mkdir my-plugin && cd my-plugin
 npm init -y
-npm install -D reveric-plugin-sdk
+npm install -D --save-exact reveric-plugin-sdk
 ```
+
+SDK 也可以通过 `npm pack` 生成的 `.tgz` 安装，不要求发布到 npm registry。使用本地 SDK 时，将上面的安装命令替换为：
+
+```sh
+npm install -D --save-exact /absolute/path/reveric-plugin-sdk-<version>.tgz
+```
+
+个人临时验证可以用绝对路径；团队仓库和 CI 应把包放入仓库的 `vendor/` 并使用 `file:vendor/<包名>.tgz`，或使用固定版本的 HTTPS 下载地址。提交 lockfile，不使用工作区外的 `file:../reveric/plugins/sdk` 或浮动分支作为发布依赖。SDK 是构建工具，用户安装的插件 ZIP 不需要 Node.js 或 npm。
+
+选择的 SDK 必须包含插件使用的接口。尤其是媒体 Provider，不能仅凭版本号相同就认定本地源码与已发布包相同，需用实际包执行类型检查和打包。
 
 `package.json` 中加入：
 
@@ -130,6 +140,7 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 | `database` | 否 | 私有 SQLite 数据库及迁移 |
 | `pages` | 否 | 插件页面 |
 | `tasks` | 否 | 定时任务 |
+| `provider` | 否 | 供应商名称、实例设置和动作，见 3.1 节 |
 
 **PluginText**：面向用户的文本可以是字符串，也可以是按语言区分的对象，如 `{ "zh-CN": "记忆", "en": "Memory" }`。宿主按"当前界面语言 → zh-CN → en → 第一项"的顺序选择。
 
@@ -142,6 +153,26 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 | `characters.read` / `characters.write` | 读取 / 修改当前作品的角色 |
 
 未声明或用户未授权的权限，调用时会以 `permission_denied` 失败。
+
+### provider.settings.actions
+
+供应商实例可以使用与 `settings.actions` 相同的按钮声明：
+
+```json
+"provider": {
+  "name": "Example",
+  "settings": {
+    "fields": { "apiKey": { "type": "secret", "title": "API Key", "required": true } },
+    "actions": { "balance": { "title": "查询余额", "requires": ["apiKey"] } }
+  }
+}
+```
+
+在 `setup.provider.register({ listModels, image, actions: { balance: async (context) => ({ ok: true, text: { "zh-CN": "余额：100", "en": "Balance: 100" } }) } })` 中注册对应 handler。每个声明必须有且只有一个处理函数，不能注册未声明的 action；与插件全局 settings action 分开。
+
+操作使用 `ProviderContext`：`provider.id` 是当前实例，`settings.get` / `secrets.get` 读取该实例配置与表单未保存草稿，不会保存草稿。只校验 `requires` 列出的字段；空列表可用于无需密钥的操作。必须启用插件；新建草稿和已保存但关闭的供应商实例都可执行，执行操作不自动保存实例或表单配置。使用实例代理，20 秒超时，无文件或媒体生成 API。
+
+返回 `ProviderActionResult`：`ok` 必填；`code` 使用现有设置操作错误映射；`message` 仅供诊断日志；`text` 是可选的成功提示，支持 `PluginText` 多语言，失败时不会展示。修改依赖字段后，表单自动清除旧结果。`checkConnection` 保持原有独立入口。
 
 ### settings
 
@@ -159,8 +190,9 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 ```
 
 - 字段名匹配 `^[A-Za-z][A-Za-z0-9_]*$`。
-- `type` 可选：`string`、`text`（多行）、`integer`、`number`、`boolean`、`select`（配 `options: [{ value, label }]`）、`secret`、`model`。
-- 其他可选属性：`description`、`required`、`default`、`maxLength`（文本类）、`min` / `max`（数字类）。
+- `type` 可选：`string`、`text`（多行）、`integer`、`number`、`boolean`、`select`（配 `options: [{ value, label }]`）、`combo`、`secret`、`model`。
+- `combo` 也要配非空 `options`。保存值是字符串：从菜单选中时写入选项的 `value`，用户也可以输入清单外的文本。`label` 只显示在菜单里。`default` 必须是非空字符串，不必来自 `options`。`maxLength` 与 `string` 相同。
+- 其他可选属性：`description`、`required`、`default`、`maxLength`（文本类，含 `combo`）、`min` / `max`（数字类）。
 - `secret` 用 `context.secrets.get(key)` 读取，其他字段用 `context.settings.get(key)` 读取。
 - `model` 字段的值是 `{ providerId, model }`，可以直接传给 `ai.generateText`；未设置时为 `null`，此时会使用用户的默认聊天模型。
 - `actions` 是设置页上的按钮，比如"验证 API Key"。`requires` 列出执行前必须已填写的字段。
@@ -187,7 +219,7 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 }
 ```
 
-任务 ID 匹配 `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`，`intervalMinutes` 取值 15–10080。用户也可以在设置页手动触发任务。
+任务 ID 匹配 `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`，`intervalMinutes` 取值 15 至 10080。用户也可以在设置页手动触发任务。
 
 ### pages
 
@@ -200,6 +232,7 @@ npm run pack    # 构建，并打包成 example.hello-1.0.0.zip
 | 注册方法 | 用途 |
 | --- | --- |
 | `setup.tools.register(tool)` | 注册 Agent 可调用的工具 |
+| `setup.provider.register(handlers)` | 注册一个图片或视频供应商定义，见 3.1 节 |
 | `setup.prompts.context(provider)` | 每次模型请求前，向对话追加参考资料 |
 | `setup.prompts.system(provider)` | 替换指定会话模式的整个系统提示词 |
 | `setup.tasks.register(id, handler)` | 绑定清单中声明的定时任务 |
@@ -283,6 +316,124 @@ setup.settings.registerAction("verifyApiKey", async (context) => {
 ```
 
 设置动作在插件停用时也能运行，`settings.get` / `secrets.get` 读到的是表单中尚未保存的值。返回的 `code` 为 `unauthorized`、`network`、`timeout` 时，宿主会显示对应的说明。
+
+### 3.1 视频供应商
+
+宿主必须实现媒体 Provider 接口。安装较新的 SDK 只更新构建时的类型与工具，不会升级用户的客户端；`pluginApiVersion: "^1"` 也不能证明某个旧客户端已具备这些接口。发布时记录实际验收的客户端版本，不能仅凭 ZIP 打包成功宣布兼容。
+
+一个插件提供一个供应商定义。清单中声明 `provider` 后，`apply` 必须调用一次 `setup.provider.register`；安装、启用插件后，用户还需创建供应商实例。每个实例拥有独立的设置、密钥和模型选择。`pluginId` 标识安装包，`context.provider.id` 标识实例，`model.id` 标识该实例上的模型。
+
+在最小插件清单中增加：
+
+```json
+"provider": {
+  "name": "Example Video",
+  "settings": {
+    "fields": {
+      "apiKey": { "type": "secret", "title": "API Key", "required": true }
+    }
+  }
+}
+```
+
+下面是可类型检查和打包的最小入口；`example.com` 是示例地址，服务端请求与回执需要换成目标平台的协议。示例只支持文生视频。
+
+```ts
+import { PluginError, type PluginSetup, type ProviderHandlers } from "reveric-plugin-sdk";
+
+const provider: ProviderHandlers = {
+  listModels() {
+    return [{
+      kind: "video", id: "example-video", name: "Example Video",
+      capabilities: {
+        ratios: ["16:9"], resolutions: ["720p"], durations: [5],
+        modes: ["text"], frameRoles: [], maxMiddleFrames: 0,
+        maxReferences: 0, references: {},
+        supportsAudioOnlyReference: false, supportsAdaptiveTextRatio: false,
+        supportsLastFrameOnly: false, framesRequireAdaptiveRatio: false,
+        supportsCertifiedAssets: false, draft: null,
+      },
+    }];
+  },
+  video: {
+    async submit(input, context) {
+      const key = await context.secrets.get("apiKey");
+      if (!key) throw new PluginError("configuration_required", "Configure API Key");
+      const response = await context.video.request("https://example.com/jobs", {
+        method: "POST", headers: { Authorization: `Bearer ${key}` },
+        body: { kind: "json", value: {
+          model: input.request.modelId, prompt: input.request.prompt,
+          ratio: input.request.ratio, resolution: input.request.resolution,
+          duration: input.request.durationSeconds,
+        } },
+        response: { kind: "json" },
+      });
+      const data = response.body as { id?: unknown } | null;
+      if (response.status !== 200 || !data || typeof data.id !== "string" || !data.id) {
+        throw new PluginError("submission_unknown", "No valid submission receipt; check remote jobs");
+      }
+      return { status: "submitted", remoteTaskId: data.id };
+    },
+    async query(input, context) {
+      const key = await context.secrets.get("apiKey");
+      if (!key) throw new PluginError("configuration_required", "Configure API Key");
+      const response = await context.video.request("https://example.com/jobs/query", {
+        method: "POST", headers: { Authorization: `Bearer ${key}` },
+        body: { kind: "json", value: { id: input.remoteTaskId } },
+        response: { kind: "json" },
+      });
+      const data = response.body as { status?: unknown; url?: unknown } | null;
+      if (response.status !== 200 || !data) {
+        throw new PluginError("invalid_response", "Invalid query response");
+      }
+      if (data.status === "running") return { status: "running" };
+      if (data.status === "done" && typeof data.url === "string" && /^https?:\/\//.test(data.url)) {
+        return { status: "succeeded", outputs: [{ kind: "url", url: data.url }] };
+      }
+      return { status: "unknown", reason: "Unrecognized remote result; inspect the remote job" };
+    },
+  },
+};
+
+export function apply(setup: PluginSetup): void {
+  setup.provider.register(provider);
+}
+```
+
+#### 方法与上下文
+
+| 方法 | 调用形式 | 职责 |
+| --- | --- | --- |
+| `listModels` | `(context)` | 返回模型 ID、能力和可选 `requestDefaults` |
+| `checkConnection` | `(context)` | 可选，只查询账户或余额，失败抛错，不能生成付费视频 |
+| `actions.<name>` | `(context)` | 可选，处理清单声明的实例设置按钮，见 `provider.settings.actions` |
+| `uploadReference` | `({ file }, context)` | 可选，把宿主文件句柄上传为远端素材引用 |
+| `video.submit` | `(input, context)` | 提交一次，返回 `submitted`、远端 ID 和可选 `state` |
+| `video.query` | `(input, context)` | 查询一次，返回统一任务状态，由宿主安排后续查询 |
+
+`video.submit` 和 `video.query` 必须成对提供。普通设置用 `settings.get`，密钥用 `secrets.get`，都读取当前实例；查询积分等设置按钮还能读取尚未保存的表单草稿。`context.http.fetch` 处理普通小型 HTTP 请求；非 2xx 响应由插件检查和解释。
+
+模型能力控制宿主表单与输入校验。模型 ID、时长、参考数量和默认值由插件维护，不依赖客户端的内置模型 catalog。更新约束时同步更新插件测试，并注明依据来自平台文档、网页配置还是实际请求。能力声明不会证明远端账号或模型一定可用。
+
+#### 参考素材
+
+需要先上传的平台实现 `uploadReference`，通过 `context.files.upload(file.handle, request)` 发送文件。`request.kind` 为 `multipart` 时提供 `fields` 和 `fileField`，由宿主生成 multipart boundary；为 `raw` 时指定 `PUT` 或 `POST`。返回 `{ ref, expiresAt? }`，宿主缓存该实例的上传结果。
+
+提交输入的 `references[].source` 可以是 `file`、`url`、`uploaded` 或 `certified`，按实际支持的方式处理；小云雀要求 `uploaded`，使用其中的 `ref`。文件句柄是不透明标识，不是本地路径。不要把素材字节、base64 或密钥写进任务状态。需要在生成请求中插入文件时，用 `context.video.request` 的文件描述，让宿主读取和发送，不能用普通 HTTP 把大文件搬进 JS。
+
+#### 任务与错误
+
+- 提交返回 `{ status: "submitted", remoteTaskId, state? }`。宿主持久化 ID 和 JSON `state`，重启后传给 `query`。小云雀的 `run_id` 放入 `remoteTaskId`，`thread_id` 放入 `state.threadId`。
+- 查询返回 `queued`、`running`、`succeeded`、`failed`、`cancelled`、`expired` 或 `unknown`。每次只查一次，不在插件内部轮询，也不在查询失败时重新提交。
+- 当前视频宿主接收一个 URL 产物，由宿主下载和登记；下载授权头只用于当次请求，不持久化。返回多视频的平台必须明确选择策略。小云雀保留第一条，第一条无效时返回 `unknown`。
+- 已知提交未受理才能使用 `rejected`；请求可能已被接受但没有有效回执时使用 `submission_unknown`。不要把超时解释为“肯定没提交”，否则重试可能重复扣费。`unknown` 用于已知远端 ID、但无法判断结果的任务。
+- `PluginError` 的常用分类包括 `invalid_request`、`configuration_required`、`authentication`、`rate_limited`、`invalid_response`。保留诊断信息，不在日志或返回值中泄漏密钥。
+- 更新插件需继续解析旧任务的 `state`；无法解析时明确报错，不能丢弃状态或重新提交。查询运行时可被多个实例复用，不能把实例密钥或任务上下文放在模块全局变量中。
+- 停用插件后宿主停止派发；Android 进入后台不保证持续查询，恢复后使用同一远端 ID。跨平台验收包括 Windows、macOS、Android。
+
+#### 验证
+
+插件测试用模拟回执覆盖模型参数、上传、提交、状态映射、缺失回执、错误响应、凭据隔离和重启所需的序列化状态。用实际 SDK `.tgz` 在仓库外运行测试和 `reveric-plugin pack`，确保没有依赖主仓库或其他插件。然后在宿主导入 ZIP，验证启用、创建实例、取模型、更新和恢复；真实出片另用有效账号验证，模拟测试不能替代它。
 
 ## 4. 宿主 API
 

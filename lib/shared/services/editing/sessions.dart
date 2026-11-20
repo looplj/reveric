@@ -7,9 +7,9 @@ import 'service.dart';
 import 'session.dart';
 
 class EditingSessions {
-  final _sessions = <(NovelContentDatabase, String), EditingSession>{};
+  final _sessions = <(NovelContentDatabase, String?, String), EditingSession>{};
   EditingSession get(EditingService service, String id) {
-    final key = (service.database, id);
+    final key = (service.database, service.novelId, id);
     final session = _sessions.remove(key) ?? EditingSession(service, id);
     _sessions[key] = session;
     prune(except: session);

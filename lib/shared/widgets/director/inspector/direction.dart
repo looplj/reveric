@@ -36,6 +36,7 @@ class CameraDirectionInspector extends StatelessWidget {
     final free = camera['orientation_mode'] == 'free';
     final property = free ? 'rotation' : 'camera_target';
     final enabled =
+        !session.readOnly &&
         !session.playing &&
         session.history.editBlock(id, property, frame) == null;
     final target = free
@@ -54,7 +55,7 @@ class CameraDirectionInspector extends StatelessWidget {
           child: RevericSelect<String>(
             key: const ValueKey('director-camera-mode'),
             value: camera['orientation_mode'],
-            enabled: !session.playing,
+            enabled: !session.readOnly && !session.playing,
             items: [
               for (final mode in ['free', 'look_at'])
                 RevericSelectItem(value: mode, label: tr(context, mode)),
@@ -184,7 +185,7 @@ class CameraDirectionInspector extends StatelessWidget {
             child: XyzInput(
               session: session,
               fieldKey: 'reference_up',
-              enabled: List.filled(3, !session.playing),
+              enabled: List.filled(3, !session.readOnly && !session.playing),
               values: [
                 for (final v in camera['reference_up']) (v as num).toDouble(),
               ],

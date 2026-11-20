@@ -21,6 +21,8 @@ import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   late NovelContentDatabase database;
   late AppDatabase appDatabase;
@@ -92,10 +94,7 @@ void main() {
   );
 
   test('schema exposes photos for both resource and field Write', () async {
-    final schema = await toolManager.executeTool(
-      name: 'Read',
-      input: {'path': '/_schema/characters'},
-    );
+    final schema = resourceContractTreeForTesting('/_schema/characters');
     final operations = (schema['operation_contracts'] as List).cast<Map>();
     final resource = operations.singleWhere(
       (op) => op['tool'] == 'Write' && op['target'] == 'resource',

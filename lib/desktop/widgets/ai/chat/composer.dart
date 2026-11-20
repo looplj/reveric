@@ -9,6 +9,8 @@
 //   lib/shared/services/ai/chat_session_controller.dart
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
 //   assets/translations/en/agent_skill.json
@@ -890,6 +892,7 @@ class _ReferenceChip extends StatelessWidget {
       NovelWorkspaceSection.screenplay_outline =>
         RevericIcons.list_alt_outlined,
       NovelWorkspaceSection.screenplay_scenes => RevericIcons.category_outlined,
+      NovelWorkspaceSection.storyboard => RevericIcons.flow_arrow,
       _ => RevericIcons.description_outlined,
     };
 
@@ -912,22 +915,28 @@ class _ReferenceChip extends StatelessWidget {
           const SizedBox(width: RevericSpacing.xxs),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 120),
-            child: Text(
-              reference.label,
-              style: typo.uiSmall.copyWith(color: colors.accent),
-              overflow: TextOverflow.ellipsis,
+            child: Tooltip(
+              message: reference.label,
+              child: Text(
+                reference.label,
+                style: typo.uiSmall.copyWith(color: colors.accent),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           const SizedBox(width: 2),
-          InkWell(
-            borderRadius: BorderRadius.circular(RevericRadius.pill),
-            onTap: onRemove,
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: RevericIcon(
-                RevericIcons.close,
-                size: 12,
-                color: colors.accent,
+          Tooltip(
+            message: context.t(LocaleKeys.commonRemove),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(RevericRadius.pill),
+              onTap: onRemove,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: RevericIcon(
+                  RevericIcons.close,
+                  size: 12,
+                  color: colors.accent,
+                ),
               ),
             ),
           ),

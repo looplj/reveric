@@ -32,6 +32,7 @@ final _log = AppLogger.forModule('AgentSkillsRunCommandHandler');
 class AgentSkillsRunCommandHandler {
   AgentSkillsRunCommandHandler({
     required this.container,
+    this.contentKind,
     BundledControlSkillsLoader? bundledControlSkillsLoader,
     AssetBundle? assetBundle,
   }) : _bundledControlSkillsLoader =
@@ -39,6 +40,7 @@ class AgentSkillsRunCommandHandler {
        _assetBundle = assetBundle ?? rootBundle;
 
   final ProviderContainer container;
+  final String? contentKind;
   final BundledControlSkillsLoader _bundledControlSkillsLoader;
   final AssetBundle _assetBundle;
 
@@ -659,7 +661,11 @@ class AgentSkillsRunCommandHandler {
     if (!bundledControlCallNames.contains(name)) {
       return null;
     }
-    return _bundledControlSkillsLoader.findByCallName(_assetBundle, name);
+    return _bundledControlSkillsLoader.findByCallName(
+      _assetBundle,
+      name,
+      contentKind: contentKind,
+    );
   }
 
   List<AgentSkillReferenceFile> _parseReferences(Object? raw) {

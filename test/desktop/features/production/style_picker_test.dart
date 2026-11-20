@@ -166,9 +166,17 @@ void main() {
         ProductionStyleThumbKind.preset,
       );
 
-      await tester.tap(find.byTooltip('Clear screenplay style'));
+      await tester.tap(find.text('中式志怪电影感'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ProductionStylePicker),
+          matching: find.text('No style'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(await stored(), isNull);
+      expect(find.byTooltip('Clear screenplay style'), findsNothing);
 
       await tester.tap(find.text('No style'));
       await tester.pumpAndSettle();

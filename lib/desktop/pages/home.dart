@@ -35,6 +35,8 @@
 //   lib/shared/widgets/settings/leave_guard.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
+import 'dart:async';
+
 import '../../shared/widgets/plugin_view/navigation.dart';
 import '../../shared/widgets/plugin_view/page.dart';
 import '../../shared/models/plugin/view.dart';
@@ -64,11 +66,14 @@ import '../../shared/theme/theme.dart';
 import '../../shared/logger/app_logger.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/confirm_dialog.dart';
+import '../../shared/widgets/guide/tour.dart';
+import '../../shared/widgets/guide/trigger.dart';
 import '../../shared/widgets/settings/leave_guard.dart';
 import '../../shared/widgets/unsaved_changes_dialog.dart';
 import '../../shared/services/demo_novel.dart';
 import '../widgets/agent_management/ai_shortcut_action_edit_panel.dart';
 import '../widgets/agent_management/agent_model_settings_page.dart';
+import '../widgets/agent_management/plugins_page.dart';
 import '../widgets/agent_management/ai_assistant_page.dart';
 import '../widgets/agent_management/ai_providers_page.dart';
 import '../widgets/agent_management/mcp_page.dart';
@@ -83,6 +88,8 @@ import '../widgets/novel_form_dialog.dart';
 import '../widgets/novel_import_dialog.dart';
 import '../../shared/services/screenplay_import.dart';
 import '../../shared/widgets/screenplay/import_dialog.dart';
+import '../features/production/package_actions.dart';
+import '../features/canvas_gallery/page.dart';
 import '../widgets/home/library_home_panel.dart';
 import '../widgets/settings/settings_dialog.dart';
 import '../widgets/agent_management/subagent_edit_panel.dart';
@@ -150,6 +157,14 @@ final class _HomeAiAssistantSelection extends _HomeContentSelection {
 
 final class _HomeMcpSelection extends _HomeContentSelection {
   const _HomeMcpSelection();
+}
+
+final class _HomePluginsSelection extends _HomeContentSelection {
+  const _HomePluginsSelection();
+}
+
+final class _HomeSettingsSelection extends _HomeContentSelection {
+  const _HomeSettingsSelection();
 }
 
 final class _HomeSkillListSelection extends _HomeContentSelection {
@@ -282,7 +297,11 @@ class NovelHomePage extends HookConsumerWidget {
     // 将它注册为排除区域，避免双击按钮时触发窗口最大化/还原。
     // 小说库和剧本库同时挂载，各用一个 key，只登记当前可见的那个。
     final greetingHeaderKeys = useMemoized(
-      () => {contentKindNovel: GlobalKey(), contentKindScreenplay: GlobalKey()},
+      () => {
+        contentKindNovel: GlobalKey(),
+        contentKindScreenplay: GlobalKey(),
+        contentKindCanvas: GlobalKey(),
+      },
       [],
     );
     // 编辑面板标题栏按钮（Save / Cancel / Delete 等）同样在标题栏拖拽层内；
@@ -461,7 +480,38 @@ class NovelHomePage extends HookConsumerWidget {
       );
     }
 
+    Future<void> createCanvas() async {
+      try {
+        final id = await ref
+            .read(novelActionsProvider)
+            .createCanvas(
+              defaultTitle: context.t(LocaleKeys.libraryDefaultCanvasTitle),
+            );
+        if (context.mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => WorkspaceEditorPage(novelId: id),
+            ),
+          );
+        }
+      } catch (error, stack) {
+        _log.error('Create canvas failed', error: error, stackTrace: stack);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.t(LocaleKeys.editorSaveNovelFailed)),
+            ),
+          );
+        }
+      }
+    }
+
     void openCreateNovelDialog(String contentKind) {
+      if (contentKind == contentKindCanvas) {
+        createCanvas();
+        return;
+      }
+
       final isNovel = contentKind == contentKindNovel;
       final novels = novelsAsync.maybeWhen(
         data: (list) => list,
@@ -693,6 +743,8 @@ class NovelHomePage extends HookConsumerWidget {
         (_HomeAiProvidersSelection(), _HomeAiProvidersSelection()) => true,
         (_HomeAiAssistantSelection(), _HomeAiAssistantSelection()) => true,
         (_HomeMcpSelection(), _HomeMcpSelection()) => true,
+        (_HomePluginsSelection(), _HomePluginsSelection()) => true,
+        (_HomeSettingsSelection(), _HomeSettingsSelection()) => true,
         (_HomeSkillListSelection(), _HomeSkillListSelection()) => true,
         (
           _HomeGlobalSkillSelection(skill: final currentSkill),
@@ -851,6 +903,54 @@ class NovelHomePage extends HookConsumerWidget {
     }
 
     final contentSelection = selection.value;
+    final homeGuideKeys = useMemoized(
+      () => (
+        novel: GlobalKey(),
+        screenplay: GlobalKey(),
+        canvas: GlobalKey(),
+        models: GlobalKey(),
+      ),
+    );
+    final homeGuide = useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.home,
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'home_novel',
+          targetKey: homeGuideKeys.novel,
+          icon: RevericIcons.menu_book_rounded,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeNovelTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeNovelBody),
+        ),
+        GuideStep(
+          id: 'home_screenplay',
+          targetKey: homeGuideKeys.screenplay,
+          icon: RevericIcons.movie_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeScreenplayTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeScreenplayBody),
+        ),
+        GuideStep(
+          id: 'home_canvas',
+          targetKey: homeGuideKeys.canvas,
+          icon: RevericIcons.flow_arrow,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeCanvasTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeCanvasBody),
+        ),
+        GuideStep(
+          id: 'home_models',
+          targetKey: homeGuideKeys.models,
+          icon: RevericIcons.hub_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeModelsTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeModelsBody),
+          primaryActionLabel: selection.value is! _HomeAiProvidersSelection
+              ? ctx.t(LocaleKeys.onboardingGuideGoProviders)
+              : null,
+          onPrimaryAction: selection.value is! _HomeAiProvidersSelection
+              ? () => selectContent(const _HomeAiProvidersSelection())
+              : null,
+        ),
+      ],
+    );
 
     HomeLibraryPanel buildLibraryPanel(String contentKind) {
       return HomeLibraryPanel(
@@ -860,7 +960,16 @@ class NovelHomePage extends HookConsumerWidget {
         headerGestureExclusionKey: greetingHeaderKeys[contentKind]!,
         onQuickStart: quickStartNovel,
         onCreateNovel: () => openCreateNovelDialog(contentKind),
-        onImportNovel: openImportNovelDialog,
+        onImportNovel: contentKind == contentKindCanvas
+            ? () => importCanvasFromShelf(context)
+            : openImportNovelDialog,
+        onOpenCanvasGallery: contentKind == contentKindCanvas
+            ? () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CanvasGalleryPage(),
+                ),
+              )
+            : null,
         onImportScreenplay: importScreenplay,
         onCreateDemoNovel: () => createDemoNovelWithNavigation(context, ref),
         onDeleteNovel: (novel) => deleteNovel(novel),
@@ -909,12 +1018,22 @@ class NovelHomePage extends HookConsumerWidget {
       _HomeAiProvidersSelection() => AiProvidersPage(
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
+        onOpenModelSettings: () =>
+            selectContent(const _HomeAgentModelSettingsSelection()),
       ),
       _HomeAiAssistantSelection() => AiAssistantPage(
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
       ),
       _HomeMcpSelection() => McpPage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+      ),
+      _HomePluginsSelection() => PluginsPage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+      ),
+      _HomeSettingsSelection() => DesktopSettingsPage(
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
       ),
@@ -1026,10 +1145,15 @@ class NovelHomePage extends HookConsumerWidget {
       // 两个库同时挂载、只切换可见的那个：集合作品流不会随切换被释放重查，
       // 切换时不再先闪加载态再出内容；搜索、筛选和滚动位置也各自保留。
       _HomeLibrarySelection(:final contentKind) => IndexedStack(
-        index: contentKind == contentKindScreenplay ? 1 : 0,
+        index: contentKind == contentKindCanvas
+            ? 2
+            : contentKind == contentKindScreenplay
+            ? 1
+            : 0,
         children: [
           buildLibraryPanel(contentKindNovel),
           buildLibraryPanel(contentKindScreenplay),
+          buildLibraryPanel(contentKindCanvas),
         ],
       ),
     };
@@ -1059,13 +1183,9 @@ class NovelHomePage extends HookConsumerWidget {
                 recentSessionsAsync,
                 contentSelection,
                 selectContent,
-                () {
-                  showRevericDialog(
-                    context: context,
-                    builder: (_) => const SettingsDialog(),
-                  );
-                },
                 sessionsExpanded,
+                homeGuideKeys: homeGuideKeys,
+                onReplayGuide: () => unawaited(homeGuide.replay()),
               ),
               Container(
                 width: RevericSizes.dividerThickness,
@@ -1103,9 +1223,16 @@ class NovelHomePage extends HookConsumerWidget {
     AsyncValue<List<AiChatSession>> recentSessionsAsync,
     _HomeContentSelection selection,
     ValueSetter<_HomeContentSelection> onContentSelected,
-    VoidCallback onOpenSettings,
-    ValueNotifier<bool> sessionsExpanded,
-  ) {
+    ValueNotifier<bool> sessionsExpanded, {
+    required ({
+      GlobalKey novel,
+      GlobalKey screenplay,
+      GlobalKey canvas,
+      GlobalKey models,
+    })
+    homeGuideKeys,
+    required VoidCallback onReplayGuide,
+  }) {
     final colors = RevericTheme.colorsOf(context);
     final recentSessions = recentSessionsAsync.maybeWhen(
       data: (sessions) => sessions,
@@ -1145,10 +1272,12 @@ class NovelHomePage extends HookConsumerWidget {
                 _buildSectionGroupHeader(
                   context,
                   title: context.t(LocaleKeys.homeSectionWorks),
+                  trailing: GuideReplayButton(onPressed: onReplayGuide),
                 ),
                 // 小说和剧本各是一个独立的库，不在同一个作品区里混排。
                 _buildLeafNavItem(
                   context,
+                  itemKey: homeGuideKeys.novel,
                   icon: RevericIcons.menu_book_rounded,
                   title: context.t(LocaleKeys.libraryContentKindNovel),
                   isSelected: libraryKind == contentKindNovel,
@@ -1160,6 +1289,7 @@ class NovelHomePage extends HookConsumerWidget {
                 ),
                 _buildLeafNavItem(
                   context,
+                  itemKey: homeGuideKeys.screenplay,
                   icon: RevericIcons.movie_outlined,
                   title: context.t(LocaleKeys.libraryContentKindScreenplay),
                   isSelected: libraryKind == contentKindScreenplay,
@@ -1169,29 +1299,48 @@ class NovelHomePage extends HookConsumerWidget {
                     );
                   },
                 ),
+                _buildLeafNavItem(
+                  context,
+                  itemKey: homeGuideKeys.canvas,
+                  icon: RevericIcons.flow_arrow,
+                  title: context.t(LocaleKeys.libraryContentKindCanvas),
+                  isSelected: libraryKind == contentKindCanvas,
+                  onTap: () => onContentSelected(
+                    const _HomeLibrarySelection(contentKindCanvas),
+                  ),
+                ),
                 const SizedBox(height: RevericSpacing.md),
                 // Section 2: 模型
-                _buildSectionGroupHeader(
-                  context,
-                  title: context.t(LocaleKeys.homeSectionModel),
-                ),
-                _buildLeafNavItem(
-                  context,
-                  icon: RevericIcons.hub_outlined,
-                  title: context.t(LocaleKeys.providerTitle),
-                  isSelected: selection is _HomeAiProvidersSelection,
-                  onTap: () {
-                    onContentSelected(const _HomeAiProvidersSelection());
-                  },
-                ),
-                _buildLeafNavItem(
-                  context,
-                  icon: RevericIcons.tune,
-                  title: context.t(LocaleKeys.agentStudioModelSettings),
-                  isSelected: modelSettingsSelected,
-                  onTap: () {
-                    onContentSelected(const _HomeAgentModelSettingsSelection());
-                  },
+                Column(
+                  key: homeGuideKeys.models,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSectionGroupHeader(
+                      context,
+                      title: context.t(LocaleKeys.homeSectionModel),
+                    ),
+                    _buildLeafNavItem(
+                      context,
+                      icon: RevericIcons.hub_outlined,
+                      title: context.t(LocaleKeys.providerTitle),
+                      isSelected: selection is _HomeAiProvidersSelection,
+                      onTap: () {
+                        onContentSelected(const _HomeAiProvidersSelection());
+                      },
+                    ),
+                    _buildLeafNavItem(
+                      context,
+                      icon: RevericIcons.tune,
+                      title: context.t(LocaleKeys.agentStudioModelSettings),
+                      isSelected: modelSettingsSelected,
+                      onTap: () {
+                        onContentSelected(
+                          const _HomeAgentModelSettingsSelection(),
+                        );
+                      },
+                    ),
+                  ],
                 ),
                 const SizedBox(height: RevericSpacing.md),
                 // Section 3: 智能体
@@ -1279,6 +1428,7 @@ class NovelHomePage extends HookConsumerWidget {
                                 builder: (_) => WorkspaceEditorPage(
                                   novelId: novel.id,
                                   initialSessionId: session.id,
+                                  openChatOnEntry: true,
                                 ),
                               ),
                             );
@@ -1326,7 +1476,19 @@ class NovelHomePage extends HookConsumerWidget {
                   context,
                   icon: RevericIcons.settings_outlined,
                   title: context.t(LocaleKeys.librarySettings),
-                  onTap: onOpenSettings,
+                  isSelected: selection is _HomeSettingsSelection,
+                  onTap: () {
+                    onContentSelected(const _HomeSettingsSelection());
+                  },
+                ),
+                _buildLeafNavItem(
+                  context,
+                  icon: RevericIcons.layers_outlined,
+                  title: context.t(LocaleKeys.settingsPlugins),
+                  isSelected: selection is _HomePluginsSelection,
+                  onTap: () {
+                    onContentSelected(const _HomePluginsSelection());
+                  },
                 ),
               ],
             ),
@@ -1351,6 +1513,7 @@ class NovelHomePage extends HookConsumerWidget {
   Widget _buildSectionGroupHeader(
     BuildContext context, {
     required String title,
+    Widget? trailing,
   }) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
@@ -1358,21 +1521,29 @@ class NovelHomePage extends HookConsumerWidget {
       padding: const EdgeInsets.fromLTRB(
         RevericSpacing.x2l,
         RevericSpacing.lg,
-        RevericSpacing.x2l,
+        RevericSpacing.md,
         RevericSpacing.xxs,
       ),
-      child: Text(
-        title,
-        style: typo.uiTinySemibold.copyWith(
-          color: colors.textMuted,
-          letterSpacing: 0.5,
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: typo.uiTinySemibold.copyWith(
+                color: colors.textMuted,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          ?trailing,
+        ],
       ),
     );
   }
 
   Widget _buildLeafNavItem(
     BuildContext context, {
+    Key? itemKey,
     required String icon,
     required String title,
     bool isSelected = false,
@@ -1381,6 +1552,7 @@ class NovelHomePage extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     return Padding(
+      key: itemKey,
       padding: const EdgeInsets.symmetric(horizontal: RevericSpacing.sm),
       child: Material(
         color: isSelected ? colors.selected : Colors.transparent,

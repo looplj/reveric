@@ -51,6 +51,7 @@
   "library.no_matching_works": "No matching works",
   "library.clear_filters": "Clear filters",
   "library.status_in_progress": "In Progress",
+  "library.status_active": "Active",
   "library.status_finished": "Finished",
   "library.status_abandoned": "Abandoned",
   "library.status_archived": "Archived",
@@ -160,5 +161,10 @@
   "library.collection_order_failed": "Order could not be saved. The previous order is retained.",
   "library.adapt_banner_title": "Adapt a novel",
   "library.adapt_banner_hint": "Pick a novel as the source. Its title, synopsis, and tags carry over.",
-  "library.adapt_no_source_novels": "No novels on your shelf yet"
+  "library.adapt_no_source_novels": "No novels on your shelf yet",
+  "library.content_kind_canvas": "Canvas",
+  "library.create_canvas": "New canvas",
+  "library.default_canvas_title": "Untitled canvas",
+  "library.create_canvas_card_title": "New canvas",
+  "library.create_canvas_card_subtitle": "Start with a script, prompt or media"
 }

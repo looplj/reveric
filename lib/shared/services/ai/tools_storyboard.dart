@@ -15,21 +15,80 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
     Map<String, dynamic> fields = const {},
     ({String oldText, String newText, bool replaceAll})? edit,
   }) async {
-    final service = StoryboardService(_contentService.database);
+    final service = StoryboardService(
+      _contentService.database,
+      contentKind: _targetContentKind,
+    );
+    final canvasWork = _targetContentKind == contentKindCanvas;
     try {
       Map<String, dynamic> data(ProductionClipRow row) => {
         'id': row.id,
-        'path': 'clips/${row.id}',
-        ...service.snapshot(row),
-        'is_storyboard': row.sceneId != null,
+        'path': '${canvasWork ? 'production/' : ''}clips/${row.id}',
+        for (final entry in service.snapshot(row).entries)
+          if (!canvasWork ||
+              !const {
+                'episode_id',
+                'scene_id',
+                'sort_order',
+                'location_id',
+                'item_id',
+              }.contains(entry.key))
+            entry.key: entry.value,
+        if (!canvasWork) 'is_storyboard': row.sceneId != null,
         'adopted_asset_id': row.adoptedAssetId,
       };
+
+      // Mutations name what changed instead of echoing the written record;
+      // short placement fields always return because the service may derive
+      // them, other values return only when stored differently from the request.
+      const placement = {
+        'kind',
+        'episode_id',
+        'scene_id',
+        'sort_order',
+        'is_storyboard',
+      };
+      Map<String, dynamic> changeSummary(
+        ProductionClipRow row,
+        String change,
+        Map<String, dynamic> requested, {
+        int? matchCount,
+      }) {
+        final stored = data(row);
+        final adjusted = {
+          for (final entry in requested.entries)
+            if (entry.key != 'prompt' &&
+                entry.key != 'inputs' &&
+                !placement.contains(entry.key) &&
+                stored.containsKey(entry.key) &&
+                !const DeepCollectionEquality().equals(
+                  stored[entry.key],
+                  entry.value,
+                ))
+              entry.key: stored[entry.key],
+        };
+        return {
+          'ok': true,
+          change: true,
+          'id': row.id,
+          'path': stored['path'],
+          for (final key in placement)
+            if (stored.containsKey(key)) key: stored[key],
+          'fields': requested.keys.toList(),
+          'match_count': ?matchCount,
+          if (adjusted.isNotEmpty) 'adjusted': adjusted,
+          if (requested.containsKey('inputs'))
+            'input_ids': [for (final input in row.inputs) input.id],
+        };
+      }
 
       if (operation.tool == _ResourceTool.read && parsed._resource!.listing) {
         final sceneId = parsed.queryParameters['scene_id'];
         final episodeId = parsed.queryParameters['episode_id'];
         final rows = <ProductionClipRow>[];
-        if (sceneId != null) {
+        if (canvasWork) {
+          rows.addAll(await service.episodeClips(''));
+        } else if (sceneId != null) {
           final scene = await service.requireScene(sceneId);
           if (episodeId != null && episodeId != scene.episodeId) {
             throw const StoryboardException('source_missing');
@@ -54,10 +113,27 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
             }
           }
         }
-        return _applyListingFilters({
-          'type': 'listing',
-          'entries': [for (final row in rows) data(row)],
-        }, parsed.queryParameters);
+        final filtered = _applyListingFilters(
+          {
+            'type': 'listing',
+            'entries': [for (final row in rows) data(row)],
+          },
+          {
+            for (final entry in parsed.queryParameters.entries)
+              if (entry.key != 'view') entry.key: entry.value,
+          },
+        );
+        if (parsed.queryParameters['view'] != 'summary') {
+          return filtered;
+        }
+        return {
+          ...filtered,
+          'entries': [
+            for (final entry
+                in (filtered['entries'] as List).cast<Map<String, dynamic>>())
+              Map<String, dynamic>.from(entry)..remove('prompt'),
+          ],
+        };
       }
       final origin = operation.tool == _ResourceTool.read
           ? const ShotEditOrigin.manual()
@@ -104,7 +180,7 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
       if (operation.tool == _ResourceTool.create) {
         await validateStyle(fields['kind'] as String? ?? 'video');
         final sceneId = fields['scene_id'] as String?;
-        final episodeId = fields['episode_id'] as String?;
+        final episodeId = canvasWork ? '' : fields['episode_id'] as String?;
         if (sceneId == null && episodeId == null) {
           throw const StoryboardException('invalid_config');
         }
@@ -126,12 +202,7 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
             inputs: inputs,
             origin: origin,
           );
-          return {
-            'ok': true,
-            'created': true,
-            ...data(row),
-            'inputs': await service.inputSnapshot(row.id),
-          };
+          return changeSummary(row, 'created', fields);
         }
         final row = await StoryboardEditOrchestrator().create(
           service: service,
@@ -141,7 +212,7 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
           values: values,
           origin: origin,
         );
-        return {'ok': true, 'created': true, ...data(row)};
+        return changeSummary(row, 'created', fields);
       }
       var row = await service.getShot(parsed.locator('clip_id')!);
       if (row == null) {
@@ -163,16 +234,26 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
           ? 'edited'
           : 'updated';
       final values = Map<String, dynamic>.from(fields);
+      int? matchCount;
       if (edit != null) {
         final current = service.snapshot(row)[parsed.field] as String;
-        if (edit.oldText.isEmpty ||
-            !current.contains(edit.oldText) ||
-            (!edit.replaceAll &&
-                edit.oldText.allMatches(current).length != 1)) {
+        matchCount = edit.oldText.isEmpty
+            ? 0
+            : edit.oldText.allMatches(current).length;
+        if (edit.oldText.isEmpty || matchCount == 0) {
           return _resourceError(
             parsed.displayPath,
             ToolErrorCode.invalid_argument,
-            'The requested text must match exactly; read the field again.',
+            edit.oldText.isEmpty
+                ? 'old_text must not be empty.'
+                : 'old_text was not found in ${parsed.field}; read the field again.',
+          );
+        }
+        if (!edit.replaceAll && matchCount != 1) {
+          return _resourceError(
+            parsed.displayPath,
+            ToolErrorCode.invalid_argument,
+            'old_text matches $matchCount times in ${parsed.field}; include more surrounding text or set all=true.',
           );
         }
         values[parsed.field!] = edit.replaceAll
@@ -237,12 +318,12 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
             await host.adopt(row!.id, selected);
           }
           final current = (await service.getShot(node.clipId!))!;
-          return {
-            'ok': true,
-            changed: true,
-            ...data(current),
-            'inputs': await service.inputSnapshot(current.id),
-          };
+          return changeSummary(
+            current,
+            changed,
+            edit == null ? fields : {parsed.field!: values[parsed.field]},
+            matchCount: matchCount,
+          );
         });
       }
       row = await StoryboardEditOrchestrator().moveOrSave(
@@ -252,22 +333,31 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
         values: values,
         origin: origin,
       );
-      return {'ok': true, changed: true, ...data(row)};
+      return changeSummary(
+        row,
+        changed,
+        edit == null ? fields : {parsed.field!: values[parsed.field]},
+        matchCount: matchCount,
+      );
     } on ToolOperationException catch (error) {
       return {'ok': false, 'error_code': error.code, 'error': error.message};
     } on StoryboardException catch (e) {
       return _resourceError(
         parsed.displayPath,
         ToolErrorCode.invalid_argument,
-        switch (e.code) {
-          'source_missing' => 'The source scene or episode is unavailable.',
-          'invalid_asset' => 'The referenced asset is missing or unavailable.',
-          'invalid_reference' =>
-            'The referenced input source is missing or invalid.',
-          'cross_episode_move' =>
-            'Moving a clip across episodes is not supported. Create a copy in the destination scene.',
-          _ => 'Invalid production settings.',
-        },
+        [
+          switch (e.code) {
+            'source_missing' => 'The source scene or episode is unavailable.',
+            'invalid_asset' =>
+              'The referenced asset is missing or unavailable.',
+            'invalid_reference' =>
+              'The referenced input source is missing or invalid.',
+            'cross_episode_move' =>
+              'Moving a clip across episodes is not supported. Create a copy in the destination scene.',
+            _ => 'Invalid production settings.',
+          },
+          ?e.detail,
+        ].join(' '),
       );
     } on FormatException catch (e) {
       return _resourceError(

@@ -7,6 +7,8 @@
 //   .agents/rules/service-naming.md
 //   .agents/rules/error-handling.md
 import 'dart:io';
+import 'package:drift/drift.dart';
+import '../../models/content_kind.dart';
 import 'package:crypto/crypto.dart';
 export '../../database/novel_content_daos/editing_dao.dart'
     show EditingConflict;
@@ -27,10 +29,13 @@ class EditingSourceProblem implements Exception {
   final List<String> ids;
 }
 
+typedef EditingAdoptedClip = ({String id, String title, String? assetId});
+
 class EditingService {
-  EditingService(this.database, this.library);
+  EditingService(this.database, this.library, {this.novelId});
   final NovelContentDatabase database;
   final MediaLibraryService library;
+  final String? novelId;
   Future<VideoEditingRow> read(String editingId) async {
     final editing = await database.editingDao.get(editingId);
     if (editing == null) {
@@ -38,6 +43,86 @@ class EditingService {
     }
     return editing;
   }
+
+  /// 按当前内容库登记与持有该工程的节点验证归属，不接受其他作品或游离工程。
+  Future<String> canvasForEditing(String editingId) async {
+    final workId = novelId;
+    final work = workId == null
+        ? null
+        : await library.database.novelDao.get(workId);
+    if (work == null || work.contentKind != contentKindCanvas) {
+      throw StateError('Canvas editing requires a canvas work');
+    }
+    await read(editingId);
+    final node =
+        await (database.select(database.canvasNodes)..where(
+              (t) =>
+                  t.type.equals(canvasNodeTypeEditing) &
+                  t.refType.equals(canvasNodeRefTypeEditing) &
+                  t.refId.equals(editingId) &
+                  t.deletedAt.equals(notDeletedSentinel),
+            ))
+            .getSingleOrNull();
+    final canvas = node == null
+        ? null
+        : await database.canvasDao.getCanvasById(node.canvasId);
+    if (canvas == null || canvas.kind != canvasKindProduction) {
+      throw StateError('Editing canvas node is missing');
+    }
+    return canvas.id;
+  }
+
+  Future<List<EditingAdoptedClip>> canvasAdopted(String editingId) async {
+    final canvasId = await canvasForEditing(editingId);
+    final nodes = database.canvasNodes, clips = database.productionClips;
+    final query =
+        database.select(nodes).join([
+            leftOuterJoin(
+              clips,
+              clips.id.equalsExp(nodes.refId) &
+                  clips.kind.equals('video') &
+                  clips.deletedAt.equals(notDeletedSentinel),
+            ),
+          ])
+          ..where(
+            nodes.canvasId.equals(canvasId) &
+                nodes.type.equals(canvasNodeTypeVideo) &
+                nodes.refType.equals(canvasNodeRefTypeProductionClip) &
+                nodes.deletedAt.equals(notDeletedSentinel),
+          )
+          ..orderBy([
+            OrderingTerm.asc(nodes.createdAt),
+            OrderingTerm.asc(nodes.id),
+          ]);
+    return [
+      for (final row in await query.get())
+        (
+          id: row.readTableOrNull(clips)?.id ?? row.readTable(nodes).id,
+          title:
+              row.readTableOrNull(clips)?.title ?? row.readTable(nodes).title,
+          assetId: row.readTableOrNull(clips)?.adoptedAssetId,
+        ),
+    ];
+  }
+
+  Stream<List<EditingAdoptedClip>> watchCanvasAdopted(String editingId) =>
+      database
+          .customSelect(
+            'SELECT 1',
+            readsFrom: {
+              database.canvasNodes,
+              database.canvases,
+              database.productionClips,
+              database.videoEditings,
+            },
+          )
+          .watch()
+          .asyncMap((_) => canvasAdopted(editingId));
+
+  Future<(EditingDocument, List<String>)> fromCanvasAdopted(
+    String editingId,
+    String ratio,
+  ) async => _fromAdopted(await canvasAdopted(editingId), ratio);
 
   Future<(EditingDocument, int)> load(String editingId) async {
     final editing = await read(editingId);
@@ -180,16 +265,26 @@ class EditingService {
     final rows = (await StoryboardService(
       database,
     ).episodeShots(episodeId)).where((r) => r.kind == 'video').toList();
+    return _fromAdopted([
+      for (final row in rows)
+        (id: row.id, title: row.title, assetId: row.adoptedAssetId),
+    ], ratio);
+  }
+
+  Future<(EditingDocument, List<String>)> _fromAdopted(
+    List<EditingAdoptedClip> rows,
+    String ratio,
+  ) async {
     var doc = EditingDocument.empty(ratio);
     final skipped = <String>[];
     final broken = <String>[];
     for (final row in rows) {
-      if (row.adoptedAssetId == null) {
+      if (row.assetId == null) {
         skipped.add(row.id);
         continue;
       }
       try {
-        final media = await source(row.adoptedAssetId!);
+        final media = await source(row.assetId!);
         if (media.mediaType != 'video') {
           throw StateError('Not video');
         }

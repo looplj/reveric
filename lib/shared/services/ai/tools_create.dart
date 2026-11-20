@@ -8,6 +8,8 @@ part of 'tools.dart';
 
 const _createDescription = '''创建作品工作区资源。
 
+用户要求新建作品，改编当前作品时，使用 Create /works，字段见 Read /_schema/works, 当前会话仍指向当前作品。
+
 批量创建时，每次调用都是独立请求，不继承同批或上次调用的参数。部分成功时，只修正并重试失败项，避免重复创建已成功的资源。
 
 跨字段约束：
@@ -46,6 +48,133 @@ final _createInputSchema = const {
   'additionalProperties': false,
 };
 
+const _worksDefinition = _ResourceDefinition(
+  segment: 'works',
+  address: _ResourceAddress(_AddressKind.id, itemToken: 'work_id'),
+  description: '新建作品直接加入书架。Read /works 列出书架上可读取的作品。',
+  fields: {
+    'id': _ResourceField(
+      value: _ValueSchema(_ValueType.string),
+      read: _FieldRead(listing: true, path: true),
+    ),
+    'title': _ResourceField(
+      value: _ValueSchema(_ValueType.string),
+      create: _FieldInputUse(
+        required: true,
+        value: _ValueSchema(_ValueType.string, minLength: 1),
+      ),
+      read: _FieldRead(listing: true, path: true),
+      write: _FieldInputUse(field: true),
+      edit: _FieldEdit(),
+      search: {_FieldSearch.short_text},
+    ),
+    'author_name': _ResourceField(
+      value: _ValueSchema(_ValueType.string),
+      read: _FieldRead(path: true),
+      write: _FieldInputUse(field: true),
+      edit: _FieldEdit(),
+      search: {_FieldSearch.body},
+    ),
+    'description': _ResourceField(
+      value: _ValueSchema(_ValueType.string),
+      create: _FieldInputUse(),
+      read: _FieldRead(listing: true, path: true),
+      write: _FieldInputUse(field: true),
+      edit: _FieldEdit(),
+      search: {_FieldSearch.body},
+    ),
+    'category': _ResourceField(
+      value: _ValueSchema(_ValueType.string),
+      read: _FieldRead(listing: true, path: true),
+      write: _FieldInputUse(field: true),
+      edit: _FieldEdit(),
+      search: {_FieldSearch.body},
+    ),
+    'status': _ResourceField(
+      value: _ValueSchema(
+        _ValueType.string,
+        enumAliases: _ChineseEnumMappings.novelStatusZh,
+        enumValues: _aiNovelStatuses,
+      ),
+      read: _FieldRead(listing: true, path: true),
+      write: _FieldInputUse(field: true),
+    ),
+    'tags': _ResourceField(
+      value: _ValueSchema(_ValueType.string),
+      read: _FieldRead(path: true),
+      write: _FieldInputUse(field: true),
+      edit: _FieldEdit(),
+      description: '逗号分隔字符串',
+      search: {_FieldSearch.body},
+    ),
+    'draft': _ResourceField(
+      value: _ValueSchema(_ValueType.boolean),
+      read: _FieldRead(listing: true, path: true),
+      write: _FieldInputUse(field: true),
+      description: 'true 为草稿，false 为已加入书架',
+    ),
+    'content_kind': _ResourceField(
+      value: _ValueSchema(_ValueType.string, enumValues: [...contentKinds]),
+      create: _FieldInputUse(required: true),
+      read: _FieldRead(listing: true, path: true),
+    ),
+    'type': _ResourceField(
+      value: _ValueSchema(
+        _ValueType.string,
+        enumValues: creatableScreenplayWorkTypes,
+      ),
+      create: _FieldInputUse(hasDefault: true, defaultValue: novelTypeOriginal),
+      description: 'adaptation 仅用于剧本。画布使用 original。',
+    ),
+    'source_novel_id': _ResourceField(
+      value: _ValueSchema(_ValueType.string, nullable: true),
+      create: _FieldInputUse(
+        value: _ValueSchema(_ValueType.string, minLength: 1),
+      ),
+      read: _FieldRead(
+        listing: true,
+        path: true,
+        requiredInListing: false,
+        requiredInDetail: false,
+      ),
+      description: '来源小说的 id，从当前作品或 Read /works 的结果获取。',
+    ),
+  },
+  operations: [
+    _ResourceOperation(
+      _ResourceTool.read,
+      _ResourceTargetKind.listing,
+      result: _ResourceResult(
+        _ResourceResultKind.listing,
+        references: ['entries[].path'],
+      ),
+    ),
+    _ResourceOperation(
+      _ResourceTool.read,
+      _ResourceTargetKind.resource,
+      result: _ResourceResult(_ResourceResultKind.entity, references: ['path']),
+    ),
+    _ResourceOperation(
+      _ResourceTool.write,
+      _ResourceTargetKind.resource,
+      input: _ResourceInput(_ResourceInputKind.resource_fields),
+    ),
+    _ResourceOperation(
+      _ResourceTool.create,
+      _ResourceTargetKind.listing,
+      input: _ResourceInput(_ResourceInputKind.create_fields),
+      constraints: [
+        _ResourceConstraint(
+          _ConstraintKind.required_when,
+          ['source_novel_id'],
+          whenField: 'type',
+          whenValues: [novelTypeAdaptation],
+        ),
+      ],
+    ),
+  ],
+);
+
 class _DocumentFolderEnsureResult {
   const _DocumentFolderEnsureResult({
     required this.parentId,
@@ -75,7 +204,10 @@ mixin _AiToolManagerCreateMixin
         _AiToolManagerGraphMixin,
         _AiToolManagerCanvasMixin,
         _AiToolManagerWriteMixin {
-  Future<Map<String, dynamic>> _handleCreate(Map<String, dynamic> input) async {
+  Future<Map<String, dynamic>> _handleCreate(
+    Map<String, dynamic> input, {
+    ParsedPath? worksPath,
+  }) async {
     final path = _parseStringArgument(input['path'], trim: true);
     if (path.isEmpty) {
       return AiToolManager._structuredWriteError(
@@ -91,8 +223,26 @@ mixin _AiToolManagerCreateMixin
       );
     }
 
-    final parsed = ParsedPath.parse(path, schemaLookup: _getCollectionSchema);
-    final contentKindError = _contentKindGate(parsed);
+    final parsed =
+        worksPath ?? ParsedPath.parse(path, schemaLookup: _getCollectionSchema);
+    if (parsed.isWorksListing && worksPath == null) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.invalid_argument,
+        'Use /works directly to create a work.',
+      );
+    }
+    if (worksPath != null && parsed.hasQuery) {
+      return AiToolManager._structuredWriteError(
+        path: parsed.displayPath,
+        errorCode: ToolErrorCode.invalid_argument,
+        message: 'Query parameters are not supported for Create /works.',
+        operation: 'create',
+      );
+    }
+    final contentKindError = worksPath == null
+        ? _contentKindGate(parsed)
+        : null;
     if (contentKindError != null) {
       return contentKindError;
     }
@@ -130,12 +280,70 @@ mixin _AiToolManagerCreateMixin
       fieldsResult.fields!,
       create: true,
     );
-    return _attachIgnoredFields(
-      prepared.error != null
-          ? _attachCreateResourcePath(parsed, prepared.error!)
-          : await _executePreparedCreate(parsed, prepared.fields!),
-      prepared.ignoredFields,
-    );
+    return _attachIgnoredFields(switch ((prepared.error, worksPath)) {
+      (final error?, _) => _attachCreateResourcePath(parsed, error),
+      (null, final works?) => await _executeCreateWork(works, prepared.fields!),
+      (null, null) => await _executePreparedCreate(parsed, prepared.fields!),
+    }, prepared.ignoredFields);
+  }
+
+  Future<Map<String, dynamic>> _executeCreateWork(
+    ParsedPath parsed,
+    Map<String, dynamic> fields,
+  ) async {
+    final actions = workCreationService;
+    if (actions == null) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.unavailable,
+        'Work creation is unavailable in this session.',
+      );
+    }
+    final kind = fields['content_kind'] as String;
+    final type = fields['type'] as String? ?? novelTypeOriginal;
+    final validType = kind == contentKindCanvas
+        ? type == novelTypeOriginal
+        : creatableNovelTypesFor(kind).contains(type);
+    if (!validType) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.invalid_argument,
+        'Work type $type is unavailable for $kind.',
+        hint: 'Read /_schema/works for supported fields.',
+      );
+    }
+    try {
+      final id = await actions.createNovel(
+        title: fields['title'] as String,
+        description: fields['description'] as String? ?? '',
+        contentKind: kind,
+        type: type,
+        sourceNovelId: fields['source_novel_id'] as String?,
+      );
+      return {
+        'ok': true,
+        'created': true,
+        'id': id,
+        'path': '/works/$id',
+        if (suggestNextActionCallback != null)
+          'hint':
+              'This session cannot edit the new work. '
+              'Use SuggestNextAction with kind=work and work_id="$id" to open it. '
+              'Put any remaining task in prompt.',
+      };
+    } on NovelTitleConflictException catch (error) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.already_exists,
+        'A library work named "${error.title}" already exists.',
+      );
+    } on ArgumentError catch (error) {
+      return _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.invalid_argument,
+        error.message.toString(),
+      );
+    }
   }
 
   Future<Map<String, dynamic>> _executePreparedCreate(

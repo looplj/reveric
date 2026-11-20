@@ -13,9 +13,12 @@
 //   .agents/rules/text-input-ime.md
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../providers/map_studio_providers.dart';
 
 import '../database/novel_content_database.dart';
 import '../models/map_agent.dart';
+import '../models/image/choices.dart';
 import '../models/map_studio_models.dart';
 import '../services/generate_map_orchestrator.dart';
 import '../services/map_prompt_builder.dart';
@@ -23,6 +26,10 @@ import '../services/map_prompt_builder.dart';
 class MapGenerateForm {
   MapGenerateForm._({
     required this.styleId,
+    required this._readChoices,
+    required this.modelId,
+    required this.ratioId,
+    required this.complexityId,
     required this.customStyleController,
     required this.customStyleFocusNode,
     required this.customStyleError,
@@ -39,6 +46,11 @@ class MapGenerateForm {
     required this._applyDraft,
   });
 
+  final ImageModelChoices? Function() _readChoices;
+  ImageModelChoices? get choices => _readChoices();
+  final ValueNotifier<String?> modelId;
+  final ValueNotifier<String> ratioId;
+  final ValueNotifier<String?> complexityId;
   final ValueNotifier<String?> styleId;
   final TextEditingController customStyleController;
   final FocusNode customStyleFocusNode;
@@ -62,6 +74,9 @@ class MapGenerateForm {
   /// 表单里任一选项变化都会通知；字段组件据此重建。
   Listenable get listenable => Listenable.merge([
     styleId,
+    modelId,
+    ratioId,
+    complexityId,
     customStyleError,
     resolutionId,
     qualityId,
@@ -99,10 +114,13 @@ class MapGenerateForm {
   }
 
   MapGenerationRequest toRequest() => MapGenerationRequest(
+    modelId: modelId.value,
     styleId: styleId.value,
     customStyleWord: styleId.value == mapCustomStyleId
         ? currentStyleWord()
         : null,
+    ratioId: ratioId.value,
+    complexity: complexityId.value,
     resolutionId: resolutionId.value,
     quality: qualityId.value,
     customPrompt: promptController.text,
@@ -115,6 +133,7 @@ class MapGenerateForm {
 /// [rootId] 是参与生成的地点树根：正式地图是 map.locationId，待生成是所属地点 id。
 /// [lastStyleWord] 是这张图上次成图的画风词；没画过时默认沿用上层地图的画风。
 MapGenerateForm useMapGenerateForm({
+  required WidgetRef ref,
   required List<Location> locations,
   required String rootId,
   required String mapType,
@@ -123,6 +142,8 @@ MapGenerateForm useMapGenerateForm({
   required NovelMap? parentMap,
   required String? parentMapName,
 }) {
+  final modelId = useState<String?>(null);
+  final choices = ref.watch(mapImageChoicesProvider(modelId.value));
   final parentSettings = parentMap == null
       ? null
       : MapStudioSettings.fromMap(parentMap.settings);
@@ -137,12 +158,40 @@ MapGenerateForm useMapGenerateForm({
   );
   final customStyleFocusNode = useFocusNode();
   final customStyleError = useState(false);
-  final resolutionId = useState(mapDefaultResolutionId);
-  final qualityId = useState(mapDefaultQualityId);
+  final ratioId = useState(choices?.defaultRatio('16:9') ?? '16:9');
+  final resolutionId = useState(
+    choices?.defaultResolution('2K') ?? mapDefaultResolutionId,
+  );
+  final qualityId = useState(
+    choices?.defaultQuality(mapDefaultQualityId) ?? '',
+  );
+  final complexityId = useState(
+    choices?.defaults.complexity ?? choices?.complexities.firstOrNull,
+  );
+  useEffect(() {
+    var active = true;
+    if (choices != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!active) {
+          return;
+        }
+        ratioId.value = choices.defaultRatio(ratioId.value);
+        resolutionId.value = choices.defaultResolution(resolutionId.value);
+        qualityId.value = choices.defaultQuality(qualityId.value) ?? '';
+        if (!choices.complexities.contains(complexityId.value)) {
+          complexityId.value =
+              choices.defaults.complexity ?? choices.complexities.firstOrNull;
+        }
+      });
+    }
+    return () {
+      active = false;
+    };
+  }, [choices]);
   final includeLocations = useState(true);
   final referenceCurrentImage = useState(false);
   // 有上层地图时默认带上它做画风参考，子地图与父地图风格一致。
-  final referenceParentImage = useState(true);
+  final referenceParentImage = useState(choices?.referenceLimit != 0);
 
   // 抽屉拿着的是打开时那份表单对象；地点走 ref 取最新，Agent 刚建好的地点点「重置」也能拼进去。
   final latestLocations = useRef(locations)..value = locations;
@@ -201,6 +250,10 @@ MapGenerateForm useMapGenerateForm({
 
   return MapGenerateForm._(
     styleId: styleId,
+    modelId: modelId,
+    readChoices: () => ref.read(mapImageChoicesProvider(modelId.value)),
+    ratioId: ratioId,
+    complexityId: complexityId,
     customStyleController: customStyleController,
     customStyleFocusNode: customStyleFocusNode,
     customStyleError: customStyleError,
@@ -215,9 +268,11 @@ MapGenerateForm useMapGenerateForm({
     parentMapName: parentMapName,
     resetPrompt: () => writePrompt(composePrompt(), edited: false),
     applyDraft: (draft) {
+      final choices = ref.read(mapImageChoicesProvider(modelId.value));
       styleId.value = draft.styleId;
       customStyleController.text = draft.customStyleWord ?? '';
-      resolutionId.value = draft.resolutionId;
+      resolutionId.value =
+          choices?.resolution(draft.resolutionId) ?? draft.resolutionId;
       qualityId.value = draft.qualityId;
       includeLocations.value = draft.includeLocations;
       referenceCurrentImage.value = hasImage && draft.referenceCurrentImage;

@@ -14,6 +14,7 @@ import '../models/collections/filter.dart';
 import '../models/content_kind.dart';
 import 'app_database.dart';
 import 'app_database_indexes.dart';
+import 'migration_columns.dart';
 import 'queries/collection_filter.dart';
 
 /// AppDatabase schema migration 步骤集合。
@@ -24,6 +25,33 @@ class AppDatabaseMigrations {
   AppDatabaseMigrations(this.db);
 
   final AppDatabase db;
+
+  /// v7: 持久化供应商查询状态；鉴权下载头只在内存中使用，不落库。
+  Future<void> migrateToV7(Migrator m) => m.addColumnIfMissing(
+    db.generationTasks,
+    db.generationTasks.providerState,
+  );
+
+  /// v8: 供应商扩展配置。旧行保持空，读取时按默认不发送温度。
+  Future<void> migrateToV8(Migrator m) =>
+      m.addColumnIfMissing(db.aiProviders, db.aiProviders.config);
+
+  /// v9: 匿名上报队列按接口和设备分批。
+  Future<void> migrateToV9() => db.transaction(() async {
+    await db.customStatement(
+      'DROP INDEX IF EXISTS anonymous_outbox_events_by_endpoint_product_code_device_id_next_retry_at_id',
+    );
+    if (await tableHasColumn(db, 'anonymous_outbox_events', 'product_code')) {
+      await db.customStatement(
+        'ALTER TABLE anonymous_outbox_events DROP COLUMN product_code',
+      );
+    }
+    await createAnonymousOutboxBatchIndex(db);
+  });
+
+  /// v6: 同次图片任务的有序候选结果。
+  Future<void> migrateToV6(Migrator m) =>
+      m.addColumnIfMissing(db.generationTasks, db.generationTasks.imageOutputs);
 
   /// v2: 插件注册表、插件存储与插件密钥。
   Future<void> migrateToV2(Migrator m) async {
@@ -38,26 +66,30 @@ class AppDatabaseMigrations {
     await m.createTable(db.pluginTasks);
     await createPluginTaskIndexes(m.database);
     if (from >= 2) {
-      await m.addColumn(db.pluginStorage, db.pluginStorage.deletedAt);
+      await m.addColumnIfMissing(db.pluginStorage, db.pluginStorage.deletedAt);
     }
     await db.customStatement('DROP TABLE IF EXISTS memories');
   }
 
   /// v5: 普通上传与认证记录隔离，保存已完成上传的读取地址和有效期。
   Future<void> migrateToV5(Migrator m) async {
-    await m.addColumn(db.providerAssets, db.providerAssets.kind);
-    await m.addColumn(db.providerAssets, db.providerAssets.contextHash);
-    await m.addColumn(db.providerAssets, db.providerAssets.remoteUrl);
-    await m.addColumn(db.providerAssets, db.providerAssets.expiresAt);
+    await m.addColumnIfMissing(db.providerAssets, db.providerAssets.kind);
+    await m.addColumnIfMissing(
+      db.providerAssets,
+      db.providerAssets.contextHash,
+    );
+    await m.addColumnIfMissing(db.providerAssets, db.providerAssets.remoteUrl);
+    await m.addColumnIfMissing(db.providerAssets, db.providerAssets.expiresAt);
   }
 
   /// v4: 集合按作品类型分开。
-  Future<void> migrateToV4(Migrator m) async {
-    if (!await _tableHasColumn('novel_collections', 'content_kind')) {
-      await m.addColumn(db.novelCollections, db.novelCollections.contentKind);
-    }
+  Future<void> migrateToV4(Migrator m) => db.transaction(() async {
+    await m.addColumnIfMissing(
+      db.novelCollections,
+      db.novelCollections.contentKind,
+    );
     await _splitCollectionsByContentKind();
-  }
+  });
 
   /// 默认集合按状态筛选，两个库都适用，迁移后仍共用（content_kind 为 null）。
   static const _sharedCollectionIds = [
@@ -75,7 +107,8 @@ class AppDatabaseMigrations {
     final rows = await db
         .customSelect(
           'SELECT id, filter_mode, filter, deleted_at FROM novel_collections '
-          'WHERE id NOT IN (${List.filled(_sharedCollectionIds.length, '?').join(',')})',
+          'WHERE content_kind IS NULL '
+          'AND id NOT IN (${List.filled(_sharedCollectionIds.length, '?').join(',')})',
           variables: [for (final id in _sharedCollectionIds) Variable(id)],
         )
         .get();
@@ -191,13 +224,5 @@ class AppDatabaseMigrations {
         )
         .get();
     return {for (final row in rows) row.read<String>('kind')};
-  }
-
-  Future<bool> _tableHasColumn(String table, String column) async {
-    final quotedTable = table.replaceAll('"', '""');
-    final rows = await db
-        .customSelect('PRAGMA table_info("$quotedTable")')
-        .get();
-    return rows.any((row) => row.data['name'] == column);
   }
 }

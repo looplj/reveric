@@ -98,10 +98,7 @@ class MobileEntityGraphPanel extends HookConsumerWidget {
       const [],
     );
     final isExporting = useState(false);
-    final novelTitle = ref
-        .watch(novelByContentDatabasePathProvider(databasePath))
-        .value
-        ?.title;
+    final novelTitle = ref.watch(novelProvider(novelId)).value?.title;
 
     final allRelations = relationsAsync.value ?? const <RelationSummary>[];
 

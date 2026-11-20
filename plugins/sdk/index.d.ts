@@ -110,6 +110,7 @@ export interface PluginLog {
  */
 export interface PluginSetup {
   readonly plugin: PluginInfo;
+  readonly provider: { register(handlers: ProviderHandlers): void };
   readonly tools: { register(tool: ToolRegistration): void };
   readonly prompts: {
     /** Reference data added to the conversation before model requests. */
@@ -541,4 +542,171 @@ export interface CharacterRecord {
   arc: string;
   personality: string;
   currentState: string;
+}
+
+
+// ---------------------------------------------------------------------------
+// Media providers
+
+/** One definition per plugin; plugin.json declares provider.name and settings.fields.
+ * Provider invocations have isolated module state and are released after each call.
+ * Persist task state through SubmitResult/QueryResult, not plugin storage.
+ */
+export interface ProviderContext {
+  readonly plugin: PluginInfo;
+  readonly provider: { readonly id: string };
+  readonly callId: string;
+  readonly settings: PluginSettings;
+  readonly secrets: PluginSecrets;
+  readonly storage: PluginStorage;
+  readonly http: PluginHttp;
+  readonly log: PluginLog;
+}
+export interface ProviderFileInfo {
+  handle: string; name: string; mimeType: string; size: number; sha256: string;
+  /**
+   * Probed by the Host before upload; absent only when probing was not possible.
+   * Platforms that require the client to send media metadata in their upload
+   * ticket read it from here. Video references already carry the same values in
+   * `ProviderVideoInput.references[].mediaInfo`; this exposes them at upload time.
+   */
+  mediaInfo?: ProviderFileMediaInfo;
+}
+export interface ProviderFileMediaInfo {
+  width?: number; height?: number; durationMs?: number; frameRate?: number;
+  /**
+   * Whether the file carries an audio stream. Only meaningful for video: the
+   * probe reports it for any container, but images have no audio track.
+   * Some platforms require the client to declare it in the upload ticket.
+   */
+  hasAudio?: boolean;
+}
+export interface ProviderUploadContext extends ProviderContext {
+  readonly files: { upload(handle: string, request: ProviderUploadRequest): Promise<HttpResponse> };
+}
+export type ProviderUploadRequest =
+  | { kind: "raw"; url: string; method: "PUT" | "POST"; headers?: Record<string, string>; timeoutMs?: number }
+  | { kind: "multipart"; url: string; headers?: Record<string, string>; fields: Record<string, string>; fileField: string; timeoutMs?: number };
+export type ProviderOutput =
+  /** `headers` are used for this download only and are never persisted. Recovery can re-query
+   * when a remote task ID is available; synchronous results without an ID cannot refresh these headers. */
+  | { kind: "url"; url: string; headers?: Record<string, string> }
+  | { kind: "file"; handle: string; mimeType: string; byteLength: number };
+/** `state` is persisted with the task for restart recovery; never put credentials in it. */
+export interface ProviderQueryInput { remoteTaskId: string; state?: JsonObject }
+export type ProviderSubmitResult =
+  | { status: "submitted"; remoteTaskId: string; state?: JsonObject }
+  | { status: "succeeded"; outputs: ProviderOutput[] };
+export type ProviderQueryResult =
+  | { status: "queued" | "running"; state?: JsonObject }
+  | { status: "succeeded"; outputs: ProviderOutput[] }
+  | { status: "failed"; error: { code: string; message: string; detail?: string } }
+  | { status: "cancelled" | "expired" }
+  | { status: "unknown"; reason: string };
+export type ProviderVideoMode = "text" | "first_frame" | "first_last_frame" | "reference";
+export type ProviderReferenceRole = "first_frame" | "last_frame" | "middle_frame" | "reference_image" | "reference_video" | "reference_audio";
+export interface VideoDraftCapabilities { resolution: string; completionResolution: string; ttlHours: number }
+export interface VideoReferenceLimits {
+  maxCount: number;
+  mimeTypes?: string[] | null;
+  maxSizeMb?: number | null;
+  minDimension?: number | null;
+  maxDimension?: number | null;
+  minRatio?: number | null;
+  maxRatio?: number | null;
+  minDurationMs?: number | null;
+  maxDurationMs?: number | null;
+  minTotalDurationMs?: number | null;
+  maxTotalDurationMs?: number | null;
+  maxTotalSizeMb?: number | null;
+  minFrameRate?: number | null;
+  maxFrameRate?: number | null;
+  minPixels?: number | null;
+  maxPixels?: number | null;
+  exclusiveMaxSize?: boolean;
+}
+export interface VideoModelCapabilities {
+  ratios: string[]; resolutions: string[]; durations: number[]; modes: ProviderVideoMode[];
+  frameRoles: ProviderReferenceRole[];
+  maxMiddleFrames: number; maxReferences: number;
+  references: Partial<Record<"image" | "video" | "audio", VideoReferenceLimits>>;
+  supportsAudioOnlyReference: boolean; supportsAdaptiveTextRatio: boolean;
+  supportsLastFrameOnly: boolean; framesRequireAdaptiveRatio: boolean;
+  supportsCertifiedAssets: boolean; draft: VideoDraftCapabilities | null;
+  maxDurationByResolution?: Record<string, number>;
+  maxPromptCharacters?: number | null; maxInputOutputDurationMs?: number | null;
+}
+export interface ImageModelCapabilities {
+  ratios: string[]; resolutions: string[]; minReferences: number; maxReferences: number;
+  unlimitedReferences: boolean; referenceTransport: "file" | "url" | "uploaded";
+  sizes?: Record<string, Record<string, string>>;
+  complexityLevels?: string[];
+  /** Selectable quality values; when omitted only `requestDefaults.quality` is sent. */
+  qualityLevels?: string[];
+  minPixels?: number | null; maxPixels?: number | null; maxEditPixels?: number | null; maxAspectRatio?: number | null;
+}
+export type ProviderModel =
+  | { kind: "image"; id: string; name?: PluginText; capabilities: ImageModelCapabilities; requestDefaults?: JsonObject }
+  | { kind: "video"; id: string; name?: PluginText; capabilities: VideoModelCapabilities; requestDefaults?: JsonObject };
+export type ProviderReferenceSource =
+  | { kind: "file"; handle: string }
+  | { kind: "url"; url: string; expiresAt?: string }
+  | { kind: "uploaded"; ref: string; expiresAt?: string };
+export interface ProviderImageInput {
+  request: { modelId: string; prompt: string; ratio: string; resolution: string; size?: string; quality?: string; complexity?: string; defaults: JsonObject };
+  references: Array<{ assetId: string; clipId?: string; inputId?: string; mimeType: string; source: ProviderReferenceSource }>;
+}
+export interface ProviderVideoInput {
+  request: { modelId: string; prompt: string; mode: ProviderVideoMode; ratio: string; resolution: string; durationSeconds: number; audio?: boolean; promptExtend?: boolean; draft?: boolean; defaults: JsonObject; referenceSlots: Array<{assetId: string; role: ProviderReferenceRole; slot: string; clipId?: string; inputId?: string}> };
+  references: Array<{ assetId: string; role: ProviderReferenceRole; mimeType: string; fileSize: number; mediaInfo: {width?: number; height?: number; durationMs?: number; frameRate?: number}; source: ProviderReferenceSource | {kind: "certified"; remoteId: string} }>;
+  draftOf?: ProviderQueryInput;
+}
+export interface ProviderMediaRequest {
+  method: HttpRequest["method"]; headers?: Record<string, string>; timeoutMs?: number;
+  body:
+    | {kind: "json"; value: JsonObject; files?: Array<{pointer: string; handle: string; encoding: "base64" | "data_uri"}>}
+    | {kind: "multipart"; fields: Record<string, string>; files: Array<{field: string; handle: string; name?: string}>};
+  response: {kind: "json"; images?: Array<{pointer: string; encoding: "base64" | "data_uri"}>} | {kind: "file"};
+}
+export interface ProviderMediaResponse { status: number; headers: Record<string, string>; body: Json | ProviderOutput }
+export interface ProviderImageContext extends ProviderContext {
+  readonly taskId: string;
+  readonly image: {request(url: string, request: ProviderMediaRequest): Promise<ProviderMediaResponse>};
+}
+export interface ProviderVideoContext extends ProviderContext {
+  readonly taskId: string;
+  readonly video: {request(url: string, request: Omit<ProviderMediaRequest, "response"> & {response: {kind: "json"}}): Promise<ProviderMediaResponse>};
+}
+/**
+ * Methods unknown to the running Host are ignored, so newer capabilities degrade instead of
+ * failing activation. Query methods share one resident runtime per plugin (module globals are
+ * shared across instances); submissions and uploads run in an isolated runtime per call.
+ */
+/** Result of an instance settings action. `message` remains diagnostic-only;
+ * `text` is optional localized text shown on success. */
+export interface ProviderActionResult extends ActionResult { text?: PluginText }
+export interface ProviderHandlers {
+  /** Every provider.settings.actions declaration needs one handler here, with no extras.
+   * Uses this instance's current (possibly unsaved) settings and secrets. Requires an
+   * enabled plugin. New unsaved instances and disabled instances are supported.
+   * Only fields listed in requires must be populated and valid. Runs within 20 seconds
+   * with ProviderContext APIs and no media/file APIs. */
+  actions?: Record<string, (context: ProviderContext) => Promise<ProviderActionResult> | ProviderActionResult>;
+  /** Reserved for later chat support; ignored by this Host. */
+  chat?: unknown;
+  listModels(context: ProviderContext): Promise<ProviderModel[]> | ProviderModel[];
+  checkConnection?(context: ProviderContext): Promise<{accountLabel?: string}> | {accountLabel?: string};
+  uploadReference?(input: {file: ProviderFileInfo}, context: ProviderUploadContext): Promise<{ref: string; expiresAt?: string}>;
+  assets?: {
+    submit(input: {file: ProviderFileInfo; name: string}, context: ProviderUploadContext): Promise<{remoteId: string; remoteTaskId?: string; remoteGroupId?: string}>;
+    state(input: {id: string}, context: ProviderContext): Promise<{status: "processing" | "active" | "failed"; errorCode?: string; errorMessage?: string}>;
+  };
+  image?: {
+    submit(input: ProviderImageInput, context: ProviderImageContext): Promise<ProviderSubmitResult>;
+    query?(input: ProviderQueryInput, context: ProviderImageContext): Promise<ProviderQueryResult>;
+  };
+  video?: {
+    submit(input: ProviderVideoInput, context: ProviderVideoContext): Promise<Extract<ProviderSubmitResult, {status: "submitted"}>>;
+    query(input: ProviderQueryInput, context: ProviderVideoContext): Promise<ProviderQueryResult>;
+  };
 }

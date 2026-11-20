@@ -8,6 +8,43 @@ import 'package:reveric/shared/database/app_database.dart';
 
 void main() {
   test(
+    'provider cleanup matches one exact instance prefix and plugin identity',
+    () async {
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      addTearDown(db.close);
+      for (final plugin in ['one.plugin', 'two.plugin']) {
+        for (final key in [
+          'provider.a_b.token',
+          'provider.a_b.__models',
+          'provider.axb.token',
+          'provider.a_b_more.token',
+          'settings.token',
+          'data.token',
+        ]) {
+          await db.pluginDao.setStorage(plugin, key, 'retained');
+          await db.pluginDao.setSecret(plugin, key, 'secret');
+        }
+      }
+      await db.pluginDao.removeProviderConfiguration('one.plugin', 'a_b');
+      for (final key in ['provider.a_b.token', 'provider.a_b.__models']) {
+        expect(await db.pluginDao.getStorage('one.plugin', key), isNull);
+        expect(await db.pluginDao.getSecret('one.plugin', key), isNull);
+        expect(await db.pluginDao.getStorage('two.plugin', key), 'retained');
+        expect(await db.pluginDao.getSecret('two.plugin', key), 'secret');
+      }
+      for (final key in [
+        'provider.axb.token',
+        'provider.a_b_more.token',
+        'settings.token',
+        'data.token',
+      ]) {
+        expect(await db.pluginDao.getStorage('one.plugin', key), 'retained');
+        expect(await db.pluginDao.getSecret('one.plugin', key), 'secret');
+      }
+    },
+  );
+
+  test(
     'published fixture upgrades while preserving retained tables and removing legacy memory',
     () async {
       final original = <String, String>{};
@@ -64,7 +101,8 @@ void main() {
         isEmpty,
       );
       for (final entry in original.entries.where(
-        (entry) => entry.key != 'memories',
+        (entry) =>
+            entry.key != 'memories' && entry.key != 'anonymous_outbox_events',
       )) {
         expect(
           (await db
@@ -73,11 +111,19 @@ void main() {
                   )
                   .getSingle())
               .read<String>('sql'),
-          // v4 给集合表追加类型列，v5 给渠道素材表追加上传列，其余表结构原样保留。
+          // 仅允许正式迁移新增的列；其余旧列定义与下面的记录数仍须完整保留。
           switch (entry.key) {
             'novel_collections' => entry.value.replaceFirst(
               ', PRIMARY KEY ("id"))',
               ', "content_kind" TEXT NULL, PRIMARY KEY ("id"))',
+            ),
+            'generation_tasks' => entry.value.replaceFirst(
+              ', PRIMARY KEY ("id"))',
+              ', "image_outputs" TEXT NULL, "provider_state" TEXT NULL, PRIMARY KEY ("id"))',
+            ),
+            'ai_providers' => entry.value.replaceFirst(
+              ', PRIMARY KEY ("id"))',
+              ', "config" TEXT NULL, PRIMARY KEY ("id"))',
             ),
             'provider_assets' => entry.value.replaceFirst(
               ', PRIMARY KEY ("id"))',
@@ -96,6 +142,13 @@ void main() {
           counts[entry.key],
         );
       }
+      final imageOutputs =
+          (await db.customSelect('PRAGMA table_info(generation_tasks)').get())
+              .singleWhere(
+                (row) => row.read<String>('name') == 'image_outputs',
+              );
+      expect(imageOutputs.read<String>('type'), 'TEXT');
+      expect(imageOutputs.read<int>('notnull'), 0);
       for (final table in [
         'plugin_permissions',
         'plugin_registry',

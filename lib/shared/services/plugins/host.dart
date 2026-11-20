@@ -13,12 +13,23 @@ import '../../agent/agent_tool_dispatcher.dart';
 import '../../database/daos/plugin_dao.dart';
 import '../../logger/app_logger.dart';
 import '../../models/plugin/action.dart';
+import '../../models/plugin/text.dart';
+import '../../models/ai_provider.dart';
 import '../../models/plugin/manifest.dart';
 import '../../models/plugin/view.dart';
 import '../../models/plugin/setting_field.dart';
 import 'config.dart';
+import 'provider_config.dart';
+import 'provider_models.dart';
+import '../../models/plugin/provider.dart';
+import '../../models/plugin/provider_registry.dart';
+import 'package:crypto/crypto.dart';
+import '../proxy_client.dart';
 import 'data.dart';
 import 'http.dart';
+import 'files.dart';
+import 'media.dart';
+import 'media_files.dart';
 import 'registry.dart';
 import 'runtime.dart';
 import 'sqlite.dart';
@@ -84,6 +95,7 @@ class PluginHostService {
     PluginExecutorFactory? executorFactory,
     String? platform,
     this.applicationSupport,
+    this.onProvidersChanged,
   }) : _executorFactoryOverride = executorFactory,
        platform = platform ?? Platform.operatingSystem {
     this.executorFactory =
@@ -91,7 +103,15 @@ class PluginHostService {
         ((call, stop) =>
             PluginRuntime(hostCall: call, onStop: stop, business: _business));
   }
+  final void Function()? onProvidersChanged;
   final _business = PluginBusinessRuntime();
+  // 查询类调用短且可重放，复用常驻运行时；提交与上传仍每次隔离，
+  // 避免其他调用触发的运行时重置中断不确定的提交窗口。
+  final _providerQueryBusiness = PluginBusinessRuntime();
+  final _providerCalls = <AgentCancellationController>{};
+  final _providerRefreshEpoch = <String, int>{};
+  final _pendingProviderRefresh = <String>{};
+  final _providerModelRefreshes = <Future<void>>{};
   final Future<Directory> Function()? applicationSupport;
   Future<Directory> supportDirectory() =>
       applicationSupport?.call() ?? getApplicationSupportDirectory();
@@ -860,16 +880,18 @@ class PluginHostService {
         _maintenance.remove(id);
         databases.resume(id);
         tasks.kick();
+        _scheduleProviderRefresh(id);
       }
     }
 
     try {
-      final queue = _queues[id];
-      if (queue != null) {
-        for (final waiter in queue) {
-          waiter.complete(false);
+      for (final entry in _queues.entries) {
+        if (entry.key == id || entry.key.startsWith('$id#')) {
+          for (final waiter in entry.value) {
+            waiter.complete(false);
+          }
+          entry.value.clear();
         }
-        queue.clear();
       }
       if ((_running[id] ?? 0) > 0) {
         await (_drainers[id] = Completer<void>()).future.timeout(
@@ -893,6 +915,8 @@ class PluginHostService {
   void markRecoveryRequired(String id, Object error) {
     _recoveryErrors[id] = error;
     registry.remove(id);
+    aiProviderTypeConfigs.remove('plugin:$id');
+    pluginProviderModels.removePlugin(id);
     _views.remove(id);
     _registrations.remove(id);
     final status = _statuses[id];
@@ -1129,6 +1153,9 @@ class PluginHostService {
   Future<void> _activate(String pluginId) async {
     final status = _statuses[pluginId]!;
     registry.remove(pluginId);
+    aiProviderTypeConfigs.remove('plugin:$pluginId');
+    pluginProviderModels.changed();
+    await _loadProviderModels(pluginId);
     _registrations.remove(pluginId);
     _views.remove(pluginId);
     status.error = null;
@@ -1136,6 +1163,7 @@ class PluginHostService {
     await _promptCollector.cancelPlugin(pluginId);
     await tasks.stopPlugin(pluginId);
     await _business.unload(pluginId);
+    await _providerQueryBusiness.unload(pluginId);
     if (_recoveryErrors.containsKey(pluginId)) {
       status.state = 'failed';
       status.error = _recoveryErrors[pluginId].toString();
@@ -1208,6 +1236,25 @@ class PluginHostService {
               definition,
             ),
       ]);
+      if (package.manifest.provider case final provider?) {
+        final methods =
+            definitions.singleWhere(
+                  (value) => value['kind'] == 'provider',
+                )['methods']
+                as List;
+        aiProviderTypeConfigs['plugin:$pluginId'] = AiProviderTypeConfig(
+          displayName: provider.name.values.values.first,
+          localizedName: provider.name,
+          supportsAssetCertification:
+              methods.contains('assets.submit') &&
+              methods.contains('assets.state'),
+          modelIdSource: ModelIdSource.registered,
+          providerModelKinds: {
+            if (methods.contains('image.submit')) AiModelKind.image,
+            if (methods.contains('video.submit')) AiModelKind.video,
+          },
+        );
+      }
       _registrations[pluginId] = List.unmodifiable(definitions);
       _views[pluginId] = List.unmodifiable(views);
       await tasks.register(pluginId, package.manifest.tasks);
@@ -1225,6 +1272,8 @@ class PluginHostService {
       _releaseQueue(pluginId);
     }
     _emit();
+    pluginProviderModels.changed();
+    _scheduleProviderRefresh(pluginId);
   }
 
   Future<T> mutate<T>(String id, Future<T> Function() action) {
@@ -1256,12 +1305,16 @@ class PluginHostService {
   }
 
   Future<void> shutdownForRestore() => withPackageSnapshot(() async {
+    _log.info('Restore shutdown started');
     final releases = <void Function()>[];
     try {
       for (final id in _packages.keys.toList()) {
+        _log.info('Restore shutdown: draining plugin=$id');
         releases.add(await beginMaintenance(id));
       }
+      _log.info('Restore shutdown: disposing host resources');
       await dispose();
+      _log.info('Restore shutdown completed');
     } finally {
       for (final release in releases) {
         release();
@@ -1275,6 +1328,11 @@ class PluginHostService {
     final row = await dao.getPlugin(id);
     if (row == null) {
       throw StateError('Installed plugin registration is missing');
+    }
+    final previousVersion = _packages[id]?.manifest.version;
+    if (previousVersion != null &&
+        previousVersion != package.manifest.version) {
+      _pendingProviderRefresh.add(id);
     }
     _packages[id] = package;
     _statuses[id] = PluginStatus(
@@ -1321,9 +1379,22 @@ class PluginHostService {
     await _promptCollector.cancelPlugin(id);
     await tasks.stopPlugin(id);
     await _business.unload(id);
+    await _providerQueryBusiness.unload(id);
     await _closeIdleDatabase(id);
-    await dao.uninstall(id);
+    await dao.transaction(() async {
+      for (final provider
+          in await dao.attachedDatabase.aiProviderDao.getAll()) {
+        if (provider.type == 'plugin:$id') {
+          await dao.attachedDatabase.aiProviderDao.softDelete(provider.id);
+          await dao.removeProviderConfiguration(id, provider.id);
+        }
+      }
+      await dao.uninstall(id);
+    });
+    onProvidersChanged?.call();
     registry.remove(id);
+    aiProviderTypeConfigs.remove('plugin:$id');
+    pluginProviderModels.removePlugin(id);
     _registrations.remove(id);
     _views.remove(id);
     _packages.remove(id);
@@ -1618,7 +1689,686 @@ class PluginHostService {
     }
   }
 
-  /// 插件可调用的宿主 API。设置页操作传入表单草稿，覆盖已保存的配置。
+  Future<String> _providerConfigurationHash(AiProvider provider) async {
+    final package = _packages[provider.pluginId!];
+    if (package == null) {
+      throw PluginHostError(
+        'configuration_required',
+        'Provider plugin is unavailable',
+      );
+    }
+    final config = await readPluginProviderConfiguration(
+      dao,
+      package.manifest,
+      provider.id,
+    );
+    return sha256
+        .convert(
+          utf8.encode(
+            canonicalPluginJson({
+              'plugin': provider.type,
+              'version': package.manifest.version,
+              'settings': config.values,
+              'secrets': config.secrets,
+              'proxy': [
+                provider.proxyUrl,
+                provider.proxyUsername,
+                provider.proxyPassword,
+              ],
+            }),
+          ),
+        )
+        .toString();
+  }
+
+  Future<PluginProviderDiscovery> discoverProviderModels(
+    AiProvider provider,
+  ) async {
+    await _serial['provider-model:${provider.id}'];
+    final saved = await dao.attachedDatabase.aiProviderDao.getById(provider.id);
+    if (saved == null || saved.type != provider.type) {
+      throw PluginHostError(
+        'configuration_required',
+        'Provider instance is unavailable',
+      );
+    }
+    final epoch = (_providerRefreshEpoch[provider.id] ?? 0) + 1;
+    _providerRefreshEpoch[provider.id] = epoch;
+    final hash = await _providerConfigurationHash(saved);
+    final ticket = PluginProviderDiscovery(
+      providerId: saved.id,
+      providerType: saved.type,
+      epoch: epoch,
+      configurationHash: hash,
+      models: const [],
+    );
+    try {
+      final response = await callProvider(saved, 'listModels');
+      await _requireCurrentDiscovery(ticket);
+      final List<PluginProviderModel> models;
+      try {
+        models = parsePluginProviderModels(response);
+      } on FormatException catch (error) {
+        throw PluginHostError('invalid_models', error.message.toString());
+      }
+      return PluginProviderDiscovery(
+        providerId: saved.id,
+        providerType: saved.type,
+        epoch: epoch,
+        configurationHash: hash,
+        models: models,
+      );
+    } catch (error, stack) {
+      // A superseded request must not publish a late network or parsing failure.
+      await _requireCurrentDiscovery(ticket);
+      Error.throwWithStackTrace(error, stack);
+    }
+  }
+
+  Future<AiProvider> _requireCurrentDiscovery(
+    PluginProviderDiscovery discovery,
+  ) async {
+    final current = await dao.attachedDatabase.aiProviderDao.getById(
+      discovery.providerId,
+    );
+    if (current == null ||
+        current.type != discovery.providerType ||
+        _providerRefreshEpoch[current.id] != discovery.epoch ||
+        await _providerConfigurationHash(current) !=
+            discovery.configurationHash) {
+      throw PluginHostError(
+        'stale_result',
+        'Provider configuration or model refresh has changed',
+      );
+    }
+    return current;
+  }
+
+  Future<AiProvider> saveProviderModels(
+    PluginProviderDiscovery discovery,
+    Set<(AiModelKind, String)> selected, {
+    required Future<void> Function(AiProvider provider) saveProvider,
+  }) => mutate('provider-model:${discovery.providerId}', () async {
+    final current = await _requireCurrentDiscovery(discovery);
+    final available = {
+      for (final model in discovery.models) (model.kind, model.id),
+    };
+    final allowed = {
+      ...available,
+      for (final id in current.imageModels) (AiModelKind.image, id),
+      for (final id in current.videoModels) (AiModelKind.video, id),
+    };
+    if (!allowed.containsAll(selected)) {
+      throw PluginHostError(
+        'invalid_request',
+        'Selection contains an undiscovered model',
+      );
+    }
+    final models = discovery.models
+        .where((model) => selected.contains((model.kind, model.id)))
+        .toList();
+    final updated = current.copyWith(
+      imageModels: [
+        for (final (kind, id) in selected)
+          if (kind == AiModelKind.image) id,
+      ],
+      videoModels: [
+        for (final (kind, id) in selected)
+          if (kind == AiModelKind.video) id,
+      ],
+      updatedAt: DateTime.now(),
+    );
+    await dao.transaction(() async {
+      await _requireCurrentDiscovery(discovery);
+      await dao.setStorage(
+        current.pluginId!,
+        '${pluginProviderPrefix(current.id)}__models',
+        jsonEncode({
+          'version': 1,
+          'models': models.map((model) => model.toJson()).toList(),
+        }),
+      );
+      await saveProvider(updated);
+    });
+    _providerRefreshEpoch[current.id] = discovery.epoch + 1;
+    pluginProviderModels.replace(updated, models);
+    return updated;
+  });
+
+  /// 仅移除已选 ID；保留声明缓存，冷启动按最新选择过滤，不依赖插件或网络。
+  Future<AiProvider> removeProviderModel(
+    String providerId,
+    AiModelKind kind,
+    String id, {
+    required Future<void> Function(AiProvider provider) saveProvider,
+  }) => mutate('provider-model:$providerId', () async {
+    final current = await dao.attachedDatabase.aiProviderDao.getById(
+      providerId,
+    );
+    if (current == null ||
+        !current.isPluginProvider ||
+        !{AiModelKind.image, AiModelKind.video}.contains(kind)) {
+      throw PluginHostError(
+        'invalid_request',
+        'Invalid plugin model selection',
+      );
+    }
+    final updated = current.copyWith(
+      imageModels: kind == AiModelKind.image
+          ? current.imageModels.where((model) => model != id).toList()
+          : current.imageModels,
+      videoModels: kind == AiModelKind.video
+          ? current.videoModels.where((model) => model != id).toList()
+          : current.videoModels,
+      updatedAt: DateTime.now(),
+    );
+    await dao.transaction(() => saveProvider(updated));
+    _providerRefreshEpoch[providerId] =
+        (_providerRefreshEpoch[providerId] ?? 0) + 1;
+    await _loadProviderModels(current.pluginId!);
+    return updated;
+  });
+
+  Future<void> _loadProviderModels(String pluginId) async {
+    for (final provider in await dao.attachedDatabase.aiProviderDao.getAll()) {
+      if (provider.type != 'plugin:$pluginId') {
+        continue;
+      }
+      final stored = await dao.getStorage(
+        pluginId,
+        '${pluginProviderPrefix(provider.id)}__models',
+      );
+      if (stored == null) {
+        if (provider.imageModels.isEmpty && provider.videoModels.isEmpty) {
+          pluginProviderModels.replace(provider, [], clearRefreshError: false);
+        } else {
+          pluginProviderModels.invalid(
+            provider,
+            'Model declarations are missing; get models again',
+          );
+        }
+        continue;
+      }
+      try {
+        final value = jsonDecode(stored);
+        if (value is! Map || value['version'] != 1) {
+          throw const FormatException('Unsupported provider model cache');
+        }
+        final models = parsePluginProviderModels(value['models']);
+        pluginProviderModels.replace(
+          provider,
+          models.where(
+            (model) =>
+                (model.kind == AiModelKind.image
+                        ? provider.imageModels
+                        : provider.videoModels)
+                    .contains(model.id),
+          ),
+          clearRefreshError: false,
+        );
+      } catch (error) {
+        _log.warning(
+          'Cannot load model declarations provider=${provider.id}: $error',
+        );
+        pluginProviderModels.invalid(
+          provider,
+          'Model declarations are invalid; get models again',
+        );
+      }
+    }
+  }
+
+  void _scheduleProviderRefresh(String pluginId) {
+    if (!_maintenance.contains(pluginId) &&
+        _statuses[pluginId]?.state == 'available' &&
+        _pendingProviderRefresh.remove(pluginId)) {
+      late Future<void> refresh;
+      refresh = _refreshSelectedProviderModels(pluginId)
+          .catchError((Object error, StackTrace stack) {
+            _log.error(
+              'Provider model refresh stopped plugin=$pluginId',
+              error: error,
+              stackTrace: stack,
+            );
+          })
+          .whenComplete(() => _providerModelRefreshes.remove(refresh));
+      _providerModelRefreshes.add(refresh);
+      unawaited(refresh);
+    }
+  }
+
+  Future<void> _refreshSelectedProviderModels(String pluginId) async {
+    for (final provider in await dao.attachedDatabase.aiProviderDao.getAll()) {
+      if (provider.type != 'plugin:$pluginId' ||
+          (provider.imageModels.isEmpty && provider.videoModels.isEmpty)) {
+        continue;
+      }
+      try {
+        await refreshProviderModels(provider);
+      } catch (_) {
+        // Each instance reports its own error; continue refreshing the remaining instances.
+      }
+    }
+  }
+
+  Future<void> refreshProviderModels(AiProvider provider) async {
+    try {
+      final discovery = await discoverProviderModels(provider);
+      late AiProvider current;
+      late List<PluginProviderModel> models;
+      await mutate(
+        'provider-model:${provider.id}',
+        () => dao.transaction(() async {
+          current = await _requireCurrentDiscovery(discovery);
+          models = discovery.models
+              .where(
+                (model) =>
+                    (model.kind == AiModelKind.image
+                            ? current.imageModels
+                            : current.videoModels)
+                        .contains(model.id),
+              )
+              .toList();
+          await dao.setStorage(
+            provider.pluginId!,
+            '${pluginProviderPrefix(provider.id)}__models',
+            jsonEncode({
+              'version': 1,
+              'models': models.map((model) => model.toJson()).toList(),
+            }),
+          );
+        }),
+      );
+      pluginProviderModels.replace(current, models);
+    } catch (error, stack) {
+      final code = switch (error) {
+        PluginHostError() => error.code,
+        PluginExecutionError() => error.code,
+        _ => 'plugin_error',
+      };
+      if (code != 'stale_result' && !_disposed) {
+        pluginProviderModels.refreshFailed(
+          provider,
+          code: code,
+          detail: error is PluginHostError && code == 'invalid_models'
+              ? error.message
+              : null,
+        );
+        _log.error(
+          'Provider model refresh failed provider=${provider.id}',
+          error: error,
+          stackTrace: stack,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  bool providerHasMethod(String pluginId, String method) =>
+      _registrations[pluginId]?.any(
+        (value) =>
+            value['kind'] == 'provider' &&
+            (value['methods'] as List).contains(method),
+      ) ==
+      true;
+
+  PluginManifest? providerManifest(String pluginId) =>
+      _packages[pluginId]?.manifest;
+
+  Future<String> providerUploadContext(
+    AiProvider provider,
+    String mimeType,
+  ) async {
+    await start();
+    final pluginId = provider.pluginId;
+    if (pluginId == null ||
+        _statuses[pluginId]?.state != 'available' ||
+        _statuses[pluginId]?.enabled != true ||
+        !providerHasMethod(pluginId, 'uploadReference')) {
+      throw PluginHostError(
+        'configuration_required',
+        'Provider reference upload is unavailable',
+      );
+    }
+    return sha256
+        .convert(
+          utf8.encode(
+            jsonEncode([await _providerConfigurationHash(provider), mimeType]),
+          ),
+        )
+        .toString();
+  }
+
+  Future<PluginConfig> loadProviderConfig(AiProvider provider) async {
+    final snapshot = await readPluginProviderConfiguration(
+      dao,
+      _manifest(provider.pluginId!),
+      provider.id,
+    );
+    return (
+      values: snapshot.values,
+      savedSecrets: snapshot.secrets.entries
+          .where((entry) => entry.value != null)
+          .map((entry) => entry.key)
+          .toSet(),
+    );
+  }
+
+  Future<void> saveProviderConfig(
+    AiProvider provider, {
+    required Map<String, Object?> settings,
+    required Map<String, String?> secrets,
+  }) async {
+    await savePluginProviderConfiguration(
+      dao,
+      _manifest(provider.pluginId!),
+      provider.id,
+      settings: settings,
+      secrets: secrets,
+    );
+  }
+
+  Future<Object?> callProvider(
+    AiProvider provider,
+    String method, {
+    Map<String, dynamic> input = const {},
+    Map<String, Object?> draftSettings = const {},
+    Map<String, String?> draftSecrets = const {},
+    String? taskId,
+    PluginFileScope? files,
+    PluginMediaFiles? mediaFiles,
+    AgentCancellationToken? cancellation,
+  }) async {
+    await start();
+    final pluginId = provider.pluginId;
+    if (pluginId == null ||
+        _statuses[pluginId]?.state != 'available' ||
+        _statuses[pluginId]?.enabled != true) {
+      throw PluginHostError(
+        'configuration_required',
+        'Provider plugin is not available',
+      );
+    }
+    final action = method.startsWith('actions.')
+        ? _packages[pluginId]!.manifest.provider?.actions
+              .where((action) => method == 'actions.${action.name}')
+              .firstOrNull
+        : null;
+    final configurationCall = method == 'checkConnection' || action != null;
+    if (!configurationCall &&
+        (draftSettings.isNotEmpty || draftSecrets.isNotEmpty)) {
+      throw PluginHostError(
+        'invalid_request',
+        'Draft configuration is only allowed for connection checks and provider actions',
+      );
+    }
+    final budget = switch (method) {
+      'checkConnection' ||
+      'assets.state' ||
+      'image.query' => const Duration(seconds: 30),
+      'listModels' => const Duration(seconds: 60),
+      'image.submit' ||
+      'video.submit' ||
+      'video.query' => const Duration(seconds: 300),
+      'uploadReference' || 'assets.submit' => const Duration(minutes: 10),
+      _ when action != null => const Duration(seconds: 20),
+      _ => throw PluginHostError(
+        'invalid_request',
+        'Unknown provider method: $method',
+      ),
+    };
+    final query =
+        action != null ||
+        const {
+          'checkConnection',
+          'listModels',
+          'assets.state',
+          'image.query',
+          'video.query',
+        }.contains(method);
+    final lane = query ? _providerQueryLane : _providerSubmitLane;
+    if (!await _acquire(pluginId, cancellation: cancellation, lane: lane)) {
+      throw PluginHostError('unavailable', 'Provider call cannot start');
+    }
+    final business = query ? _providerQueryBusiness : PluginBusinessRuntime();
+    final watch = Stopwatch()..start();
+    HttpClient createClient() {
+      final client = HttpClient();
+      if (provider.hasProxy) {
+        configureHttpClientProxy(
+          client,
+          Uri.parse(provider.proxyUrl),
+          username: provider.proxyUsername,
+          password: provider.proxyPassword,
+        );
+      } else {
+        client.findProxy = (_) => 'DIRECT';
+      }
+      return client;
+    }
+
+    final http = PluginHttpApi(
+      direct: false,
+      logResponses: true,
+      remainingBudget: () => budget - watch.elapsed,
+      clientFactory: createClient,
+    );
+    final fileApi = files == null
+        ? null
+        : PluginFilesApi(
+            scope: files,
+            clientFactory: createClient,
+            remainingBudget: () => budget - watch.elapsed,
+          );
+    final mediaApi =
+        files == null || (mediaFiles == null && !method.startsWith('video.'))
+        ? null
+        : PluginMediaApi(
+            scope: files,
+            outputs: mediaFiles,
+            video: method.startsWith('video.'),
+            clientFactory: createClient,
+            remainingBudget: () => budget - watch.elapsed,
+          );
+    void cancelApis() {
+      mediaApi?.cancel();
+      http.cancel();
+      fileApi?.cancel();
+    }
+
+    final callCancellation = AgentCancellationController();
+    _providerCalls.add(callCancellation);
+    final unlink = cancellation?.onCancel(callCancellation.cancel);
+    final unlinkHttp = callCancellation.token.onCancel(cancelApis);
+    try {
+      if (mediaFiles != null && !identical(mediaFiles.scope, files)) {
+        throw PluginHostError(
+          'permission_denied',
+          'Media outputs belong to another invocation',
+        );
+      }
+      files?.claim(pluginId: pluginId, providerId: provider.id, taskId: taskId);
+      if (_disposed ||
+          _statuses[pluginId]?.state != 'available' ||
+          _statuses[pluginId]?.enabled != true) {
+        throw PluginHostError(
+          'configuration_required',
+          'Provider plugin is not available',
+        );
+      }
+      if (!configurationCall) {
+        final saved = await dao.attachedDatabase.aiProviderDao.getById(
+          provider.id,
+        );
+        if (saved == null ||
+            saved.type != provider.type ||
+            (method != 'listModels' && action == null && !saved.enabled)) {
+          throw PluginHostError(
+            'configuration_required',
+            'Provider instance is not available',
+          );
+        }
+        provider = saved;
+      }
+      final package = _packages[pluginId]!;
+      final expected = _registrations[pluginId]!;
+      final methods =
+          expected.singleWhere(
+                (value) => value['kind'] == 'provider',
+              )['methods']
+              as List;
+      if (!methods.contains(method)) {
+        throw PluginHostError(
+          'configuration_required',
+          'Provider method is not registered: $method',
+        );
+      }
+      final snapshot = await readPluginProviderConfiguration(
+        dao,
+        package.manifest,
+        provider.id,
+        settings: draftSettings,
+        secrets: draftSecrets,
+      );
+      final declaration = package.manifest.provider!;
+      String? invalid;
+      if (action == null) {
+        invalid = snapshot.invalidField(declaration);
+      } else {
+        for (final field in declaration.fields) {
+          if (!action.requires.contains(field.key)) {
+            continue;
+          }
+          final value = field.isSecret
+              ? snapshot.secrets[field.key]
+              : snapshot.values[field.key];
+          if (value == null ||
+              value == '' ||
+              validatePluginSettingValue(field, value) != null) {
+            invalid = field.key;
+            break;
+          }
+        }
+      }
+      if (invalid != null) {
+        throw PluginHostError(
+          'configuration_required',
+          'Missing or invalid provider field: $invalid',
+        );
+      }
+      final common = _hostApi(
+        pluginId,
+        package,
+        http,
+        snapshot.secrets.values.whereType<String>().toList(),
+      );
+      final runtime = PluginRuntime(
+        business: business,
+        onStop: cancelApis,
+        hostCall: (name, args) async {
+          if (name == 'video.request' &&
+              {'video.submit', 'video.query'}.contains(method) &&
+              mediaApi != null) {
+            return mediaApi.request(args);
+          }
+          if (name == 'image.request' &&
+              {'image.submit', 'image.query'}.contains(method) &&
+              mediaApi != null) {
+            return mediaApi.request(args);
+          }
+          if (name == 'files.upload' &&
+              {'uploadReference', 'assets.submit'}.contains(method) &&
+              fileApi != null) {
+            return fileApi.upload(args);
+          }
+          if (name == 'settings.get' || name == 'secrets.get') {
+            final key = args['key'];
+            final values = name == 'settings.get'
+                ? snapshot.values
+                : snapshot.secrets;
+            if (key is! String || !values.containsKey(key)) {
+              throw PluginHostError(
+                'invalid_argument',
+                'Undeclared provider field: $key',
+              );
+            }
+            return values[key];
+          }
+          if (!{
+            'http.fetch',
+            'storage.get',
+            'storage.set',
+            'storage.remove',
+            'log.info',
+            'log.warn',
+            'log.error',
+          }.contains(name)) {
+            throw PluginHostError(
+              'permission_denied',
+              'Host API is not available in this provider phase: $name',
+            );
+          }
+          return common(name, args);
+        },
+      );
+      final remaining = budget - watch.elapsed;
+      if (remaining <= Duration.zero) {
+        throw PluginHostError('timeout', 'Provider method budget exhausted');
+      }
+      final result = await runtime.runProvider(
+        package.manifest,
+        package.code,
+        expected,
+        method,
+        input,
+        provider.id,
+        const Uuid().v4(),
+        callCancellation.token,
+        generationTaskId: taskId,
+        budget: remaining,
+      );
+      if (action != null) {
+        if (result is! Map<String, dynamic> ||
+            result['ok'] is! bool ||
+            (result['code'] != null && result['code'] is! String) ||
+            (result['message'] != null && result['message'] is! String)) {
+          throw PluginHostError(
+            'invalid_response',
+            'Invalid provider action result',
+          );
+        }
+        final text = parseOptionalPluginText(
+          result['text'],
+          'provider action text',
+        );
+        if (result['ok'] == false) {
+          _log.warning(
+            'Provider action failed: $pluginId.$method '
+            '${_redact('${result['code'] ?? ''} ${result['message'] ?? ''}', snapshot.secrets.values.whereType<String>().toList())}',
+          );
+        }
+        return {
+          'ok': result['ok'],
+          'code': result['code'],
+          if (result['ok'] == true && text != null) 'text': text.toJson(),
+        };
+      }
+      return result;
+    } finally {
+      unlink?.call();
+      unlinkHttp();
+      _providerCalls.remove(callCancellation);
+      cancelApis();
+      try {
+        if (!query) {
+          await business.dispose();
+        }
+      } finally {
+        _releaseQueue(pluginId, lane: lane);
+      }
+    }
+  }
+
   PluginHostCall _hostApi(
     String id,
     PluginPackage package,
@@ -1847,22 +2597,37 @@ class PluginHostService {
     return result;
   }
 
+  /// 插件工具、页面与任务共用默认通道；Provider 查询和提交各自限流，
+  /// 长时间的提交与上传不会阻塞轮询和其他插件功能。
+  static const _laneLimits = {
+    '': 4,
+    _providerQueryLane: 8,
+    _providerSubmitLane: 4,
+  };
+  static const _providerQueryLane = 'provider-query';
+  static const _providerSubmitLane = 'provider-submit';
+  final _laneRunning = <String, int>{};
+  String _laneKey(String id, String lane) => lane.isEmpty ? id : '$id#$lane';
+
   Future<bool> _acquire(
     String id, {
     AgentCancellationToken? cancellation,
     bool allowMaintenance = false,
+    String lane = '',
   }) async {
     if (_disposed ||
         (!allowMaintenance && _maintenance.contains(id)) ||
         cancellation?.isCancellationRequested == true) {
       return false;
     }
-    if ((_running[id] ?? 0) < 4) {
+    final key = _laneKey(id, lane);
+    if ((_laneRunning[key] ?? 0) < _laneLimits[lane]!) {
+      _laneRunning[key] = (_laneRunning[key] ?? 0) + 1;
       _running[id] = (_running[id] ?? 0) + 1;
       return true;
     }
     final waiter = Completer<bool>();
-    final queue = (_queues[id] ??= []);
+    final queue = (_queues[key] ??= []);
     queue.add(waiter);
     final unlink = cancellation?.onCancel(() {
       // remove 成功说明还未接手槽位；交接后的取消由 execute 释放其租约。
@@ -1877,15 +2642,17 @@ class PluginHostService {
     }
   }
 
-  void _releaseQueue(String id) {
-    final queue = _queues[id];
+  void _releaseQueue(String id, {String lane = ''}) {
+    final key = _laneKey(id, lane);
+    final queue = _queues[key];
     if (queue != null && queue.isNotEmpty) {
       queue.removeAt(0).complete(true);
-    } else {
-      _running[id] = (_running[id] ?? 1) - 1;
-      if (_running[id] == 0) {
-        _drainers[id]?.complete();
-      }
+      return;
+    }
+    _laneRunning[key] = (_laneRunning[key] ?? 1) - 1;
+    _running[id] = (_running[id] ?? 1) - 1;
+    if (_running[id] == 0) {
+      _drainers[id]?.complete();
     }
   }
 
@@ -1894,14 +2661,21 @@ class PluginHostService {
       return;
     }
     _disposed = true;
+    for (final call in _providerCalls.toList()) {
+      call.cancel();
+    }
+    await Future.wait(_providerModelRefreshes.toList());
     await _promptCollector.dispose();
     await tasks.dispose();
     await _business.dispose();
+    await _providerQueryBusiness.dispose();
     for (final page in _pages.values.toList()) {
       await page.session.close();
     }
     for (final id in _packages.keys) {
       registry.remove(id);
+      aiProviderTypeConfigs.remove('plugin:$id');
+      pluginProviderModels.removePlugin(id);
       _registrations.remove(id);
       _views.remove(id);
     }
@@ -1914,6 +2688,9 @@ class PluginHostService {
     if (_databases != null) {
       await (await _databases!).dispose();
     }
-    await _changes.close();
+    // A hidden page can pause its status subscription. Closing the controller
+    // prevents new events immediately, but its future waits for those listeners
+    // to resume. UI notification delivery must not hold up resource shutdown.
+    unawaited(_changes.close());
   }
 }

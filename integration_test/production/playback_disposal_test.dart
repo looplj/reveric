@@ -51,7 +51,8 @@ void main() {
         probe: false,
         cancellation: MediaCancellation(),
       );
-      for (var cycle = 0; cycle < 30; cycle++) {
+      const cycles = 120;
+      for (var cycle = 0; cycle < cycles; cycle++) {
         final player = _ObservedPlayer();
         try {
           player.media = path;
@@ -59,44 +60,32 @@ void main() {
           final texture = await player.updateTexture();
           expect(texture, greaterThanOrEqualTo(0));
           expect(player.mediaInfo.audio, isNotEmpty);
-          await tester.pumpWidget(
-            Directionality(
-              textDirection: TextDirection.ltr,
-              child: Center(
-                child: SizedBox(
-                  width: 320,
-                  height: 180,
-                  child: Texture(textureId: texture),
-                ),
-              ),
-            ),
-          );
+          // Native rendering and audio disposal must also work while the host
+          // window is occluded. Keep the native texture without pumping UI frames.
           player.state = PlaybackState.playing;
           final deadline = DateTime.now().add(const Duration(seconds: 5));
           while (player.position < 150 && DateTime.now().isBefore(deadline)) {
-            await tester.pump(const Duration(milliseconds: 25));
+            await Future<void>.delayed(const Duration(milliseconds: 25));
           }
           expect(player.position, greaterThanOrEqualTo(150));
           if (cycle % 3 != 0) {
             player.state = PlaybackState.paused;
-            await tester.pump(const Duration(milliseconds: 50));
+            await Future<void>.delayed(const Duration(milliseconds: 50));
           }
           if (cycle % 3 == 2) {
             await player.seek(position: 1000);
             player.state = PlaybackState.playing;
-            await tester.pump(const Duration(milliseconds: 100));
+            await Future<void>.delayed(const Duration(milliseconds: 100));
           }
-          if (cycle == 29) {
+          if (cycle == cycles - 1) {
             // Already-stopped players must not wait for another state event.
             await player.onStateChanged.firstWhere(
               (event) => event.newValue == PlaybackState.stopped,
             );
           }
-          // Mirror hover exit: remove the visible texture and dispose while
-          // Flutter can still have an in-flight frame using that texture.
-          await tester.pumpWidget(const SizedBox.shrink());
           debugPrint('DISPOSE_BEGIN cycle=$cycle state=${player.state}');
         } finally {
+          await Future.wait([player.dispose(), player.dispose()]);
           await player.dispose();
         }
         debugPrint(
@@ -109,11 +98,11 @@ void main() {
           reason: 'The audio backend must stop while its renderer is alive',
         );
         expect(player.textureId.value, isNull);
-        await tester.pump(const Duration(milliseconds: 20));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
         expect(tester.takeException(), isNull);
       }
       // Allow deferred native texture unregistrations to run before exit.
-      await tester.pump(const Duration(milliseconds: 600));
+      await Future<void>.delayed(const Duration(milliseconds: 600));
     } finally {
       await directory.delete(recursive: true);
     }

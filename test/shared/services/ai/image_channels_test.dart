@@ -5,6 +5,8 @@
 //   lib/shared/providers/production_images.dart
 
 import 'dart:convert';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
+import 'package:reveric/shared/models/provider_model.dart';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -27,6 +29,7 @@ const _png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==';
 const _image = 'data:image/png;base64,$_png';
 const _references = ['https://reference.example/first.png', _image];
+const _encodedReferences = [_image, _image];
 
 AiProvider _provider(String type) => aiProviderBuiltinById('openai')!.copyWith(
   type: type,
@@ -97,7 +100,7 @@ void main() {
                 expect(result.mimeSubtype, 'png');
               }
             },
-            () => MockClient((request) async {
+            () => _ReferenceClient((request) async {
               final editing = count++ == 1;
               expect(request.method, 'POST');
               expect(request.headers['Authorization'], 'Bearer test-key');
@@ -117,7 +120,7 @@ void main() {
                   'size': '2688x1536',
                   'watermark': false,
                   'prompt_extend': true,
-                  if (editing) 'image': _references,
+                  if (editing) 'image': _encodedReferences,
                 });
               } else {
                 expect(body['parameters'], {
@@ -127,7 +130,8 @@ void main() {
                   if (model.startsWith('qwen-')) 'prompt_extend': true,
                 });
                 expect(body['input']['messages'][0]['content'], [
-                  if (editing) ..._references.map((image) => {'image': image}),
+                  if (editing)
+                    ..._encodedReferences.map((image) => {'image': image}),
                   {'text': 'combine'},
                 ]);
               }
@@ -185,20 +189,26 @@ void main() {
             );
           }
         },
-        () => MockClient((request) async {
+        () => _ReferenceClient((request) async {
           count++;
           final body = jsonDecode(request.body) as Map;
           final model = body['model'] as String;
-          final modern = model.contains('-pro-') || model.contains('-flash-');
+          final modern =
+              model.contains('-pro-') ||
+              model.contains('-flash-') ||
+              model.contains('-5-5-');
           expect(
             request.url.path,
             '/prefix/compatible-mode/v1/images/generations',
           );
-          expect(body['image'], _references);
+          expect(body['image'], _encodedReferences);
           expect(body['size'], '2048x2048');
           expect(body['response_format'], 'b64_json');
           expect(body['watermark'], false);
-          expect(body['output_format'], model.contains('-5-0') ? 'png' : null);
+          expect(
+            body['output_format'],
+            model.contains('-5-0') || model.contains('-5-5-') ? 'png' : null,
+          );
           expect(body.containsKey('sequential_image_generation'), !modern);
           expect(body['optimize_prompt_options'], {
             'mode': model.contains('-4-0') ? 'fast' : 'standard',
@@ -237,16 +247,29 @@ void main() {
       await http.runWithClient(
         () async {
           final result = await container.read(productionImageInvokeProvider)(
+            'fixture-task',
             _provider('openrouter'),
-            request,
+            request.withModelSnapshot(
+              ProductionImageCapabilities(
+                _provider('openrouter'),
+                request.modelId,
+              ).effectiveCapabilities,
+              resolveImageModel(
+                    _provider('openrouter'),
+                    request.modelId,
+                  )?.rawDefaults ??
+                  {},
+            ),
             (_) async {},
+            (_, _) async {},
+            AgentCancellationController().token,
           );
           expect(
             File(result.localFilePath!).readAsBytesSync(),
             base64Decode(_png),
           );
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           expect(r.url.toString(), 'https://openrouter.ai/api/v1/images');
           expect(jsonDecode(r.body), {
             'model': 'qwen/qwen-image-3',
@@ -302,7 +325,7 @@ void main() {
             ),
           );
         },
-        () => MockClient((request) async {
+        () => _ReferenceClient((request) async {
           requests++;
           final body = jsonDecode(request.body) as Map;
           expect(
@@ -362,7 +385,7 @@ void main() {
             base64Decode(_png),
           );
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           calls++;
           expect(r.url.toString(), 'https://openrouter.ai/api/v1/images');
           expect(jsonDecode(r.body), {
@@ -372,7 +395,7 @@ void main() {
             'aspect_ratio': '16:9',
             'resolution': '2K',
             'input_references': [
-              for (final image in _references)
+              for (final image in _encodedReferences)
                 {
                   'type': 'image_url',
                   'image_url': {'url': image},
@@ -420,6 +443,7 @@ void main() {
       await http.runWithClient(
         () async {
           final result = await container.read(productionImageInvokeProvider)(
+            'fixture-task',
             provider,
             ProductionImageRequest(
               providerId: provider.id,
@@ -429,15 +453,20 @@ void main() {
               ratio: 'auto',
               resolution: 'auto',
               size: caps.size('auto', 'auto'),
+              capabilities: caps.effectiveCapabilities,
+              requestDefaults:
+                  resolveImageModel(provider, model)?.rawDefaults ?? {},
             ),
             (_) async {},
+            (_, _) async {},
+            AgentCancellationController().token,
           );
           expect(
             File(result.localFilePath!).readAsBytesSync(),
             base64Decode(_png),
           );
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           expect(jsonDecode(r.body), {
             'model': model,
             'prompt': 'cover',
@@ -476,7 +505,7 @@ void main() {
           aspectRatio: '16:9',
           resolution: '2K',
         ),
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           final body = jsonDecode(r.body) as Map;
           expect(body['generationConfig']['imageConfig'], {
             'aspectRatio': '16:9',
@@ -533,7 +562,7 @@ void main() {
               base64Decode(_png),
             );
           },
-          () => MockClient((r) async {
+          () => _ReferenceClient((r) async {
             calls++;
             if (type == 'api88') {
               expect(r.url.path, endsWith('/images/edits'));
@@ -638,14 +667,14 @@ void main() {
     );
     await http.runWithClient(
       () => service.editImages('combine', imageData: _references),
-      () => MockClient((r) async {
+      () => _ReferenceClient((r) async {
         expect(jsonDecode(r.body), {
           'model': 'sourceful/riverflow-v2.5-fast',
           'prompt': 'combine',
           'n': 1,
           'output_format': 'jpeg',
           'input_references': [
-            for (final image in _references)
+            for (final image in _encodedReferences)
               {
                 'type': 'image_url',
                 'image_url': {'url': image},
@@ -673,7 +702,7 @@ void main() {
       );
       await http.runWithClient(
         () => service.generateImage('cover', size: '1K'),
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           final body = jsonDecode(r.body) as Map;
           expect(body['parameters']['size'], '1024*1024');
           return http.Response(
@@ -721,7 +750,7 @@ void main() {
           );
         }
       },
-      () => MockClient(
+      () => _ReferenceClient(
         (_) => throw StateError('invalid request reached network'),
       ),
     );
@@ -752,7 +781,7 @@ void main() {
               ),
             );
           },
-          () => MockClient(
+          () => _ReferenceClient(
             (_) async => http.Response(
               jsonEncode(
                 status == 200
@@ -789,7 +818,7 @@ void main() {
           ),
         );
       },
-      () => MockClient(
+      () => _ReferenceClient(
         (_) async => http.Response(
           jsonEncode({
             'error': {
@@ -848,7 +877,7 @@ void main() {
             ),
           );
         },
-        () => MockClient(
+        () => _ReferenceClient(
           (_) async => http.Response(
             jsonEncode(
               status == 200
@@ -869,4 +898,91 @@ void main() {
       );
     }
   });
+
+  test('MiniMax H3 sends ratio and area, or an exclusive pixel size', () async {
+    final provider = _provider(
+      'minimax',
+    ).copyWith(baseUrl: 'https://api.minimax.cn');
+    final service = AiImageGenerationService(
+      provider,
+      model: 'MiniMax-H3-Image',
+    );
+    var editing = false;
+    await http.runWithClient(
+      () async {
+        final generated = await service.generateImage(
+          'cover',
+          aspectRatio: '16:9',
+          resolution: '2K',
+        );
+        expect(
+          File(generated.localFilePath!).readAsBytesSync(),
+          base64Decode(_png),
+        );
+        editing = true;
+        final edited = await service.editImages(
+          'cover',
+          imageData: _references,
+          size: '2720x1536',
+          aspectRatio: '16:9',
+          resolution: '2K',
+        );
+        expect(
+          File(edited.localFilePath!).readAsBytesSync(),
+          base64Decode(_png),
+        );
+      },
+      () => _ReferenceClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.headers['Authorization'], 'Bearer test-key');
+        expect(
+          request.url.toString(),
+          editing
+              ? 'https://api.minimax.cn/v1/images/edits'
+              : 'https://api.minimax.cn/v1/images/generations',
+        );
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['model'], 'MiniMax-H3-Image');
+        expect(body['response_format'], 'b64_json');
+        expect(body['output_format'], 'png');
+        if (editing) {
+          expect(body['size'], '2720x1536');
+          expect(body.containsKey('aspect_ratio'), isFalse);
+          expect(body.containsKey('area'), isFalse);
+          expect(body['images'], _encodedReferences);
+        } else {
+          expect(body['aspect_ratio'], '16:9');
+          expect(body['area'], '2K');
+          expect(body.containsKey('size'), isFalse);
+        }
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'b64_json': _png},
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+  });
+}
+
+class _ReferenceClient extends MockClient {
+  _ReferenceClient(Future<http.Response> Function(http.Request) handler)
+    : super((request) async {
+        if (request.method == 'GET' &&
+            {
+              'reference.example',
+              'reference.test',
+            }.contains(request.url.host)) {
+          expect(request.headers['Authorization'], isNull);
+          return http.Response.bytes(
+            base64Decode(_png),
+            200,
+            headers: {'content-type': 'image/png'},
+          );
+        }
+        return handler(request);
+      });
 }

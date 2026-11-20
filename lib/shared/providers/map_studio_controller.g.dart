@@ -59,7 +59,7 @@ final class MapStudioControllerProvider
 }
 
 String _$mapStudioControllerHash() =>
-    r'963d14b1ff4b17e724021b43c83100839053f304';
+    r'ba9d5bca449c7edf0e4162767d29eb6b4aa3b4b6';
 
 final class MapStudioControllerFamily extends $Family
     with

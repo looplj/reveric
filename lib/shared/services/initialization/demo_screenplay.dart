@@ -16,7 +16,6 @@ import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
 import '../../models/content_kind.dart';
 import '../../models/novel_type.dart';
-import '../../models/production/default_style.dart';
 import '../../models/screenplay_element.dart';
 import '../novel_content.dart';
 import '../screenplay_service.dart';
@@ -103,10 +102,6 @@ Future<void> _seedDemoContent(
   final screenplayService = ScreenplayService(database, idBuilder: idBuilder);
   final structure = await screenplayService.createInitialStructure(
     plannedEpisodeCount: demoScreenplayEpisodes.length,
-    style: initialProductionStyle(
-      category: demoScreenplayCategory,
-      tags: demoScreenplayTags,
-    ),
   );
   await screenplayService.updateSeason(
     seasonId: structure.seasonId,
@@ -190,23 +185,6 @@ Future<void> _seedDemoContent(
   if (root == null) {
     throw StateError('Demo screenplay root was not created.');
   }
-  final beatIds = <String, String>{};
-  for (final beat in demoScreenplayBeats) {
-    final episodeId = episodeIds[beat.episodeNumber];
-    if (episodeId == null) {
-      throw StateError(
-        'Demo screenplay beat has no episode: ${beat.episodeNumber}',
-      );
-    }
-    beatIds[beat.key] = await screenplayService.createBeat(
-      screenplayId: root.id,
-      episodeId: episodeId,
-      actNumber: beat.actNumber,
-      title: beat.title,
-      description: beat.description,
-    );
-  }
-
   for (final scene in demoScreenplayScenes) {
     final episodeId = episodeIds[scene.episodeNumber];
     if (episodeId == null) {
@@ -220,7 +198,6 @@ Future<void> _seedDemoContent(
     final sceneId = await screenplayService.createScene(
       screenplayId: root.id,
       episodeId: episodeId,
-      beatId: scene.beatKey == null ? null : beatIds[scene.beatKey],
       interiorExterior: heading.interiorExterior,
       locationId: heading.locationKey == null
           ? null

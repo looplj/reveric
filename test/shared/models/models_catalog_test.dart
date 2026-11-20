@@ -35,6 +35,71 @@ final _reasoningProvider = AiProvider(
 );
 
 void main() {
+  test(
+    'retired chat models have no catalog capabilities or temperature rules',
+    () {
+      final matcher = ModelCatalogMatcher(modelsCatalog);
+      for (final id in [
+        'o1',
+        'o3',
+        'o3-mini',
+        'o4-mini',
+        'kimi-k2-instruct',
+        'kimi-k2-thinking',
+        'gpt-4',
+        'gpt-4-turbo',
+        'gpt-4o',
+        'gpt-4.1',
+      ]) {
+        expect(matcher.lookup(id), isNull, reason: id);
+        expect(
+          lookupTemperatureSupport(id),
+          ModelTemperatureSupport.adjustable,
+          reason: id,
+        );
+        expect(
+          aiProviderBuiltinDefaults.expand((provider) => provider.models),
+          isNot(contains(id)),
+        );
+      }
+    },
+  );
+
+  test('Gemini 4 shares limits and modalities while Hydrogen adds xhigh', () {
+    final matcher = ModelCatalogMatcher(modelsCatalog);
+    final carbon = matcher.lookup('gemini-4-carbon')!;
+    expect(matcher.lookup('google/gemini-4-argon-preview:free'), same(carbon));
+    for (final id in [
+      'gemini-4-hydrogen',
+      'GOOGLE/GEMINI-4-HYDROGEN-PREVIEW:free',
+    ]) {
+      final hydrogen = matcher.lookup(id)!;
+      expect(hydrogen.limit, same(carbon.limit));
+      expect(hydrogen.modalities, same(carbon.modalities));
+      expect(lookupCatalogReasoningEfforts(id), [
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+      ]);
+      expect(useThinkingLevel(id), isTrue);
+      expect(supportsMultimodalToolResults(id), isTrue);
+      expect(resolveReasoningBudget(id, 'high'), isNull);
+      expect(resolveAgentMaxTokens(id), 48000);
+    }
+    expect(carbon.reasoningEfforts, ['low', 'medium', 'high']);
+    expect(useThinkingLevel('gemini-3.8-flash'), isTrue);
+    expect(useThinkingLevel('gemini-2.5-pro'), isFalse);
+    expect(supportsMultimodalToolResults('gemini-3.8-flash'), isTrue);
+    expect(supportsMultimodalToolResults('gemini-2.5-pro'), isFalse);
+    expect(useThinkingLevel('claude-fable-5'), isFalse);
+    expect(lookupCatalogReasoningEfforts('gemini-4-unknown'), isNull);
+    expect(
+      aiProviderBuiltinDefaults.firstWhere((p) => p.id == 'gemini').models,
+      contains('gemini-4-hydrogen'),
+    );
+  });
+
   group('ModelCatalogMatcher', () {
     const family = ModelCatalogEntry(
       matches: ['sample-*'],
@@ -124,10 +189,10 @@ void main() {
 
     test('已收录型号按自身能力配置，不依赖系列兜底', () {
       for (final model in [
-        'o3',
-        'o4-mini',
         'claude-opus-4-6',
         'claude-haiku-4-5-20251001',
+        'gemini-4-carbon',
+        'gemini-4-argon',
         'gemini-flash-latest',
         'qwen3.8-max',
         'qwen3.6-plus',
@@ -146,7 +211,6 @@ void main() {
       for (final model in [
         'deepseek-chat',
         'qwen3.7-max',
-        'kimi-k2-thinking',
         'glm-5.2',
         'minimax-m2.7',
         'MiniMax-M2.7-highspeed',
@@ -399,6 +463,8 @@ void main() {
         128000,
         ['low', 'medium', 'high', 'xhigh', 'max'],
       ),
+      ('gemini-4-carbon', 1000000, 64000, ['low', 'medium', 'high']),
+      ('gemini-4-argon-preview', 1000000, 64000, ['low', 'medium', 'high']),
     ];
     for (final (id, context, output, efforts) in cases) {
       expect(lookupCatalogLimit(id)?.context, context, reason: id);
@@ -423,4 +489,186 @@ void main() {
       }
     },
   );
+
+  test('request temperature combines provider opt-in and catalog aliases', () {
+    const options = AgentConfig(temperature: 0.3);
+    expect(options.requestTemperature('custom-model'), isNull);
+    final enabled = options.copyWith(enableTemperature: true);
+    expect(enabled.requestTemperature('custom-model'), 0.3);
+    expect(
+      enabled.requestTemperature('vendor/CLAUDE-OPUS-4-7-latest:free'),
+      isNull,
+    );
+    expect(enabled.requestTemperature('deepseek-flash'), 0.3);
+    expect(
+      enabled
+          .copyWith(reasoningEffort: 'high')
+          .requestTemperature('deepseek-flash'),
+      isNull,
+    );
+    expect(
+      enabled
+          .copyWith(reasoningEffort: 'high')
+          .requestTemperature('deepseek-v4-flash-free'),
+      0.3,
+    );
+  });
+
+  group('resolveRequestTemperature', () {
+    test('adjustable and unknown models keep the configured temperature', () {
+      expect(
+        resolveRequestTemperature(
+          modelId: 'custom-chat-model',
+          temperature: 0.7,
+        ),
+        0.7,
+      );
+      expect(resolveRequestTemperature(modelId: null, temperature: 0.7), 0.7);
+      expect(
+        resolveRequestTemperature(
+          modelId: 'deepseek-chat',
+          temperature: 0.2,
+          reasoningEffort: 'high',
+        ),
+        0.2,
+      );
+      expect(
+        resolveRequestTemperature(
+          modelId: 'gemini-4-hydrogen',
+          temperature: 0.4,
+          reasoningEffort: 'high',
+        ),
+        0.4,
+      );
+    });
+
+    test('fixed-sampling models omit temperature at every effort', () {
+      for (final id in [
+        'gpt-5',
+        'gpt-5-mini',
+        'gpt-6-astra',
+        'gpt-6-next',
+        'kimi-k3',
+        'kimi-k2.6',
+        'kimi-k2.7-code',
+        'deepseek-reasoner',
+        'claude-opus-4-7',
+        'anthropic/CLAUDE-OPUS-4-8-latest:free',
+        'claude-sonnet-5',
+        'claude-fable-5',
+        'openai/gpt-6-sol',
+        'gpt-6-luna',
+      ]) {
+        expect(
+          resolveRequestTemperature(modelId: id, temperature: 0.7),
+          isNull,
+          reason: id,
+        );
+        expect(
+          resolveRequestTemperature(
+            modelId: id,
+            temperature: 0.7,
+            reasoningEffort: 'none',
+          ),
+          isNull,
+          reason: id,
+        );
+      }
+    });
+
+    test('gpt-5.1 and later omit temperature only while reasoning', () {
+      for (final id in [
+        'gpt-5.1',
+        'gpt-5.2',
+        'gpt-5.4',
+        'openai/gpt-5.6-sol',
+      ]) {
+        expect(
+          resolveRequestTemperature(modelId: id, temperature: 0.7),
+          0.7,
+          reason: id,
+        );
+        expect(
+          resolveRequestTemperature(
+            modelId: id,
+            temperature: 0.7,
+            reasoningEffort: 'none',
+          ),
+          0.7,
+          reason: id,
+        );
+        expect(
+          resolveRequestTemperature(
+            modelId: id,
+            temperature: 0.7,
+            reasoningEffort: 'medium',
+          ),
+          isNull,
+          reason: id,
+        );
+      }
+    });
+
+    test('thinking models omit temperature only while thinking is on', () {
+      for (final id in [
+        'claude-sonnet-4-6',
+        'deepseek-v4-flash',
+        'qwen3.7-max',
+        'doubao-seed-2-0-pro',
+      ]) {
+        expect(
+          resolveRequestTemperature(modelId: id, temperature: 0.3),
+          0.3,
+          reason: id,
+        );
+        expect(
+          resolveRequestTemperature(
+            modelId: id,
+            temperature: 0.3,
+            reasoningEffort: 'none',
+          ),
+          0.3,
+          reason: id,
+        );
+        expect(
+          resolveRequestTemperature(
+            modelId: id,
+            temperature: 0.3,
+            reasoningEffort: 'high',
+          ),
+          isNull,
+          reason: id,
+        );
+        expect(
+          resolveRequestTemperature(
+            modelId: id,
+            temperature: 0.3,
+            reasoningEffort: 'on',
+          ),
+          isNull,
+          reason: id,
+        );
+      }
+    });
+
+    test('a thinking budget without an effort still drops temperature', () {
+      expect(
+        resolveRequestTemperature(
+          modelId: 'claude-haiku-4-5',
+          temperature: 0.7,
+          reasoningBudget: 2048,
+        ),
+        isNull,
+      );
+      expect(
+        resolveRequestTemperature(
+          modelId: 'claude-haiku-4-5',
+          temperature: 0.7,
+          reasoningEffort: 'none',
+          reasoningBudget: 2048,
+        ),
+        0.7,
+      );
+    });
+  });
 }

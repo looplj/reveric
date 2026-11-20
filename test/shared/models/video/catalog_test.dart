@@ -21,6 +21,7 @@ void main() {
         'doubao-seedance-2-5-260628',
     '  BYTEDANCE/Seedance_2_5  ': 'doubao-seedance-2-5-260628',
     'proxy/doubao-seedance-2-5-260628': 'doubao-seedance-2-5-260628',
+    'seedance-2.5-flash': 'doubao-seedance-2-5-flash-261115',
     'bytedance/seedance-2.0': 'doubao-seedance-2-0-260128',
     'bytedance/seedance-2.0-mini': 'doubao-seedance-2-0-mini-260615',
     'bytedance/seedance-2.0-mini/image-to-video':

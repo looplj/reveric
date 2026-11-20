@@ -44,7 +44,7 @@ void main() {
             .data
             .values
             .single,
-        5,
+        AppDatabase.currentSchemaVersion,
       );
       final cols = await db
           .customSelect('PRAGMA table_info(provider_assets)')

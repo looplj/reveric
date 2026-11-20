@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.8.2
+version: 0.10.2
 
 environment:
   sdk: ^3.12.0
@@ -201,6 +201,8 @@ flutter:
     - assets/plugins/reveric.deepseek/dist/
     - assets/plugins/reveric.keenable/
     - assets/plugins/reveric.keenable/dist/
+    - assets/plugins/reveric.zhuque/
+    - assets/plugins/reveric.zhuque/dist/
     # Flutter 不会递归扫描子目录，每个目录/文件需单独声明
     - assets/director/models/quaternius-standard-male.glb
     - assets/director/models/quaternius-standard-female.glb
@@ -245,6 +247,8 @@ flutter:
     - assets/bundled_skills/canvas-composition/references/branching-story.md
     - assets/bundled_skills/canvas-composition/references/relationships.md
     - assets/bundled_skills/canvas-composition/references/idea-board.md
+    - assets/bundled_skills/canvas-work-tools/SKILL.md
+    - assets/bundled_skills/canvas-work-tools/references/
     - assets/bundled_skills/screenplay-tools/SKILL.md
     - assets/bundled_skills/screenplay-tools/references/
     - assets/bundled_skills/media-editing/SKILL.md
@@ -259,7 +263,9 @@ flutter:
     - assets/official_skills/screenplay-writing/SKILL.md
     - assets/official_skills/screenplay-writing/references/
     - assets/official_skills/screenplay-production/SKILL.md
+    - assets/official_skills/screenplay-production/NOTICE.md
     - assets/official_skills/screenplay-production/references/
+    - assets/official_skills/screenplay-production/references/examples/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

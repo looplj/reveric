@@ -1,4 +1,4 @@
-// 职责: 定义按协议实现的图片生成客户端基类，提供共用的 HTTP、结果落盘、参考图归一化与错误分类。
+// 职责: 定义按协议实现的图片生成客户端基类，提供共用的 HTTP、回执解析、参考图归一化与错误分类。
 // 关联文件:
 //   lib/shared/services/ai/image.dart
 //   lib/shared/models/image/channels.dart
@@ -9,18 +9,14 @@
 //   assets/translations/zh-CN/ai.json
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart' show compute, protected;
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
 
 import '../../../localization/locale_keys.dart';
-import '../../../utils/storage_paths.dart';
 import '../../../localization/ai_run_failure_localization.dart';
 import '../../../localization/ark_error_localization.dart';
 import '../../../models/ai_run_failure.dart';
@@ -31,6 +27,12 @@ import '../../../models/network_proxy.dart';
 import '../../proxy_client.dart';
 import '../../../models/image/channels.dart';
 import '../image.dart';
+import 'output.dart';
+import '../../../models/image/request.dart';
+export '../../../models/image/request.dart';
+import '../../../models/generation/provider_result.dart';
+export '../../../models/generation/provider_result.dart';
+export 'output.dart' show ImageOutputContext;
 import '../image_reference_compression.dart';
 
 final _log = AppLogger.forModule('Image');
@@ -40,40 +42,53 @@ void writeImageLog(String message) => _log.info(message);
 const imageHttpConnectTimeout = Duration(seconds: 30);
 const imageHttpDataTimeout = Duration(minutes: 5);
 
-/// 一次图片生成；[images] 为空时是文生图，否则按参考图编辑。
-class ImageGenerationRequest {
-  const ImageGenerationRequest({
-    required this.prompt,
-    required this.model,
-    this.size,
-    this.quality,
-    this.complexity,
-    this.aspectRatio,
-    this.resolution,
-    this.images = const [],
-    this.onSubmitted,
-  });
-  final String prompt;
-  final String model;
-  final String? size;
-  final String? quality;
-  final String? complexity;
-  final String? aspectRatio;
-  final String? resolution;
-  final List<String> images;
-  final ImageSubmitted? onSubmitted;
-}
-
 /// 单个图片协议的请求编码与回执解析。渠道未登记的型号不做能力校验，
 /// 原样提交；是否允许使用由业务层决定。
 abstract class ImageClient {
   ImageClient(this.config);
   final AiProvider config;
+  final _httpClients = <http.Client>{};
+  final _dioClients = <Dio>{};
+  bool _cancelled = false;
+  void cancel() {
+    _cancelled = true;
+    for (final client in _httpClients) {
+      client.close();
+    }
+    for (final client in _dioClients) {
+      client.close(force: true);
+    }
+    _httpClients.clear();
+    _dioClients.clear();
+  }
+
+  @protected
+  http.Client newImageHttpClient() {
+    if (_cancelled) {
+      throw const ProviderFailure(
+        code: 'cancelled',
+        message: 'Image call cancelled',
+      );
+    }
+    final client = config.createProxyClient() ?? http.Client();
+    _httpClients.add(client);
+    return client;
+  }
 
   /// 不支持参考图编辑的协议返回 false。
   bool get supportsEdit => true;
 
-  Future<AiImageGenerationResult> generate(ImageGenerationRequest request);
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
+  );
+  Future<ProviderQueryResult> query(
+    ProviderQueryInput input,
+    ImageOutputContext outputs,
+  ) => throw const ProviderFailure(
+    code: 'configuration_required',
+    message: 'Image protocol does not support querying',
+  );
 
   @protected
   ImageChannelModel? channelFor(String model) =>
@@ -81,20 +96,20 @@ abstract class ImageClient {
 
   /// 校验渠道登记的参考图数量和尺寸；未登记型号直接放行。
   @protected
-  ImageChannelModel? validatedChannel(ImageGenerationRequest request) {
+  ImageChannelModel? validatedChannel(SubmitImageInput request) {
     final channel = channelFor(request.model);
     if (channel == null) {
       return null;
     }
     try {
-      channel.capabilities.validateReferences(request.images.length);
+      channel.capabilities.validateReferences(request.references.length);
     } on FormatException {
       throw invalidImageParameter();
     }
     try {
       channel.capabilities.validateSize(
-        request.size ?? channel.requestDefaults.size,
-        references: request.images.length,
+        request.size ?? request.nativeDefaults.size,
+        references: request.references.length,
       );
     } on FormatException {
       throw AiImageGenerationException(
@@ -118,30 +133,41 @@ abstract class ImageClient {
   }
 
   @protected
-  Dio newImageDio() => createProxyDioClient(
-    NetworkProxy(
-      mode: config.hasProxy
-          ? NetworkProxyMode.custom
-          : NetworkProxyMode.environment,
-      url: config.proxyUrl.trim(),
-      username: config.proxyUsername.trim(),
-      password: config.proxyPassword.trim(),
-    ),
-    options: BaseOptions(
-      connectTimeout: imageHttpConnectTimeout,
-      sendTimeout: imageHttpDataTimeout,
-      receiveTimeout: imageHttpDataTimeout,
-    ),
-  );
+  Dio newImageDio() {
+    if (_cancelled) {
+      throw const ProviderFailure(
+        code: 'cancelled',
+        message: 'Image call cancelled',
+      );
+    }
+    final client = createProxyDioClient(
+      NetworkProxy(
+        mode: config.hasProxy
+            ? NetworkProxyMode.custom
+            : NetworkProxyMode.environment,
+        url: config.proxyUrl.trim(),
+        username: config.proxyUsername.trim(),
+        password: config.proxyPassword.trim(),
+      ),
+      options: BaseOptions(
+        connectTimeout: imageHttpConnectTimeout,
+        sendTimeout: imageHttpDataTimeout,
+        receiveTimeout: imageHttpDataTimeout,
+      ),
+    );
+    _dioClients.add(client);
+    return client;
+  }
 
   @protected
   Future<Map<String, dynamic>> postImageJson(
     Uri uri,
     Map<String, dynamic> body, {
     Map<String, String>? headers,
+    Duration? timeout,
   }) async {
     final apiKey = requireApiKey();
-    final client = config.createProxyClient() ?? http.Client();
+    final client = newImageHttpClient();
     try {
       writeImageLog(
         '[IMGDBG] http_request_start method=POST uri=${safeImageUriForLog(uri)} '
@@ -157,7 +183,7 @@ abstract class ImageClient {
             },
             body: jsonEncode(body),
           )
-          .timeout(imageHttpDataTimeout);
+          .timeout(timeout ?? imageHttpDataTimeout);
       writeImageLog(
         '[IMGDBG] http_response status=${response.statusCode} uri=${safeImageUriForLog(uri)}',
       );
@@ -187,228 +213,64 @@ abstract class ImageClient {
   }
 
   @protected
-  Future<AiImageGenerationResult> parseImageResponse(
-    Map<String, dynamic> data, {
+  Future<ProviderSucceeded> parseImageResponse(
+    Map<String, dynamic> data,
+    ImageOutputContext outputs, {
     required String emptyMessage,
   }) async {
-    final images = data['data'] as List?;
-    if (images == null || images.isEmpty) {
-      throw AiImageGenerationException(emptyMessage);
-    }
-
-    final firstImage = images.first as Map<String, dynamic>;
-    if (firstImage['error'] != null) {
-      final message = extractImageServerMessage(firstImage);
-      throw AiImageGenerationException(
-        _providerImageMessage(firstImage, config.id) ??
-            imageUserMessageFromServerMessage(message) ??
-            emptyMessage,
-        debugMessage:
-            'Image result error: ${safeImageSerializeForLog(firstImage['error'])}',
-        code: classifyAiImageError(message),
-      );
-    }
-    final b64Json = firstImage['b64_json'] as String?;
-    final url = firstImage['url'] as String?;
-    final revisedPrompt = firstImage['revised_prompt'] as String?;
-
-    String? localPath;
-    String mimeSubtype = 'png';
-    String? imageBase64 = b64Json;
-    if (b64Json != null && b64Json.isNotEmpty) {
-      writeImageLog(
-        '[IMGDBG] image_source kind=b64_json chars=${b64Json.length}',
-      );
-      localPath = await saveImageBase64(b64Json);
-      mimeSubtype = imageMimeFromBytes(base64Decode(b64Json));
-    } else if (url != null && url.isNotEmpty) {
-      writeImageLog(
-        '[IMGDBG] image_source kind=url uri=${safeImageUriForLog(Uri.parse(url))}',
-      );
-      final List<int> bytes;
-      try {
-        bytes = await _fetchUrlToBytes(url);
-        localPath = await _saveBytesLocally(bytes);
-      } catch (error) {
-        throw AiImageFetchException(
-          '图片下载失败，请稍后重试。',
-          url: url,
-          debugMessage:
-              'Image download failed for ${safeImageUriForLog(Uri.parse(url))}: '
-              '${error is AiImageGenerationException
-                  ? error.debugMessage ?? error.userMessage
-                  : error is DioException
-                  ? error.error ?? error.message
-                  : error}',
-        );
-      }
-      mimeSubtype = imageMimeFromBytes(bytes);
-      imageBase64 = null;
-    } else {
-      throw AiImageGenerationException(emptyMessage);
-    }
-
-    writeImageLog(
-      '[IMGDBG] image_result_ready source=${b64Json != null && b64Json.isNotEmpty ? 'b64_json' : 'url'} '
-      'local_saved=true mime=$mimeSubtype',
-    );
-
-    return AiImageGenerationResult(
-      imageUrl: url,
-      imageBase64: imageBase64,
-      revisedPrompt: revisedPrompt,
-      localFilePath: localPath,
-      mimeSubtype: mimeSubtype,
-    );
-  }
-
-  /// 按上游任务 ID 继续查询结果；只有异步任务协议支持。
-  Future<AiImageGenerationResult> resumeResult(String providerTaskId) =>
-      throw UnsupportedError('当前图片协议不支持按任务 ID 查询结果。');
-
-  /// 重新下载上游已生成的图片 URL，失败时抛 [AiImageFetchException]。
-  Future<AiImageGenerationResult> downloadResult(String url) =>
-      parseImageResponse({
-        'data': [
-          {'url': url},
-        ],
-      }, emptyMessage: tr(LocaleKeys.aiImageNoResult));
-
-  @protected
-  Future<String> saveImageBase64(String base64Data) =>
-      _saveBytesLocally(base64Decode(base64Data));
-
-  Future<String> _saveBytesLocally(List<int> bytes) async {
-    writeImageLog('[IMGDBG] local_save_start bytes=${bytes.length}');
-    final root = Directory(RevericPaths.fileWorkspaceParent);
-    final directory = Directory(p.join(root.path, 'file_workspaces'));
-
-    await directory.create(recursive: true);
-    final ext = _imageExtensionFromBytes(bytes);
-    final timestamp = DateTime.now().microsecondsSinceEpoch;
-    final random = Random().nextInt(10000);
-    final filePath = p.join(
-      directory.path,
-      'reveric_image_result_${timestamp}_$random.$ext.part',
-    );
-
-    final file = await File(filePath).create(exclusive: true);
     try {
-      await file.writeAsBytes(bytes, flush: true);
-    } catch (_) {
-      await file.delete();
-      rethrow;
-    }
-    writeImageLog(
-      '[IMGDBG] local_save_done bytes=${bytes.length} extension=$ext',
-    );
-    return filePath;
-  }
+      final images = data['data'] as List?;
+      if (images == null || images.isEmpty) {
+        throw invalidImageOutputs('Image result contains no images');
+      }
 
-  Future<List<int>> _fetchUrlToBytes(String url) async {
-    if (url.startsWith('data:')) {
-      final commaIndex = url.indexOf(',');
-      if (commaIndex <= 0) {
-        throw const AiImageGenerationException('图片下载失败，请稍后重试。');
-      }
-      return base64Decode(url.substring(commaIndex + 1));
-    }
-    final uri = Uri.parse(url);
-    writeImageLog(
-      '[IMGDBG] image_download_start uri=${safeImageUriForLog(uri)} '
-      'timeout_s=${imageHttpDataTimeout.inSeconds}',
-    );
-    final dio = newImageDio();
-    try {
-      // 下载是幂等 GET，握手中断、连接重置这类瞬时网络错误就地重试。
-      Response<List<int>>? response;
-      for (var attempt = 1; response == null; attempt++) {
-        try {
-          response = await dio.get<List<int>>(
-            url,
-            options: Options(
-              responseType: ResponseType.bytes,
-              validateStatus: (_) => true,
-            ),
-            onReceiveProgress: receiveProgressLogger(uri, 'image_download'),
-          );
-        } on DioException catch (error) {
-          if (attempt >= _imageDownloadAttempts ||
-              !_isTransientDioError(error)) {
-            rethrow;
-          }
-          writeImageLog(
-            '[IMGDBG] image_download_retry attempt=$attempt '
-            'uri=${safeImageUriForLog(uri)} error=${error.error ?? error.type}',
-          );
-          await Future<void>.delayed(Duration(seconds: attempt));
-        }
-      }
-      final code = response.statusCode ?? -1;
-      final data = response.data;
-      writeImageLog(
-        '[IMGDBG] image_download_response status=$code '
-        'headers=${_responseHeadersSummary(response.headers)} '
-        'bytes=${data?.length ?? -1}',
-      );
-      if (code < 200 || code >= 300 || data == null || data.isEmpty) {
+      final firstImage = images.first as Map<String, dynamic>;
+      if (firstImage['error'] != null) {
+        final message = extractImageServerMessage(firstImage);
         throw AiImageGenerationException(
-          '图片下载失败，请稍后重试。',
-          debugMessage: 'HTTP $code for ${safeImageUriForLog(uri)}',
+          _providerImageMessage(firstImage, config.id) ??
+              imageUserMessageFromServerMessage(message) ??
+              emptyMessage,
+          debugMessage:
+              'Image result error: ${safeImageSerializeForLog(firstImage['error'])}',
+          code: classifyAiImageError(message),
         );
       }
-      writeImageLog('[IMGDBG] image_download_done bytes=${data.length}');
-      return data;
-    } finally {
-      dio.close(force: true);
+      return await outputs.nativeImages([firstImage]);
+    } on AiImageGenerationException {
+      rethrow;
+    } catch (error) {
+      throw invalidImageOutputs(error);
     }
   }
 
-  /// 归一化为 data URI：接受 data URI、URL、本地文件路径或裸 base64。
+  /// 原始文件字节仅由调用 scope 提供；URL/token 不会被误判为本地路径或 base64。
   @protected
-  Future<String> imageInputAsDataUri(String imageData) async {
-    final trimmed = imageData.trim();
-    if (trimmed.startsWith('data:')) {
-      return trimmed;
+  Future<String> imageInputAsDataUri(
+    PreparedImageReference reference,
+    ImageOutputContext context,
+  ) async {
+    final source = reference.source;
+    if (source is! ImageFileReference) {
+      throw const ProviderFailure(
+        code: 'invalid_request',
+        message: 'This protocol requires a file reference',
+      );
     }
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      final bytes = await _fetchUrlToBytes(trimmed);
-      final mime = imageMimeFromBytes(bytes);
-      return 'data:image/$mime;base64,${base64Encode(bytes)}';
-    }
-    return _localOrBase64AsDataUri(trimmed);
+    final file = context.inputScope.resolve(source.handle);
+    final data = await file.file.readAsBytes();
+    return 'data:${reference.mimeType};base64,${base64Encode(data)}';
   }
 
-  /// 归一化为接口可直接引用的地址：URL 与 data URI 原样保留，
-  /// 本地文件路径或裸 base64 转为 data URI。
   @protected
-  Future<String> imageInputAsUrlOrDataUri(String imageData) async {
-    final trimmed = imageData.trim();
-    if (trimmed.startsWith('http://') ||
-        trimmed.startsWith('https://') ||
-        trimmed.startsWith('data:')) {
-      return trimmed;
-    }
-    return _localOrBase64AsDataUri(trimmed);
-  }
-
-  // Detect MIME from actual byte content so the data-URI prefix matches the
-  // real format (e.g. a JPEG must declare image/jpeg).
-  Future<String> _localOrBase64AsDataUri(String trimmed) async {
-    final file = File(trimmed);
-    if (await file.exists()) {
-      final bytes = await file.readAsBytes();
-      final mime = imageMimeFromBytes(bytes);
-      return 'data:image/$mime;base64,${base64Encode(bytes)}';
-    }
-    try {
-      final decoded = base64Decode(trimmed);
-      final mime = imageMimeFromBytes(decoded);
-      return 'data:image/$mime;base64,$trimmed';
-    } catch (_) {
-      return 'data:image/png;base64,$trimmed';
-    }
-  }
+  Future<String> imageInputAsUrlOrDataUri(
+    PreparedImageReference reference,
+    ImageOutputContext context,
+  ) async => switch (reference.source) {
+    ImageFileReference() => imageInputAsDataUri(reference, context),
+    ImageUrlReference(:final url) => url,
+    ImageUploadedReference(:final ref) => ref,
+  };
 
   /// 参考图按需压缩。解码/缩放/编码是 CPU 密集的同步活（实测 24MP 图 decode 就要
   /// 2s 量级），放在调用方 isolate 会直接卡住界面，所以整段丢进 [compute]。
@@ -535,18 +397,26 @@ void throwForImageHttpFailure({
   required dynamic data,
   required String? providerId,
 }) {
+  if (_log.isDebugEnabled) {
+    _log.debug(
+      'HTTP $uri status=$statusCode body=${data is String ? data : jsonEncode(data)}',
+    );
+  }
   final code = statusCode ?? -1;
   if (code >= 200 && code < 300) {
     return;
   }
   final serverMessage = extractImageServerMessage(data);
   final errorCode = imageErrorCodeFromStatus(code, serverMessage);
-  throw AiImageGenerationException(
-    _providerImageMessage(data, providerId) ??
-        _userMessageFromStatusCode(code, serverMessage),
+  throw AiImageSubmissionException(
+    code >= 400 && code < 500
+        ? _providerImageMessage(data, providerId) ??
+              _userMessageFromStatusCode(code, serverMessage)
+        : tr(LocaleKeys.aiImageSubmissionUnknown),
     debugMessage:
         'HTTP $code for ${safeImageUriForLog(uri)} response=${safeImageSerializeForLog(data)}',
     code: errorCode,
+    failureCode: code >= 400 && code < 500 ? 'rejected' : 'submission_unknown',
   );
 }
 
@@ -694,22 +564,6 @@ String safeImageSerializeForLog(dynamic data) {
   } catch (_) {
     return data.toString();
   }
-}
-
-const _imageDownloadAttempts = 3;
-
-bool _isTransientDioError(DioException error) => switch (error.type) {
-  DioExceptionType.connectionTimeout ||
-  DioExceptionType.connectionError => true,
-  DioExceptionType.unknown =>
-    error.error is SocketException || error.error is HandshakeException,
-  _ => false,
-};
-
-/// Detects the image file extension from magic bytes.
-String _imageExtensionFromBytes(List<int> bytes) {
-  final mime = imageMimeFromBytes(bytes);
-  return mime == 'jpeg' ? 'jpg' : mime;
 }
 
 /// Detects the MIME subtype from magic bytes (e.g. 'png', 'jpeg', 'webp').

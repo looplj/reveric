@@ -19,6 +19,8 @@ import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/storyboard/edit_orchestrator.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../helpers/resource_contract.dart';
+
 void main() {
   late NovelContentDatabase db;
   late AppDatabase app;
@@ -455,20 +457,14 @@ void main() {
   test(
     'clips contract creates both kinds and exposes immutable identity with nullable video fields',
     () async {
-      final schema = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/clips'},
-      );
+      final schema = resourceContractTreeForTesting('/_schema/clips');
       expect(schema['resource_path'], 'clips/{clip_id}');
       final fields = schema['fields'] as Map;
       expect(fields['kind']['create'], isTrue);
       expect(fields['kind']['write'], isFalse);
       expect(fields['episode_id']['create'], isTrue);
       expect(fields['episode_id']['write'], isFalse);
-      final episodeSchema = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/episodes'},
-      );
+      final episodeSchema = resourceContractTreeForTesting('/_schema/episodes');
       expect(
         (episodeSchema['subresources'] as List).map(
           (entry) => entry['resource_path'],
@@ -690,8 +686,11 @@ void main() {
       );
       expect(image['error_code'], isNull, reason: '$image');
       expect(image['kind'], 'image');
-      expect(image['ratio'], '1:1');
-      expect(image['resolution'], '1K');
+      final imageSnapshot = service.snapshot(
+        (await service.getShot(image['id'] as String))!,
+      );
+      expect(imageSnapshot['ratio'], '1:1');
+      expect(imageSnapshot['resolution'], '1K');
       final copied = await edits.copy(
         service: service,
         overlay: overlay,
@@ -854,10 +853,11 @@ void main() {
       expect(change.resourcePath, 'clips/$id');
       await overlay.rejectWorkingChange(change.id);
       expect(await service.getShot(id), isNull);
+      // 场次节点随场次保留，片段节点随片段撤回。
       expect(
-        await db.canvasDao.getNodesByCanvas(
+        (await db.canvasDao.getNodesByCanvas(
           (await db.screenplayDao.getEpisode(episodeId))!.canvasId!,
-        ),
+        )).where((node) => node.sceneId == null),
         isEmpty,
       );
     },
@@ -955,10 +955,7 @@ void main() {
       );
       expect(copied.id, isNot(current.id));
       expect((await service.getShot(first.id))!.sceneId, sceneId);
-      final schema = await tools.executeTool(
-        name: 'Read',
-        input: {'path': '/_schema/clips'},
-      );
+      final schema = resourceContractTreeForTesting('/_schema/clips');
       expect(schema.toString(), isNot(contains('revision')));
     },
   );

@@ -6,12 +6,23 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'runtime.dart';
+import '../../logger/app_logger.dart';
+
+final _log = AppLogger.forModule('PluginHttp');
 
 class PluginHttpApi {
-  PluginHttpApi({HttpClient Function()? clientFactory, this.requestLimit = 50})
-    : _clientFactory = clientFactory ?? HttpClient.new;
+  PluginHttpApi({
+    HttpClient Function()? clientFactory,
+    this.requestLimit = 50,
+    this.direct = true,
+    this.logResponses = false,
+    this.remainingBudget,
+  }) : _clientFactory = clientFactory ?? HttpClient.new;
   final HttpClient Function() _clientFactory;
   final int? requestLimit;
+  final bool direct;
+  final bool logResponses;
+  final Duration Function()? remainingBudget;
   final Set<HttpClient> _clients = {};
   final List<Completer<void>> _waiting = [];
   var _active = 0;
@@ -46,7 +57,10 @@ class PluginHttpApi {
     if (_cancelled) {
       throw PluginHostError('cancelled', 'HTTP execution cancelled');
     }
-    final client = _clientFactory()..findProxy = ((_) => 'DIRECT');
+    final client = _clientFactory();
+    if (direct) {
+      client.findProxy = (_) => 'DIRECT';
+    }
     _clients.add(client);
     try {
       final raw = args['url'];
@@ -77,33 +91,83 @@ class PluginHttpApi {
           'Invalid HTTP request options',
         );
       }
+      final remaining = remainingBudget?.call();
+      if (remaining != null && remaining <= Duration.zero) {
+        throw PluginHostError('timeout', 'Provider method budget exhausted');
+      }
+      final requested = Duration(milliseconds: timeout);
+      final effective = remaining != null && remaining < requested
+          ? remaining
+          : requested;
+      if (remaining != null) {
+        client.connectionTimeout = effective < const Duration(seconds: 30)
+            ? effective
+            : const Duration(seconds: 30);
+      }
       Future<Map<String, dynamic>> request() async {
-        final req = await client.openUrl(method as String, uri);
-        final headers = args['headers'];
-        if (headers != null &&
-            (headers is! Map ||
-                headers.entries.any(
-                  (e) => e.key is! String || e.value is! String,
+        final suppliedHeaders = args['headers'];
+        if (suppliedHeaders != null &&
+            (suppliedHeaders is! Map ||
+                suppliedHeaders.entries.any(
+                  (entry) => entry.key is! String || entry.value is! String,
                 ))) {
           throw PluginHostError(
             'invalid_argument',
             'Headers must contain strings',
           );
         }
-        (headers as Map? ?? {}).forEach(
-          (key, value) => req.headers.set(key as String, value as String),
-        );
-        if (req.headers.value('user-agent') == null) {
-          req.headers.set(
-            'user-agent',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-          );
+        var headers = Map<String, String>.from(suppliedHeaders as Map? ?? {});
+        var target = uri;
+        var verb = method as String;
+        var requestBody = args['body'] as String?;
+        late HttpClientResponse response;
+        for (var redirect = 0; ; redirect++) {
+          final req = await client.openUrl(verb, target);
+          req.followRedirects = direct;
+          headers.forEach(req.headers.set);
+          if (req.headers.value('user-agent') == null) {
+            req.headers.set(
+              'user-agent',
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            );
+          }
+          if (requestBody != null) {
+            req.add(utf8.encode(requestBody));
+          }
+          response = await req.close();
+          if (direct ||
+              !const {301, 302, 303, 307, 308}.contains(response.statusCode) ||
+              response.headers.value('location') == null) {
+            break;
+          }
+          if (redirect >= 5) {
+            throw PluginHostError('network', 'Too many redirects');
+          }
+          final next = target.resolve(response.headers.value('location')!);
+          if (!{'http', 'https'}.contains(next.scheme) ||
+              next.host.isEmpty ||
+              next.userInfo.isNotEmpty) {
+            throw PluginHostError('invalid_url', 'Invalid redirect URL');
+          }
+          if (next.origin != target.origin) {
+            // Provider-defined headers may carry credentials under arbitrary names.
+            headers = {};
+          }
+          if (response.statusCode == 303 ||
+              ((response.statusCode == 301 || response.statusCode == 302) &&
+                  verb == 'POST')) {
+            verb = 'GET';
+            requestBody = null;
+            headers.removeWhere(
+              (key, _) => {
+                'content-type',
+                'content-length',
+              }.contains(key.toLowerCase()),
+            );
+          }
+          await response.drain<void>();
+          target = next;
         }
-        if (args['body'] != null) {
-          // 直接写 UTF-8 字节，避免 write 在未声明 charset 时按 Latin-1 编码。
-          req.add(utf8.encode(args['body'] as String));
-        }
-        final response = await req.close();
         final bytes = <int>[];
         await for (final chunk in response) {
           if (bytes.length + chunk.length > max) {
@@ -135,17 +199,23 @@ class PluginHttpApi {
             body = latin1.decode(bytes);
           }
         }
+        if (logResponses && _log.isDebugEnabled) {
+          _log.debug('HTTP $target status=${response.statusCode} body=$body');
+        }
         return {
           'status': response.statusCode,
           'url': response.redirects
-              .fold(uri, (url, redirect) => url.resolveUri(redirect.location))
+              .fold(
+                target,
+                (url, redirect) => url.resolveUri(redirect.location),
+              )
               .toString(),
           'headers': outputHeaders,
           'body': body,
         };
       }
 
-      return await request().timeout(Duration(milliseconds: timeout));
+      return await request().timeout(effective);
     } on TimeoutException catch (error) {
       throw PluginHostError('timeout', error.toString());
     } on PluginHostError {

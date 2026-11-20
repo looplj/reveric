@@ -6,6 +6,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +45,80 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+
+  testWidgets('an older save preserves the active IME value and caret', (
+    tester,
+  ) async {
+    final config = ValueNotifier(
+      _openai.copyWith(id: 'custom', builtin: false, name: 'Provider'),
+    );
+    addTearDown(config.dispose);
+    final firstWrite = Completer<void>();
+    final names = <String>[];
+    await tester.pumpWidget(
+      _editingForm(config, (next) async {
+        names.add(next.name);
+        if (names.length == 1) {
+          await firstWrite.future;
+        }
+        config.value = next;
+      }),
+    );
+    await tester.pumpAndSettle();
+    final field = find.byType(EditableText).first;
+    await tester.enterText(field, 'A');
+    await tester.pump();
+    expect(names, ['A']);
+    const composing = TextEditingValue(
+      text: 'A你',
+      selection: TextSelection.collapsed(offset: 1),
+      composing: TextRange(start: 1, end: 2),
+    );
+    tester.testTextInput.updateEditingValue(composing);
+    firstWrite.complete();
+    await tester.pumpAndSettle();
+    EditableText editable() => tester.widget<EditableText>(field);
+    expect(editable().controller.value, composing);
+    expect(editable().focusNode.hasFocus, isTrue);
+    expect(names, ['A']);
+
+    final committed = composing.copyWith(composing: TextRange.empty);
+    tester.testTextInput.updateEditingValue(committed);
+    await tester.pumpAndSettle();
+    expect(names, ['A', 'A你']);
+    expect(editable().controller.value, committed);
+    expect(editable().focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('save failure preserves text and the next edit can save', (
+    tester,
+  ) async {
+    final config = ValueNotifier(
+      _openai.copyWith(id: 'custom', builtin: false, name: 'Provider'),
+    );
+    addTearDown(config.dispose);
+    var writes = 0;
+    await tester.pumpWidget(
+      _editingForm(config, (next) async {
+        if (++writes == 1) {
+          throw StateError('simulated write failure');
+        }
+        config.value = next;
+      }),
+    );
+    await tester.pumpAndSettle();
+    final field = find.byType(EditableText).first;
+    await tester.enterText(field, 'Draft');
+    await tester.pumpAndSettle();
+    expect(find.text('Save failed'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(tester.widget<EditableText>(field).controller.text, 'Draft');
+    expect(config.value.name, 'Provider');
+    await tester.enterText(field, 'Draft updated');
+    await tester.pumpAndSettle();
+    expect(config.value.name, 'Draft updated');
+    expect(writes, 2);
+  });
 
   for (final platform in [
     TargetPlatform.windows,
@@ -125,6 +201,23 @@ void main() {
     );
   }
 }
+
+Widget _editingForm(
+  ValueNotifier<AiProvider> config,
+  Future<void> Function(AiProvider) onChanged,
+) => ProviderScope(
+  child: _wrap(
+    ValueListenableBuilder(
+      valueListenable: config,
+      builder: (context, value, _) => ProviderConfigForm(
+        config: value,
+        badge: const SizedBox.shrink(),
+        headerActions: const [],
+        onChanged: onChanged,
+      ),
+    ),
+  ),
+);
 
 Widget _wrap(Widget child) => EasyLocalization(
   supportedLocales: const [Locale('en')],

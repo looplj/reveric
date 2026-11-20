@@ -430,6 +430,34 @@ class PluginRuntime implements PluginExecutor {
     return List.of(loaded.definitions);
   }
 
+  /// Provider calls run in the business runtime chosen by the Host: a shared one for
+  /// replayable queries, an isolated one for submissions and uploads.
+  Future<Object?> runProvider(
+    PluginManifest manifest,
+    String code,
+    List<Map<String, dynamic>> expected,
+    String method,
+    Map<String, dynamic> input,
+    String providerId,
+    String callId,
+    AgentCancellationToken? cancellation, {
+    String? generationTaskId,
+    required Duration budget,
+  }) async {
+    final result = await _run(
+      manifest,
+      code,
+      expected: expected,
+      providerMethod: method,
+      input: input,
+      callId: callId,
+      request: {'id': providerId, 'taskId': ?generationTaskId},
+      cancellation: cancellation,
+      timeout: budget,
+    );
+    return result.result!['value'];
+  }
+
   Future<_LoadedPlugin> _load(PluginManifest manifest, String code) async {
     final signature = '$code\n${canonicalPluginJson(manifest.json)}';
     var realm = business._forPlugin(manifest.id);
@@ -618,6 +646,7 @@ class PluginRuntime implements PluginExecutor {
     String? viewId,
     String? promptId,
     String? taskId,
+    String? providerMethod,
     Duration? timeout,
     Map<String, dynamic> request = const {},
     Map<String, dynamic> input = const {},
@@ -651,7 +680,8 @@ class PluginRuntime implements PluginExecutor {
         action == null &&
         viewId == null &&
         promptId == null &&
-        taskId == null;
+        taskId == null &&
+        providerMethod == null;
     final definitions = <Map<String, dynamic>>[];
     Map<String, dynamic>? output;
     var receivedResult = false;
@@ -726,8 +756,72 @@ class PluginRuntime implements PluginExecutor {
         throw const FormatException('Invalid registration batch');
       }
       final pageActions = <String>{}, prompts = <String>{}, tasks = <String>{};
+      var hasProvider = false;
       for (final value in values.cast<Map<String, dynamic>>()) {
         switch (value['kind']) {
+          case 'provider':
+            final methods = value['methods'];
+            final actionMethods = {
+              for (final action in manifest.provider?.actions ?? const [])
+                'actions.${action.name}',
+            };
+            final allowed = {
+              ...actionMethods,
+              'listModels',
+              'checkConnection',
+              'uploadReference',
+              'image.submit',
+              'image.query',
+              'video.submit',
+              'video.query',
+              'assets.submit',
+              'assets.state',
+            };
+            if (methods is List && methods.every((m) => m is String)) {
+              final ignored = methods.where((m) => !allowed.contains(m));
+              if (ignored.isNotEmpty) {
+                // Newer plugin capabilities stay unused on hosts that do not know them.
+                _log.warning(
+                  'Ignoring unsupported provider methods plugin=${manifest.id} '
+                  'methods=${ignored.join(',')}',
+                );
+              }
+            }
+            final known = methods is List
+                ? methods.where(allowed.contains).toList()
+                : const <Object?>[];
+            if (hasProvider ||
+                manifest.provider == null ||
+                value.length != 2 ||
+                methods is! List ||
+                methods.any((method) => method is! String) ||
+                methods.toSet().length != methods.length ||
+                !known.toSet().containsAll(actionMethods) ||
+                methods.any(
+                  (method) =>
+                      method is String &&
+                      method.startsWith('actions.') &&
+                      !actionMethods.contains(method),
+                ) ||
+                !known.contains('listModels') ||
+                (!known.contains('image.submit') &&
+                    !known.contains('video.submit')) ||
+                (known.contains('image.query') &&
+                    !known.contains('image.submit')) ||
+                known.contains('video.submit') !=
+                    known.contains('video.query') ||
+                known.contains('assets.submit') !=
+                    known.contains('assets.state')) {
+              throw PluginExecutionError(
+                'plugin_registration_mismatch',
+                'Invalid provider registration',
+              );
+            }
+            hasProvider = true;
+            definitions.add({
+              'kind': 'provider',
+              'methods': List<String>.from(known)..sort(),
+            });
           case 'pageAction':
             final pageId = value['pageId'];
             final name = value['name'];
@@ -793,7 +887,8 @@ class PluginRuntime implements PluginExecutor {
             throw const FormatException('Reserved registration kind');
         }
       }
-      if (tasks.length != manifest.tasks.length ||
+      if (hasProvider != (manifest.provider != null) ||
+          tasks.length != manifest.tasks.length ||
           pageActions.length !=
               manifest.pages.fold<int>(
                 0,
@@ -997,7 +1092,9 @@ class PluginRuntime implements PluginExecutor {
           token,
         ).replaceFirst('__PLUGIN_CODE__', code);
       } else {
-        final invocation = taskId != null
+        final invocation = providerMethod != null
+            ? pluginInvokeProvider(providerMethod, input, callId, request)
+            : taskId != null
             ? pluginInvokeTask(taskId, input)
             : promptId != null
             ? pluginInvokePrompt(promptId, input)

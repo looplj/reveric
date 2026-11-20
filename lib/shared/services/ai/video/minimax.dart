@@ -38,7 +38,11 @@ class MinimaxVideoClient extends VideoClient {
   }
 
   @override
-  String submissionId(Map<String, dynamic> json) => json['task_id'] as String;
+  String submissionId(Map<String, dynamic> json) => switch (json['task_id']) {
+    final String id => id,
+    final int id when id > 0 => id.toString(),
+    _ => throw const FormatException('Invalid MiniMax task ID'),
+  };
   @override
   VideoTaskResult decodeResult(Map<String, dynamic> json) {
     final task = json['task'] as Map;

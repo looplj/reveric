@@ -23,6 +23,7 @@ class ChatSidePanel extends HookConsumerWidget {
   const ChatSidePanel({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.changes,
     required this.onCollapse,
     this.sessionId,
@@ -30,6 +31,7 @@ class ChatSidePanel extends HookConsumerWidget {
   });
 
   final String? databasePath;
+  final String novelId;
   final List<WorkingChange> changes;
   final VoidCallback onCollapse;
   final String? sessionId;
@@ -90,6 +92,7 @@ class ChatSidePanel extends HookConsumerWidget {
             child: RepaintBoundary(
               child: databasePath != null && changes.isNotEmpty
                   ? PendingChangesSummaryCard(
+                      novelId: novelId,
                       databasePath: databasePath!,
                       changes: changes,
                       initialExpanded: true,

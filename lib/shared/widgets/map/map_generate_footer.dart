@@ -18,7 +18,7 @@ import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../theme/theme.dart';
 import '../../providers/map_studio_providers.dart'
-    show mapStudioControllerProvider, mapStudioImageModelSelectionProvider;
+    show mapStudioControllerProvider, mapDraftImageModelSelectionProvider;
 
 /// 展示单图生成按钮；进度由主画布统一展示。
 ///
@@ -33,6 +33,7 @@ class MapGenerateFooter extends ConsumerWidget {
     required this.hasChildLocations,
     this.hasPendingAgentDraft = false,
     this.showGateTooltip = true,
+    this.modelId,
   });
 
   /// 内容库路径；[MapStudioController] 以 (databasePath, mapId) 为 family 键。
@@ -40,6 +41,7 @@ class MapGenerateFooter extends ConsumerWidget {
 
   /// 由面板按当前画风/尺寸/质量/参考开关拼出的预估键；任一变化即重新预估。
   final String mapId;
+  final String? modelId;
   final VoidCallback onGenerate;
 
   /// 未配置图片模型时，按钮改为打开各端的模型设置。
@@ -64,7 +66,9 @@ class MapGenerateFooter extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final imageSelection = ref.watch(mapStudioImageModelSelectionProvider);
+    final imageSelection = ref.watch(
+      mapDraftImageModelSelectionProvider(modelId),
+    );
     // 缺图片模型是环境前提，先于地点门禁处理：按钮直接改为去配置。
     final needsImageModel = !hasPendingAgentDraft && imageSelection == null;
     final generateBlocked = hasPendingAgentDraft || !hasChildLocations;

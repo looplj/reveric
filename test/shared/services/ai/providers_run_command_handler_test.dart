@@ -95,6 +95,71 @@ void main() {
   );
 
   test(
+    'model summaries and exact lookups retain the full default contract',
+    () async {
+      final full = await run('models', {
+        'provider_id': 'openrouter',
+        'kind': 'image',
+      });
+      expect(
+        await run('models', {
+          'provider_id': 'openrouter',
+          'kind': 'image',
+          'view': 'full',
+        }),
+        full,
+      );
+      final summary = await run('models', {
+        'provider_id': 'openrouter',
+        'kind': 'image',
+        'view': 'summary',
+      });
+      final items = (summary['entries'] as List).cast<Map>();
+      for (final item in items) {
+        expect(item, isNot(contains('capabilities')));
+        expect(item, isNot(contains('defaults')));
+        final detail = await run('models', {
+          'provider_id': 'openrouter',
+          'kind': 'image',
+          'model_id': item['id'],
+        });
+        final entry = (detail['entries'] as List).single as Map;
+        expect(
+          entry,
+          (full['entries'] as List).singleWhere((e) => e['id'] == item['id']),
+        );
+        expect(
+          {...entry}
+            ..remove('capabilities')
+            ..remove('defaults'),
+          item,
+        );
+      }
+      expect(jsonEncode(summary).length, lessThan(jsonEncode(full).length));
+      expect(jsonEncode(summary), isNot(contains('secret')));
+      expect(
+        (await run('models', {
+          'provider_id': 'openrouter',
+          'kind': 'image',
+          'model_id': 'missing',
+        }))['error_code'],
+        'not_found',
+      );
+      for (final options in [
+        {'provider_id': 'openrouter', 'view': 'invalid'},
+        {'provider_id': 'openrouter', 'view': null},
+        {'provider_id': 'openrouter', 'kind': 'image', 'model_id': ''},
+        {'provider_id': 'openrouter', 'model_id': 'openai/gpt-image-2'},
+      ]) {
+        expect(
+          (await run('models', options))['error_code'],
+          'invalid_argument',
+        );
+      }
+    },
+  );
+
+  test(
     'third-party audio discovery exposes channel output formats and defaults',
     () {
       for (final (type, model, format) in [
@@ -260,14 +325,7 @@ void main() {
             'model_id': 'openai/gpt-image-2',
           },
         ),
-        (
-          'models',
-          {
-            'provider_id': id,
-            'kind': 'image',
-            'model_id': 'openai/gpt-image-2',
-          },
-        ),
+        ('models', {'provider_id': id, 'model_id': 'openai/gpt-image-2'}),
         ('list', {'work_id': 'other'}),
         ('create', {'name': 'changed'}),
       ]) {

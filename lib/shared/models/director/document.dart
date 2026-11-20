@@ -34,7 +34,7 @@ class DirectorDocument {
       'format version id revision title units up_axis fps duration_frames output objects cameras lighting tracks motion_paths camera_moves camera_cuts default_camera_id';
   static const maxBytes = 5 * 1024 * 1024;
   static const maxTracks = 128, maxPaths = 128, maxMoves = 256, maxUnits = 2048;
-  static const maxActors = 6, maxProps = 20, maxCameras = 8;
+  static const maxProps = 20, maxCameras = 8;
   static const minFrames = 24, maxFrames = 720, frameRate = 24;
   final Json _value;
   final Object animationIdentity;
@@ -373,8 +373,8 @@ void validateDocument(Json d) {
     }
   }
 
-  List list(dynamic v, String p, int max) {
-    if (v is! List || v.length > max) {
+  List list(dynamic v, String p, [int? max]) {
+    if (v is! List || (max != null && v.length > max)) {
       invalid(p, 'capacity_or_type');
     }
     return v;
@@ -502,8 +502,8 @@ void validateDocument(Json d) {
   );
   final objects = <String, Json>{};
   final catalogIds = <String>{};
-  var actors = 0, props = 0;
-  for (final entry in list(d['objects'], 'objects', 256).indexed) {
+  var props = 0;
+  for (final entry in list(d['objects'], 'objects').indexed) {
     final p = 'objects[${entry.$1}]', o = entry.$2;
     exactFields(
       o,
@@ -541,14 +541,11 @@ void validateDocument(Json d) {
     validatePropertyValue('scale', o['scale'], '$p.scale', object: o);
     color(o['color'], '$p.color');
     objects[o['id']] = o;
-    if (actor) {
-      actors++;
-    } else {
+    if (!actor) {
       props++;
     }
   }
-  if (actors > DirectorDocument.maxActors ||
-      props > DirectorDocument.maxProps) {
+  if (props > DirectorDocument.maxProps) {
     invalid('objects', 'capacity');
   }
   if (!cameras.containsKey(d['default_camera_id'])) {

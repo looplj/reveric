@@ -118,7 +118,10 @@ void main() {
           overrides: [
             appDatabaseProvider.overrideWithValue(app),
             novelContentDatabaseProvider('test').overrideWithValue(db),
-            storyboardServiceProvider('test').overrideWithValue(service),
+            storyboardServiceProvider(
+              'test',
+              novelId: novel.id,
+            ).overrideWithValue(service),
             workingOverlayServiceProvider('test').overrideWithValue(overlay),
           ],
           child: EasyLocalization(

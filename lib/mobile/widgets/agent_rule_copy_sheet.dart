@@ -38,6 +38,7 @@ import 'section_scaffold.dart';
 Future<int?> showMobileAgentRuleCopySheet(
   BuildContext context, {
   required String databasePath,
+  required String novelId,
 }) {
   final theme = RevericTheme.of(context);
   final colors = RevericTheme.colorsOf(context);
@@ -53,15 +54,22 @@ Future<int?> showMobileAgentRuleCopySheet(
     ),
     builder: (_) => RevericTheme(
       data: theme,
-      child: _MobileAgentRuleCopySheet(databasePath: databasePath),
+      child: _MobileAgentRuleCopySheet(
+        databasePath: databasePath,
+        novelId: novelId,
+      ),
     ),
   );
 }
 
 class _MobileAgentRuleCopySheet extends HookConsumerWidget {
-  const _MobileAgentRuleCopySheet({required this.databasePath});
+  const _MobileAgentRuleCopySheet({
+    required this.databasePath,
+    required this.novelId,
+  });
 
   final String databasePath;
+  final String novelId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,11 +87,7 @@ class _MobileAgentRuleCopySheet extends HookConsumerWidget {
 
     final sourceNovels = (novelsAsync.asData?.value ?? const <Novel>[])
         .shelfVisible
-        .where(
-          (novel) =>
-              novel.hasContentDatabase &&
-              novel.contentDatabasePath != databasePath,
-        )
+        .where((novel) => novel.hasContentDatabase && novel.id != novelId)
         .toList(growable: false);
     final filteredNovels = sourceNovels
         .where(

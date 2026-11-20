@@ -126,10 +126,10 @@ String buildAgentSkillBlock(
   if (references.isNotEmpty) {
     buffer.writeln('  <skill_resources>');
     buffer.writeln(
-      '    <instruction>需要附件时先列目录。读取单个文件时必须将当前技能名 '
-      '`$name` 与返回的 path 一起传入：'
+      '    <instruction>正文已给出准确附件路径时直接读取；未知路径时再列目录。读取单个文件时将当前技能名 '
+      '`$name` 与正文或目录中的准确 path 一起传入：'
       '{"command":"agent-skills","subcommand":"reference-get",'
-      '"options":{"name":"$name","path":"&lt;returned path&gt;"}}。'
+      '"options":{"name":"$name","path":"&lt;exact path&gt;"}}。'
       '不要臆造路径或预读。</instruction>',
     );
     buffer.writeln(

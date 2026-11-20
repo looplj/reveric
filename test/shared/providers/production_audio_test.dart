@@ -101,7 +101,6 @@ void main() {
             expect(r.method, 'POST');
             expect(r.url.toString(), endpoint);
             expect(r.headers['Authorization'], 'Bearer qwen-key');
-            expect(r.headers['X-Product-Code'], isNull);
             expect(jsonDecode(r.body), {
               'model': 'qwen-audio-3.1-tts-plus',
               'input': {

@@ -31,10 +31,14 @@ class SpawnAgentResources {
     required this.client,
     required this.toolManager,
     required this._release,
+    this.temperature,
+    this.enableTemperature,
   });
 
   final ProviderClient client;
   final AgentToolDispatcher toolManager;
+  final double? temperature;
+  final bool? enableTemperature;
   final void Function() _release;
   bool _released = false;
 

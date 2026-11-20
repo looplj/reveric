@@ -42,11 +42,13 @@ class MobileCharacterImageActions extends HookConsumerWidget {
   const MobileCharacterImageActions({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.characterId,
     required this.prepareCharacter,
   });
 
   final String databasePath;
+  final String novelId;
   final String characterId;
   final Future<bool> Function() prepareCharacter;
 
@@ -90,9 +92,7 @@ class MobileCharacterImageActions extends HookConsumerWidget {
           return;
         }
         final service = ref.read(novelContentServiceProvider(databasePath));
-        final novel = await ref
-            .read(novelActionsProvider)
-            .getNovelByContentDatabasePath(databasePath);
+        final novel = await ref.read(novelActionsProvider).getNovel(novelId);
         final character = await service.getCharacterProfileById(characterId);
         if (!context.mounted) {
           return;

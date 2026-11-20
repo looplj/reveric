@@ -1,6 +1,6 @@
 # 导演文档编辑
 
-导演操作统一使用 `Run stagings`。按剧情安排调度时，读取对应场次正文和目标导演文档；按参考图搭独立场景时，读取参考图和目标导演文档，无需预读无关场次。先确定要表达的空间关系与镜头职责，再选择所需的站位、姿势和运动。
+导演操作统一使用 `Run stagings`。按剧情安排调度时，读取本次剧情依据和目标导演文档；按参考图搭独立场景时，读取参考图和目标导演文档，无需预读无关正文。先确定要表达的空间关系与镜头职责，再选择所需的站位、姿势和运动。
 
 ## 主要用途与制作粒度
 
@@ -16,7 +16,7 @@
 
 ## 查询能力与现有内容
 
-调用格式为 `{"command":"stagings","subcommand":"操作名","options":{...}}`。下表列出 options；导演命令需要剧本作品与当前会话的媒体操作能力。
+调用格式为 `{"command":"stagings","subcommand":"操作名","options":{...}}`。下表列出 options；导演命令需要剧本或画布作品与当前会话的媒体操作能力。
 
 | subcommand | 必填 options | 可选 options 与行为 |
 |---|---|---|
@@ -24,14 +24,16 @@
 | `presets` | 无 | `catalog`、`ids`，详见下方查询规则 |
 | `list` | 无 | options 使用空对象；返回目录，不含 document |
 | `create` | 无 | `title`、完整 `document`；省略 document 创建空白工程 |
+| `duplicate` | `staging_id` | 可选 `title`、`expected_version`；深拷贝整份导演文档并重映射内部引用为新文档 |
 | `read` | `staging_id` | `collection`、`id`、`frame`；frame 仅用于 tracks 且必须同时传 id |
 | `apply` | `staging_id`，以及 `edits`、`commands` 至少一种 | 局部原子修改，不接受 document 或 title |
 | `write` | `staging_id`、完整 `document` | 整份替换，不接受 edits、commands 或单独 title |
 | `restore` | `staging_id`、`version` | version 为非负整数历史快照版本，整份替换 |
 | `remove` | `staging_id` | 被引用的导演文档不可删除 |
 | `sample` | `staging_id`、`frames` | 1–12 个整数帧，可以包含可编辑终点 |
-| `frames` | `staging_id`、`frames` | 1–12 个整数帧；`camera_mode=sequence` 默认按切镜，fixed 必须传 `camera_id` |
+| `frames` | `staging_id`、`frames` | 1–16 个整数帧；`camera_mode=sequence` 默认按切镜，fixed 必须传 `camera_id` |
 | `preview` | `staging_id` | 刷新画布预览 |
+| `export` | `node_id` 或 `staging_id` 二选一，可选 `expected_version` | 按切镜序列导出整段预演为关联视频节点 |
 
 `read` 的返回结构随读取范围区分：
 
@@ -213,12 +215,12 @@ collection 可选 `objects/cameras/tracks/motion_paths/camera_moves/camera_cuts`
 
 `sample` 传 `staging_id` 和最多 12 个整数帧，返回对象、完整姿态、各机位、有效机位、灯光和诊断。按关键姿势、运动起止、切镜前后和终点抽样；涉及接触关系时补查对应帧。随机读取不改变播放状态。
 
-`frames` 按关键姿势、接触、运动起止和切镜前后选取最多 12 帧，返回带帧号和机位标注的拼图。交付前必须用它检查主体是否出画、支撑物是否落地、接触关系是否可见；`sample` 用于核对数值，不能代替看图。
+`frames` 按关键姿势、接触、运动起止和切镜前后选取最多 16 帧（4×4），返回带帧号和机位标注的拼图。交付前必须用它检查主体是否出画、支撑物是否落地、接触关系是否可见；`sample` 用于核对数值，不能代替看图。
 
 完成编辑与检查后调用一次 `preview` 刷新画布第 0 帧切镜序列图片。保存不会自动刷新画布；生成失败时说明实际状态，不能把已保存说成已更新预览。
 
 ## 交付
 
-Agent 完成编辑、画面检查和预览刷新后，说明修改内容与待确认之处。由用户在导演台界面确认效果，再输出图片或视频到制作画布；不通过 AI 命令导出独立文件。
+用户要求把预演导出到画布时，用 `Run stagings export`。从制作画布读取导演台的 `node_id`，或从导演台上下文取得 `staging_id`。同一个调度关联多个节点时，指定 `node_id`。需要锁定当前所读版本时，将 `read` 返回的 `version` 填入 `expected_version`。用返回的 `run_id` 调用 `Run operations wait` 等待终态，成功后用 `result.output.node_id` 或 `result.output.node_path` 引用新节点。
 
 独立文档用 `remove` 删除；仍被制作节点引用时需先处理引用。

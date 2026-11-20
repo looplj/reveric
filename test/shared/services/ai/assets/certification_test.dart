@@ -375,6 +375,7 @@ void main() {
 
   test('signs with the Volcengine V4 HMAC chain', () {
     final client = VolcengineAssetClient(
+      referenceUrl: (_) async => Uri.parse("https://unused.example"),
       httpClient: MockClient((_) async => http.Response('', 200)),
       accessKeyId: 'AK',
       secretAccessKey: 'SK',

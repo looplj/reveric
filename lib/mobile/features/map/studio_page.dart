@@ -234,6 +234,7 @@ class _OwnerStudio extends HookConsumerWidget {
     );
 
     final form = useMapGenerateForm(
+      ref: ref,
       locations: locations,
       rootId: owner.id,
       mapType: map?.type ?? mapTypeForOwner(owner),
@@ -429,6 +430,7 @@ class _OwnerStudio extends HookConsumerWidget {
             tooltip: context.t(LocaleKeys.mapEditorStudioRailPlaces),
             onPressed: () => openMobileMapPlacesSheet(
               context,
+              novelId: novelId,
               databasePath: databasePath,
               nav: nav,
               locations: locations,
@@ -452,10 +454,7 @@ class _OwnerStudio extends HookConsumerWidget {
                         sourceMapName: map.name,
                       ),
                     ),
-              icon: const RevericIcon(
-                RevericIcons.history_outlined,
-                size: 18,
-              ),
+              icon: const RevericIcon(RevericIcons.history_outlined, size: 18),
             ),
           IconButton(
             key: const ValueKey('mobile_map_export'),
@@ -508,6 +507,7 @@ class _OwnerStudio extends HookConsumerWidget {
                 onEdit: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => MobileLocationEditorPage(
+                      novelId: novelId,
                       databasePath: databasePath,
                       locationId: selected.id,
                     ),
@@ -565,6 +565,7 @@ class _StudioGenerateFooter extends ConsumerWidget {
       mapDesignDraftProvider(databasePath: databasePath, worldId: ownerId),
     );
     return MapGenerateFooter(
+      modelId: form.modelId.value,
       databasePath: databasePath,
       showGateTooltip: false,
       hasPendingAgentDraft: agentDraft != null,

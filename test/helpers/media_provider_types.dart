@@ -41,4 +41,5 @@ String imageProviderType(ImageProtocol protocol) => switch (protocol) {
   ImageProtocol.codex_image => 'codex',
   ImageProtocol.gemini_image => 'gemini',
   ImageProtocol.purefox_media => 'purefox_media',
+  ImageProtocol.minimax_image => 'minimax',
 };

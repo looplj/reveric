@@ -39,7 +39,7 @@ class MobileNovelCover extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final typo = RevericTheme.typographyOf(context);
-    final resolvedCoverPath = watchMediaAssetFile(ref, novel.coverAssetId);
+    final resolvedCoverPath = watchWorkCoverFile(ref, novel);
     final coverFile = resolvedCoverPath == null
         ? null
         : File(resolvedCoverPath);

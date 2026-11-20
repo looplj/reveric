@@ -21,7 +21,9 @@ class CollectionWorkCover extends ConsumerWidget {
       color: colors.surfaceDim,
       child: Center(
         child: RevericIcon(
-          work.contentKind == contentKindScreenplay
+          work.contentKind == contentKindCanvas
+              ? RevericIcons.flow_arrow
+              : work.contentKind == contentKindScreenplay
               ? RevericIcons.movie_outlined
               : RevericIcons.menu_book_outlined,
           color: colors.textSubtle,

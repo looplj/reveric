@@ -30,11 +30,13 @@ class MobileChapterHistoryPage extends HookConsumerWidget {
   const MobileChapterHistoryPage({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.resourceId,
     required this.resourceLabel,
   });
 
   final String databasePath;
+  final String novelId;
   final String resourceId;
   final String resourceLabel;
 
@@ -138,6 +140,7 @@ class MobileChapterHistoryPage extends HookConsumerWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => _ChapterCommitDetailPage(
+                            novelId: novelId,
                             databasePath: databasePath,
                             commit: selected,
                             resourceId: resourceId,
@@ -166,11 +169,13 @@ class MobileChapterHistoryPage extends HookConsumerWidget {
 class _ChapterCommitDetailPage extends StatelessWidget {
   const _ChapterCommitDetailPage({
     required this.databasePath,
+    required this.novelId,
     required this.commit,
     required this.resourceId,
   });
 
   final String databasePath;
+  final String novelId;
   final ChangeCommit commit;
   final String resourceId;
 
@@ -198,6 +203,7 @@ class _ChapterCommitDetailPage extends StatelessWidget {
       body: SafeArea(
         top: false,
         child: CommitDetail(
+          novelId: novelId,
           databasePath: databasePath,
           commit: commit,
           resourceId: resourceId,

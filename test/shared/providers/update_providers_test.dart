@@ -180,6 +180,10 @@ void main() {
     final info = (result as UpdateAvailable).info;
     expect(info.version, '9.2.0');
     expect(info.downloadUrl, endsWith(assets[Platform.operatingSystem]!));
+    expect(
+      info.fallbackDownloadUrl,
+      'https://downloads.reveric.app/releases/v9.2.0/${assets[Platform.operatingSystem]}',
+    );
     expect(info.fileSize, 1024);
   });
 

@@ -9,7 +9,6 @@
 import 'dart:convert';
 
 import 'package:easy_localization/easy_localization.dart';
-import 'package:http/http.dart' as http;
 
 import '../../../models/ai_provider.dart';
 import '../../../localization/locale_keys.dart';
@@ -23,16 +22,17 @@ class CodexImageGenerationClient extends ImageClient {
   final CodexImageClient Function()? clientFactory;
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     try {
       if (!CodexCredentials.supportedPlatform) {
         throw const CodexAuthException(CodexAuthFailure.unsupported_platform);
       }
       final references = <String>[];
-      for (final input in request.images) {
-        final normalized = await imageInputAsDataUri(input);
+      for (final input in request.references) {
+        final normalized = await imageInputAsDataUri(input, outputs);
         final data = UriData.parse(normalized);
         final prepared = await prepareMultipartReference(
           data.contentAsBytes(),
@@ -45,7 +45,7 @@ class CodexImageGenerationClient extends ImageClient {
       }
       final client =
           clientFactory?.call() ??
-          CodexImageClient(client: config.createProxyClient() ?? http.Client());
+          CodexImageClient(client: newImageHttpClient());
       final response = await client.generate(
         prompt: request.prompt,
         imageModel: request.model,
@@ -57,6 +57,7 @@ class CodexImageGenerationClient extends ImageClient {
       );
       return await parseImageResponse(
         response,
+        outputs,
         emptyMessage: tr(LocaleKeys.aiImageNoResult),
       );
     } on CodexAuthException catch (error) {
@@ -66,6 +67,9 @@ class CodexImageGenerationClient extends ImageClient {
         debugMessage: error.toString(),
       );
     } on CodexImageException catch (error) {
+      if (error.reason == 'no_image') {
+        throw invalidImageOutputs(error);
+      }
       final code =
           imageErrorCodeFromStatus(error.statusCode, null) ??
           switch (error.code) {
@@ -77,20 +81,39 @@ class CodexImageGenerationClient extends ImageClient {
             'invalid_model' || 'model_not_found' => AiImageErrorCode.param,
             _ => imageErrorCodeFromStatus(error.statusCode, error.code),
           };
+      if (code == null &&
+          error.reason != 'no_chat_models' &&
+          !(error.statusCode != null &&
+              error.statusCode! >= 400 &&
+              error.statusCode! < 500)) {
+        throw AiImageSubmissionException(
+          tr(LocaleKeys.aiImageSubmissionUnknown),
+          failureCode: 'submission_unknown',
+          debugMessage: '$error',
+        );
+      }
       final key = error.reason == 'no_chat_models'
           ? LocaleKeys.aiCodexImageNeedsChatModel
           : code == AiImageErrorCode.auth
           ? LocaleKeys.aiCodexImageAuthFailed
-          : error.reason == 'no_image'
-          ? LocaleKeys.aiImageNoResult
           : LocaleKeys.aiImageGenerationFailed;
-      throw AiImageGenerationException(
-        error.providerMessage ??
-            (code != null && code != AiImageErrorCode.auth
-                ? imageErrorMessage(code)
-                : tr(key)),
+      final message =
+          error.providerMessage ??
+          (code != null && code != AiImageErrorCode.auth
+              ? imageErrorMessage(code)
+              : tr(key));
+      if (error.reason == 'no_chat_models') {
+        throw AiImageGenerationException(
+          message,
+          code: code,
+          debugMessage: '$error',
+        );
+      }
+      throw AiImageSubmissionException(
+        message,
+        failureCode: 'rejected',
         code: code,
-        debugMessage: error.toString(),
+        debugMessage: '$error',
       );
     }
   }

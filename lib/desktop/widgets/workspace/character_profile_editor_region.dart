@@ -437,8 +437,12 @@ class CharacterProfileEditorRegion extends HookConsumerWidget {
     final selectedCharacter = characterProfiles
         .where((character) => character.id == selection.itemId)
         .firstOrNull;
-    final service = ref.watch(novelContentServiceProvider(databasePath));
-    final overlay = ref.watch(workingOverlayServiceProvider(databasePath));
+    final service = ref.watch(
+      workContentServiceProvider((path: databasePath, novelId: novel.id)),
+    );
+    final overlay = ref.watch(
+      workOverlayServiceProvider((path: databasePath, novelId: novel.id)),
+    );
     final editorFontFamily = ref.watch(editorFontFamilyProvider);
     final editorFontSize = ref.watch(editorFontSizeProvider);
     final isImageGenerationConfigured = ref.watch(

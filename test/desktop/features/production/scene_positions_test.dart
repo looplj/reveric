@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/desktop/features/production/board.dart';
 import 'package:reveric/desktop/features/production/node_card.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
+import 'package:reveric/shared/services/production/derived_placement.dart'
+    show productionSceneAnchorRect, productionSceneFooterExtent;
 
 void main() {
   final at = DateTime(2026);
@@ -68,7 +70,14 @@ void main() {
     final firstB = positions['node_b0']!;
     expect(firstB.dx, 700);
     // 上一场色带底边 + 间距 + 下一场色带顶部留白。
-    expect(firstB.dy, lastA + 24 + 24 + 40 + productionNodeHeaderExtent);
+    expect(
+      firstB.dy,
+      lastA +
+          productionSceneFooterExtent +
+          24 +
+          40 +
+          productionNodeHeaderExtent,
+    );
     expect(positions['node_b1'], Offset(700, firstB.dy + step));
   });
 
@@ -81,4 +90,60 @@ void main() {
     expect(positions['node_a0'], Offset.zero);
     expect(positions['node_b0'], const Offset(600, 0));
   });
+
+  CanvasNode sceneNode(String sceneId, double x, double y) => CanvasNode(
+    id: 'scene_node_$sceneId',
+    canvasId: 'canvas',
+    type: canvasNodeTypeScene,
+    refType: canvasNodeRefTypeScreenplayScene,
+    refId: sceneId,
+    title: '',
+    content: '',
+    x: x,
+    y: y,
+    zIndex: 0,
+    sortOrder: 0,
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: at,
+  );
+
+  test('scene node is the origin of its column', () {
+    // 片段库里的坐标是旧的，场次节点已移到 (500, 300)。
+    final nodes = [
+      node('a0', 0, 0),
+      node('a1', 0, 400),
+      sceneNode('scene_a', 500, 300),
+    ];
+    final segments = [clip('a0', 'scene_a'), clip('a1', 'scene_a')];
+
+    final positions = productionScenePositions(nodes, segments, (_) => size);
+
+    const step = 146 + 24 + productionNodeHeaderExtent;
+    expect(positions['scene_node_scene_a'], const Offset(500, 300));
+    expect(positions['node_a0'], const Offset(500, 300));
+    expect(positions['node_a1'], const Offset(500, 300 + step));
+  });
+
+  test(
+    'empty scene keeps a column and is pushed below an overlapping scene',
+    () {
+      final nodes = [
+        node('a0', 0, 0),
+        sceneNode('scene_a', 0, 0),
+        sceneNode('scene_b', 0, 100),
+      ];
+      final segments = [clip('a0', 'scene_a')];
+
+      final positions = productionScenePositions(nodes, segments, (_) => size);
+
+      final bandA = productionSceneBand(const Offset(0, 0) & size);
+      final empty = positions['scene_node_scene_b']!;
+      expect(empty.dx, 0);
+      expect(
+        productionSceneBand(productionSceneAnchorRect(empty, empty: true)).top,
+        bandA.bottom + 24,
+      );
+    },
+  );
 }

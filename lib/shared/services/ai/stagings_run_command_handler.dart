@@ -61,10 +61,11 @@ extension _StagingsCommands on _AiToolManagerBase {
     String action,
     Map<String, dynamic> options,
   ) async {
-    if (contentKind != contentKindScreenplay) {
+    if (contentKind != contentKindScreenplay &&
+        contentKind != contentKindCanvas) {
       throw const ToolOperationException(
         'unavailable',
-        'Staging commands require a screenplay work.',
+        'Staging commands require a screenplay or canvas work.',
       );
     }
     final allowed = switch (action) {
@@ -73,13 +74,15 @@ extension _StagingsCommands on _AiToolManagerBase {
       'sample' => {'staging_id', 'frames'},
       'frames' => {'staging_id', 'frames', 'camera_mode', 'camera_id'},
       'create' => {'title', 'document'},
+      'duplicate' => {'staging_id', 'title', 'expected_version'},
       'read' => {'staging_id', 'collection', 'id', 'frame'},
       'apply' => {'staging_id', 'edits', 'commands'},
       'write' => {'staging_id', 'document'},
       'restore' => {'staging_id', 'version'},
       'remove' || 'preview' => {'staging_id'},
+      'export' => {'staging_id', 'node_id', 'expected_version'},
       _ => throw _RunCommandException(
-        'Unknown staging action. ${_bundledSkillCommandGuidance('stagings')}',
+        'Unknown staging action. ${_bundledSkillCommandGuidance('stagings', contentKind: contentKind)}',
       ),
     };
     // 只在执行边界兼容复数别名，后续校验和执行统一使用规范参数。
@@ -103,6 +106,9 @@ extension _StagingsCommands on _AiToolManagerBase {
       );
     }
     _productionCommandKeys(options, allowed);
+    if (action == 'export') {
+      return _exportStagingNode(options);
+    }
     if (action == 'write' && !options.containsKey('document')) {
       throw const FormatException('write requires a complete document.');
     }
@@ -165,6 +171,25 @@ extension _StagingsCommands on _AiToolManagerBase {
         );
       }
       final id = _stagingId(options);
+      if (action == 'duplicate') {
+        final expectedVersion = options.containsKey('expected_version')
+            ? _productionCommandInteger(options, 'expected_version')
+            : null;
+        final row = await db.screenplayDao.getStaging(id);
+        if (row == null) {
+          throw _stagingNotFound(id);
+        }
+        final duplicated = await service.duplicate(
+          id,
+          title: options['title'] as String?,
+          expectedVersion: expectedVersion,
+        );
+        return {
+          ...data(duplicated),
+          'staging_id': duplicated.id,
+          'source_staging_id': id,
+        };
+      }
       final row = await db.screenplayDao.getStaging(id);
       if (row == null) {
         throw _stagingNotFound(id);
@@ -364,6 +389,169 @@ extension _StagingsCommands on _AiToolManagerBase {
       );
     } on ScreenplayServiceException catch (error) {
       return _screenplayException('stagings/$action', error);
+    }
+  }
+
+  Future<Map<String, dynamic>> _exportStagingNode(
+    Map<String, dynamic> options,
+  ) async {
+    if (options.containsKey('staging_id') == options.containsKey('node_id')) {
+      throw const FormatException(
+        'Provide exactly one of staging_id or node_id.',
+      );
+    }
+    final build = operationHost?.production;
+    final operations = operationHost?.operations;
+    final context = _currentToolExecutionContext;
+    if (build == null || operations == null || context == null) {
+      throw const ToolOperationException(
+        'unavailable',
+        'Staging export requires an active work session.',
+      );
+    }
+    final canvas = (await build()).canvas;
+    final db = _contentService.database;
+    if (!identical(canvas.db, db)) {
+      throw const ToolOperationException(
+        'permission_denied',
+        'Staging export must target the current work.',
+      );
+    }
+    try {
+      final String nodeId;
+      if (options.containsKey('node_id')) {
+        nodeId = _productionCommandText(options, 'node_id');
+      } else {
+        final id = _stagingId(options);
+        final matches =
+            await (db.select(db.canvasNodes)..where(
+                  (t) =>
+                      t.type.equals(canvasNodeTypeStaging) &
+                      t.refType.equals(canvasNodeRefTypeStaging) &
+                      t.refId.equals(id) &
+                      t.deletedAt.equals(notDeletedSentinel),
+                ))
+                .get();
+        if (matches.length != 1) {
+          throw ToolOperationException(
+            'failed_precondition',
+            matches.isEmpty
+                ? 'The staging has no director node on the production canvas.'
+                : 'The staging is used by multiple director nodes. Pass the target node_id.',
+          );
+        }
+        nodeId = matches.single.id;
+      }
+      final node = await canvas.requireNode(nodeId);
+      final stagingId = node.stagingId;
+      if (node.type != canvasNodeTypeStaging || stagingId == null) {
+        throw const ToolOperationException(
+          'invalid_argument',
+          'node_id must identify a director node.',
+        );
+      }
+      final dao = db.screenplayDao;
+      await VideoStagingBinding.openFor(dao, stagingId)?.flush();
+      final row = await dao.getStaging(stagingId);
+      if (row?.document == null) {
+        throw const ToolOperationException(
+          'failed_precondition',
+          'The staging has no saved document.',
+        );
+      }
+      final version = row!.version;
+      if (options.containsKey('expected_version') &&
+          _productionCommandInteger(options, 'expected_version') != version) {
+        throw const ToolOperationException(
+          'conflict',
+          'The staging version changed. Read it again before exporting.',
+        );
+      }
+      final document = DirectorDocument.fromJson(row.document!);
+      final episodeId = await canvas.episodeForCanvas(node.canvasId);
+      final renderer = _contentService.stagingEditService.previewRenderer;
+      return await operations.start(
+        context: context,
+        callId: _activeRunCallId ?? '',
+        workId: canvas.novelId,
+        kind: 'stagings.export',
+        targetPath: production_nodes.productionNodePath(episodeId, nodeId),
+        toolName: 'Run',
+        targetLabel: row.title,
+        background: true,
+        input: options,
+        verifyTarget: () async {
+          try {
+            await canvas.requireNode(nodeId);
+          } on StoryboardException catch (error) {
+            throw ToolOperationException('failed_precondition', error.reason);
+          }
+        },
+        execute: (operation) async {
+          final task = ExportTaskOrchestrator();
+          final unlink = operation.cancellation.onCancel(task.cancel);
+          (String, int)? lastProgress;
+          void report() {
+            if (operation.cancellation.isCancellationRequested &&
+                task.active &&
+                !task.cancelled) {
+              task.cancel();
+              return;
+            }
+            final percent = task.total > 0
+                ? 100 * task.written ~/ task.total
+                : 0;
+            final progress = (task.state.name, percent);
+            if (lastProgress != progress) {
+              lastProgress = progress;
+              operation.report(
+                progress: {'stage': progress.$1, 'progress': percent / 100},
+              );
+            }
+          }
+
+          task.addListener(report);
+          try {
+            final asset = await StagingExportOrchestrator().render(
+              canvas: canvas,
+              stagingId: stagingId,
+              document: document,
+              task: task,
+              savedRevisionId: '$version',
+              renderer: renderer(),
+            );
+            operation.checkCancelled();
+            operation.report(
+              progress: {'stage': 'add_to_canvas', 'asset_id': asset.id},
+            );
+            final output = await canvas.addStagingOutput(nodeId, asset.id);
+            return {
+              'ok': true,
+              'staging_id': stagingId,
+              'version': version,
+              'source_node_id': nodeId,
+              'output': await production_nodes.outputSummary(
+                canvas,
+                output,
+                episodeId,
+              ),
+            };
+          } on StoryboardException catch (error) {
+            throw ToolOperationException('failed_precondition', error.reason);
+          } on StateError catch (error) {
+            operation.checkCancelled();
+            throw ToolOperationException(
+              task.errorCode ?? 'export_failed',
+              error.message,
+            );
+          } finally {
+            unlink();
+            task.dispose();
+          }
+        },
+      );
+    } on StoryboardException catch (error) {
+      throw ToolOperationException('failed_precondition', error.reason);
     }
   }
 

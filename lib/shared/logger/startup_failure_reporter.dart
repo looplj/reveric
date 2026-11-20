@@ -128,7 +128,7 @@ class StartupFailureReporter {
       final response = await _httpClient
           .post(
             Uri.parse(url),
-            headers: revericApiHeaders,
+            headers: const {'Content-Type': 'application/json'},
             body: jsonEncode(payload),
           )
           .timeout(_timeout);
@@ -166,11 +166,11 @@ class StartupFailureReporter {
     return DeviceIdService().getOrCreate();
   }
 
-  static String _defaultBaseUrl() => anonymousReportingBaseUrl;
+  static String _defaultBaseUrl() => startupFailureReportingUrl;
 
-  /// 本构建配置了上报地址且用户已 opt-in 才上报；同意状态读取失败按未同意处理。
+  /// 配置了启动诊断地址且设置开启时才上报。
   static Future<bool> _defaultEnabled() async {
-    if (anonymousReportingBaseUrl.isEmpty) {
+    if (startupFailureReportingUrl.isEmpty) {
       return false;
     }
     try {

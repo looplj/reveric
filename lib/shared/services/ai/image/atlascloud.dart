@@ -1,4 +1,4 @@
-// 职责: 将图片请求编码为 AtlasCloud 预测任务，轮询到完成并解析输出图片。
+// 职责: 将图片请求编码为 AtlasCloud 预测任务，单次提交与查询并返回统一图片任务回执。
 // 关联文件:
 //   lib/shared/services/ai/image/client.dart
 //   lib/shared/models/image/channels.dart
@@ -24,8 +24,9 @@ class AtlasCloudImageClient extends ImageClient {
   static const _attempts = 3;
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request);
     final caps = channel?.capabilities;
@@ -38,7 +39,7 @@ class AtlasCloudImageClient extends ImageClient {
             (resolution != null && !caps.resolutions.contains(resolution)))) {
       throw invalidImageParameter();
     }
-    final editing = request.images.isNotEmpty;
+    final editing = request.references.isNotEmpty;
     // Registered models declare their edit route; custom IDs are sent verbatim.
     if (editing && channel != null && options?.editModel == null) {
       throw invalidImageParameter();
@@ -46,7 +47,7 @@ class AtlasCloudImageClient extends ImageClient {
     final body = <String, dynamic>{
       'model': editing ? (options?.editModel ?? request.model) : request.model,
       'prompt': request.prompt,
-      'output_format': ?channel?.requestDefaults.outputFormat,
+      'output_format': ?request.nativeDefaults.outputFormat,
     };
     if (options?.usesResolution ?? false) {
       // This endpoint has ratio/tier controls, not a pixel-size parameter.
@@ -66,7 +67,7 @@ class AtlasCloudImageClient extends ImageClient {
                         aspectRatio ?? '1:1',
                         resolution ?? caps.resolutions.first,
                       )
-                    : channel!.requestDefaults.size);
+                    : request.nativeDefaults.size);
       if (dimensions != null) {
         if (caps != null &&
             !caps.sizes.values.any(
@@ -89,11 +90,11 @@ class AtlasCloudImageClient extends ImageClient {
     }
     if (editing) {
       body['images'] = [
-        for (final input in request.images)
-          await imageInputAsUrlOrDataUri(input),
+        for (final input in request.references)
+          await imageInputAsUrlOrDataUri(input, outputs),
       ];
     }
-    final client = config.createProxyClient() ?? http.Client();
+    final client = newImageHttpClient();
     final elapsed = Stopwatch()..start();
     try {
       final prediction = await _send(
@@ -102,36 +103,119 @@ class AtlasCloudImageClient extends ImageClient {
         _uri('generateImage'),
         data: body,
       );
-      final id = prediction['id'];
-      if (id is String && id.trim().isNotEmpty) {
-        try {
-          await request.onSubmitted?.call(id);
-        } catch (error) {
-          throw AiImageFetchException(
-            '图片结果获取失败，请稍后重试。',
-            providerTaskId: id,
-            debugMessage: 'AtlasCloud prediction $id record failed: $error',
-          );
-        }
+      final status = prediction['status'];
+      if (status == 'completed' || status == 'succeeded') {
+        return await _outputs(prediction, outputs);
       }
-      return await _settle(client, elapsed, prediction);
+      final id = prediction['id'];
+      if (id is! String || id.trim().isEmpty) {
+        throw const ProviderFailure(
+          code: 'submission_unknown',
+          message: 'AtlasCloud returned no task identity',
+        );
+      }
+      return ProviderSubmitted(
+        id,
+        state:
+            {
+              'created',
+              'starting',
+              'queued',
+              'pending',
+              'processing',
+              'running',
+            }.contains(status)
+            ? null
+            : {
+                'terminalStatus': status,
+                'message': extractImageServerMessage(prediction),
+              },
+      );
     } finally {
       client.close();
     }
   }
 
   @override
-  Future<AiImageGenerationResult> resumeResult(String providerTaskId) async {
-    final client = config.createProxyClient() ?? http.Client();
-    final elapsed = Stopwatch()..start();
+  Future<ProviderQueryResult> query(
+    ProviderQueryInput input,
+    ImageOutputContext outputs,
+  ) async {
+    final terminal = input.state?['terminalStatus'];
+    if (terminal != null) {
+      if (terminal == 'unknown') {
+        return const ProviderUnknown('Unknown initial prediction status');
+      }
+      final error = _predictionError({
+        'status': terminal,
+        'error': input.state?['message'],
+      }, _uri('generateImage'));
+      return ProviderFailed(
+        ProviderFailure(
+          code: error.code?.name ?? 'failed',
+          message: error.userMessage,
+          detail: error.debugMessage,
+        ),
+      );
+    }
+    final client = newImageHttpClient();
     try {
-      return await _settle(client, elapsed, {
-        'id': providerTaskId,
-        'status': 'processing',
-      }, resumed: true);
+      final prediction = await _send(
+        client,
+        Stopwatch()..start(),
+        _uri('prediction/${Uri.encodeComponent(input.remoteTaskId)}'),
+        timeout: const Duration(seconds: 30),
+      );
+      final status = prediction['status'];
+      if (status == 'completed' || status == 'succeeded') {
+        return await _outputs(prediction, outputs);
+      }
+      if ({
+        'created',
+        'starting',
+        'queued',
+        'pending',
+        'processing',
+        'running',
+      }.contains(status)) {
+        return ProviderPending(
+          queued: status == 'queued' || status == 'pending',
+        );
+      }
+      if (status == 'cancelled') {
+        return const ProviderStopped(cancelled: true);
+      }
+      if (status == 'expired') {
+        return const ProviderStopped();
+      }
+      final error = _predictionError(prediction, _uri('generateImage'));
+      return ProviderFailed(
+        ProviderFailure(
+          code: error.code?.name ?? 'failed',
+          message: error.userMessage,
+          detail: error.debugMessage,
+        ),
+      );
     } finally {
       client.close();
     }
+  }
+
+  Future<ProviderSucceeded> _outputs(
+    Map<String, dynamic> prediction,
+    ImageOutputContext outputs,
+  ) {
+    final values = prediction['outputs'];
+    if (values is! List ||
+        values.isEmpty ||
+        values.any((value) => value is! String || value.isEmpty)) {
+      throw invalidImageOutputs(
+        'AtlasCloud succeeded without valid image outputs',
+      );
+    }
+    return outputs.nativeImages([
+      for (final value in values) {'url': value},
+    ]);
   }
 
   Uri _uri(String path) {
@@ -140,71 +224,15 @@ class AtlasCloudImageClient extends ImageClient {
     return base.replace(path: '$root/api/v1/model/$path');
   }
 
-  /// 轮询到终态并取回图片。任务已受理后，查询失败带上任务 ID 抛出，
-  /// 供调用方稍后继续查询而不是重新出图。
-  Future<AiImageGenerationResult> _settle(
-    http.Client client,
-    Stopwatch elapsed,
-    Map<String, dynamic> prediction, {
-    bool resumed = false,
-  }) async {
-    final id = prediction['id'];
-    var poll = resumed;
-    while (true) {
-      if (poll) {
-        if (!resumed) {
-          await Future<void>.delayed(const Duration(seconds: 2));
-        }
-        resumed = false;
-        final uri = _uri('prediction/${Uri.encodeComponent(id as String)}');
-        try {
-          prediction = await _send(client, elapsed, uri);
-        } catch (error) {
-          throw AiImageFetchException(
-            '图片结果获取失败，请稍后重试。',
-            providerTaskId: id,
-            debugMessage:
-                'AtlasCloud prediction $id poll failed at $uri: '
-                '${error is AiImageGenerationException ? error.debugMessage ?? error.userMessage : error}',
-          );
-        }
-      }
-      poll = true;
-      final status = prediction['status'];
-      if (status == 'completed' || status == 'succeeded') {
-        final outputs = prediction['outputs'];
-        if (outputs is! List || outputs.isEmpty || outputs.first is! String) {
-          throw _predictionError(prediction, _uri('generateImage'));
-        }
-        return parseImageResponse({
-          'data': [
-            {'url': outputs.first},
-          ],
-        }, emptyMessage: tr(LocaleKeys.aiImageNoResult));
-      }
-      if (!{
-            'created',
-            'starting',
-            'queued',
-            'pending',
-            'processing',
-            'running',
-          }.contains(status) ||
-          id is! String ||
-          id.trim().isEmpty) {
-        throw _predictionError(prediction, _uri('generateImage'));
-      }
-    }
-  }
-
   Future<Map<String, dynamic>> _send(
     http.Client client,
     Stopwatch elapsed,
     Uri uri, {
     Map<String, dynamic>? data,
+    Duration timeout = imageHttpDataTimeout,
   }) async {
     final apiKey = requireApiKey();
-    final remaining = imageHttpDataTimeout - elapsed.elapsed;
+    final remaining = timeout - elapsed.elapsed;
     if (remaining <= Duration.zero) {
       throw TimeoutException('AtlasCloud image prediction timed out');
     }
@@ -226,6 +254,10 @@ class AtlasCloudImageClient extends ImageClient {
     // 握手未完成时请求体尚未发出，提交也可安全重试；轮询是幂等 GET，
     // 连接层错误都可重试。
     for (var attempt = 1; response == null; attempt++) {
+      final remaining = timeout - elapsed.elapsed;
+      if (remaining <= Duration.zero) {
+        throw TimeoutException('AtlasCloud image request timed out');
+      }
       try {
         response = await (() async => http.Response.fromStream(
           await client.send(request),

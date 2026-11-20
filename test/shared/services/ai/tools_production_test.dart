@@ -5,6 +5,7 @@
 //   lib/shared/services/screenplay/staging.dart
 //   lib/shared/services/director/preview.dart
 import 'dart:async';
+import 'package:reveric/shared/app_config.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -36,6 +37,9 @@ import 'package:reveric/shared/services/screenplay/staging.dart';
 import 'package:reveric/shared/services/screenplay/staging_edit.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
+import 'package:reveric/shared/services/production/library_service.dart';
+import 'package:reveric/shared/services/production/media_service.dart';
+import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
 class PreviewContentService extends NovelContentService {
@@ -141,6 +145,15 @@ void main() {
       sessionId: 'session',
       workId: 'work',
       operationHost: ToolOperationHost(operations),
+      productionStyleServiceBuilder: () async => ProductionCanvasService(
+        StoryboardService(db),
+        MediaLibraryService(
+          app,
+          MediaService(FfmpegRunner()),
+          previewDirectory,
+        ),
+        'work',
+      ),
     )..registerAllTools();
   });
   tearDown(() async {
@@ -195,6 +208,60 @@ void main() {
     'visible': true,
     'color': '#B7A48B',
   };
+
+  test(
+    'text Remove and remove_types clean only their downstream prompt references',
+    () async {
+      final path = canvasPath;
+      final a = await call('Create', '$path/nodes', {
+        'type': 'text',
+        'content': 'A',
+      });
+      final b = await call('Create', '$path/nodes', {
+        'type': 'text',
+        'content': 'B',
+      });
+      final target = await call('Create', '$path/nodes', {
+        'type': 'image',
+        'title': 'Kept',
+      });
+      expect(a['ok'], true, reason: '$a');
+      expect(b['ok'], true, reason: '$b');
+      expect(target['ok'], true, reason: '$target');
+      final clipId = target['ref_id'] as String;
+      const aTag = '<ref input_id="a" label="A" />';
+      const bTag = '<ref input_id="b" label="B" />';
+      // This fixture has no media host; seed inputs before exercising AI deletion.
+      final shots = StoryboardService(db);
+      await shots.restoreInputs(clipId, [
+        {'id': 'a', 'ref_type': 'node', 'ref_id': a['id'], 'role': 'prompt'},
+        {'id': 'b', 'ref_type': 'node', 'ref_id': b['id'], 'role': 'prompt'},
+      ]);
+      await (db.update(
+        db.productionClips,
+      )..where((t) => t.id.equals(clipId))).write(
+        const ProductionClipsCompanion(
+          prompt: Value('Start $aTag/$bTag/$aTag end'),
+        ),
+      );
+      final removed = await call('Remove', '$path/nodes/${a['id']}');
+      expect(removed['ok'], true, reason: '$removed');
+      var clip = (await shots.getShot(clipId))!;
+      expect(clip.prompt, 'Start /$bTag/ end');
+      expect(clip.inputs.map((input) => input.id), ['b']);
+      final batched = await call('Write', path, {
+        'remove_types': ['text'],
+      });
+      expect(batched['ok'], true, reason: '$batched');
+      jsonEncode(batched);
+      clip = (await shots.getShot(clipId))!;
+      expect(clip.prompt, 'Start // end');
+      expect(clip.inputs, isEmpty);
+      expect(clip.title, 'Kept');
+      expect(await db.canvasDao.getNodeById(target['id'] as String), isNotNull);
+      expect(await db.canvasDao.getNodeById(b['id'] as String), isNull);
+    },
+  );
 
   test(
     'stagings normalizes plural IDs without advertising the alias',
@@ -569,6 +636,51 @@ void main() {
     ok(await director('read', {'staging_id': stored.stagingId}));
   });
 
+  test('screenplay adds text content while rejecting editing nodes', () async {
+    final existingProjects = (await db.editingDao.list())
+        .map((row) => row.id)
+        .toList();
+    final text = await call('Create', '$canvasPath/nodes', {
+      'type': 'text',
+      'title': 'Notes',
+      'content': 'Shared text',
+    });
+    ok(text);
+    expect(
+      (await call('Read', '$canvasPath/nodes/${text['id']}/content'))['value'],
+      'Shared text',
+    );
+    ok(
+      await call('Write', '$canvasPath/nodes/${text['id']}', {
+        'content': 'Updated',
+      }),
+    );
+    expect(
+      (await db.canvasDao.getNodeById(text['id'] as String))!.content,
+      'Updated',
+    );
+    final edited = await tools.executeTool(
+      name: 'Edit',
+      input: {
+        'path': '$canvasPath/nodes/${text['id']}/content',
+        'old_text': 'Updated',
+        'new_text': 'Edited in screenplay',
+      },
+    );
+    ok(edited);
+    jsonEncode(edited);
+    expect(edited['match_count'], 1);
+    expect(
+      (await call('Read', '$canvasPath/nodes/${text['id']}/content'))['value'],
+      'Edited in screenplay',
+    );
+    expect(
+      (await call('Create', '$canvasPath/nodes', {'type': 'editing'}))['error'],
+      isNotNull,
+    );
+    expect((await db.editingDao.list()).map((row) => row.id), existingProjects);
+  });
+
   test(
     'explicit production paths work without discovering hidden resources',
     () async {
@@ -593,7 +705,12 @@ void main() {
       ok(all);
       expect(all['nodes'], hasLength(2));
       expect(all['edges'], isEmpty);
-      expect((await call('Read', 'canvas'))['entries'], isEmpty);
+      final ideation = await call('Read', 'canvas');
+      if (ideationCanvasEnabled) {
+        expect(ideation['entries'], isEmpty);
+      } else {
+        expect(ideation['error'], isNotNull);
+      }
       final glob = await tools.executeTool(
         name: 'Glob',
         input: {'pattern': 'episodes/**'},
@@ -1576,7 +1693,7 @@ void main() {
       expect(fixed['cells'].single['camera_id'], camera['id']);
       for (final options in [
         {'frames': []},
-        {'frames': List.filled(13, 0)},
+        {'frames': List.filled(17, 0)},
         {
           'frames': [121],
         },
@@ -1608,6 +1725,10 @@ void main() {
       });
       expect(unknown['error_code'], 'not_found');
       expect(unknown['error'], contains('Run stagings list'));
+      final unknownAction = await director('not-a-staging-action', {});
+      expect(unknownAction['output'], contains('unknown stagings command'));
+      expect(unknownAction['output'], contains('剧本工具使用规范'));
+      expect(unknownAction['output'], isNot(contains('画布作品工具')));
       expect((await stagingService.require(stagingId)).version, before.version);
     },
   );
@@ -1853,6 +1974,148 @@ void main() {
       expect(await preview.read(), currentBytes);
       await preview.image.writeAsBytes([7, 8, 9]);
       expect(await preview.read(), [7, 8, 9]);
+    },
+  );
+
+  test(
+    'stagings duplicate deep-clones document, remaps IDs, and isolates edits',
+    () async {
+      final created = await director('create', {'title': 'Original Stage'});
+      ok(created);
+      final sourceId = created['id'] as String;
+      final sourceDoc = created['document'] as Map<String, dynamic>;
+      final defaultCamId = sourceDoc['default_camera_id'] as String;
+
+      final actorRes = await applyEdit(sourceId, 'objects', 'create', {
+        'data': {...actor(), 'name': 'Hero'},
+      });
+      ok(actorRes);
+      final heroId = actorRes['id'] as String;
+
+      final firstCam = (sourceDoc['cameras'] as List).first as Map;
+      final closeUpData = Map<String, dynamic>.from(firstCam)..remove('id');
+      closeUpData['name'] = 'CloseUp';
+      closeUpData['focal_length_mm'] = 50;
+      closeUpData['camera_target'] = {
+        'type': 'object',
+        'object_id': heroId,
+        'offset': [0, 1, 0],
+      };
+      final closeUpRes = await applyEdit(sourceId, 'cameras', 'create', {
+        'data': closeUpData,
+      });
+      ok(closeUpRes);
+      final closeUpId = closeUpRes['id'] as String;
+
+      final pathRes = await applyEdit(sourceId, 'motion_paths', 'create', {
+        'data': {
+          'target_id': heroId,
+          'kind': 'line',
+          'start_frame': 0,
+          'end_frame': 24,
+          'easing': 'linear',
+          'orient_to_path': false,
+          'geometry': {
+            'start': [0, 0, 0],
+            'end': [1, 0, 1],
+          },
+        },
+      });
+      ok(pathRes);
+
+      final lightRes = await applyEdit(sourceId, 'tracks', 'create', {
+        'data': {
+          'target_id': sourceDoc['id'],
+          'property': 'lighting.ambient_intensity',
+          'keys': [
+            {'frame': 0, 'value': 0.5, 'easing': 'linear'},
+          ],
+        },
+      });
+      ok(lightRes);
+
+      final cutRes = await applyEdit(sourceId, 'camera_cuts', 'create', {
+        'data': {'frame': 12, 'camera_id': closeUpId},
+      });
+      ok(cutRes);
+
+      final sourceRow = (await db.screenplayDao.getStaging(sourceId))!;
+      final conflict = await director('duplicate', {
+        'staging_id': sourceId,
+        'expected_version': sourceRow.version - 1,
+      });
+      expect(conflict['ok'], false);
+      expect(conflict['error_code'], 'conflict');
+
+      final defaultDup = await director('duplicate', {'stagings_id': sourceId});
+      ok(defaultDup);
+      expect(defaultDup['id'], isNot(sourceId));
+      expect(defaultDup['staging_id'], defaultDup['id']);
+      expect(defaultDup['source_staging_id'], sourceId);
+      expect(defaultDup['title'], 'Original Stage Copy');
+      expect(defaultDup['version'], 1);
+
+      final customDup = await director('duplicate', {
+        'staging_id': sourceId,
+        'title': 'Experiment Stage',
+        'expected_version': sourceRow.version,
+      });
+      ok(customDup);
+      final cloneId = customDup['id'] as String;
+      expect(customDup['title'], 'Experiment Stage');
+      final cloneDoc = customDup['document'] as Map<String, dynamic>;
+      expect(cloneDoc['id'], isNot(sourceDoc['id']));
+      expect(cloneDoc['revision'], 0);
+      expect(cloneDoc['default_camera_id'], isNot(defaultCamId));
+
+      final cloneObjects = (cloneDoc['objects'] as List)
+          .cast<Map<String, dynamic>>();
+      final cloneHero = cloneObjects.firstWhere((o) => o['name'] == 'Hero');
+      final cloneHeroId = cloneHero['id'] as String;
+      expect(cloneHeroId, isNot(heroId));
+
+      final cloneCameras = (cloneDoc['cameras'] as List)
+          .cast<Map<String, dynamic>>();
+      final cloneCloseUp = cloneCameras.firstWhere(
+        (c) => c['name'] == 'CloseUp',
+      );
+      final cloneCloseUpId = cloneCloseUp['id'] as String;
+      expect(cloneCloseUpId, isNot(closeUpId));
+      expect(cloneCloseUp['camera_target']['object_id'], cloneHeroId);
+
+      final clonePaths = (cloneDoc['motion_paths'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(clonePaths.single['target_id'], cloneHeroId);
+      final cloneCuts = (cloneDoc['camera_cuts'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(cloneCuts.last['camera_id'], cloneCloseUpId);
+
+      final cloneTracks = (cloneDoc['tracks'] as List)
+          .cast<Map<String, dynamic>>();
+      final lightingTrack = cloneTracks.firstWhere(
+        (t) => (t['property'] as String).startsWith('lighting.'),
+      );
+      expect(lightingTrack['target_id'], cloneDoc['id']);
+
+      ok(
+        await applyEdit(cloneId, 'cameras', 'write', {
+          'id': cloneCloseUpId,
+          'data': {'focal_length_mm': 85},
+        }),
+      );
+
+      final sourceAfter = await director('read', {'staging_id': sourceId});
+      final cloneAfter = await director('read', {'staging_id': cloneId});
+      final sourceCloseUp =
+          ((sourceAfter['document'] as Map)['cameras'] as List)
+              .cast<Map>()
+              .firstWhere((c) => c['id'] == closeUpId);
+      final cloneCloseUpAfter =
+          ((cloneAfter['document'] as Map)['cameras'] as List)
+              .cast<Map>()
+              .firstWhere((c) => c['id'] == cloneCloseUpId);
+      expect(sourceCloseUp['focal_length_mm'], 50);
+      expect(cloneCloseUpAfter['focal_length_mm'], 85);
     },
   );
 }

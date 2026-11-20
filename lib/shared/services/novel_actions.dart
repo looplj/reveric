@@ -16,7 +16,6 @@ import '../database/app_database.dart';
 import '../database/novel_content_database.dart';
 import '../models/content_kind.dart';
 import '../models/novel_type.dart';
-import '../models/production/default_style.dart';
 import '../logger/app_logger.dart';
 import '../utils/short_entity_id.dart';
 import '../utils/storage_paths.dart';
@@ -34,6 +33,13 @@ class NovelTitleConflictException implements Exception {
 
   @override
   String toString() => 'Novel title conflict: "$title"';
+}
+
+class NovelDraftReversionException implements Exception {
+  const NovelDraftReversionException();
+
+  @override
+  String toString() => 'A work on the bookshelf cannot be moved back to draft.';
 }
 
 class NovelActionsService {
@@ -85,21 +91,20 @@ class NovelActionsService {
     bool draft = false,
     Future<void> Function(NovelContentDatabase content)? populateContent,
   }) async {
+    validateContentKind(contentKind);
     if (!draft) {
       await _ensureShelfTitleAvailable(title);
     }
-    final novelId = buildShortEntityId(
-      contentKind == contentKindScreenplay
-          ? ShortEntityIdType.screenplay
-          : ShortEntityIdType.novel,
-    );
+    final novelId = buildShortEntityId(switch (contentKind) {
+      contentKindScreenplay => ShortEntityIdType.screenplay,
+      contentKindCanvas => ShortEntityIdType.canvas_work,
+      _ => ShortEntityIdType.novel,
+    });
     final contentDatabasePath = await buildNovelContentDatabasePath(novelId);
     try {
       await _initializeContentDatabase(
         contentDatabasePath: contentDatabasePath,
         contentKind: contentKind,
-        category: category,
-        tags: tags,
         plannedEpisodeCount: plannedEpisodeCount,
         setNovelOnboardingEligible: setNovelOnboardingEligible,
         populateContent: populateContent,
@@ -108,20 +113,25 @@ class NovelActionsService {
         novelId: novelId,
         coverSourcePath: coverSourcePath,
       );
-      await _database.novelDao.create(
-        id: novelId,
-        title: title,
-        authorName: authorName,
-        description: description,
-        coverAssetId: coverAssetId,
-        contentDatabasePath: contentDatabasePath,
-        tags: tags,
-        category: category,
-        type: type ?? novelTypeOriginal,
-        contentKind: contentKind,
-        sourceNovelId: sourceNovelId,
-        draft: draft,
-      );
+      await _database.transaction(() async {
+        if (!draft) {
+          await _ensureShelfTitleAvailable(title);
+        }
+        await _database.novelDao.create(
+          id: novelId,
+          title: title,
+          authorName: authorName,
+          description: description,
+          coverAssetId: coverAssetId,
+          contentDatabasePath: contentDatabasePath,
+          tags: tags,
+          category: category,
+          type: type ?? novelTypeOriginal,
+          contentKind: contentKind,
+          sourceNovelId: sourceNovelId,
+          draft: draft,
+        );
+      });
     } catch (error, stackTrace) {
       await _discardUnregisteredContentDatabase(
         contentDatabasePath,
@@ -133,11 +143,35 @@ class NovelActionsService {
     return novelId;
   }
 
+  /// 默认标题由界面本地化；登记前再查重，处理并发创建抢占同名的情况。
+  Future<String> createCanvas({required String defaultTitle}) async {
+    final base = defaultTitle.trim();
+    if (base.isEmpty) {
+      throw ArgumentError.value(defaultTitle, 'defaultTitle');
+    }
+    var number = 1;
+    while (true) {
+      final title = number == 1 ? base : '$base $number';
+      number++;
+      if (await findNovelByTitle(title) != null) {
+        continue;
+      }
+      try {
+        return await createNovel(
+          title: title,
+          description: '',
+          contentKind: contentKindCanvas,
+          setNovelOnboardingEligible: false,
+        );
+      } on NovelTitleConflictException {
+        // 登记事务中被另一创建占用，重选默认标题；失败的新库已由 createNovel 收尾。
+      }
+    }
+  }
+
   Future<void> _initializeContentDatabase({
     required String contentDatabasePath,
     required String contentKind,
-    required String? category,
-    required List<String>? tags,
     required int? plannedEpisodeCount,
     required bool setNovelOnboardingEligible,
     required Future<void> Function(NovelContentDatabase content)?
@@ -146,16 +180,14 @@ class NovelActionsService {
     final contentDatabase = _contentDatabaseFactory(contentDatabasePath);
     Object? operationError;
     try {
-      if (contentKind == contentKindScreenplay) {
+      if (contentKind == contentKindCanvas) {
+        await ScreenplayService(contentDatabase).createCanvasStructure();
+      } else if (contentKind == contentKindScreenplay) {
         final seedScreenplay = _seedScreenplayWorkspace;
         if (seedScreenplay == null) {
-          await ScreenplayService(contentDatabase).createInitialStructure(
-            plannedEpisodeCount: plannedEpisodeCount,
-            style: initialProductionStyle(
-              category: category,
-              tags: tags ?? const [],
-            ),
-          );
+          await ScreenplayService(
+            contentDatabase,
+          ).createInitialStructure(plannedEpisodeCount: plannedEpisodeCount);
         } else {
           await seedScreenplay(contentDatabase, plannedEpisodeCount);
         }
@@ -273,7 +305,7 @@ class NovelActionsService {
   }
 
   /// 「加入书架」：清除快速开书占位标记，让作品正式进入书库。
-  /// 由编辑器「加入书架」按钮或 Run 的 add-to-library 命令显式触发，不耦合写入动作。
+  /// 供界面「加入书架」入口调用。
   Future<void> clearNovelDraft(String novelId) async {
     try {
       await _database.transaction(() async {
@@ -391,22 +423,40 @@ class NovelActionsService {
     String? description,
     List<String>? tags,
     String? category,
+    String? status,
+    bool? draft,
   }) async {
-    if (title == null &&
-        authorName == null &&
-        description == null &&
-        tags == null &&
-        category == null) {
+    final addToShelf = draft == false;
+    final hasMetadata =
+        title != null ||
+        authorName != null ||
+        description != null ||
+        tags != null ||
+        category != null ||
+        status != null;
+    if (!hasMetadata && draft == null) {
       return;
     }
     await _database.transaction(() async {
-      if (title != null) {
+      if (title != null || draft != null) {
         final novel = await _database.novelDao.get(novelId);
         if (novel == null) {
           throw StateError('Novel not found: $novelId');
         }
-        if (!novel.draft) {
-          await _ensureShelfTitleAvailable(title, excludingId: novelId);
+        if (draft == true && !novel.draft) {
+          throw const NovelDraftReversionException();
+        }
+        if (addToShelf || !novel.draft) {
+          await _ensureShelfTitleAvailable(
+            title ?? novel.title,
+            excludingId: novelId,
+          );
+        }
+        if (!hasMetadata) {
+          if (addToShelf && novel.draft) {
+            await _database.novelDao.updateDraft(id: novelId, draft: false);
+          }
+          return;
         }
       }
       final updated = await _database.novelDao.updateMetadata(
@@ -416,6 +466,8 @@ class NovelActionsService {
         description: description,
         tags: tags,
         category: category,
+        status: status,
+        draft: addToShelf ? false : null,
       );
       if (updated == 0) {
         throw StateError('Novel not found: $novelId');
@@ -425,8 +477,8 @@ class NovelActionsService {
 
   /// 内容编辑只更新所属作品的时间，保留主记录的元数据与字数。
   /// 尚未绑定到作品的内容库（初始化、导入）不参与书库排序。
-  Future<void> markContentEdited(String contentDatabasePath) async {
-    final novel = await getNovelByContentDatabasePath(contentDatabasePath);
+  Future<void> markContentEdited(String novelId) async {
+    final novel = await getNovel(novelId);
     if (novel == null) {
       return;
     }
@@ -469,24 +521,6 @@ class NovelActionsService {
     }
   }
 
-  Future<Novel?> getNovelByContentDatabasePath(
-    String contentDatabasePath,
-  ) async {
-    final relativePath = RevericPaths.toRelative(contentDatabasePath);
-    final directPaths = <String>{contentDatabasePath};
-    if (relativePath != null) {
-      directPaths.add(relativePath);
-    }
-    for (final path in directPaths) {
-      final novel = await _database.novelDao.getByContentDatabasePath(path);
-      if (novel != null) {
-        return novel;
-      }
-    }
-
-    return null;
-  }
-
   Future<String> ensureNovelContentDatabasePath(Novel novel) async {
     final existingPath = novel.contentDatabasePath;
     if (existingPath != null && existingPath.isNotEmpty) {
@@ -495,7 +529,9 @@ class NovelActionsService {
       final exists = await File(resolvedPath).exists();
       if (exists) {
         final contentDatabase = NovelContentDatabase(existingPath);
-        await contentDatabase.seedDefaultWorkspace();
+        if (novel.contentKind != contentKindCanvas) {
+          await contentDatabase.seedDefaultWorkspace();
+        }
         await contentDatabase.close();
         // 返回存储原值（相对路径），保持其作为 Riverpod family key 的一致性。
         return existingPath;
@@ -504,7 +540,11 @@ class NovelActionsService {
 
     final databasePath = await buildNovelContentDatabasePath(novel.id);
     final contentDatabase = NovelContentDatabase(databasePath);
-    await contentDatabase.seedDefaultWorkspace();
+    if (novel.contentKind == contentKindCanvas) {
+      await ScreenplayService(contentDatabase).createCanvasStructure();
+    } else {
+      await contentDatabase.seedDefaultWorkspace();
+    }
     await contentDatabase.close();
     await _database.novelDao.updateContentDatabasePath(
       id: novel.id,

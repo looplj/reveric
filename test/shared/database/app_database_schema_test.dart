@@ -10,14 +10,15 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 
 void main() {
-  test(
-    'v1 clips migrate with nullable audio preference and preserved data',
-    () async {
-      // v0.4.0 production_clips table and its scene index.
-      final database = NovelContentDatabase.forTest(
-        NativeDatabase.memory(
-          setup: (db) {
-            db.execute("""
+  for (final hasAudioColumn in [false, true]) {
+    test(
+      'v1 clips migrate with ${hasAudioColumn ? 'existing' : 'nullable'} audio preference and preserved data',
+      () async {
+        // v0.4.0 production_clips table and its scene index.
+        final database = NovelContentDatabase.forTest(
+          NativeDatabase.memory(
+            setup: (db) {
+              db.execute("""
           CREATE TABLE production_clips (
             inputs TEXT NOT NULL DEFAULT '[]', character_id TEXT,
             location_id TEXT, item_id TEXT, style_selection TEXT,
@@ -39,62 +40,69 @@ void main() {
             VALUES ('clip', 'episode', 'video', 'Original', 'Rain', 123, 456);
           PRAGMA user_version = 1;
         """);
-          },
-        ),
-      );
-      addTearDown(database.close);
-      final clips = await database.select(database.productionClips).get();
-      expect(clips, hasLength(1));
-      expect(clips.single.id, 'clip');
-      expect(clips.single.title, 'Original');
-      expect(clips.single.prompt, 'Rain');
-      expect(clips.single.generateAudio, isNull);
-      expect(
-        (await database.customSelect('PRAGMA user_version').getSingle())
-            .read<int>('user_version'),
-        2,
-      );
-      final columns = await database
-          .customSelect('PRAGMA table_info(production_clips)')
-          .get();
-      expect(
-        columns
-            .singleWhere((c) => c.read<String>('name') == 'id')
-            .read<int>('pk'),
-        1,
-      );
-      expect(
-        columns
-            .singleWhere((c) => c.read<String>('name') == 'generate_audio')
-            .read<String>('type'),
-        'INTEGER',
-      );
-      final indexes = await database
-          .customSelect('PRAGMA index_list(production_clips)')
-          .get();
-      expect(
-        indexes.map((i) => i.read<String>('name')),
-        contains('production_clips_by_scene_id_deleted_at_sort_order'),
-      );
-      await database.customStatement(
-        'UPDATE production_clips SET generate_audio = 0',
-      );
-      expect(
-        (await database.select(database.productionClips).getSingle())
-            .generateAudio,
-        isFalse,
-      );
-      expect(
-        (await database
-                .customSelect(
-                  'SELECT typeof(generate_audio) AS type FROM production_clips',
-                )
-                .getSingle())
-            .read<String>('type'),
-        'integer',
-      );
-    },
-  );
+              if (hasAudioColumn) {
+                db.execute(
+                  'ALTER TABLE production_clips ADD COLUMN generate_audio INTEGER',
+                );
+                db.execute('UPDATE production_clips SET generate_audio = 1');
+              }
+            },
+          ),
+        );
+        addTearDown(database.close);
+        final clips = await database.select(database.productionClips).get();
+        expect(clips, hasLength(1));
+        expect(clips.single.id, 'clip');
+        expect(clips.single.title, 'Original');
+        expect(clips.single.prompt, 'Rain');
+        expect(clips.single.generateAudio, hasAudioColumn ? isTrue : isNull);
+        expect(
+          (await database.customSelect('PRAGMA user_version').getSingle())
+              .read<int>('user_version'),
+          2,
+        );
+        final columns = await database
+            .customSelect('PRAGMA table_info(production_clips)')
+            .get();
+        expect(
+          columns
+              .singleWhere((c) => c.read<String>('name') == 'id')
+              .read<int>('pk'),
+          1,
+        );
+        expect(
+          columns
+              .singleWhere((c) => c.read<String>('name') == 'generate_audio')
+              .read<String>('type'),
+          'INTEGER',
+        );
+        final indexes = await database
+            .customSelect('PRAGMA index_list(production_clips)')
+            .get();
+        expect(
+          indexes.map((i) => i.read<String>('name')),
+          contains('production_clips_by_scene_id_deleted_at_sort_order'),
+        );
+        await database.customStatement(
+          'UPDATE production_clips SET generate_audio = 0',
+        );
+        expect(
+          (await database.select(database.productionClips).getSingle())
+              .generateAudio,
+          isFalse,
+        );
+        expect(
+          (await database
+                  .customSelect(
+                    'SELECT typeof(generate_audio) AS type FROM production_clips',
+                  )
+                  .getSingle())
+              .read<String>('type'),
+          'integer',
+        );
+      },
+    );
+  }
 
   test('fresh schema excludes removed feature tables', () async {
     final database = AppDatabase.forTest(NativeDatabase.memory());
@@ -142,6 +150,7 @@ void main() {
       'access_key_id',
       'secret_access_key',
       'asset_project_name',
+      'config',
     ]) {
       final column = providerColumns.singleWhere(
         (row) => row.read<String>('name') == name,

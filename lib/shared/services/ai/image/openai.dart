@@ -17,11 +17,16 @@ class OpenAiImageClient extends ImageClient {
   static const String _editSize = '768x1024';
 
   @override
-  Future<AiImageGenerationResult> generate(ImageGenerationRequest request) =>
-      request.images.isEmpty ? _generate(request) : _edit(request);
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
+  ) => request.references.isEmpty
+      ? _generate(request, outputs)
+      : _edit(request, outputs);
 
-  Future<AiImageGenerationResult> _generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> _generate(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final apiKey = config.effectiveApiKey;
     if (apiKey.isEmpty) {
@@ -41,7 +46,6 @@ class OpenAiImageClient extends ImageClient {
       final body = <String, dynamic>{
         'model': request.model,
         'prompt': request.prompt,
-        'response_format': 'b64_json',
         'output_format': 'png',
         'n': 1,
         'size': request.size ?? _generateSize,
@@ -51,7 +55,7 @@ class OpenAiImageClient extends ImageClient {
           'complexity': complexity,
       };
 
-      final response = await dio.post<Map<String, dynamic>>(
+      final response = await dio.post<Object?>(
         uri.toString(),
         data: body,
         options: Options(
@@ -77,17 +81,24 @@ class OpenAiImageClient extends ImageClient {
       );
 
       final data = response.data;
-      if (data == null) {
-        throw const AiImageGenerationException('图片生成服务返回了空结果，请稍后重试。');
+      if (data is! Map<String, dynamic>) {
+        throw invalidImageOutputs('Empty image response');
       }
 
-      return await parseImageResponse(data, emptyMessage: '图片生成服务未返回图片，请稍后重试。');
+      return await parseImageResponse(
+        data,
+        outputs,
+        emptyMessage: '图片生成服务未返回图片，请稍后重试。',
+      );
     } finally {
       dio.close(force: true);
     }
   }
 
-  Future<AiImageGenerationResult> _edit(ImageGenerationRequest request) async {
+  Future<ProviderSubmitResult> _edit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
+  ) async {
     final apiKey = config.effectiveApiKey;
     if (apiKey.isEmpty) {
       throw const AiImageGenerationException('请先配置图片模型的 API Key。');
@@ -109,7 +120,6 @@ class OpenAiImageClient extends ImageClient {
         'n': '1',
         'size': request.size ?? _editSize,
       });
-      form.fields.add(const MapEntry('response_format', 'b64_json'));
       final quality = request.quality;
       if (quality != null && quality.isNotEmpty) {
         form.fields.add(MapEntry('quality', quality));
@@ -117,8 +127,8 @@ class OpenAiImageClient extends ImageClient {
       if (request.complexity case final String complexity) {
         form.fields.add(MapEntry('complexity', complexity));
       }
-      for (final input in request.images) {
-        final normalized = await imageInputAsDataUri(input);
+      for (final input in request.references) {
+        final normalized = await imageInputAsDataUri(input, outputs);
         if (normalized.startsWith('data:')) {
           final comma = normalized.indexOf(',');
           final header = normalized.substring(0, comma);
@@ -142,7 +152,7 @@ class OpenAiImageClient extends ImageClient {
         }
       }
 
-      final response = await dio.post<Map<String, dynamic>>(
+      final response = await dio.post<Object?>(
         uri.toString(),
         data: form,
         options: Options(
@@ -165,11 +175,15 @@ class OpenAiImageClient extends ImageClient {
       );
 
       final data = response.data;
-      if (data == null) {
-        throw const AiImageGenerationException('图片编辑服务返回了空结果，请稍后重试。');
+      if (data is! Map<String, dynamic>) {
+        throw invalidImageOutputs('Empty or malformed image edit response');
       }
 
-      return await parseImageResponse(data, emptyMessage: '图片编辑服务未返回图片，请稍后重试。');
+      return await parseImageResponse(
+        data,
+        outputs,
+        emptyMessage: '图片编辑服务未返回图片，请稍后重试。',
+      );
     } finally {
       dio.close(force: true);
     }

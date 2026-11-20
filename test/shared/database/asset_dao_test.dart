@@ -51,4 +51,49 @@ void main() {
       await db.close();
     }
   });
+
+  test('latest image is the newest live image owned by the work', () async {
+    final db = AppDatabase.forTest(NativeDatabase.memory());
+    try {
+      Future<void> insert(
+        String id, {
+        String type = 'image',
+        String? novelId = 'work',
+        required DateTime at,
+      }) => db.assetDao.insertAsset(
+        AssetsCompanion.insert(
+          id: id,
+          type: type,
+          purpose: 'production.generated',
+          novelId: Value(novelId),
+          path: Value('file_workspaces/work/$id'),
+          content: Value(
+            type == 'image'
+                ? const ImageAssetContent(mimeType: 'image/png')
+                : const VideoAssetContent(mimeType: 'video/mp4'),
+          ),
+          createdAt: Value(at),
+        ),
+      );
+      final base = DateTime(2026);
+      expect(await db.assetDao.watchLatestImage('work').first, isNull);
+      await insert('old', at: base);
+      await insert('newest', at: base.add(const Duration(minutes: 1)));
+      await insert(
+        'video',
+        type: 'video',
+        at: base.add(const Duration(minutes: 2)),
+      );
+      await insert(
+        'shared',
+        novelId: null,
+        at: base.add(const Duration(minutes: 3)),
+      );
+      expect((await db.assetDao.watchLatestImage('work').first)?.id, 'newest');
+      await db.assetDao.softDeleteAsset('newest');
+      expect((await db.assetDao.watchLatestImage('work').first)?.id, 'old');
+    } finally {
+      await db.close();
+    }
+  });
 }

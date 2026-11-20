@@ -42,28 +42,35 @@ class WanVideoClient extends VideoClient {
   Map<String, dynamic> encode(
     VideoRequest request,
     List<VideoReference> references,
-  ) => {
-    'model': request.modelId,
-    'input': {
-      'prompt': request.prompt,
-      if (references.isNotEmpty)
-        'media': [
-          for (final ref in references) {'type': ref.role.name, 'url': ref.url},
-        ],
-    },
-    'parameters': {
-      'resolution': request.resolution,
-      'duration': request.durationSeconds,
-      if (lookupVideoChannelModel(
-            providerType,
-            request.modelId,
-          )?.protocolOptions.requiredMode !=
-          VideoMode.first_frame)
-        'ratio': request.ratio,
-      'audio': ?request.audio,
-      'prompt_extend': ?request.promptExtend,
-    },
-  };
+  ) {
+    final modes = lookupVideoChannelModel(
+      providerType,
+      request.modelId,
+    )?.capabilities.modes;
+    final firstFrameOnly =
+        modes != null &&
+        modes.length == 1 &&
+        modes.single == VideoMode.first_frame;
+    return {
+      'model': request.modelId,
+      'input': {
+        'prompt': request.prompt,
+        if (references.isNotEmpty)
+          'media': [
+            for (final ref in references)
+              {'type': ref.role.name, 'url': ref.url},
+          ],
+      },
+      'parameters': {
+        'resolution': request.resolution,
+        'duration': request.durationSeconds,
+        if (!firstFrameOnly) 'ratio': request.ratio,
+        'audio': ?request.audio,
+        'prompt_extend': ?request.promptExtend,
+      },
+    };
+  }
+
   @override
   String submissionId(Map<String, dynamic> json) =>
       (json['output'] as Map)['task_id'] as String;

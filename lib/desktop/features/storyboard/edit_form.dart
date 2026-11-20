@@ -53,19 +53,25 @@ class ShotEditForm extends HookConsumerWidget {
   const ShotEditForm({
     super.key,
     required this.path,
+    required this.novelId,
     required this.sceneId,
     this.shot,
     this.production,
   });
   final String path;
+  final String novelId;
   final String sceneId;
   final ProductionClipRow? shot;
   final ScreenplayRow? production;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final service = ref.watch(storyboardServiceProvider(path));
-    final overlay = ref.watch(workingOverlayServiceProvider(path));
+    final service = ref.watch(
+      storyboardServiceProvider(path, novelId: novelId),
+    );
+    final overlay = ref.watch(
+      workOverlayServiceProvider((path: path, novelId: novelId)),
+    );
     final appDb = ref.watch(appDatabaseProvider);
     final providers = useAiProviders(appDb);
     final saving = useState(false);

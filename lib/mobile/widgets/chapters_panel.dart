@@ -85,7 +85,9 @@ class MobileChaptersPanel extends HookConsumerWidget {
     if (!confirmed) {
       return;
     }
-    final service = ref.read(novelContentServiceProvider(databasePath));
+    final service = ref.read(
+      workContentServiceProvider((path: databasePath, novelId: novel.id)),
+    );
     await service.deleteChapter(chapter.id);
   }
 
@@ -296,8 +298,7 @@ class MobileChaptersPanel extends HookConsumerWidget {
             }
             return Positioned(
               bottom:
-                  MediaQuery.viewPaddingOf(context).bottom +
-                  RevericSpacing.x2l,
+                  MediaQuery.viewPaddingOf(context).bottom + RevericSpacing.x2l,
               left: 0,
               right: 0,
               child: Row(
@@ -356,9 +357,7 @@ class _VolumeHeader extends StatelessWidget {
             onTap: onToggleExpanded,
             borderRadius: BorderRadius.circular(RevericRadius.small),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: RevericSpacing.xxs,
-              ),
+              padding: const EdgeInsets.symmetric(vertical: RevericSpacing.xxs),
               child: Row(
                 children: [
                   AnimatedRotation(

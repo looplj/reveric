@@ -32,6 +32,77 @@ import '../services/ai/tool_error_normalize.dart';
 
 final _log = AppLogger.forModule('Agent');
 
+/// 运行退出与 transport 清理分离，避免 async* 的取消等待卡住整个 Agent。
+Stream<AgentRoundStreamEvent> _cancellableRoundStream(
+  Stream<AgentRoundStreamEvent> source,
+  AgentCancellationToken token,
+) {
+  late final StreamController<AgentRoundStreamEvent> controller;
+  StreamSubscription<AgentRoundStreamEvent>? subscription;
+  void Function() unlink = () {};
+  var stopped = false;
+
+  void stop() {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    unlink();
+    final active = subscription;
+    if (active != null) {
+      unawaited(
+        active.cancel().catchError((Object error, StackTrace stack) {
+          _log.warning('Provider stream cleanup failed error=$error\n$stack');
+        }),
+      );
+    }
+    unawaited(controller.close());
+  }
+
+  controller = StreamController<AgentRoundStreamEvent>(
+    onListen: () {
+      if (token.isCancellationRequested) {
+        stop();
+        return;
+      }
+      subscription = source.listen(
+        (event) {
+          if (!stopped) {
+            controller.add(event);
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!stopped) {
+            controller.addError(error, stack);
+          }
+        },
+        onDone: stop,
+      );
+      unlink = token.onCancel(stop);
+    },
+    onPause: () => subscription?.pause(),
+    onResume: () => subscription?.resume(),
+    onCancel: stop,
+  );
+  return controller.stream;
+}
+
+Future<void> _waitForRetry(Duration delay, AgentCancellationToken token) async {
+  final ready = Completer<void>();
+  final timer = Timer(delay, ready.complete);
+  final unlink = token.onCancel(() {
+    if (!ready.isCompleted) {
+      ready.complete();
+    }
+  });
+  try {
+    await ready.future;
+  } finally {
+    timer.cancel();
+    unlink();
+  }
+}
+
 /// 流式 round 重试上限（不含首次尝试）：共 `maxStreamRetries + 1` 次尝试。
 /// 可后续提升进 AgentConfig（见 docs/solutions/agent-stream-retry.md 妥协 #2）。
 ///
@@ -776,20 +847,23 @@ class Agent {
             // 必须显式通知 ProviderClient 关闭本次专用 client，才能中止底层请求。
             // TimeoutException 进入既有 transient retry，重试耗尽后 AgentError 再由
             // ChatTurnRunner 统一结束 streaming UI。
-            final stream = assembleRound(
-              rawStream.timeout(
-                streamInactivityTimeout,
-                onTimeout: (sink) {
-                  _client.cancel();
-                  sink.addError(
-                    TimeoutException(
-                      'Provider stream produced no event within '
-                      '${streamInactivityTimeout.inMilliseconds}ms',
-                      streamInactivityTimeout,
-                    ),
-                  );
-                },
+            final stream = _cancellableRoundStream(
+              assembleRound(
+                rawStream.timeout(
+                  streamInactivityTimeout,
+                  onTimeout: (sink) {
+                    _client.cancel();
+                    sink.addError(
+                      TimeoutException(
+                        'Provider stream produced no event within '
+                        '${streamInactivityTimeout.inMilliseconds}ms',
+                        streamInactivityTimeout,
+                      ),
+                    );
+                  },
+                ),
               ),
+              cancellationController.token,
             );
             AgentRoundResult? complete;
             roundHadIncompleteToolCall = false;
@@ -963,7 +1037,7 @@ class Agent {
                   reason: e.toString(),
                   retryLimit: activeRetryLimit,
                 );
-                await Future.delayed(delay);
+                await _waitForRetry(delay, cancellationController.token);
                 if (_cancelled) {
                   await _runOnCancelled();
                   inbox?.close();

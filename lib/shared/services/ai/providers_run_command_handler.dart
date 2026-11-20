@@ -24,7 +24,7 @@ class ProvidersRunCommandHandler {
     final allowed = switch (subcommand) {
       'list' => {'enabled', 'sort'},
       'read' => {'provider_id'},
-      'models' => {'provider_id', 'kind', 'sort'},
+      'models' => {'provider_id', 'kind', 'model_id', 'view', 'sort'},
       _ => throw const FormatException(
         'providers requires list, read or models. Use Run help providers.',
       ),
@@ -52,6 +52,16 @@ class ProvidersRunCommandHandler {
         : null;
     if (kind != null && !kinds.contains(kind)) {
       throw const FormatException('kind must be chat, image, video or audio.');
+    }
+    final modelId = options.containsKey('model_id')
+        ? requiredText('model_id')
+        : null;
+    if (modelId != null && kind == null) {
+      throw const FormatException('model_id requires kind.');
+    }
+    final view = options.containsKey('view') ? requiredText('view') : 'full';
+    if (!const ['summary', 'full'].contains(view)) {
+      throw const FormatException('view must be summary or full.');
     }
     if (options.containsKey('enabled') && options['enabled'] is! bool) {
       throw const FormatException('enabled must be a boolean.');
@@ -129,10 +139,23 @@ class ProvidersRunCommandHandler {
     if (subcommand == 'read') {
       return {'ok': true, ...providerResource(provider)};
     }
+    if (modelId != null &&
+        !configuredProviderModels(provider, kind!).contains(modelId)) {
+      throw const ToolOperationException(
+        'not_found',
+        'Configured model not found.',
+      );
+    }
     return listing([
       for (final modelKind in kind == null ? kinds : [kind])
         for (final id in configuredProviderModels(provider, modelKind))
-          providerModelResource(provider, modelKind, id),
+          if (modelId == null || id == modelId)
+            providerModelResource(
+              provider,
+              modelKind,
+              id,
+              includeDetails: view == 'full',
+            ),
     ]);
   }
 
@@ -140,7 +163,7 @@ class ProvidersRunCommandHandler {
       '''Read configured providers and their chat, image, video and audio models. Results exclude credentials.
 providers list: optional enabled (boolean), sort (id/name/type/enabled/configured).
 providers read: provider_id required.
-providers models: provider_id required; optional kind=chat|image|video|audio filters model type. Omit kind to return all four types. Returns full details including capabilities and defaults for every model; optional sort (id/provider_id/kind/available/capabilities_known/unavailable_reason).
+providers models: provider_id required; optional kind=chat|image|video|audio filters model type. Omit kind to return all four types. Optional model_id with kind selects one configured model (not_found if absent). view=summary omits capabilities and defaults; view=full (default) returns capabilities and defaults; optional sort (id/provider_id/kind/available/capabilities_known/unavailable_reason).
 Lists return all entries without pagination; offset and limit are not supported. Prefix sort with - for descending order.
 Pass provider_id exactly as returned, without URI encoding. Unknown capabilities remain unknown. Availability reflects local configuration only, not remote access or quota.
 asset_certification: whether the provider can certify assets into its private asset library.

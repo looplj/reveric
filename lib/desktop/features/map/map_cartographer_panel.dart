@@ -295,6 +295,7 @@ class MapCartographerPanel extends HookConsumerWidget {
                         ),
                   )
                 : _InspectorTab(
+                    novelId: novelId,
                     databasePath: databasePath,
                     settings: settings,
                     locations: locations,
@@ -414,6 +415,7 @@ class _GenerateTab extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final form = useMapGenerateForm(
+      ref: ref,
       locations: locations,
       rootId: rootId,
       mapType: mapType,
@@ -451,6 +453,7 @@ class _GenerateTab extends HookConsumerWidget {
             RevericSpacing.md,
           ),
           child: MapGenerateFooter(
+            modelId: form.modelId.value,
             databasePath: databasePath,
             hasPendingAgentDraft: agentDraft != null,
             hasChildLocations: locations.any(
@@ -475,6 +478,7 @@ class _GenerateTab extends HookConsumerWidget {
 
 class _InspectorTab extends HookConsumerWidget {
   const _InspectorTab({
+    required this.novelId,
     required this.databasePath,
     required this.settings,
     required this.locations,
@@ -486,6 +490,7 @@ class _InspectorTab extends HookConsumerWidget {
   });
 
   final String databasePath;
+  final String novelId;
   final MapStudioSettings settings;
   final List<Location> locations;
   final String? selectedLocationId;
@@ -676,6 +681,7 @@ class _InspectorTab extends HookConsumerWidget {
           ),
           const SizedBox(height: RevericSpacing.xs),
           LocationPhotos(
+            novelId: novelId,
             key: ValueKey('map_location_photos_${location.id}'),
             databasePath: databasePath,
             location: location,

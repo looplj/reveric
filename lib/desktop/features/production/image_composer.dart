@@ -42,6 +42,7 @@ import '../../../shared/theme/theme.dart';
 import '../canvas/widgets/glass.dart';
 import '../storyboard/edit_form.dart' show ShotField;
 import 'edit_session.dart';
+import 'history_region.dart';
 import 'image_submit.dart';
 import 'input_preview.dart';
 import 'prompt_controller.dart';
@@ -159,7 +160,7 @@ class _ImageForm extends HookConsumerWidget {
         : ProductionImageCapabilities(provider, model.$2);
     final complexities = provider == null
         ? const <String>[]
-        : imageComplexityLevels(provider.type, model.$2).toList();
+        : imageComplexityLevels(provider, model.$2).toList();
     String? blockedReason;
     if (!providers.hasData) {
       blockedReason = context.t(
@@ -176,7 +177,7 @@ class _ImageForm extends HookConsumerWidget {
     }
     if (blockedReason == null &&
         referenceRequiredMethods.contains(preset.method) &&
-        inputs.value.isEmpty) {
+        inputs.value.every((input) => input.isPrompt)) {
       blockedReason = context.t(LocaleKeys.productionViewImageRequired);
     }
     if (blockedReason == null &&
@@ -187,7 +188,7 @@ class _ImageForm extends HookConsumerWidget {
     final saved = useRef('');
     final pending = useRef<Timer?>(null);
     final writing = useRef<Future<bool>?>(null);
-    final error = useState(false);
+    final error = useState<Object?>(null);
     final overlay = ref.watch(workingOverlayServiceProvider(path));
     String value(ShotField key) => form.getValue<String>(key) ?? '';
     String signature() =>
@@ -225,7 +226,7 @@ class _ImageForm extends HookConsumerWidget {
         saved.value = version;
         external.sync((await service.shots.getShot(node.clipId!))!);
         if (context.mounted) {
-          error.value = false;
+          error.value = null;
         }
         return true;
       } catch (failure, stack) {
@@ -235,7 +236,7 @@ class _ImageForm extends HookConsumerWidget {
           stackTrace: stack,
         );
         if (context.mounted) {
-          error.value = true;
+          error.value = failure;
         }
         return false;
       }
@@ -284,6 +285,9 @@ class _ImageForm extends HookConsumerWidget {
     prompt.inputIds = inputs.value.map((i) => i.id).toSet();
     prompt.onPreview = (id) => productionRun(context, () async {
       final input = inputs.value.firstWhere((i) => i.id == id);
+      if (input.isPrompt) {
+        return;
+      }
       final asset = await service.inputAsset(input);
       if (context.mounted) {
         await previewProductionAsset(context, service, asset.id);
@@ -301,7 +305,9 @@ class _ImageForm extends HookConsumerWidget {
           .firstOrNull;
       if (input == null) {
         input = ProductionInput.asset(asset.id, VideoInputRole.reference_image);
-        inputs.value = [...inputs.value, input];
+        await changeProductionInputs(context, node.id, save, () {
+          inputs.value = [...inputs.value, input!];
+        });
       }
       if (reference) {
         prompt.insertReference(input.id, asset.name);
@@ -406,21 +412,36 @@ class _ImageForm extends HookConsumerWidget {
                       ProductionInputTile(
                         service: service,
                         input: inputs.value[i],
-                        valid: capability?.allowsReferenceCount(i + 1) ?? false,
+                        valid:
+                            inputs.value[i].isPrompt ||
+                            (capability?.allowsReferenceCount(
+                                  inputs.value
+                                      .take(i + 1)
+                                      .where((input) => !input.isPrompt)
+                                      .length,
+                                ) ??
+                                false),
                         onRole: null,
                         onMove: inputs.value.length < 2
                             ? null
-                            : (delta) {
-                                final target = i + delta;
-                                if (target >= 0 &&
-                                    target < inputs.value.length) {
-                                  final next = [...inputs.value];
-                                  next.insert(target, next.removeAt(i));
-                                  inputs.value = next;
-                                }
-                              },
+                            : (delta) => changeProductionInputs(
+                                context,
+                                node.id,
+                                save,
+                                () {
+                                  final target = i + delta;
+                                  if (target >= 0 &&
+                                      target < inputs.value.length) {
+                                    final next = [...inputs.value];
+                                    next.insert(target, next.removeAt(i));
+                                    inputs.value = next;
+                                  }
+                                },
+                              ),
                         onRemove: () =>
-                            inputs.value = [...inputs.value]..removeAt(i),
+                            changeProductionInputs(context, node.id, save, () {
+                              inputs.value = [...inputs.value]..removeAt(i);
+                            }),
                       ),
                   ],
                 ),
@@ -446,11 +467,11 @@ class _ImageForm extends HookConsumerWidget {
                   ),
                 ),
               ),
-              if (error.value)
+              if (error.value != null)
                 Padding(
                   padding: const EdgeInsets.only(top: RevericSpacing.xs),
                   child: Text(
-                    context.t(LocaleKeys.productionInvalid),
+                    context.t(productionDraftSaveErrorKey(error.value!)),
                     style: typo.uiTiny.copyWith(color: colors.error),
                   ),
                 ),
@@ -556,7 +577,7 @@ class _ImageForm extends HookConsumerWidget {
                     complexity: provider == null
                         ? null
                         : imageComplexityFor(
-                            provider.type,
+                            provider,
                             model.$2,
                             preset.complexity,
                           ),

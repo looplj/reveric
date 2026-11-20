@@ -315,12 +315,12 @@ void main() {
     });
   });
 
-  test('image rejects unsupported ratio before network', () async {
+  test('image rejects unsupported resolution before network', () async {
     await _registerCatalog();
     await http.runWithClient(() async {
       final service = AiImageGenerationService(_media(), model: _imageId);
       await expectLater(
-        service.generateImage('a cat', aspectRatio: '1:1', resolution: '2K'),
+        service.generateImage('a cat', aspectRatio: '1:1', resolution: '8K'),
         throwsA(isA<AiImageGenerationException>()),
       );
     }, () => MockClient((_) => throw StateError('must not send')));
@@ -343,7 +343,7 @@ void main() {
       endpoint: Uri.parse('https://img.purefox.org/v1'),
       apiKey: 'purefox-key',
     );
-    final receipt = await api.submit(_videoRequest(), []);
+    final receipt = await api.submitNative(_videoRequest(), []);
     expect(receipt.taskId, 'job-1');
     expect(seen.single.url.path, '/v1/generate');
     expect(receipt.pollingUrl.path, '/v1/jobs/job-1');
@@ -376,7 +376,7 @@ void main() {
         endpoint: Uri.parse('https://img.purefox.org/v1'),
         apiKey: 'purefox-key',
       );
-      final receipt = await api.submit(_videoRequest(), []);
+      final receipt = await api.submitNative(_videoRequest(), []);
       expect(receipt.taskId, 'job-1');
       transport.close();
     },
@@ -394,7 +394,7 @@ void main() {
       apiKey: 'purefox-key',
     );
     await expectLater(
-      api.submit(_videoRequest(), []),
+      api.submitNative(_videoRequest(), []),
       throwsA(
         isA<VideoException>().having(
           (e) => e.code,
@@ -420,7 +420,7 @@ void main() {
       endpoint: Uri.parse('https://img.purefox.org/v1'),
       apiKey: 'purefox-key',
     );
-    await api.submit(_videoRequest(mode: VideoMode.reference), [
+    await api.submitNative(_videoRequest(mode: VideoMode.reference), [
       _reference('https://bucket.example/references/a.png'),
     ]);
     // 公网直链不需要预签名上传：一次 POST /v1/generate 就是全部请求。
@@ -448,7 +448,7 @@ void main() {
         endpoint: Uri.parse('https://img.purefox.org/v1'),
         apiKey: 'purefox-key',
       );
-      await api.submit(_videoRequest(mode: VideoMode.reference), [
+      await api.submitNative(_videoRequest(mode: VideoMode.reference), [
         _reference('uploads/AbC.png'),
       ]);
       // 已上传 key 只进入生成请求，不尝试 GET 或重新上传。
@@ -473,7 +473,7 @@ void main() {
       apiKey: 'purefox-key',
     );
     await expectLater(
-      api.submit(_videoRequest(mode: VideoMode.reference), [
+      api.submitNative(_videoRequest(mode: VideoMode.reference), [
         _reference('asset://private-asset'),
       ]),
       throwsA(
@@ -505,7 +505,7 @@ void main() {
       endpoint: Uri.parse('https://img.purefox.org/v1'),
       apiKey: 'purefox-key',
     );
-    final result = await api.query(
+    final result = await api.queryNative(
       VideoSubmission(
         taskId: 'job-1',
         modelId: _videoId,
@@ -540,7 +540,7 @@ void main() {
       apiKey: 'purefox-key',
     );
     await expectLater(
-      api.query(
+      api.queryNative(
         VideoSubmission(
           taskId: 'job-1',
           modelId: _videoId,
@@ -574,7 +574,7 @@ void main() {
       endpoint: Uri.parse('https://img.purefox.org/v1'),
       apiKey: 'purefox-key',
     );
-    final result = await api.query(
+    final result = await api.queryNative(
       VideoSubmission(
         taskId: 'job-1',
         modelId: _videoId,
@@ -602,7 +602,7 @@ void main() {
       apiKey: 'purefox-key',
     );
     await expectLater(
-      api.submit(_videoRequest(), []),
+      api.submitNative(_videoRequest(), []),
       throwsA(
         isA<VideoException>()
             .having((e) => e.code, 'code', VideoErrorCode.authentication)

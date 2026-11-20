@@ -2,7 +2,7 @@
 // 关联文件:
 //   lib/shared/widgets/screenplay/document_session.dart
 //   lib/shared/widgets/screenplay/document_rows.dart
-//   lib/shared/widgets/screenplay/loading.dart
+//   lib/shared/widgets/screenplay/typography_scope.dart
 //   lib/shared/widgets/screenplay/editing_scope.dart
 //   lib/shared/providers/screenplay_providers.dart
 //   lib/shared/localization/locale_keys.dart
@@ -34,6 +34,7 @@ import 'document_session.dart';
 import 'document_rows.dart';
 import 'editing_scope.dart';
 import 'element_options.dart';
+import 'typography_scope.dart';
 
 final _log = AppLogger.forModule('ScreenplayDocumentEditor');
 
@@ -163,7 +164,9 @@ class _DocumentEditorBody extends HookConsumerWidget {
       screenplayServiceProvider(path, novelId: host.novel.id),
     );
     final database = ref.watch(novelContentDatabaseProvider(path));
-    final overlay = ref.watch(workingOverlayServiceProvider(path));
+    final overlay = ref.watch(
+      workOverlayServiceProvider((path: path, novelId: host.novel.id)),
+    );
     final session = useMemoized(() {
       final id = host.scope.sceneId;
       final initial = id == null
@@ -242,8 +245,9 @@ class _DocumentEditorBody extends HookConsumerWidget {
         host.pickCharacter,
         host.mobile,
         path,
+        host.novel.id,
       ),
-      [session, host.pickCharacter, host.mobile, path],
+      [session, host.pickCharacter, host.mobile, path, host.novel.id],
     );
     // 选中场次只用于滚动定位，走 notifier 而不是构造参数：进 memo deps 会让
     // 高亮每跟随一次就重建整棵正文。
@@ -384,7 +388,7 @@ class _DocumentEditorBody extends HookConsumerWidget {
             actions: actions,
             trailing: host.toolbarTrailingBuilder?.call(context, session),
           ),
-          Expanded(child: editor),
+          Expanded(child: ScreenplayTypographyScope(child: editor)),
           if (host.footerBuilder != null) host.footerBuilder!(context, session),
         ],
       ),

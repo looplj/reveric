@@ -45,6 +45,8 @@ import '../../providers/settings_providers.dart';
 import '../../providers/webdav_backup_providers.dart';
 import '../../services/backup_orchestrator.dart';
 import '../../services/backup_service.dart';
+import '../../services/crash_reporting/crash_sentinel.dart';
+import '../../services/single_instance_service.dart';
 import '../../theme/theme.dart';
 import 'backup_restore_page.dart';
 import 'webdav_backup_settings.dart';
@@ -869,37 +871,48 @@ class BackupSettingsSection extends HookConsumerWidget {
     _RestoreFeedback feedback,
     ValueNotifier<_PendingRestore?> pendingRestore,
   ) async {
-    XFile? selectedFile;
+    final temporary = defaultTargetPlatform == TargetPlatform.android;
+    String? selectedPath;
+    var retainedForRestore = false;
+    feedback.start();
+    _log.info(
+      'Restore selection started platform=${defaultTargetPlatform.name}',
+    );
     try {
-      selectedFile = await openFile(
-        acceptedTypeGroups: [
-          // iOS 要求 type group 提供 UTI，否则 file_selector 抛 Invalid argument。
-          const XTypeGroup(
-            label: 'archives',
-            extensions: ['zip'],
-            uniformTypeIdentifiers: ['public.zip-archive'],
-          ),
-        ],
-      );
-    } catch (error, stackTrace) {
-      _log.error(
-        'Restore file selection failed',
-        error: error,
-        stackTrace: stackTrace,
-      );
+      if (temporary) {
+        final result = await const MethodChannel(
+          'reveric/backup_import',
+        ).invokeMapMethod<String, Object?>('pickBackup');
+        if (result != null) {
+          selectedPath = result['path'] as String;
+          _log.info(
+            'Restore selection copied bytes=${result['bytes']} '
+            'reportedBytes=${result['reportedBytes']} cachedBytes=${result['cachedBytes']} '
+            'sourceSha256=${result['sourceSha256']} elapsedMs=${result['elapsedMs']} '
+            'availableBytes=${result['availableBytes']} metadataError=${result['metadataError']}',
+          );
+        }
+      } else {
+        final file = await openFile(
+          acceptedTypeGroups: const [
+            XTypeGroup(
+              label: 'archives',
+              extensions: ['zip'],
+              uniformTypeIdentifiers: ['public.zip-archive'],
+            ),
+          ],
+        );
+        selectedPath = file?.path;
+      }
+      if (selectedPath == null) {
+        _log.info('Restore selection cancelled');
+        return;
+      }
       if (!context.mounted) {
         return;
       }
-      feedback.showError(context.t(LocaleKeys.settingsBackupRestoreFailed));
-      return;
-    }
-    if (selectedFile == null || !context.mounted) {
-      return;
-    }
-
-    feedback.start();
-    try {
-      final inspection = await backupService.inspectBackup(selectedFile.path);
+      _log.info('Restore selection ready; inspecting backup');
+      final inspection = await backupService.inspectBackup(selectedPath);
       if (!context.mounted) {
         return;
       }
@@ -911,10 +924,24 @@ class BackupSettingsSection extends HookConsumerWidget {
         return;
       }
       pendingRestore.value = _PendingRestore(
-        filePath: selectedFile.path,
+        filePath: selectedPath,
         preview: preview,
+        temporary: temporary,
       );
+      retainedForRestore = true;
+    } catch (error, stackTrace) {
+      _log.error(
+        'Restore preparation failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        feedback.showError(context.t(LocaleKeys.settingsBackupRestoreFailed));
+      }
     } finally {
+      if (temporary && !retainedForRestore && selectedPath != null) {
+        await _deleteFileIfPresent(selectedPath);
+      }
       if (context.mounted) {
         feedback.stop();
       }
@@ -929,8 +956,9 @@ class BackupSettingsSection extends HookConsumerWidget {
     ValueNotifier<_PendingRestore?> pendingRestore,
   ) async {
     feedback.start();
+    late final RestoreResult restoreResult;
     try {
-      final restoreResult = await backupService.restoreFromZip(
+      restoreResult = await backupService.restoreFromZip(
         execution.pending.filePath,
         mode: execution.selection.mode,
         novelIds: execution.selection.novelIds,
@@ -954,49 +982,33 @@ class BackupSettingsSection extends HookConsumerWidget {
           _log.info('Restore: content database executors closed');
         },
       );
-      if (!context.mounted) {
-        return;
-      }
-      pendingRestore.value = null;
-      if (restoreResult.cancelled) {
-        return;
-      }
-      if (restoreResult.success) {
-        feedback.showSuccess(
-          context.t(LocaleKeys.settingsBackupRestoreSuccess),
-        );
-        // 移动端设置页很长，底部 banner 容易被忽略，而恢复后数据库文件已被替换，
-        // 继续用旧进程操作会读到不一致的状态，因此用不可取消的弹窗强提示重启。
-        if (_usesRestartDialog()) {
-          await _showRestartRequiredDialog(context);
-        }
-      } else {
-        feedback.showError(
-          _restoreFailureMessage(
-            context,
-            restoreResult.failureReason,
-            safetyBackupPath: restoreResult.safetyBackupPath,
-            needsRestart: restoreResult.needsRestart,
-          ),
-        );
-      }
     } finally {
       await _deleteTemporaryRestore(execution.pending);
       if (context.mounted) {
         feedback.stop();
       }
     }
-  }
-
-  /// 恢复成功后是否用弹窗强提示重启。
-  ///
-  /// 与 [backupSupportsCustomDirectory] 共用 `defaultTargetPlatform`，避免同一文件里
-  /// 出现两套「是否移动端」的判定在测试中互相矛盾。
-  bool _usesRestartDialog() {
-    return switch (defaultTargetPlatform) {
-      TargetPlatform.android || TargetPlatform.iOS => true,
-      _ => false,
-    };
+    if (!context.mounted) {
+      return;
+    }
+    pendingRestore.value = null;
+    if (restoreResult.cancelled) {
+      return;
+    }
+    if (restoreResult.success) {
+      feedback.showSuccess(context.t(LocaleKeys.settingsBackupRestoreSuccess));
+      // 所有平台的旧服务都已关闭，必须退出进程后才能继续使用。
+      await _showRestartRequiredDialog(context);
+    } else {
+      feedback.showError(
+        _restoreFailureMessage(
+          context,
+          restoreResult.failureReason,
+          safetyBackupPath: restoreResult.safetyBackupPath,
+          needsRestart: restoreResult.needsRestart,
+        ),
+      );
+    }
   }
 
   /// 恢复后数据库文件已被替换，必须重启进程才能读到一致的数据。
@@ -1004,7 +1016,6 @@ class BackupSettingsSection extends HookConsumerWidget {
   /// 弹窗不可通过点击遮罩或返回键关闭，只能通过按钮离开，避免用户忽略后继续写入。
   Future<void> _showRestartRequiredDialog(BuildContext context) async {
     final colors = RevericTheme.colorsOf(context);
-    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
 
     await showRevericDialog<void>(
       context: context,
@@ -1026,25 +1037,32 @@ class BackupSettingsSection extends HookConsumerWidget {
             actions: [
               RevericButton.primary(
                 key: const ValueKey('backup_restore_restart_action'),
-                onPressed: () {
-                  if (isAndroid) {
-                    // Android 允许应用主动退出，用户重新打开即为干净进程。
-                    SystemNavigator.pop();
-                    return;
-                  }
-                  Navigator.of(dialogContext).pop();
-                },
-                label: context.t(
-                  isAndroid
-                      ? LocaleKeys.settingsBackupRestoreRestartExit
-                      : LocaleKeys.settingsBackupRestoreRestartAcknowledge,
-                ),
+                onPressed: _exitAfterRestore,
+                label: context.t(LocaleKeys.settingsBackupRestoreRestartExit),
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  Future<void> _exitAfterRestore() async {
+    _log.info('Restore: exiting process for restart');
+    try {
+      CrashSentinel.markActiveSessionCleanExitSync();
+      await SingleInstanceService.unlock().timeout(const Duration(seconds: 3));
+    } catch (error, stackTrace) {
+      _log.error(
+        'Restore: exit cleanup failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } finally {
+      // SystemNavigator.pop only finishes the Android activity; the old Dart
+      // process and disposed services can survive when the app is reopened.
+      exit(0);
+    }
   }
 
   String _restoreFailureMessage(

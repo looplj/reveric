@@ -26,11 +26,13 @@ class CompendiumEntryRow extends ConsumerWidget {
   const CompendiumEntryRow({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.section,
     required this.entry,
   });
 
   final String databasePath;
+  final String novelId;
   final MobileEditorSection section;
   final Item entry;
 
@@ -45,6 +47,7 @@ class CompendiumEntryRow extends ConsumerWidget {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileEntryEditorPage(
+            novelId: novelId,
             databasePath: databasePath,
             section: section,
             entryId: entry.id,

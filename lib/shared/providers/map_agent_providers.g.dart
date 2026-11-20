@@ -52,7 +52,7 @@ final class MapDesignDraftsProvider
   }
 }
 
-String _$mapDesignDraftsHash() => r'5ee7fceeb26dba050985e4000b47888be1ecd31a';
+String _$mapDesignDraftsHash() => r'3bbae894e824003a21a61971e7afeb78fb1d53c8';
 
 /// 草稿需要在制图师关闭时仍可由 Agent 投递，因此保留轻量值；数量有硬上限，
 /// 应用或忽略后立即移除，不持有 controller、stream 或数据库连接。

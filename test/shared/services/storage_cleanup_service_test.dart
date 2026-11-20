@@ -193,6 +193,41 @@ void main() {
 
   group('StorageCleanupService', () {
     test(
+      'cleans expired data in a relatively registered content database',
+      () async {
+        final fixture = await _sessionFixture();
+        final file = File(fixture.content.filePath);
+        const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          pathProvider,
+          (_) async => file.parent.path,
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(pathProvider, null),
+        );
+        await RevericPaths.initialize();
+        await fixture.app.novelDao.updateContentDatabasePath(
+          id: 'novel',
+          contentDatabasePath: p.basename(file.path),
+        );
+        await _seedCleanupRow(fixture.content, 'documents', 'deleted-document');
+
+        final result = await fixture.service.runNow();
+
+        expect(result.scanFailures, 0);
+        expect(result.deletedSessions, 3);
+        expect(result.deletedMessages, 3);
+        expect(result.deletedSoftRows['documents'], 1);
+        expect(
+          await fixture.content.select(fixture.content.documents).get(),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
       'purges expired global and orphan records without requiring an owning novel',
       () async {
         final f = await _sessionFixture();

@@ -13,13 +13,14 @@
 | [设置与存储](settings-and-storage.md) | “设置 / 插件”页面、插件状态、配置与凭据、设置页操作、数据库与 migration、zip 安装、备份 |
 | [Prompt、定时任务与记忆插件](prompts-and-tasks.md) | 请求级 Prompt、Host 定时任务与调度持久化、记忆插件闭环；通用 Event 与 Hook 留待后续 |
 | [自定义 View](views.md) | 插件页面、页面状态、TSX 原生响应式与 Flutter 组件、自定义工具卡片（M3） |
+| [Provider 扩展](providers.md) | 已实现合同与验收边界：公共注册、视频任务、图片同步/异步生成、文件传输与恢复；聊天（标准协议与自定义）设计保留、首版不实施；T-31a 至 T-34 |
 | [验收](verification.md) | 按里程碑的验收标准与测试入口 |
 
 ## 背景
 
 ### 立项背景
 
-- `WebSearch`、`WebFetch` 用 Dart 写在 [tools.dart](../../../lib/shared/services/ai/tools.dart) 的 `part` 文件 [tools_web.dart](../../../lib/shared/services/ai/tools_web.dart) 中：搜索抓取百度结果页并用正则解析，网页读取用 [html2md](../../../lib/third/html2md/html2md.dart)（turndown 的 Dart 移植）转 Markdown。两个工具始终注册，用户无法关闭。
+- `WebSearch`、`WebFetch` 用 Dart 写在 [tools.dart](../../../lib/shared/services/ai/tools.dart) 的 `part` 文件 `tools_web.dart` 中：搜索抓取百度结果页并用正则解析，网页读取用 `html2md`（turndown 的 Dart 移植）转 Markdown。两个工具始终注册，用户无法关闭。（这两个工具后来迁移为内置联网检索插件 `plugins/web`，原 Dart 实现已移除。）
 - 工具可用范围由代码中的白名单决定：[builtin_agent_tools.dart](../../../lib/shared/services/ai/builtin_agent_tools.dart) 为各 Agent 列出工具名，[ai_session_mode.dart](../../../lib/shared/models/ai_session_mode.dart) 为 roleplay 等特殊模式列出工具名；Agent 记录上的 `allowedToolNames` 字段没有开放给用户配置，值也来自代码。
 - 立项时应用没有插件机制。MCP 是外部工具接入，按本项目的产品边界不能直接修改系统数据。
 - codemode 已接入 fjs（QuickJS），每次执行新建运行时、关闭内置模块、只通过 JSON 桥接调用 Host（[codemode/runtime.dart](../../../lib/shared/services/ai/codemode/runtime.dart)）。
@@ -42,14 +43,14 @@
 
 - 清单声明配置字段、设置操作、页面和任务元数据；插件通过统一入口 `apply(setup)` 注册工具、Prompt，并绑定任务与操作 handler，`setup` 只提供注册接口和日志；Host 声明并实现扩展点，在对应操作发生时以该阶段的上下文调用插件的处理函数。一个插件可以同时提供工具、页面等多种能力，不划分互斥的插件类型。
 - 内置插件与第三方插件使用同一套 JS 运行时、包格式、表和流程，内置只表示随应用分发。第一个内置插件是联网检索，包含 `WebSearch`、`WebFetch`，默认开启，用户可以关闭。
-- 插件运行在 fjs 中；工具按次新建运行时，TSX 页面按实例保持运行时直至关闭，A2UI 页面按 action 执行。插件只能通过 Host API 访问业务能力，网络请求经 Host 完成且不限制目标地址。
+- 插件运行在 fjs 中；普通业务复用常驻运行时，Provider 查询使用专用常驻运行时，提交与上传按次隔离；TSX 页面按实例保持运行时直至关闭，A2UI action 复用业务运行时。插件只能通过 Host API 访问业务能力，网络请求经 Host 完成且不限制目标地址。
 - 插件按页面选择 TSX 或 A2UI，同一插件可同时使用；TSX 使用 Rust 原生响应式与批量节点更新，Flutter 负责布局、输入和宿主控件。样式开放 token、布局与组件变体，不引入完整 CSS/Tailwind 或 shadcn React 兼容层。A2UI 同时支持声明式插件页面、配置表单和只读工具卡片。
 - 插件在清单中声明业务数据权限，安装时由用户确认，每次调用 Host API 时复查。
 - 配置由清单声明、Host 生成表单；凭据保存在应用数据库中，与普通配置分开。
 - Agent 工具限制改为代码中的 Host 工具禁用名单，插件工具不进入名单。
 - MCP 不作为插件运行时。
 - 插件通过 Dart Host 管理的私有 SQLite 持久化结构化数据，Tools、Prompt、任务和 UI 共用同一数据库；不开放宿主主库 SQL。
-- Prompt 在模型请求准备阶段按 scope 读取；定时任务由 Host 调度，到期创建短生命周期运行时，不依赖页面打开。应用退出和 Android 后台不承诺定时执行。
+- Prompt 在模型请求准备阶段按 scope 读取；定时任务由 Host 调度，到期调用业务运行时中的 handler，不依赖页面打开。应用退出和 Android 后台不承诺定时执行。
 
 ## 目标
 
@@ -67,7 +68,9 @@
 
 本方案包含：插件清单与运行时、工具扩展点、内置联网检索插件、Agent 工具限制改造、“设置 / 插件”页面、配置与凭据、插件存储、zip 安装更新与卸载、首批业务数据 API、独立页面形式的自定义 View、自定义工具卡片、私有 SQLite、请求级 Prompt、Host 定时任务和任务专用模型调用。以记忆插件的完整使用闭环作为 M3 成功标准。
 
-本方案不包含：插件市场与自动更新、插件签名与审核、Command / Provider / 菜单入口 / 通用 Event / Hook 扩展点、通用 AI Agent 调用接口、独立页面以外的 View 位置、插件页面内部文案的多语言、进程级隔离、WebView 插件。这些事项见[后续迭代](#后续迭代)。
+M1 至 M3 之外新增 [Provider 扩展](providers.md)，T-31a 交付通用供应商定义、实例配置与模型发现，T-31b 交付视频接口；T-34 交付图片接口；T-32 标准协议聊天、T-33 自定义聊天保留设计，首版不实施。公共注册、图片与视频链路已实现并完成本轮受影响范围的本地回归，三平台整机验收仍待完成；聊天仍暂缓，不改变原里程碑的验收状态。
+
+本方案不包含：插件市场与自动更新、插件签名与审核、Command / 菜单入口 / 通用 Event / Hook 扩展点、通用 AI Agent 调用接口、独立页面以外的 View 位置、插件页面内部文案的多语言、进程级隔离、WebView 插件。这些事项见[后续迭代](#后续迭代)。Provider 本轮不实施聊天（设计保留为 T-32、T-33），也不包含音频方法、OAuth 登录与自动刷新、账号轮换、本地 CLI 执行、价格表和余额管理，范围见 [Provider 扩展](providers.md#目标与范围)。
 
 ## User Stories
 
@@ -83,7 +86,7 @@
 | 决策点 | 备选 | 结论与理由 |
 | --- | --- | --- |
 | 内置插件实现 | Dart 实现 / 与第三方相同的 JS 实现 | JS。只维护一条加载与注册路径，内置插件同时验证第三方能力；代价是 Web 工具要用 JS 重写 |
-| 运行时生命周期 | 全部按次创建 / 每插件常驻 / 工具及 A2UI action 按次、TSX 页面按实例 | 工具及 A2UI action 按次、TSX 页面按实例。工具保留隔离性；页面可以保留状态、绑定与异步任务，多页面与工具不共用运行时。代价是页面需要明确清理、后台暂停和总量限制 |
+| 运行时生命周期 | 全部按次创建 / 每插件常驻 / 工具及 A2UI action 按次、TSX 页面按实例 | 普通业务及 A2UI action 复用常驻运行时，调用上下文隔离；Provider 查询独立共享，提交按次隔离；TSX 页面按实例存活。引擎重置会影响共享引擎的在途调用，页面需要明确清理、后台暂停和总量限制 |
 | HTML 转 Markdown | Host 复用 html2md / 插件内打包 node-html-markdown | 插件内。插件自包含，Host 不为单个插件开专用接口，`lib/third/html2md` 可删除；不要求输出与原实现一致 |
 | 凭据存储 | 系统钥匙串等安全存储 / 应用数据库 | 数据库。三平台无需新依赖，与 AI 供应商 Key 现状一致；凭据随备份保存 |
 | 业务数据权限 | 启用即全部信任 / 清单声明并由用户确认 | 声明并确认。插件能修改作品数据，用户需要在安装时知道范围 |
@@ -106,7 +109,7 @@
 2. 插件只通过 Host API 访问能力，Host 从运行时绑定的身份判断权限，不信任插件参数。
 3. 插件出错只影响自身能力：激活失败、调用失败都返回明确原因，不影响其他插件和宿主功能。
 4. 用户的启停选择只由用户改变，运行失败、平台不支持、版本更新都不改写它。
-5. 用户数据默认软删除；卸载和撤销授权只做标记。
+5. 用户数据默认软删除；撤销授权只做标记。卸载物理删除凭据、授权和插件包并软删除其供应商实例，插件数据由用户选择是否删除，见[卸载](settings-and-storage.md#卸载)。
 
 | 假设 | 如果不成立 | 应对 |
 | --- | --- | --- |
@@ -159,12 +162,7 @@ M1 不依赖渲染器。配置表单由清单生成，使用既有 A2UI，不依
    - 影响：恶意插件在授权范围内可以读写数据，并可以访问任意网络地址。
    - 升级触发：开放插件市场或分发来源不可控。
    - 后续方向：签名与审核、进程级隔离。
-5. 妥协：卸载不清理文件和数据。
-   - 原因：物理删除需要单独确认范围；更新时的旧版本目录会删除，见[安装与更新流程](settings-and-storage.md#安装与更新流程)。
-   - 影响：已卸载插件的包文件、配置和凭据占用磁盘空间。
-   - 升级触发：用户反馈占用空间。
-   - 后续方向：在设置页提供显式清理，范围另行确认。
-6. 妥协：`allowedToolNames` 列停止读写但保留。
+5. 妥协：`allowedToolNames` 列停止读写但保留。
    - 原因：SQLite 删列需要重建表。
    - 影响：数据库中保留无用列。
    - 升级触发：下次需要重建相关表时。
@@ -176,15 +174,16 @@ M1 不依赖渲染器。配置表单由清单生成，使用既有 A2UI，不依
 
 | 事项 | 已有方向 | 何时处理 |
 | --- | --- | --- |
-| 业务运行时常驻 | 所有业务插件共用一个常驻 fjs 引擎，加载时执行一次 `apply`；保留异步并发，不加全局串行队列；桥接按插件和调用隔离身份、上下文与结果；取消或超时只终止当前调用，更新、禁用及引擎重建时清理或恢复注册；TSX 页面继续各自独立运行时 | T-30，待实施 |
-| 更多业务扩展点 | 按实际插件需求增加 Command、Provider、菜单入口、Event 和 Hook，沿用同一注册和释放机制；语义边界见[Event 与 Hook](prompts-and-tasks.md#event-与-hook) | 出现具体插件需求时 |
+| 业务运行时常驻 | 所有业务插件共用一个常驻 fjs 引擎，加载时执行一次 `apply`；保留异步并发，不加全局串行队列；桥接按插件和调用隔离身份、上下文与结果；取消优先终止当前调用，无法收尾时重置共享引擎，更新、禁用及引擎重建时清理或恢复注册；TSX 页面继续各自独立运行时 | T-30 已实现，性能与三平台验收待完成 |
+| Provider 扩展 | 采用业务入参加阶段上下文；首版只做图片/视频，由宿主管理任务恢复和素材登记，见 [Provider 扩展](providers.md) | T-31a、T-31b、T-34 已实现；三平台验收待完成；T-32、T-33 暂缓 |
+| Provider OAuth 登录 | Host 执行授权码 + PKCE 或设备码流程、存储与刷新 token，插件通过 `auth.accessToken()` 取用；复用并提取 MCP 的回调实现，见 [OAuth 登录](providers.md#oauth-登录后续迭代) | 出现需要 OAuth 的平台插件时 |
+| 更多业务扩展点 | 按实际插件需求增加 Command、菜单入口、Event 和 Hook，沿用同一注册和释放机制；语义边界见[Event 与 Hook](prompts-and-tasks.md#event-与-hook) | 出现具体插件需求时 |
 | 延迟加载的插件工具 | 注册时可选 `exposure: "direct" \| "deferred"`，默认 `direct`。`deferred` 工具不进每次请求的工具列表，由模型按需搜索、查看定义后调用；调用入口可能用新的 `Run plugin ...` 命令，而不复用 `Run mcp`，具体在实施时确定。调用仍经 `PluginAgentToolDispatcher` 检查可用性、写卡片元数据；不能在 codemode 中调用。新增可选字段不破坏 API 版本 | 出现工具数量多、直接放入工具列表会明显占用上下文的插件时 |
 | 通用 AI 调用接口 | M3 已包含任务专用 `ai.generateText`；通用 `ai.invoke` 需要独立的任务身份、取消和结果订阅，不受单次执行 60 秒上限约束 | 出现具体插件需求时 |
 | AI 生成界面 | Agent 按 A2UI 格式输出界面，复用 A2UI 渲染器和组件目录；新增模型输出解析、由组件目录生成提示词、把界面事件回传给 Agent 的事件处理方 | 出现具体需求时 |
 | 其他 View 位置 | 侧栏、人物详情面板、编辑器菜单等 | 出现具体插件需求时 |
 | 特殊模式的写入限制 | roleplay、theater、monologue、council 仍禁用 Host 写入工具，可以使用已启用的插件工具 | 以后可能放开，届时只改代码中的禁用名单 |
 | `allowedToolNames` 列 | M1 停止读写，列保留 | 后续 schema 变更时删除 |
-| 卸载后的文件与数据清理 | 卸载只做标记，不删除插件包、配置和凭据；更新时旧版本目录已删除 | 需要清理时另行确认范围 |
 | 插件市场、签名与自动更新 | 不在三个里程碑内 | 另立方案 |
 
 ## 既有 ADR 的适用关系
@@ -194,7 +193,7 @@ M1 不依赖渲染器。配置表单由清单生成，使用既有 A2UI，不依
 | [0007：运行时与 UI](../../adr/0007-plugin-runtime-fjs-a2ui.md) | 保留 JS、宿主组件和插件身份边界；新增 TSX + 原生响应式 + Flutter 页面后端，使用 `reveric-tsx-v1`。A2UI 与 TSX 并列，插件可按页面选择；配置和只读卡片使用 A2UI，不要求页面迁移到 TSX |
 | [0008：权限](../../adr/0008-plugin-security-capability-allowlist.md) | 保留业务能力白名单和逐次检查；网络经 Host 接口提供但不限制目标地址、不单独授权；任务模型生成使用 `ai.generateText` 权限 |
 | [0009：API 版本](../../adr/0009-plugin-capability-api-versioning.md) | 保留版本边界与兼容原则 |
-| [0010：插件存储](../../adr/0010-plugin-storage-drift-plugin-storage-table.md) | 保留插件数据隔离；KV 与凭据留在主库，结构化数据增加 Host 管理的私有 SQLite；卸载不物理删除 |
+| [0010：插件存储](../../adr/0010-plugin-storage-drift-plugin-storage-table.md) | 保留插件数据隔离；KV 与凭据留在主库，结构化数据增加 Host 管理的私有 SQLite；卸载物理删除凭据，KV 与私有库由用户选择是否删除 |
 | [0011：UI 状态](../../adr/0011-plugin-ui-state-boundary-datamodel-riverpod.md) | 保留页面与全局业务状态边界；TSX 页面局部状态由组件 signal 持有，Host 持有节点与 Flutter 输入状态，页面运行时随实例存活。A2UI 页面仍以 DataModel 为真源并按 action 执行，两者分别维护状态 |
 | [0012：注册与授权](../../adr/0012-plugin-registry-permissions-persistence.md) | 保留注册和授权持久化职责；字段以[设置与存储](settings-and-storage.md#表结构)为准，删除改为设置 `deleted_at`；另增 `plugin_secrets` 表 |
 
@@ -244,6 +243,13 @@ flowchart TD
     subgraph Revision["API 修订"]
         T28["T-28 · 插件 API 修订"]
     end
+    subgraph Providers["Provider 扩展"]
+        T31a["T-31a · 公共注册、实例、模型能力与持久化"]
+        T31b["T-31b · 视频链路"]
+        T32["T-32 · 标准协议聊天（暂缓）"]
+        T33["T-33 · 自定义聊天（暂缓）"]
+        T34["T-34 · 图片业务接口"]
+    end
 
     T17 --> T03
     T01 --> T03
@@ -287,7 +293,18 @@ flowchart TD
     T03 --> T28
     T10 --> T28
     T25 --> T28
+    T03 --> T31a
+    T29 --> T31a
+    T09 --> T31a
+    T11 --> T31a
+    T31a --> T31b
+    T31a --> T32
+    T31a --> T33
+    T31a --> T34
+    T34 -.->|本轮实施顺序| T31b
 ```
+
+Provider 首个可用交付为 T-31a + T-34，包含测试插件的图片生成闭环；随后实施 T-31b。实线表示依赖，T-34 到 T-31b 的虚线表示本轮先后顺序，视频业务不依赖图片业务。共用文件上传由 T-34 先实现。
 
 ### 任务表
 
@@ -311,7 +328,7 @@ flowchart TD
 | T-08 | [M1 三平台验收](verification.md#m1-插件基础与内置联网检索) | 无验收记录 | T-06、T-07 | 按 M1 验收表在 Windows、macOS、Android 执行 |
 | T-09 | [配置、凭据与 storage 接入](settings-and-storage.md#配置与凭据) | 已实现待验收 | T-08、T-18 | 配置表单放入设置页，处理函数上下文的 `settings`、`secrets`、`storage`，待配置状态 |
 | T-10 | [权限与业务数据 API 实现](architecture.md#业务数据-api) | 已实现待验收 | T-08、T-20 | 按 T-20 的设计实现权限确认、逐次检查与章节、人物读写 |
-| T-11 | [zip 安装、更新、卸载与备份](settings-and-storage.md#安装更新与卸载) | 已实现待验收 | T-09、T-10、T-19 | `PluginInstallOrchestrator`、设置页安装与更新入口、软删除卸载、备份目录 |
+| T-11 | [zip 安装、更新、卸载与备份](settings-and-storage.md#安装更新与卸载) | 已实现待验收 | T-09、T-10、T-19 | `PluginInstallOrchestrator`、设置页安装与更新入口、卸载、备份目录；卸载清理方案已调整为硬删凭据、授权与插件包，插件数据由用户选择，代码尚未同步 |
 | T-12 | [M2 三平台验收](verification.md#m2-第三方工具与配置) | 无验收记录 | T-11 | 用示例第三方搜索插件按 M2 验收表执行 |
 | T-13 | [View 注册与页面挂载](views.md#注册与显示) | 已实现，待确认 | T-08、T-21 | 清单 `pages`、必填 `home.plugin` 位置与页面 protocol；A2UI `pages.registerAction`、TSX JS/A2UI 消息校验、导航与多实例会话；dirty 确认、停用/更新释放及后台暂停 |
 | T-14 | [A2UI 渲染器与组件目录](views.md#a2ui-页面与声明式界面) | 已实现待验收 | 无 | 保留已实现的 A2UI v1.0、`a2ui_core: 0.4.0`、组件、预览和测试，服务 A2UI 页面、配置与只读卡片；不作为 TSX 编译器或页面状态层 |
@@ -330,4 +347,9 @@ flowchart TD
 | T-27 | DeepSeek 搜索 / 读取内置插件 | 已实现待验收 | T-04、T-09 | `plugins/deepseek`（`reveric.deepseek`）：DeepSeek 网页搜索与页面读取工具，默认关闭，需配置 API Key，提供 `verifyApiKey` 设置页操作；中英文名称与描述；产物在 `assets/plugins/reveric.deepseek/` |
 | T-28 | [插件 API 修订](architecture.md#插件上下文-api) | 已实现待验收 | T-03、T-10、T-25 | 以 `plugins/sdk/index.d.ts` 为唯一合同：`apply(setup)` 只注册，各阶段独立上下文；移除 `cancelled`；`PluginError` 与 code 原样上报；`setup.settings.registerAction`；`PluginText` 多语言文案；数据 API 只返回摘要、`update` 使用 `patch`，移除 `listAcrossWorks` 与 `readAll`；每次注册批量上报并由 Host 核对清单及激活快照；移除任务 `definition_hash`；结果严格 JSON |
 | T-29 | [plugin.json 重构](architecture.md#清单结构) | 已实现，本地回归通过 | T-28 | 提交 `b734c0c`：`settings.fields/actions`、`pages`（`home.plugin`）、`tasks`；页面与卡片各自声明协议；SDK、宿主、内置插件和产物同步，不保留旧格式兼容。124 个 Dart/Flutter 测试、77 个 JS 测试通过，静态分析通过；未运行原生整机集成测试，不替代三平台验收 |
-| T-30 | 业务插件共用常驻 fjs 运行时 | 待实施 | T-29 | 方向见[后续迭代](#后续迭代)；当前工具、Prompt、任务、设置操作和 A2UI 事件仍按次创建运行时，TSX 页面维持独立实例 |
+| T-30 | 业务插件共用常驻 fjs 运行时 | 已实现，性能与三平台验收待完成 | T-29 | Host 已接入 PluginBusinessRuntime，工具、Prompt、任务、设置操作和 A2UI action 复用处理函数并隔离调用上下文；TSX 页面维持独立实例；Provider 查询与普通业务引擎分开，提交保持隔离 |
+| T-31a | [公共注册、实例与模型](providers.md#实施落点与验证) | 已实现，本轮本地回归通过；待三平台验收 | T-03、T-09、T-11、T-29 | 注册、实例配置、模型发现与持久化、能力及默认值、阶段预算已落地；未知方法忽略，模型名称按语言解析，图片增加 qualityLevels；schema 6 → 7 仅新增 provider_state，下载头不落库；查询复用专用运行时，普通业务/查询/提交分别限流 4/8/4，提交隔离；性能上限待三平台测量 |
+| T-31b | [视频链路](providers.md#实施落点与验证) | 已实现，本轮本地回归通过；待三平台验收 | T-31a | 上传、认证、video.request、样片、submit/query、状态与下载恢复已落地；submitting 阶段拒绝取消，内置 UNKNOWN 按保留期判断过期；URL 持久化、headers 仅内存下载，失败重新 query；插件错误原文展示；共享 DAO 同步限制内置音频首次回执前取消 |
+| T-32 | [标准协议聊天](providers.md#标准协议模式) | 暂缓，首版不实施 | T-31a | prepareRequest（接口根、鉴权与请求调整），复用四类 client；普通/流式 HTTP、鉴权和取消一致；独立模拟插件与三平台验收 |
+| T-33 | [自定义聊天](providers.md#自定义业务模式) | 暂缓，首版不实施 | T-31a | generate、事件与网络流背压、推理签名、工具调用及宿主 Agent 接入；图片输入方式待定；不依赖 T-32 |
+| T-34 | [图片业务接口](providers.md#图片能力) | 已实现，本轮本地回归通过；待三平台验收 | T-31a | ImageClient 统一合同、image.request、参考传输、同步结果与运行内轮询、多候选登记和手动恢复已落地；质量选项来自声明；headers 不写入 imageOutputs 或暂存回执；有远端 ID 时可重新 query，无 ID 的同步图片接受中断后无法恢复鉴权头的限制；验证见 [本轮记录](verification.md#本轮本地验证记录2026-11-13) |

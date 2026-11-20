@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../../../agent/agent_tool_dispatcher.dart';
 import '../../../logger/app_logger.dart';
+import '../../../database/novel_content_database.dart';
 import '../../../models/editing/document.dart';
 import '../../../models/tool_permission.dart';
 import '../../../models/production/media.dart';
@@ -25,6 +26,9 @@ import '../tool_operations.dart';
 import 'production.dart';
 import 'frames.dart';
 import '../../production/contact_sheet.dart';
+import '../../production/editing_output_orchestrator.dart';
+import '../../storyboard/service.dart' show StoryboardException;
+import 'nodes.dart' show outputSummary;
 
 final _log = AppLogger.forModule('EditingPreview');
 
@@ -76,7 +80,11 @@ class EditingToolHost {
     String callId,
   ) async {
     final canvas = production.canvas;
-    final service = EditingService(canvas.db, canvas.library);
+    final service = EditingService(
+      canvas.db,
+      canvas.library,
+      novelId: canvas.novelId,
+    );
     final sessions = production.editingSessions;
     if (sessions == null) {
       throw const ToolOperationException(
@@ -126,24 +134,42 @@ class EditingToolHost {
     }
     if (action == 'create') {
       keys(options, {'title', 'ratio'});
-      final id = const Uuid().v4();
       final doc = EditingDocument.empty(text(options, 'ratio'));
-      await canvas.db.editingDao.create(id, text(options, 'title'), doc);
+      final canvasWork = await canvas.shots.isCanvasWork;
+      final String id;
+      String? nodeId;
+      if (canvasWork) {
+        final node = await canvas.addEditing(
+          (await canvas.ensureCanvas('')).id,
+          title: text(options, 'title'),
+          ratio: doc.ratio,
+        );
+        id = node.editingId!;
+        nodeId = node.id;
+      } else {
+        id = const Uuid().v4();
+        await canvas.db.editingDao.create(id, text(options, 'title'), doc);
+      }
       return {
         'ok': true,
         'id': id,
         'editing_id': id,
-        'revision': 0,
+        'node_id': ?nodeId,
+        if (nodeId != null) 'node_path': '/production/canvas/nodes/$nodeId',
+        'revision': (await canvas.db.editingDao.get(id))!.revision,
         'document': doc.toJson(),
       };
     }
     if (!{
       'read',
+      'duplicate',
       'apply',
       'undo',
       'redo',
       'preview',
+      'export',
       'frames',
+      'inspect_audio',
     }.contains(action)) {
       throw const ToolOperationException(
         'unsupported',
@@ -152,11 +178,28 @@ class EditingToolHost {
     }
     keys(options, switch (action) {
       'read' => {'editing_id', 'track_id', 'start_frame', 'end_frame'},
+      'duplicate' => {'editing_id', 'title', 'expected_revision'},
+      'inspect_audio' => {
+        'editing_id',
+        'expected_revision',
+        'start_frame',
+        'end_frame',
+        'clip_id',
+      },
       'frames' => {'editing_id', 'expected_revision', 'frames'},
       'apply' => {'editing_id', 'expected_revision', 'commands'},
+      'export' => {'editing_id', 'expected_revision', 'resolution'},
       _ => {'editing_id', 'expected_revision'},
     });
     final id = text(options, 'editing_id');
+    final canvasWork = await canvas.shots.isCanvasWork;
+    if (action == 'export' && !canvasWork) {
+      throw const ToolOperationException(
+        'failed_precondition',
+        'Export as a video node requires an editing project on a canvas work.',
+      );
+    }
+    final canvasId = canvasWork ? await service.canvasForEditing(id) : null;
 
     if (await canvas.db.editingDao.get(id) == null) {
       throw const ToolOperationException(
@@ -183,6 +226,14 @@ class EditingToolHost {
         'ratio': session.document!.ratio,
         'tracks': session.document!.tracks.map((t) => t.toJson()).toList(),
         'clips': session.document!.clips.map((c) => c.toJson()).toList(),
+        'total_frames': session.document!.totalFrames,
+      };
+      // Mutations report what changed; Read returns the whole timeline.
+      Map<String, dynamic> summary() => {
+        'ok': true,
+        'id': id,
+        'editing_id': id,
+        'revision': session.revision,
         'total_frames': session.document!.totalFrames,
       };
       if (action == 'read') {
@@ -226,6 +277,62 @@ class EditingToolHost {
               .toList();
         }
         return {...result, 'clips': clips.map((c) => c.toJson()).toList()};
+      }
+      if (action == 'duplicate') {
+        if (options.containsKey('expected_revision')) {
+          final expected = number(options, 'expected_revision');
+          if (session.revision != expected) {
+            throw const EditingConflict();
+          }
+        }
+        final copyDoc = EditingDocument.fromJson(session.document!.toJson());
+        final baseTitle = session.title.trim();
+        final nextTitle = options.containsKey('title')
+            ? text(options, 'title')
+            : (baseTitle.isEmpty ? 'Editing Copy' : '$baseTitle Copy');
+        final String newId;
+        String? nodeId;
+        if (canvasWork) {
+          final sourceNode =
+              await (canvas.db.select(canvas.db.canvasNodes)..where(
+                    (t) =>
+                        t.canvasId.equals(canvasId!) &
+                        t.type.equals(canvasNodeTypeEditing) &
+                        t.refType.equals(canvasNodeRefTypeEditing) &
+                        t.refId.equals(id) &
+                        t.deletedAt.equals(notDeletedSentinel),
+                  ))
+                  .getSingleOrNull();
+          final node = await canvas.addEditing(
+            canvasId!,
+            title: nextTitle,
+            ratio: copyDoc.ratio,
+            document: copyDoc,
+            x: sourceNode?.x ?? 360,
+            y: sourceNode == null
+                ? 80
+                : sourceNode.y + (sourceNode.height ?? 220) + 40,
+          );
+          newId = node.editingId!;
+          nodeId = node.id;
+        } else {
+          newId = const Uuid().v4();
+          await canvas.db.editingDao.create(newId, nextTitle, copyDoc);
+        }
+        return {
+          'ok': true,
+          'id': newId,
+          'editing_id': newId,
+          'source_editing_id': id,
+          'title': nextTitle,
+          'node_id': ?nodeId,
+          if (nodeId != null) 'node_path': '/production/canvas/nodes/$nodeId',
+          'revision': (await canvas.db.editingDao.get(newId))!.revision,
+          'fps': editingFps,
+          'ratio': copyDoc.ratio,
+          'total_frames': copyDoc.totalFrames,
+          'document': copyDoc.toJson(),
+        };
       }
       final expected = number(options, 'expected_revision');
       if (session.revision != expected) {
@@ -273,7 +380,7 @@ class EditingToolHost {
           return result;
         });
         return {
-          ...data(),
+          ...summary(),
           'results': results,
           'changes': EditingAgentCommands.changes(before, session.document!),
         };
@@ -282,11 +389,23 @@ class EditingToolHost {
         final before = session.document!;
         await session.travel(expected, redo: action == 'redo');
         return {
-          ...data(),
+          ...summary(),
           'changes': EditingAgentCommands.changes(before, session.document!),
         };
       }
       final frozen = session.document!;
+      final exporting = action == 'export';
+      final resolution = options['resolution'] ?? '720p';
+      if (exporting && !{'720p', '1080p'}.contains(resolution)) {
+        throw const FormatException('resolution must be 720p or 1080p.');
+      }
+      if (exporting && frozen.totalFrames == 0) {
+        throw const ToolOperationException(
+          'failed_precondition',
+          'The editing timeline is empty.',
+        );
+      }
+      final title = session.title;
       final positions = action == 'frames'
           ? contactSheetPositions(
               options['frames'],
@@ -305,11 +424,22 @@ class EditingToolHost {
         kind: 'editing.$action',
         targetPath: '/editings/$id',
         toolName: 'Run',
-        targetLabel: session.title,
+        targetLabel: title,
         // 预览要渲染整条时间线，固定后台；抽帧很快且结果要立即查看。
-        background: action == 'preview',
+        background: action != 'frames' && action != 'inspect_audio',
         input: options,
-        verifyTarget: () async {},
+        verifyTarget: () async {
+          if (exporting) {
+            try {
+              await service.canvasForEditing(id);
+            } on StateError catch (error) {
+              throw ToolOperationException(
+                'failed_precondition',
+                error.message,
+              );
+            }
+          }
+        },
         execute: (operation) async {
           final renderer = EditingRenderService(service, runner);
           final token = MediaCancellation();
@@ -318,6 +448,35 @@ class EditingToolHost {
           );
           try {
             operation.checkCancelled();
+            if (action == 'inspect_audio') {
+              final first = number(options, 'start_frame');
+              final end = number(options, 'end_frame');
+              final clipId = options.containsKey('clip_id')
+                  ? text(options, 'clip_id')
+                  : null;
+              final audio = await renderer.inspectAudio(
+                frozen,
+                first,
+                end,
+                clipId: clipId,
+                cancellation: token,
+              );
+              return {
+                'ok': true,
+                'editing_id': id,
+                'revision': expected,
+                'fps': editingFps,
+                'start_frame': first,
+                'end_frame': end,
+                'clips': audio.clips,
+                'mix': audio.mix.levels(
+                  origin: first,
+                  samplesPerUnit: editingSamplesPerFrame,
+                  window: 1,
+                  unit: 'frame',
+                ),
+              };
+            }
             if (positions != null) {
               if (!Platform.isMacOS && !Platform.isWindows) {
                 throw UnsupportedError(
@@ -350,9 +509,27 @@ class EditingToolHost {
               progress: (stage, progress) => operation.report(
                 progress: {'stage': stage, 'progress': progress},
               ),
-              preview: true,
+              resolution: resolution as String,
+              preview: !exporting,
             );
             try {
+              if (exporting) {
+                operation.checkCancelled();
+                operation.report(progress: {'stage': 'add_to_canvas'});
+                final node = await EditingOutputOrchestrator().run(
+                  service: canvas,
+                  editingId: id,
+                  file: encoded.file,
+                  name: '$title.mp4',
+                  cancellation: token,
+                );
+                return {
+                  'ok': true,
+                  'editing_id': id,
+                  'revision': expected,
+                  'output': await outputSummary(canvas, node, ''),
+                };
+              }
               final snapshot = await files.copy(
                 context.sessionId!,
                 encoded.file,
@@ -382,11 +559,20 @@ class EditingToolHost {
             } finally {
               await encoded.dispose();
             }
-          } on EditingSourceProblem {
-            throw const ToolOperationException(
+          } on EditingSourceProblem catch (error) {
+            throw ToolOperationException(
               'failed_precondition',
-              'One or more editing sources are unavailable or exceed their media range.',
+              'Unavailable or out-of-range editing sources: ${error.ids.join(', ')}.',
             );
+          } on EditingInsufficientSpace {
+            throw const ToolOperationException(
+              'storage_full',
+              'There is not enough disk space to render the editing project.',
+            );
+          } on StoryboardException catch (error) {
+            throw ToolOperationException('failed_precondition', error.reason);
+          } on StateError catch (error) {
+            throw ToolOperationException('failed_precondition', error.message);
           } on FormatException catch (error) {
             throw ToolOperationException('invalid_argument', error.message);
           } on UnsupportedError {

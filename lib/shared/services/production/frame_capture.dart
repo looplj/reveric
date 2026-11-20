@@ -14,6 +14,7 @@ Future<Uint8List> captureMediaFrame(
   File output,
   MediaCancellation cancellation, {
   int timestampUs = 0,
+  int? detailMaxSide,
 }) async {
   final execution = runner.execute(
     [
@@ -34,7 +35,9 @@ Future<Uint8List> captureMediaFrame(
       '-frames:v',
       '1',
       '-vf',
-      'scale=640:640:force_original_aspect_ratio=decrease,setsar=1',
+      detailMaxSide == null
+          ? 'scale=640:640:force_original_aspect_ratio=decrease,setsar=1'
+          : "scale='min($detailMaxSide,iw)':'min($detailMaxSide,ih)':force_original_aspect_ratio=decrease,setsar=1",
       output.path,
     ],
     probe: false,

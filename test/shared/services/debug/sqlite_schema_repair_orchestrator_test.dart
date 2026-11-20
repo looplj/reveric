@@ -7,8 +7,10 @@
 //   .agents/rules/db-migration.md
 import 'dart:io';
 
+import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/services/debug/sqlite_schema_repair_orchestrator.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
@@ -48,6 +50,45 @@ void main() {
       await tempRoot.delete(recursive: true);
     }
   });
+
+  test(
+    'repairs a relative registration outside the workspace directory',
+    () async {
+      final registeredDirectory = await Directory(
+        p.join(appSupportDir.path, 'restored_works'),
+      ).create();
+      final contentPath = p.join(registeredDirectory.path, 'story.sqlite');
+      sqlite3.open(contentPath).close();
+      final app = AppDatabase.forSchemaRepair(
+        NativeDatabase(File(p.join(appSupportDir.path, 'reveric.sqlite'))),
+      );
+      try {
+        await app.novelDao.create(
+          id: 'restored',
+          title: 'Restored work',
+          description: '',
+          contentDatabasePath: r'restored_works\story.sqlite',
+        );
+      } finally {
+        await app.close();
+      }
+
+      final result = await SqliteSchemaRepairOrchestrator().repair();
+
+      expect(result.success, isTrue);
+      final repaired = sqlite3.open(contentPath, mode: OpenMode.readOnly);
+      try {
+        expect(
+          repaired.select(
+            "SELECT name FROM sqlite_master WHERE name = 'chapter_nodes'",
+          ),
+          hasLength(1),
+        );
+      } finally {
+        repaired.close();
+      }
+    },
+  );
 
   test(
     'repairs current schema without restoring removed legacy structures',

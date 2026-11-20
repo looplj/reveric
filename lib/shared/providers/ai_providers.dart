@@ -15,7 +15,7 @@ import 'tool_permissions.dart';
 import 'tool_operations.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart'
-    show ProviderListenableSelect, ProviderSubscription;
+    show Provider, ProviderListenableSelect, ProviderSubscription;
 import 'package:hooks_riverpod/misc.dart' show KeepAliveLink;
 import 'package:http/http.dart' as http;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -45,6 +45,8 @@ import 'canvas_providers.dart';
 import 'maps_providers.dart';
 import 'novel_providers.dart';
 import 'settings_providers.dart';
+import 'plugin_providers.dart';
+import 'video_tasks.dart';
 import 'spawn_agent_run_providers.dart';
 
 export '../models/ai_chat_session_id.dart' show isTemporaryAiChatSessionId;
@@ -77,6 +79,7 @@ typedef _AiChatNewSessionSignalKey = ({String novelId, String signal});
 /// Chat runtime 的稳定取消来源，用于匿名 trace 区分正常控制流入口。
 enum AiChatCancelSource {
   stopButton('stop_button'),
+  sendQueuedMessageNow('send_queued_message_now'),
   exitPause('exit_pause'),
   modelSwitch('model_switch'),
   rollback('rollback'),
@@ -340,11 +343,11 @@ class AiChatRuntime extends _$AiChatRuntime {
   /// 快速开书草稿的 novel_draft remind 每会话仅投递一次的已发标记。
   bool novelDraftRemindSent = false;
 
-  /// 「立即发送」staged 到当前 in-flight agent 下一轮的完整排队消息。
+  /// 界面离开时 staged 到当前 in-flight agent 下一轮的完整排队消息。
   ///
   /// 存在 runtime（processing 期间 keepAlive）而非 panel-scoped store，使得
   /// 离开 / 折叠聊天界面后，仍存活的 turn 能在下一轮消费它，避免排队内容随
-  /// 面板卸载而静默丢失（见 chat_session_controller 的 send-now / flush 逻辑）。
+  /// 面板卸载而静默丢失。
   QueuedChatMessage? _pendingNextTurnMessage;
 
   /// 供重建后的聊天面板恢复「下一轮发送」横幅；消费仍只允许走 take 方法。
@@ -812,7 +815,7 @@ class AiChatRuntime extends _$AiChatRuntime {
     novelDraftRemindSent = true;
   }
 
-  /// 记录「立即发送」staged 的下一轮完整消息（配合 agent.stageNextTurn 使用）。
+  /// 记录 staged 的下一轮完整消息（配合 agent.stageNextTurn 使用）。
   void stagePendingNextTurnMessage(QueuedChatMessage message) {
     _pendingNextTurnMessage = message;
     state = state.copyWith(hasPendingNextTurnMessage: true);
@@ -2197,12 +2200,28 @@ AiClient? aiService(Ref ref, String? sessionId) {
   if (config == null || !config.isValid) return null;
   final chatModel = writerOption?.model ?? sessionConfig.model;
   if (chatModel == null) return null;
-  final contentService = novelContentPath == null || novelContentPath.isEmpty
+  final contentService =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(novelContentServiceProvider(novelContentPath));
-  final workingOverlay = novelContentPath == null || novelContentPath.isEmpty
+      : ref.watch(
+          workContentServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
+  final workingOverlay =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(workingOverlayServiceProvider(novelContentPath));
+      : ref.watch(
+          workOverlayServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
   final locationsService = novelContentPath == null || novelContentPath.isEmpty
       ? null
       : ref.watch(locationsServiceProvider(novelContentPath));
@@ -2235,7 +2254,6 @@ AiClient? aiService(Ref ref, String? sessionId) {
         ? null
         : CrossWorkResolver(
             appDatabase: ref.watch(appDatabaseProvider),
-            currentDatabasePath: novelContentPath,
             currentContentService: contentService,
             currentWorkId: currentWorkId,
           ),
@@ -2301,12 +2319,28 @@ Future<AiClient?> aiServiceAsync(Ref ref, String? sessionId) async {
   if (config == null || !config.isValid) return null;
   final chatModel = writerOption?.model ?? sessionConfig.model;
   if (chatModel == null) return null;
-  final contentService = novelContentPath == null || novelContentPath.isEmpty
+  final contentService =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(novelContentServiceProvider(novelContentPath));
-  final workingOverlay = novelContentPath == null || novelContentPath.isEmpty
+      : ref.watch(
+          workContentServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
+  final workingOverlay =
+      novelContentPath == null ||
+          novelContentPath.isEmpty ||
+          currentWorkId == null
       ? null
-      : ref.watch(workingOverlayServiceProvider(novelContentPath));
+      : ref.watch(
+          workOverlayServiceProvider((
+            path: novelContentPath,
+            novelId: currentWorkId,
+          )),
+        );
   final locationsService = novelContentPath == null || novelContentPath.isEmpty
       ? null
       : ref.watch(locationsServiceProvider(novelContentPath));
@@ -2339,7 +2373,6 @@ Future<AiClient?> aiServiceAsync(Ref ref, String? sessionId) async {
         ? null
         : CrossWorkResolver(
             appDatabase: ref.watch(appDatabaseProvider),
-            currentDatabasePath: novelContentPath,
             currentContentService: contentService,
             currentWorkId: currentWorkId,
           ),
@@ -2377,6 +2410,30 @@ Future<AiClient?> aiServiceAsync(Ref ref, String? sessionId) async {
 final aiSessionContextNotifierProvider = aiSessionContextProvider;
 
 // ==================== Image Generation Provider ====================
+
+/// 草稿中的完整模型选项 ID 不写入全局偏好；失效的显式选择必须重新选择。
+final studioImageModelSelectionProvider = Provider.autoDispose
+    .family<CoverStudioImageModelSelection?, String?>((ref, optionId) {
+      if (optionId == null) {
+        return ref.watch(coverStudioImageModelSelectionProvider);
+      }
+      final settings = ref.watch(aiSettingsProvider);
+      final option = settings.findModelOptionById(
+        kind: AiModelKind.image,
+        optionId: optionId,
+      );
+      if (option == null) {
+        return null;
+      }
+      final config = settings.findConfigForSelection(
+        providerId: option.providerId,
+        model: option.model,
+        kind: AiModelKind.image,
+      );
+      return config == null
+          ? null
+          : CoverStudioImageModelSelection(config: config, model: option.model);
+    });
 
 /// 封面工作台使用用户配置的默认图片模型。
 class CoverStudioImageModelSelection {
@@ -2439,21 +2496,27 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
   }
   final defaultModel = preferredOption.model;
   final imageLibrary = ref.watch(imageLibraryServiceProvider);
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
   }) async {
     // 生图工具只作用于作品内的角色和物品，结果按作品入库。
-    final service = AiImageGenerationService(
+    final service = await resolveDirectImageService(
       config,
-      model: model ?? defaultModel,
+      model ?? defaultModel,
+      host: host,
+      references: references,
     );
     final result = await service.generateImage(
       prompt,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -2477,22 +2540,32 @@ AiImageGenerationCallback? imageGenerationCallback(Ref ref, String workId) {
 }
 
 @riverpod
-AiImageGenerationCallback? coverImageGenerationCallback(Ref ref) {
-  final selection = ref.watch(coverStudioImageModelSelectionProvider);
+AiImageGenerationCallback? coverImageGenerationCallback(
+  Ref ref, {
+  String? modelId,
+}) {
+  final selection = ref.watch(studioImageModelSelectionProvider(modelId));
   if (selection == null) return null;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
-  }) {
-    return AiImageGenerationService(
+  }) async {
+    final service = await resolveDirectImageService(
       selection.config,
-      model: model ?? selection.model,
-    ).generateImage(
+      model ?? selection.model,
+      host: host,
+      references: references,
+    );
+    return service.generateImage(
       prompt,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -2501,24 +2574,34 @@ AiImageGenerationCallback? coverImageGenerationCallback(Ref ref) {
 }
 
 @riverpod
-AiMultiImageEditCallback? coverImageMultiEditCallback(Ref ref) {
-  final selection = ref.watch(coverStudioImageModelSelectionProvider);
+AiMultiImageEditCallback? coverImageMultiEditCallback(
+  Ref ref, {
+  String? modelId,
+}) {
+  final selection = ref.watch(studioImageModelSelectionProvider(modelId));
   if (selection == null) return null;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     required List<String> imageData,
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
-  }) {
-    return AiImageGenerationService(
+  }) async {
+    final service = await resolveDirectImageService(
       selection.config,
-      model: model ?? selection.model,
-    ).editImages(
+      model ?? selection.model,
+      host: host,
+      references: references,
+    );
+    return service.editImages(
       prompt,
       imageData: imageData,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -2545,16 +2628,26 @@ AiImageEditCallback? imageEditCallback(Ref ref, String workId) {
   }
   final defaultModel = preferredOption.model;
   final imageLibrary = ref.watch(imageLibraryServiceProvider);
-  return (String prompt, {required String imageData, String? model}) async {
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
+  return (
+    String prompt, {
+    required String imageData,
+    String? model,
+    ImageInvocationOptions? options,
+  }) async {
     // 生图工具只作用于作品内的角色和物品，结果按作品入库。
-    final service = AiImageGenerationService(
+    final service = await resolveDirectImageService(
       config,
-      model: model ?? defaultModel,
+      model ?? defaultModel,
+      host: host,
+      references: references,
     );
     final result = await service.editImage(
       prompt,
       imageData: imageData,
       model: model,
+      options: options,
     );
     final asset = await imageLibrary.importGenerated(
       result,
@@ -2589,22 +2682,28 @@ AiMultiImageEditCallback? imageMultiEditCallback(Ref ref) {
     return null;
   }
   final defaultModel = preferredOption.model;
+  final host = ref.watch(pluginHostServiceProvider);
+  final references = ref.watch(referenceStorageServiceProvider);
   return (
     String prompt, {
     required List<String> imageData,
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
   }) async {
-    final service = AiImageGenerationService(
+    final service = await resolveDirectImageService(
       config,
-      model: model ?? defaultModel,
+      model ?? defaultModel,
+      host: host,
+      references: references,
     );
     final result = await service.editImages(
       prompt,
       imageData: imageData,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,

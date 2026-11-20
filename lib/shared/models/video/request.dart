@@ -162,17 +162,25 @@ class VideoMediaInfo {
     this.height,
     this.durationMs,
     this.frameRate,
+    this.hasAudio,
   });
   final int? width;
   final int? height;
   final int? durationMs;
   final double? frameRate;
 
+  /// 是否有音轨；null 表示没有探测。只有视频有意义。
+  ///
+  /// 有些平台的票据接口要求客户端报这个值（Flova 的 `video_metadata.has_audio`），
+  /// 缺了整个元数据会被拒。
+  final bool? hasAudio;
+
   factory VideoMediaInfo.fromJson(Map<String, dynamic> json) => VideoMediaInfo(
     width: json['width'] as int?,
     height: json['height'] as int?,
     durationMs: json['duration_ms'] as int?,
     frameRate: (json['frame_rate'] as num?)?.toDouble(),
+    hasAudio: json['has_audio'] as bool?,
   );
 }
 
@@ -239,3 +247,99 @@ bool isVideoInlineReference(VideoReference ref) =>
     ref.url.startsWith('data:${ref.mimeType};base64,') &&
     ref.url.length ==
         'data:${ref.mimeType};base64,'.length + ((ref.fileSize + 2) ~/ 3) * 4;
+
+/// Provider 合同中的参考来源；本地文件只传 Host 授权句柄。
+class PreparedVideoReference {
+  PreparedVideoReference({
+    required this.assetId,
+    required this.role,
+    required this.mimeType,
+    required this.fileSize,
+    required this.mediaInfo,
+    required Map<String, dynamic> source,
+  }) : source = Map.unmodifiable(source) {
+    if (!{'certified', 'uploaded', 'url', 'file'}.contains(source['kind'])) {
+      throw const FormatException('Invalid video reference source');
+    }
+  }
+  final String assetId, mimeType;
+  final VideoInputRole role;
+  final int fileSize;
+  final VideoMediaInfo mediaInfo;
+  final Map<String, dynamic> source;
+  factory PreparedVideoReference.fromJson(Map<String, dynamic> value) {
+    final media = value['mediaInfo'] as Map;
+    return PreparedVideoReference(
+      assetId: value['assetId'] as String,
+      role: VideoInputRole.values.byName(value['role'] as String),
+      mimeType: value['mimeType'] as String,
+      fileSize: value['fileSize'] as int,
+      mediaInfo: VideoMediaInfo(
+        width: media['width'] as int?,
+        height: media['height'] as int?,
+        durationMs: media['durationMs'] as int?,
+        frameRate: (media['frameRate'] as num?)?.toDouble(),
+      ),
+      source: Map<String, dynamic>.from(value['source'] as Map),
+    );
+  }
+  Map<String, dynamic> toJson() => {
+    'assetId': assetId,
+    'role': role.name,
+    'mimeType': mimeType,
+    'fileSize': fileSize,
+    'mediaInfo': {
+      if (mediaInfo.width != null) 'width': mediaInfo.width,
+      if (mediaInfo.height != null) 'height': mediaInfo.height,
+      if (mediaInfo.durationMs != null) 'durationMs': mediaInfo.durationMs,
+      if (mediaInfo.frameRate != null) 'frameRate': mediaInfo.frameRate,
+    },
+    'source': source,
+  };
+}
+
+class SubmitVideoInput {
+  const SubmitVideoInput({
+    required this.request,
+    required this.references,
+    this.defaults = const {},
+    this.draft = false,
+    this.draftOf,
+  });
+  final VideoRequest request;
+  final List<PreparedVideoReference> references;
+  final Map<String, dynamic> defaults;
+  final bool draft;
+  final ({String remoteTaskId, Map<String, dynamic>? state})? draftOf;
+  Map<String, dynamic> toJson() => {
+    'request': {
+      'modelId': request.modelId,
+      'prompt': request.prompt,
+      'mode': request.mode.name,
+      'resolution': request.resolution,
+      'ratio': request.ratio,
+      'durationSeconds': request.durationSeconds,
+      if (request.audio != null) 'audio': request.audio,
+      if (request.promptExtend != null) 'promptExtend': request.promptExtend,
+      if (draft) 'draft': true,
+      'defaults': defaults,
+      'referenceSlots': request.referenceSlots
+          .map(
+            (s) => {
+              'assetId': s.assetId,
+              'role': s.role.name,
+              'slot': s.slot,
+              if (s.clipId != null) 'clipId': s.clipId,
+              if (s.inputId != null) 'inputId': s.inputId,
+            },
+          )
+          .toList(),
+    },
+    'references': references.map((r) => r.toJson()).toList(),
+    if (draftOf != null)
+      'draftOf': {
+        'remoteTaskId': draftOf!.remoteTaskId,
+        if (draftOf!.state != null) 'state': draftOf!.state,
+      },
+  };
+}

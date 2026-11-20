@@ -368,6 +368,78 @@ void main() {
     },
   );
 
+  for (final (upstreamCode, expected) in [
+    ('rate_limit_exceeded', AiImageErrorCode.rate_limit),
+    ('insufficient_quota', AiImageErrorCode.credit),
+    ('invalid_api_key', AiImageErrorCode.auth),
+  ]) {
+    test('facade preserves HTTP 200 SSE rejection $upstreamCode', () async {
+      var posts = 0;
+      final provider = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(type: 'codex', apiKey: '', models: ['gpt-6-luna']);
+      final service = AiImageGenerationService(
+        provider,
+        model: 'gpt-image-2',
+        codexImageClientFactory: () => CodexImageClient(
+          credentials: () async => _auth,
+          client: _Client((_) {
+            posts++;
+            return _sse(
+              'event: error\ndata: ${jsonEncode({
+                'error': {'code': upstreamCode, 'message': 'Provider $upstreamCode'},
+              })}\n\n',
+            );
+          }),
+        ),
+      );
+      await expectLater(
+        service.generateImage('test'),
+        throwsA(
+          isA<AiImageSubmissionException>()
+              .having((e) => e.failureCode, 'submission outcome', 'rejected')
+              .having((e) => e.code, 'mapped category', expected)
+              .having(
+                (e) => e.userMessage,
+                'provider message',
+                'Provider $upstreamCode',
+              ),
+        ),
+      );
+      expect(posts, 1);
+    });
+  }
+  test('facade keeps unclassified HTTP 200 SSE failure uncertain', () async {
+    var posts = 0;
+    final provider = aiProviderBuiltinById(
+      'openai',
+    )!.copyWith(type: 'codex', apiKey: '', models: ['gpt-6-luna']);
+    final service = AiImageGenerationService(
+      provider,
+      model: 'gpt-image-2',
+      codexImageClientFactory: () => CodexImageClient(
+        credentials: () async => _auth,
+        client: _Client((_) {
+          posts++;
+          return _sse(
+            'event: error\ndata: {"error":{"code":"unknown","message":"unknown result"}}\n\n',
+          );
+        }),
+      ),
+    );
+    await expectLater(
+      service.generateImage('test'),
+      throwsA(
+        isA<AiImageSubmissionException>().having(
+          (e) => e.failureCode,
+          'submission outcome',
+          'submission_unknown',
+        ),
+      ),
+    );
+    expect(posts, 1);
+  });
+
   test('SSE error header retains structured quota classification', () async {
     final transport = _Client(
       (_) => _sse(

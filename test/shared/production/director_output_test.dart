@@ -145,7 +145,7 @@ void main() {
         expect(renderer.frames, List.generate(120, (i) => i));
         expect(renderer.disposed, true);
         final asset = (await db.assetDao.watchAssets().first).single;
-        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
         expect(asset.source, 'director');
         expect(
           asset.path,

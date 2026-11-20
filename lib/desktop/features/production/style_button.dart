@@ -13,7 +13,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../shared/components/reveric_popover.dart';
-import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/database/app_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
@@ -194,16 +193,67 @@ class _StylePopover extends StatelessWidget {
   );
 }
 
-/// 顶栏的剧本全局风格：缩略图 + 名称 ▾，× 清空为无风格。
+/// 顶栏的剧本全局风格：缩略图 + 名称 ▾。清空在风格库里选「无风格」。
 class ProductionScreenplayStyle extends HookWidget {
-  const ProductionScreenplayStyle({super.key, required this.service});
+  const ProductionScreenplayStyle({
+    super.key,
+    required this.service,
+    this.readOnly = false,
+  });
   final ProductionCanvasService service;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final style = _useStyle(context, service, null);
-    final styled = style.look.kind != ProductionStyleThumbKind.none;
+    Widget buildPill({required bool open, required VoidCallback? onTap}) {
+      final label = ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 160),
+        child: Text(
+          style.look.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: typo.uiSmall.copyWith(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      );
+      return ProductionPill(
+        open: open,
+        tooltip: context.t(LocaleKeys.productionStyleScreenplayHint),
+        padding: const EdgeInsets.fromLTRB(
+          RevericSpacing.xxs,
+          0,
+          RevericSpacing.sm,
+          0,
+        ),
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ProductionStyleThumb(
+              kind: style.look.kind,
+              seed: style.look.seed,
+              size: 22,
+              radius: 11,
+            ),
+            const SizedBox(width: RevericSpacing.sm),
+            if (readOnly) label else Flexible(child: label),
+            if (!readOnly) ...[
+              const SizedBox(width: RevericSpacing.sm),
+              ProductionCaret(open: open, size: 11),
+            ],
+          ],
+        ),
+      );
+    }
+
+    if (readOnly) {
+      return buildPill(open: false, onTap: null);
+    }
+    // 顶栏把控件放进 Flexible。这层 Row 让 chip 保持内容宽度，长名称仍能截断。
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -212,58 +262,10 @@ class ProductionScreenplayStyle extends HookWidget {
             service: service,
             style: style,
             forNode: false,
-            trigger: (context, open, toggle) => ProductionPill(
-              open: open,
-              tooltip: context.t(LocaleKeys.productionStyleScreenplayHint),
-              padding: const EdgeInsets.fromLTRB(
-                RevericSpacing.xxs,
-                0,
-                RevericSpacing.sm,
-                0,
-              ),
-              onTap: toggle,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ProductionStyleThumb(
-                    kind: style.look.kind,
-                    seed: style.look.seed,
-                    size: 22,
-                    radius: 11,
-                  ),
-                  const SizedBox(width: RevericSpacing.sm),
-                  Flexible(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 160),
-                      child: Text(
-                        style.look.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: typo.uiSmall.copyWith(
-                          color: colors.textPrimary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: RevericSpacing.sm),
-                  ProductionCaret(open: open, size: 11),
-                ],
-              ),
-            ),
+            trigger: (context, open, toggle) =>
+                buildPill(open: open, onTap: toggle),
           ),
         ),
-        if (styled)
-          RevericIconButton(
-            icon: RevericIcons.close,
-            tooltip: context.t(LocaleKeys.productionStyleClear),
-            onPressed: style.ready
-                ? () => productionRun(
-                    context,
-                    () => style.save(const NoProductionStyle()),
-                  )
-                : null,
-          ),
       ],
     );
   }
@@ -275,75 +277,86 @@ class ProductionStylePill extends HookWidget {
     super.key,
     required this.service,
     required this.clipId,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final String clipId;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final style = _useStyle(context, service, clipId);
     final inherited = style.choice is InheritedProductionStyle;
+    Widget buildPill({required bool open, required VoidCallback? onTap}) =>
+        ProductionPill(
+          open: open,
+          tooltip: readOnly
+              ? null
+              : context.t(
+                  inherited
+                      ? LocaleKeys.productionStyleInheritHint
+                      : LocaleKeys.productionStyleOwnHint,
+                ),
+          onTap: onTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ProductionStyleThumb(
+                kind: style.look.kind,
+                seed: style.look.seed,
+                size: 18,
+                radius: RevericRadius.small,
+              ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 112),
+                  child: Text(
+                    style.look.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: typo.uiSmall.copyWith(color: colors.textPrimary),
+                  ),
+                ),
+              ),
+              if (inherited) ...[
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Container(
+                    height: 16,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(RevericRadius.small),
+                    ),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Text(
+                        context.t(LocaleKeys.productionStyleScreenplayTag),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: typo.uiTiny.copyWith(color: colors.textMuted),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (!readOnly) ...[
+                const SizedBox(width: 5),
+                ProductionCaret(open: open),
+              ],
+            ],
+          ),
+        );
+    if (readOnly) {
+      return buildPill(open: false, onTap: null);
+    }
     return _StylePopover(
       service: service,
       style: style,
       forNode: true,
-      trigger: (context, open, toggle) => ProductionPill(
-        open: open,
-        tooltip: context.t(
-          inherited
-              ? LocaleKeys.productionStyleInheritHint
-              : LocaleKeys.productionStyleOwnHint,
-        ),
-        onTap: toggle,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ProductionStyleThumb(
-              kind: style.look.kind,
-              seed: style.look.seed,
-              size: 18,
-              radius: RevericRadius.small,
-            ),
-            const SizedBox(width: 5),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 112),
-                child: Text(
-                  style.look.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: typo.uiSmall.copyWith(color: colors.textPrimary),
-                ),
-              ),
-            ),
-            if (inherited) ...[
-              const SizedBox(width: 5),
-              Flexible(
-                child: Container(
-                  height: 16,
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(RevericRadius.small),
-                  ),
-                  child: Center(
-                    widthFactor: 1,
-                    child: Text(
-                      context.t(LocaleKeys.productionStyleScreenplayTag),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: typo.uiTiny.copyWith(color: colors.textMuted),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(width: 5),
-            ProductionCaret(open: open),
-          ],
-        ),
-      ),
+      trigger: (context, open, toggle) => buildPill(open: open, onTap: toggle),
     );
   }
 }

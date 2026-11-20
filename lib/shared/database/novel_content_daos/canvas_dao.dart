@@ -183,6 +183,14 @@ class CanvasDao extends DatabaseAccessor<NovelContentDatabase>
     ).insertOnConflictUpdate(node.copyWith(updatedAt: DateTime.now()));
   }
 
+  /// 仅供已完成冲突检查的历史恢复；保留快照时间戳和软删除状态。
+  Future<void> restoreHistoryNode(CanvasNode node) =>
+      into(canvasNodes).insertOnConflictUpdate(node.toCompanion(false));
+
+  /// 恢复原连线身份；不刷新 updatedAt，连续撤销仍可比对原快照。
+  Future<void> restoreHistoryEdge(CanvasEdge edge) =>
+      into(canvasEdges).insertOnConflictUpdate(edge.toCompanion(false));
+
   Future<bool> nodeIdExists(String id) async {
     final row =
         await (selectOnly(canvasNodes)

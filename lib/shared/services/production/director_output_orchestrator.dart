@@ -101,7 +101,7 @@ class DirectorOutputOrchestrator {
       if (task.cancelled) {
         throw const MediaException(MediaFailure.cancelled);
       }
-      final id = buildRandomId('ast');
+      final id = buildRandomId('ast', length: 12);
       await library.database.assetDao.insertAsset(
         AssetsCompanion.insert(
           id: id,

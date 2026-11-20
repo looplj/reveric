@@ -5,8 +5,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
-//   assets/translations/en/ai.json
-//   assets/translations/zh-CN/ai.json
+//   assets/translations/en/tool.json
+//   assets/translations/zh-CN/tool.json
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 //   .agents/rules/i18n.md
@@ -31,7 +31,22 @@ const _commands = <String, List<String>>{
     'remove',
   ],
   'assets': ['list', 'read', 'view-image'],
-  'stagings': ['schema', 'presets', 'sample', 'frames'],
+  'stagings': ['schema', 'presets', 'sample', 'frames', 'create', 'duplicate'],
+  'editing': [
+    'list',
+    'read',
+    'create',
+    'duplicate',
+    'apply',
+    'undo',
+    'redo',
+    'preview',
+    'export',
+    'cleanup',
+    'frames',
+    'inspect_audio',
+  ],
+  'ffmpeg': ['inspect_audio'],
   'agent-skills': [
     'list',
     'create',

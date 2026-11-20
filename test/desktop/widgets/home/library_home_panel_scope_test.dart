@@ -11,6 +11,7 @@ import 'package:reveric/shared/services/initialization/collection_seeds.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -64,6 +65,89 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
   });
+
+  testWidgets(
+    'canvas library lists only canvas works and has direct create without novel shortcuts',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      final works = [
+        _novel('Canvas example', '').copyWith(contentKind: contentKindCanvas),
+        _novel('Screenplay example', ''),
+      ];
+      for (final work in works) {
+        await db.into(db.novels).insert(work.toCompanion(true));
+      }
+      await seedCollections(
+        db,
+        names: {
+          'all': 'All',
+          'in_progress': 'In progress',
+          'finished': 'Finished',
+        },
+      );
+      var creates = 0;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDatabaseProvider.overrideWithValue(db),
+            appSettingsProvider.overrideWith(_TestAppSettings.new),
+          ],
+          child: EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData(),
+                builder: (context, child) =>
+                    RevericTheme(data: RevericThemeData.reveric, child: child!),
+                home: Scaffold(
+                  body: HomeLibraryPanel(
+                    contentKind: contentKindCanvas,
+                    novelsAsync: AsyncData(works),
+                    headerGestureExclusionKey: GlobalKey(),
+                    onQuickStart: () {},
+                    onCreateNovel: () => creates++,
+                    onImportNovel: () {},
+                    onImportScreenplay: () {},
+                    onCreateDemoNovel: () {},
+                    onDeleteNovel: (_) {},
+                    onAdaptNovel: (_) {},
+                    onEditNovel: (_) {},
+                    onOpenNovel: (_) {},
+                    onReadNovel: (_) {},
+                    onUpdateStatus: (_, _) {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Canvas example'), findsWidgets);
+      expect(find.text('Screenplay example'), findsNothing);
+      expect(find.text('Import TXT'), findsNothing);
+      expect(find.text('Quick start'), findsNothing);
+      await tester.tap(find.text('New canvas').first);
+      expect(creates, 1);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await db.close();
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 
   testWidgets('category menu and filtering follow the drafts/shelf scope', (
     tester,

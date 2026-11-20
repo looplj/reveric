@@ -16,7 +16,6 @@ import 'package:drift/drift.dart';
 import '../database/novel_content_database.dart';
 import '../logger/app_logger.dart';
 import '../models/screenplay.dart';
-import '../models/production/style.dart';
 import '../models/screenplay_element.dart';
 import '../models/screenplay_document.dart';
 import 'package:collection/collection.dart';
@@ -90,10 +89,38 @@ class ScreenplayService {
     );
   }
 
-  Future<CreatedSeason> createInitialStructure({
-    int? plannedEpisodeCount,
-    ProductionStylePreset? style,
-  }) {
+  /// 画布作品只初始化制作默认设置和一张画布，不生成隐藏的季、集或场次。
+  Future<void> createCanvasStructure() =>
+      _write('screenplays,canvases', 'CREATE_CANVAS_WORK', 'new', () async {
+        await _database.transaction(() async {
+          if (await _database.screenplayDao.getRoot() != null) {
+            throw const ScreenplayServiceException(
+              'screenplay_already_exists',
+              'This content database already has production settings.',
+            );
+          }
+          await _insertNew(
+            ShortEntityIdType.screenplay,
+            'screenplays',
+            (id) async => _database
+                .into(_database.screenplays)
+                .insert(ScreenplaysCompanion.insert(id: id)),
+          );
+          await _insertNew(ShortEntityIdType.canvas, 'canvases', (id) async {
+            await _database
+                .into(_database.canvases)
+                .insert(
+                  CanvasesCompanion.insert(
+                    id: id,
+                    name: 'production',
+                    kind: const Value(canvasKindProduction),
+                  ),
+                );
+          });
+        });
+      });
+
+  Future<CreatedSeason> createInitialStructure({int? plannedEpisodeCount}) {
     _validatePlannedEpisodeCount(plannedEpisodeCount);
     return _write('screenplays', 'CREATE_INITIAL', 'new', () async {
       return _database.transaction(() async {
@@ -112,11 +139,6 @@ class ScreenplayService {
               .insert(
                 ScreenplaysCompanion.insert(
                   id: screenplayId,
-                  styleId: Value(
-                    style == null
-                        ? null
-                        : PresetProductionStyle(style.id).stored,
-                  ),
                   createdAt: Value(now),
                   updatedAt: Value(now),
                 ),
@@ -2167,14 +2189,8 @@ class ScreenplayService {
 
   Future<void> syncNovelWordCount() async {
     final actions = novelActionsService;
-    if (actions == null) {
-      return;
-    }
-    // AI 和历史变更按内容库操作；与小说正文使用同一所属作品查询。
-    final workId =
-        novelId ??
-        (await actions.getNovelByContentDatabasePath(_database.filePath))?.id;
-    if (workId == null) {
+    final workId = novelId;
+    if (actions == null || workId == null) {
       return;
     }
     final row = await _database
@@ -2198,7 +2214,10 @@ class ScreenplayService {
   ) async {
     try {
       final result = await action();
-      await novelActionsService?.markContentEdited(_database.filePath);
+      final workId = novelId;
+      if (workId != null) {
+        await novelActionsService?.markContentEdited(workId);
+      }
       return result;
     } catch (error, stackTrace) {
       _log.error(

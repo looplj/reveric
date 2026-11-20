@@ -630,6 +630,10 @@ class ChatSessionController {
       );
       return;
     }
+    // 队列接力使用排队时的引用和交接信息，输入框可能已有新草稿。
+    final fromQueue = overrideReferences != null;
+    final pendingHandoff =
+        overrideHandoff ?? (fromQueue ? null : store.pendingHandoff);
     if (runtime.hasActiveRequest) {
       // 模型切换只在 idle 时的 send 里应用（见 _applyPendingModelSelection）。
       // 首轮调用会 await 整个 Agent turn 后才清掉 UI 暂存 selection；这期间的
@@ -642,7 +646,6 @@ class ChatSessionController {
           'model=${pendingModelSelection.model}',
         );
       }
-      final pendingHandoff = overrideHandoff ?? store.pendingHandoff;
       if (trimmedText.isEmpty && pendingHandoff == null) {
         final guardUntil = store.sendGuardUntil;
         if (guardUntil != null && DateTime.now().isBefore(guardUntil)) {
@@ -709,10 +712,10 @@ class ChatSessionController {
         );
         return;
       }
-      if (host.isMounted() && overrideReferences == null) {
+      if (host.isMounted() && !fromQueue) {
         store.attachedReferences = [];
       }
-      if (host.isMounted() && overrideHandoff == null) {
+      if (host.isMounted() && !fromQueue && overrideHandoff == null) {
         store.pendingHandoff = null;
       }
       final queued = QueuedChatMessage(
@@ -736,13 +739,12 @@ class ChatSessionController {
       };
       // workspace system-remind 只随用户主动发出的 turn 一起投递；
       // 排队阶段不单独注入，等 finally 里真正 send 时再带上。
-      if (host.isMounted()) {
+      if (host.isMounted() && !fromQueue) {
         host.clearComposer();
         host.focusComposer();
       }
       return;
     }
-    final pendingHandoff = overrideHandoff ?? store.pendingHandoff;
     if (trimmedText.isEmpty && pendingHandoff == null) {
       _log.info(
         'send: early return text="$text" pendingHandoff=$pendingHandoff',
@@ -866,6 +868,11 @@ class ChatSessionController {
         requestId: requestId,
         sessionId: targetSessionId,
       );
+      if (runtime.cancelledRequestIds.contains(requestId)) {
+        aiService?.dispose();
+        aiService = null;
+        return;
+      }
       if (aiService == null) {
         _notifySendBlocked(currentSession);
         return;
@@ -891,7 +898,10 @@ class ChatSessionController {
         draft,
         attachmentBlocks,
       );
-      if (blocks == null || runtime.cancelledRequestIds.contains(requestId)) {
+      if (runtime.cancelledRequestIds.contains(requestId)) {
+        return;
+      }
+      if (blocks == null) {
         notifyOnComplete = false;
         return;
       }
@@ -900,6 +910,9 @@ class ChatSessionController {
       final agent = await runner.getOrCreateChatAgent(
         sessionId: targetSessionId,
       );
+      if (runtime.cancelledRequestIds.contains(requestId)) {
+        return;
+      }
       logSendTiming('agent_ready');
       if (agent == null) {
         container
@@ -914,6 +927,9 @@ class ChatSessionController {
       // agent 已确认可用，先投递 system-remind（持久化 + warm context），
       // 再落用户消息，保证 remind 在 agent history 中先于本轮输入。
       await _deliverCurrentContextReminds(targetSessionId);
+      if (runtime.cancelledRequestIds.contains(requestId)) {
+        return;
+      }
       _deliverNovelDraftRemind(targetSessionId);
       final slashRemind = _buildSlashCommandRemind(slashCommand);
       if (slashRemind != null) {
@@ -937,13 +953,13 @@ class ChatSessionController {
 
       logSendTiming('user_message_added');
       // Consume the draft only after initialization and user-message creation succeed.
-      if (overrideReferences == null) {
+      if (!fromQueue) {
         store.attachedReferences = [];
       }
-      if (overrideHandoff == null) {
+      if (!fromQueue && overrideHandoff == null) {
         store.pendingHandoff = null;
       }
-      if (host.isMounted()) {
+      if (host.isMounted() && !fromQueue) {
         host.clearComposer();
         host.focusComposer();
       }
@@ -1422,7 +1438,9 @@ class ChatSessionController {
       final dbPath = scope.databasePath;
       if (dbPath != null && dbPath.isNotEmpty) {
         try {
-          final overlay = container.read(workingOverlayServiceProvider(dbPath));
+          final overlay = container.read(
+            workOverlayServiceProvider((path: dbPath, novelId: scope.novel.id)),
+          );
           final result = await overlay.rollbackTurns(turnIds: rollbackTurnIds);
           if (result.skippedPaths.isNotEmpty) {
             host.onComposerWarning?.call(
@@ -1508,9 +1526,20 @@ class ChatSessionController {
     String? runtimeSessionId, {
     AiChatCancelSource source = AiChatCancelSource.stopButton,
   }) {
+    if (!_cancelActiveRequest(runtimeSessionId, source: source)) {
+      return;
+    }
+    // 停止回复时，把尚未送达的排队消息恢复到输入框。
+    clearQueuedMessage(restoreToComposer: store.queuedMessage != null);
+  }
+
+  bool _cancelActiveRequest(
+    String? runtimeSessionId, {
+    required AiChatCancelSource source,
+  }) {
     final sessionId = runtimeSessionId;
     if (sessionId == null || sessionId.isEmpty) {
-      return;
+      return false;
     }
     final runtimeState = container.read(aiChatRuntimeProvider(sessionId));
     final runtime = container.read(aiChatRuntimeProvider(sessionId).notifier);
@@ -1522,7 +1551,7 @@ class ChatSessionController {
           'seq=${runtimeState.requestSequence}',
         );
       }
-      return;
+      return false;
     }
     _log.info(
       'cancel sessionId=$sessionId '
@@ -1536,12 +1565,9 @@ class ChatSessionController {
       runtimeState.requestSequence,
     );
     runtime.cancelRequest(runtimeState.requestSequence, source: source);
-    // 取消请求时把排队消息恢复到输入框：无论已 stage 的「立即发送」还是普通排队，
-    // 都是用户已编辑但尚未成功送达的内容，停止不应静默丢弃。
-    final queued = store.queuedMessage;
-    clearQueuedMessage(restoreToComposer: queued != null);
     sessionNotifier.endStreamingMessage();
     sessionNotifier.removeLastAssistantMessageIfInvisible();
+    return true;
   }
 
   Future<AiChatSessionState?> _ensureSendModelSelection(
@@ -1627,8 +1653,7 @@ class ChatSessionController {
 
   /// 取消待发送队列，并取消已 stage 的 `queued_chat`。
   ///
-  /// [restoreToComposer] 为 true 时把文案 append 回输入框（用户点「取消排队」）；
-  /// 取消整次请求时传 false，避免把队列文本塞回输入框。
+  /// [restoreToComposer] 为 true 时把文案追加回输入框，并恢复原始引用。
   void clearQueuedMessage({bool restoreToComposer = false}) {
     final queued = store.queuedMessage;
     store.queuedMessage = null;
@@ -1648,11 +1673,10 @@ class ChatSessionController {
     host.focusComposer();
   }
 
-  /// 立刻发送排队消息：stage 进当前 in-flight agent 的下一轮 LLM（与旧 queue 行为一致）。
-  /// 同时投递 workspace system-remind（处理中走 stage，遵守 da7e58ef）。
+  /// 中断当前回复，等取消清理完成后用同一会话的普通发送入口接力。
   Future<void> sendQueuedMessageNow() async {
     final queued = store.queuedMessage;
-    if (queued == null) {
+    if (queued == null || queued.sendOnNextTurn) {
       return;
     }
     // 归属会话优先取排队时记录的 session，避免切到别的会话后误发到当前 active 会话。
@@ -1666,34 +1690,33 @@ class ChatSessionController {
       return;
     }
     final runtime = container.read(aiChatRuntimeProvider(sessionId).notifier);
-    final agent = runtime.agent;
-    if (agent == null || !agent.isProcessing) {
-      store.queuedMessage = null;
-      runtime.takeQueuedMessage();
-      await send(
-        queued.text,
-        sessionIdOverride: sessionId,
-        attachmentBlocks: queued.blocks,
-        overrideReferences: queued.references,
-        overrideHandoff: queued.handoff,
-      );
+    final requestId = runtimeState.requestSequence;
+    if (!runtime.hasActiveRequest) {
+      await _flushQueuedMessageAfterRequest(sessionId, requestId);
       return;
     }
-
-    await _deliverCurrentContextReminds(sessionId);
-    agent.stageNextTurn(
-      'queued_chat',
-      AgentMessage.user(
-        id: 'queued_chat',
-        content: queued.modelBlocks.isEmpty ? queued.agentText : '',
-        blocks: queued.modelBlocks,
-      ),
+    final release = runtime.retainSessionEntry();
+    final sessionLease = container.listen(
+      aiChatSessionProvider(sessionId),
+      (_, _) {},
     );
-    // 消费源放在 runtime（processing 期间 keepAlive），使离页/折叠面板后仍存活的
-    // turn 能在下一轮消费它，避免排队内容随面板卸载而静默丢失（见 turn runner）。
-    final stagedMessage = queued.copyWith(sendOnNextTurn: true);
-    runtime.stagePendingNextTurnMessage(stagedMessage);
-    store.queuedMessage = stagedMessage;
+    try {
+      if (!_cancelActiveRequest(
+        sessionId,
+        source: AiChatCancelSource.sendQueuedMessageNow,
+      )) {
+        return;
+      }
+      // 普通聊天的 finally 会接力。由后台任务启动的请求没有队列回调，
+      // 因此等它收尾后，在原队列仍待发送时由此接力。
+      await runtime.waitForRequestCompletion(requestId);
+      if (identical(runtime.queuedMessage, queued)) {
+        await _flushQueuedMessageAfterRequest(sessionId, requestId);
+      }
+    } finally {
+      sessionLease.close();
+      release();
+    }
   }
 
   void _unstageQueuedChat(String? sessionId) {
@@ -1703,26 +1726,26 @@ class ChatSessionController {
       ..clearPendingNextTurnMessage();
   }
 
-  /// 请求结束后接力发送排队消息；若已选「立刻发送」则不再走完整 send。
+  /// 请求结束后接力发送排队消息，包含「立刻发送」触发的取消收尾。
   ///
   /// 设计决策：普通排队消息的自动接力沿用上一条请求 Controller 的
   /// scope.workspace* 与 promptContext，不随排队期间的界面工作区切换而改变。
   /// 队列不保存独立工作区快照；这里继续使用本 Controller.send 是有意行为。
   ///
-  /// 「立即发送」staged 的消息本应在下一轮由 turn runner 消费；若本轮报错/取消前
+  /// 离页时 staged 的消息本应在下一轮由 turn runner 消费；若本轮报错/取消前
   /// 未能消费，这里取回并 unstage。界面仍在时恢复到输入框；界面已卸载时，继续按
   /// 原有引用与 handoff 在后台接力发送，避免用户消息丢失。
   Future<void> _flushQueuedMessageAfterRequest(
     String? sessionId,
     int requestId,
   ) async {
-    final runtime = container.read(aiChatRuntimeProvider(sessionId).notifier);
-    // 旧请求的 finally 可在新请求已经开始后才执行。必须先确认本请求仍是当前请求，
-    // 再消费 runtime 共享的 staged 消息，否则会取走新请求的「立即发送」内容。
-    if (container.read(aiChatRuntimeProvider(sessionId)).requestSequence !=
-        requestId) {
+    final runtimeState = container.read(aiChatRuntimeProvider(sessionId));
+    // 旧请求可能晚于新请求收尾。历史变更期间也要保留队列，等恢复可发送再消费。
+    if (runtimeState.requestSequence != requestId ||
+        runtimeState.isSessionMutationInFlight) {
       return;
     }
+    final runtime = container.read(aiChatRuntimeProvider(sessionId).notifier);
     final unconsumedStagedMessage = runtime.takePendingNextTurnMessage();
     if (unconsumedStagedMessage != null) {
       runtime.agent?.stageNextTurn('queued_chat', null);
@@ -1744,7 +1767,7 @@ class ChatSessionController {
     }
     store.setQueuedMessageForSession(sessionId, null);
     if (unconsumedStagedMessage != null) {
-      // 立即发送但本轮未送达：恢复文案 + 原始引用到输入框，不静默丢弃。
+      // staged 的消息未送达：恢复文案和原始引用到输入框。
       if (queuedMessage.text.isNotEmpty) {
         host.restoreComposerText?.call(_queuedDraftText(queuedMessage));
       }
@@ -2055,7 +2078,7 @@ class ChatSessionController {
     if (section == NovelWorkspaceSection.novel_description) {
       return CurrentWorkspaceContext(
         section: section,
-        path: '/profile',
+        path: section.aiResourcePath(itemId: scope.novel.id),
         title: scope.workspaceTitle?.trim().isNotEmpty == true
             ? scope.workspaceTitle!.trim()
             : scope.novel.title.trim(),
@@ -2063,7 +2086,8 @@ class ChatSessionController {
     }
     final databasePath = scope.databasePath;
     if (section == NovelWorkspaceSection.storyboard &&
-        promptContext.contentKind == contentKindScreenplay &&
+        (promptContext.contentKind == contentKindScreenplay ||
+            promptContext.contentKind == contentKindCanvas) &&
         databasePath != null) {
       final stagingId = container
           .read(productionSubpageProvider(databasePath))
@@ -2084,6 +2108,14 @@ class ChatSessionController {
                 hint: 'Run stagings read',
               );
       }
+    }
+    if (section == NovelWorkspaceSection.storyboard &&
+        promptContext.contentKind == contentKindCanvas) {
+      return CurrentWorkspaceContext(
+        section: section,
+        path: '/production/canvas',
+        title: scope.novel.title.trim(),
+      );
     }
     final itemId = scope.workspaceItemId?.trim();
     if (itemId == null || itemId.isEmpty) {

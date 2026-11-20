@@ -278,6 +278,15 @@ Future<void> _initializeAppData() async {
       tasks: defaultAppInitializationTasks(),
     );
     _log.checkpoint('App initialization tasks COMPLETE');
+  } catch (error, stackTrace) {
+    unawaited(
+      StartupFailureReporter().report(
+        phase: 'app_data_initialization',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+    rethrow;
   } finally {
     await database.close();
   }
@@ -429,10 +438,7 @@ void _initMacOSAboutMenuHandler() {
     if (call.method != 'about') return;
     final context = SystemTrayService().navigatorKey.currentState?.context;
     if (context == null) return;
-    showDialog(
-      context: context,
-      builder: (_) => const SettingsDialog(initialNavId: 'about'),
-    );
+    showSettingsSectionDialog(context, 'about');
   });
 }
 
@@ -665,10 +671,9 @@ class MyApp extends ConsumerWidget {
                             if (_isMobilePlatform) {
                               showMobileAboutPage(navigatorContext);
                             } else {
-                              showDialog<void>(
-                                context: navigatorContext,
-                                builder: (_) =>
-                                    const SettingsDialog(initialNavId: 'about'),
+                              showSettingsSectionDialog(
+                                navigatorContext,
+                                'about',
                               );
                             }
                           },

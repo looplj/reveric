@@ -8,7 +8,10 @@
 //   .agents/rules/service-naming.md
 //   .agents/rules/state-management.md
 
-import 'package:http/http.dart' as http;
+import 'dart:async';
+import 'dart:io';
+
+import 'package:http/io_client.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../app_config.dart';
@@ -22,7 +25,7 @@ part 'anonymous_reporting_providers.g.dart';
 AnonymousReportingConsentService anonymousReportingConsentService(Ref ref) =>
     const AnonymousReportingConsentService();
 
-/// 用户是否同意匿名诊断上报（opt-in，默认 false）。
+/// 匿名诊断上报设置。首次使用默认开启。
 @Riverpod(keepAlive: true)
 class AnonymousReportingConsent extends _$AnonymousReportingConsent {
   @override
@@ -41,16 +44,23 @@ class AnonymousReportingConsent extends _$AnonymousReportingConsent {
 
 @Riverpod(keepAlive: true)
 AnonymousOutboxService anonymousOutboxService(Ref ref) {
-  final httpClient = http.Client();
+  final httpClient = IOClient(
+    HttpClient()..connectionTimeout = const Duration(seconds: 5),
+  );
   final service = AnonymousOutboxService(
     database: ref.watch(appDatabaseProvider),
     httpClient: httpClient,
     getBaseUrl: () => anonymousReportingBaseUrl,
-    // 同意状态加载完成前按未同意处理，不上报。
+    // 先加载本机设置，避免在读取到已关闭的设置前发送。
     getEnabled: () =>
         anonymousReportingBaseUrl.isNotEmpty &&
         ref.read(anonymousReportingConsentProvider).value == true,
   );
+  ref.listen(anonymousReportingConsentProvider, (previous, next) {
+    if (previous?.value != true && next.value == true) {
+      unawaited(service.flush());
+    }
+  });
   ref.onDispose(() {
     service.dispose();
     httpClient.close();

@@ -6,9 +6,6 @@
 //   .agents/rules/error-handling.md
 part of 'tools.dart';
 
-const _avatarImageSize = '1024x1024';
-const _photoImageSize = '864x1536';
-
 mixin _AiToolManagerImageMixin on _AiToolManagerBase {
   Future<Map<String, dynamic>> _handleGenerateAvatar(
     Map<String, dynamic> input, {
@@ -35,7 +32,10 @@ mixin _AiToolManagerImageMixin on _AiToolManagerBase {
     try {
       final result = imagePath.isNotEmpty
           ? await _handleGenerateAvatarFromSource(prompt, imagePath: imagePath)
-          : await imageGenerationCallback!(prompt, size: _avatarImageSize);
+          : await imageGenerationCallback!(
+              prompt,
+              options: const ImageInvocationOptions(preferredRatio: '1:1'),
+            );
       if (result.assetId == null || result.assetId!.isEmpty) {
         throw StateError('Image callback returned no registered asset ID');
       }
@@ -69,7 +69,11 @@ mixin _AiToolManagerImageMixin on _AiToolManagerBase {
     if (imagePath.isEmpty) {
       throw AiImageGenerationException(tr(LocaleKeys.aiImagePathEmpty));
     }
-    return imageEditCallback!(prompt, imageData: imagePath);
+    return imageEditCallback!(
+      prompt,
+      imageData: imagePath,
+      options: const ImageInvocationOptions(preferredRatio: '1:1'),
+    );
   }
 
   Future<Map<String, dynamic>> _handleGeneratePhoto(
@@ -98,7 +102,10 @@ mixin _AiToolManagerImageMixin on _AiToolManagerBase {
     try {
       final result = imagePath.isNotEmpty
           ? await _handleGeneratePhotoFromSource(prompt, imagePath: imagePath)
-          : await imageGenerationCallback!(prompt, size: _photoImageSize);
+          : await imageGenerationCallback!(
+              prompt,
+              options: const ImageInvocationOptions(preferredRatio: '9:16'),
+            );
       if (result.assetId == null || result.assetId!.isEmpty) {
         throw StateError('Image callback returned no registered asset ID');
       }
@@ -167,6 +174,10 @@ mixin _AiToolManagerImageMixin on _AiToolManagerBase {
     if (imagePath.isEmpty) {
       throw AiImageGenerationException(tr(LocaleKeys.aiImagePathEmpty));
     }
-    return imageEditCallback!(prompt, imageData: imagePath);
+    return imageEditCallback!(
+      prompt,
+      imageData: imagePath,
+      options: const ImageInvocationOptions(preferredRatio: '9:16'),
+    );
   }
 }

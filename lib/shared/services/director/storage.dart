@@ -19,14 +19,17 @@ class DirectorStorage {
   final Directory root;
   final Directory temporary;
   DirectorStorage(this.root, this.temporary);
+
+  /// 解析指定作品的导演工作根目录，不创建任何目录。
+  static Directory resolveRoot(String novelId, {Directory? base}) {
+    final support = base ?? Directory(RevericPaths.fileWorkspaceParent);
+    return Directory(
+      p.join(support.path, RevericPaths.mediaPath(novelId, 'file', 'director')),
+    );
+  }
+
   static Future<DirectorStorage> open(String novelId) async {
-    final support = Directory(RevericPaths.fileWorkspaceParent);
-    final root = Directory(
-          p.join(
-            support.path,
-            RevericPaths.mediaPath(novelId, 'file', 'director'),
-          ),
-        ),
+    final root = resolveRoot(novelId),
         temporary = Directory(
           '${(await getTemporaryDirectory()).path}/director_probe',
         );

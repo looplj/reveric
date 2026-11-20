@@ -1,8 +1,10 @@
-// 职责: 预览单个媒体资产，并管理视频画面初始化与播放生命周期。
+// 职责: 预览单个媒体资产，图片可复制到系统剪贴板，并管理视频画面初始化与播放生命周期。
 // 关联文件:
 //   lib/desktop/features/asset/media_region.dart
 //   lib/desktop/features/asset/playback_controls.dart
 //   lib/shared/providers/production_media.dart
+//   lib/shared/utils/image_clipboard.dart
+//   lib/shared/components/dialog_feedback.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/assets.json
 //   assets/translations/zh-CN/assets.json
@@ -19,7 +21,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:super_clipboard/super_clipboard.dart' as clip;
 import 'package:video_player/video_player.dart';
+import '../../../shared/components/dialog_feedback.dart';
+import '../../../shared/components/reveric_context_menu.dart';
 import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_placeholder.dart';
 import '../../../shared/database/app_database.dart';
@@ -27,37 +32,57 @@ import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/logger/app_logger.dart';
 import '../../../shared/providers/production_media.dart';
+import '../../../shared/services/production/library_service.dart';
 import '../../../shared/theme/theme.dart';
+import '../../../shared/utils/image_clipboard.dart';
 import 'playback_controls.dart';
 
 final _log = AppLogger.forModule('MediaPreview');
 
 class MediaPreviewDialog extends HookConsumerWidget {
-  MediaPreviewDialog({super.key, required AssetRow asset})
-    : path = asset.path!,
-      type = asset.type,
-      name = asset.name,
-      autoplay = false;
+  MediaPreviewDialog({
+    super.key,
+    required AssetRow asset,
+    required this.pathResolver,
+    this.clipboard,
+  }) : path = asset.path!,
+       type = asset.type,
+       name = asset.name,
+       autoplay = false,
+       temporary = false;
   const MediaPreviewDialog.file({
     super.key,
     required this.path,
     required this.type,
     required this.name,
+    required this.pathResolver,
     this.autoplay = false,
+    this.temporary = false,
+    this.clipboard,
   });
   final String path;
   final String type;
   final String name;
   final bool autoplay;
+
+  /// 缺省写入系统剪贴板；测试可传入替身。
+  final clip.ClipboardWriter? clipboard;
+
+  /// 应用自己生成的临时文件（如剪辑预览渲染），不在素材库内，直接按绝对路径打开。
+  final bool temporary;
+
+  /// 必选路径解析器，避免隐式耦合全局素材库，便于画廊沙箱与测试隔离。
+  final MediaPathResolver pathResolver;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final library = ref.watch(mediaLibraryServiceProvider);
     final playback = ref.watch(playbackServiceProvider);
     final owner = useMemoized(() => Object().hashCode.toString(), const []);
     final ready = useState(false);
     final failed = useState(false);
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    String resolveFilePath() =>
+        temporary ? path : pathResolver.resolvePath(path);
     useEffect(() {
       var active = true;
       if (type != 'image') {
@@ -68,7 +93,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
           try {
             await playback.open(
               owner: owner,
-              path: library.resolvePath(path),
+              path: resolveFilePath(),
               play: autoplay,
             );
             if (active) {
@@ -90,7 +115,7 @@ class MediaPreviewDialog extends HookConsumerWidget {
         active = false;
         unawaited(playback.release(owner));
       };
-    }, [path, playback, library, owner, autoplay]);
+    }, [path, playback, pathResolver, owner, autoplay, temporary]);
     useOnAppLifecycleStateChange((previous, current) {
       if (current != AppLifecycleState.resumed) {
         if (ready.value) {
@@ -101,8 +126,8 @@ class MediaPreviewDialog extends HookConsumerWidget {
     final isImage = type == 'image';
     const double? storedAspect = null;
     final imageFile = useMemoized(
-      () => isImage ? FileImage(File(library.resolvePath(path))) : null,
-      [path, library],
+      () => isImage ? FileImage(File(resolveFilePath())) : null,
+      [path, pathResolver, temporary],
     );
     // Older images may lack stored dimensions; read the decoded size so the
     // stage still matches the picture instead of falling back to 16:9.
@@ -185,58 +210,122 @@ class MediaPreviewDialog extends HookConsumerWidget {
     return Dialog(
       child: SizedBox(
         width: stageWidth + RevericSpacing.x2l * 2,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            RevericSpacing.x2l,
-            RevericSpacing.lg,
-            RevericSpacing.x2l,
-            RevericSpacing.x2l,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name,
-                      style: typo.uiSemibold,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+        child: DialogFeedback.intrinsic(
+          builder: (context) {
+            Future<void> copy() async {
+              try {
+                // 写入原文件，而不是对话框里按窗口缩小后的画面。
+                await copyImageToClipboard(
+                  File(resolveFilePath()),
+                  name: name,
+                  clipboard: clipboard,
+                );
+                if (!context.mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: DialogToast(
+                      variant: DialogToastVariant.success,
+                      child: Text(context.t(LocaleKeys.commonCopied)),
                     ),
                   ),
-                  const SizedBox(width: RevericSpacing.sm),
-                  RevericIconButton(
-                    icon: RevericIcons.close,
-                    tooltip: context.t(LocaleKeys.commonClose),
-                    onPressed: () => Navigator.pop(context),
+                );
+              } catch (error, stackTrace) {
+                _log.error(
+                  'copy image failed path=$path',
+                  error: error,
+                  stackTrace: stackTrace,
+                );
+                if (!context.mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: DialogToast(
+                      variant: DialogToastVariant.error,
+                      child: Text(context.t(LocaleKeys.commonCopyFailed)),
+                    ),
                   ),
-                ],
+                );
+              }
+            }
+
+            void openCopyMenu(Offset position) {
+              unawaited(
+                showRevericContextMenu(
+                  context: context,
+                  position: position,
+                  entries: [
+                    RevericMenuItem(
+                      icon: RevericIcons.copy,
+                      label: context.t(LocaleKeys.commonCopy),
+                      onTap: () => unawaited(copy()),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(
+                RevericSpacing.x2l,
+                RevericSpacing.lg,
+                RevericSpacing.x2l,
+                RevericSpacing.x2l,
               ),
-              const SizedBox(height: RevericSpacing.md),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(RevericRadius.x2l),
-                child: ColoredBox(
-                  color: colors.surfaceDim,
-                  child: SizedBox(
-                    height: mediaHeight,
-                    child: Center(
-                      child: SizedBox(
-                        width: mediaWidth,
-                        height: mediaHeight,
-                        child: media,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: typo.uiSemibold,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: RevericSpacing.sm),
+                      RevericIconButton(
+                        icon: RevericIcons.close,
+                        tooltip: context.t(LocaleKeys.commonClose),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: RevericSpacing.md),
+                  GestureDetector(
+                    onSecondaryTapDown: isImage
+                        ? (details) => openCopyMenu(details.globalPosition)
+                        : null,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(RevericRadius.x2l),
+                      child: ColoredBox(
+                        color: colors.surfaceDim,
+                        child: SizedBox(
+                          height: mediaHeight,
+                          child: Center(
+                            child: SizedBox(
+                              width: mediaWidth,
+                              height: mediaHeight,
+                              child: media,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  if (ready.value && !failed.value) ...[
+                    const SizedBox(height: RevericSpacing.sm),
+                    PlaybackControls(player: playback.player),
+                  ],
+                ],
               ),
-              if (ready.value && !failed.value) ...[
-                const SizedBox(height: RevericSpacing.sm),
-                PlaybackControls(player: playback.player),
-              ],
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

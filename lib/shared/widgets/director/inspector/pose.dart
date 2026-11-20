@@ -33,103 +33,108 @@ class PoseInspector extends StatelessWidget {
     final id = object['id'] as String, frame = session.frame.value;
     final pose = ActorPose.fromJson(object['pose']);
     final block = session.history.editBlock(id, 'pose', frame);
-    final enabled = !session.playing && block == null;
+    final enabled = !session.readOnly && !session.playing && block == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: SectionTitle(tr(context, 'pose_presets'))),
-            if (session.history.timelineVisible)
-              KeyButton(
-                key: const ValueKey('director-key:pose'),
-                state: keyState(session, id, 'pose'),
-                tooltip: tr(context, 'toggle_key'),
-                onPressed: session.playing
-                    ? null
-                    : () => session.attempt(
-                        () => session.history.toggleKey(id, 'pose', frame),
-                      ),
-              ),
-          ],
-        ),
-        if (block != null)
-          Text(
-            tr(context, block),
-            style: RevericTheme.typographyOf(
-              context,
-            ).uiTiny.copyWith(color: RevericTheme.colorsOf(context).textMuted),
+        if (!session.readOnly) ...[
+          Row(
+            children: [
+              Expanded(child: SectionTitle(tr(context, 'pose_presets'))),
+              if (session.history.timelineVisible)
+                KeyButton(
+                  key: const ValueKey('director-key:pose'),
+                  state: keyState(session, id, 'pose'),
+                  tooltip: tr(context, 'toggle_key'),
+                  onPressed: session.playing
+                      ? null
+                      : () => session.attempt(
+                          () => session.history.toggleKey(id, 'pose', frame),
+                        ),
+                ),
+            ],
           ),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            const columns = 4;
-            final width =
-                (constraints.maxWidth - (columns - 1) * RevericSpacing.xxs) /
-                columns;
-            return Wrap(
-              spacing: RevericSpacing.xxs,
-              runSpacing: RevericSpacing.xxs,
-              children: [
-                for (final preset in poseIds)
-                  SizedBox(
-                    width: width,
-                    child: _PresetTile(
-                      key: ValueKey('director-pose-preset:$preset'),
-                      label: tr(context, 'pose_$preset'),
-                      onPressed: enabled
-                          ? () => session.attempt(
-                              () =>
-                                  session.history.applyPose(id, preset, frame),
-                            )
-                          : null,
+          if (block != null)
+            Text(
+              tr(context, block),
+              style: RevericTheme.typographyOf(context).uiTiny.copyWith(
+                color: RevericTheme.colorsOf(context).textMuted,
+              ),
+            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const columns = 4;
+              final width =
+                  (constraints.maxWidth - (columns - 1) * RevericSpacing.xxs) /
+                  columns;
+              return Wrap(
+                spacing: RevericSpacing.xxs,
+                runSpacing: RevericSpacing.xxs,
+                children: [
+                  for (final preset in poseIds)
+                    SizedBox(
+                      width: width,
+                      child: _PresetTile(
+                        key: ValueKey('director-pose-preset:$preset'),
+                        label: tr(context, 'pose_$preset'),
+                        onPressed: enabled
+                            ? () => session.attempt(
+                                () => session.history.applyPose(
+                                  id,
+                                  preset,
+                                  frame,
+                                ),
+                              )
+                            : null,
+                      ),
                     ),
-                  ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: RevericSpacing.xxs),
-        Wrap(
-          spacing: RevericSpacing.xxs,
-          children: [
-            RevericButton.text(
-              label: tr(context, 'pose_copy'),
-              size: RevericButtonSize.compact,
-              onPressed: () {
-                session.poseClipboard = pose.toJson();
-                session.refresh();
-              },
-            ),
-            RevericButton.text(
-              label: tr(context, 'pose_paste'),
-              size: RevericButtonSize.compact,
-              onPressed: enabled && session.poseClipboard != null
-                  ? () => session.attempt(
-                      () => session.history.editProperty(
-                        id,
-                        'pose',
-                        cloneJson(session.poseClipboard!),
-                        frame,
-                      ),
-                    )
-                  : null,
-            ),
-            RevericButton.text(
-              label: tr(context, 'pose_reset'),
-              size: RevericButtonSize.compact,
-              onPressed: enabled
-                  ? () => session.attempt(
-                      () => session.history.editProperty(
-                        id,
-                        'pose',
-                        ActorPose.standing().toJson(),
-                        frame,
-                      ),
-                    )
-                  : null,
-            ),
-          ],
-        ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: RevericSpacing.xxs),
+          Wrap(
+            spacing: RevericSpacing.xxs,
+            children: [
+              RevericButton.text(
+                label: tr(context, 'pose_copy'),
+                size: RevericButtonSize.compact,
+                onPressed: () {
+                  session.poseClipboard = pose.toJson();
+                  session.refresh();
+                },
+              ),
+              RevericButton.text(
+                label: tr(context, 'pose_paste'),
+                size: RevericButtonSize.compact,
+                onPressed: enabled && session.poseClipboard != null
+                    ? () => session.attempt(
+                        () => session.history.editProperty(
+                          id,
+                          'pose',
+                          cloneJson(session.poseClipboard!),
+                          frame,
+                        ),
+                      )
+                    : null,
+              ),
+              RevericButton.text(
+                label: tr(context, 'pose_reset'),
+                size: RevericButtonSize.compact,
+                onPressed: enabled
+                    ? () => session.attempt(
+                        () => session.history.editProperty(
+                          id,
+                          'pose',
+                          ActorPose.standing().toJson(),
+                          frame,
+                        ),
+                      )
+                    : null,
+              ),
+            ],
+          ),
+        ],
         SectionTitle(tr(context, 'pose_adjust')),
         for (final (group, controls) in _poseGroups) ...[
           Padding(
@@ -254,6 +259,7 @@ class _PoseControl extends HookWidget {
     final current = (object['pose'][parameter.id] as num).toDouble();
     final id = object['id'] as String, frame = session.frame.value;
     final enabled =
+        !session.readOnly &&
         !session.playing &&
         session.history.editBlock(id, 'pose', frame) == null;
     void cancel() {

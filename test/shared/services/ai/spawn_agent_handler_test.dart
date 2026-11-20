@@ -1000,6 +1000,40 @@ void main() {
     },
   );
 
+  test(
+    'canvas subagent initializes with canvas tool scope and resource paths',
+    () async {
+      final client = FakeProviderClient(
+        responses: const [FakeProviderClientResponse.text('Done')],
+      );
+      final expert = reviewer.copyWith(prompt: 'Review this work.');
+      final handler = buildHandler(
+        client,
+        availableSubAgents: [expert],
+        toolManager: workTools(contentKindCanvas),
+        allowedToolNames: () => ['Read'],
+        workContext: AiSessionContext(
+          workId: novelId,
+          contentKind: contentKindCanvas,
+        ),
+      );
+      final result = await handler.run(
+        input: {
+          'agent': expert.name,
+          'name': 'Reviewer',
+          'task': 'Review the canvas',
+        },
+      );
+      expect(result['ok'], true, reason: '$result');
+      final system =
+          client.capturedStreamRequests.single.messages.first.content;
+      expect(system, contains('当前作品类型：画布'));
+      expect(system, contains('production/clips/{clip_id}'));
+      expect(system, isNot(contains('chapters/{chapter_id}')));
+      expect(system, isNot(contains('scenes/{scene_id}')));
+    },
+  );
+
   for (final kind in [contentKindNovel, contentKindScreenplay]) {
     test(
       'chronicler loads skill with $kind paths on new and reused sessions',
@@ -2366,7 +2400,7 @@ void main() {
       AgentRule(
         id: 'rule_1',
         name: '章节字数',
-        content: '每章约 4000 字',
+        content: '每章约 4000 字\n\n对白场景可以更短。',
         enabled: true,
         sortOrder: 0,
         createdAt: now,
@@ -2406,7 +2440,7 @@ void main() {
     expect(system, contains('路径语法：'));
     expect(system, contains('同一响应内的多个直接工具调用不能依赖彼此的结果'));
     expect(system, contains('工具返回失败、报错或 skipped 时，不要直接跳过原任务'));
-    expect(system, contains('<user_rule>章节字数：每章约 4000 字</user_rule>'));
+    expect(system, contains('- 章节字数：每章约 4000 字\n\n  对白场景可以更短。'));
     expect(system, isNot(contains('不应出现')));
   });
 
@@ -2436,7 +2470,7 @@ void main() {
                 toolName: 'Codemode',
                 arguments: {
                   'code':
-                      'const r = await tools.Read({path: "profile/title"}); return await tools.Write({path: "profile/title", value: r.value});',
+                      'const r = await tools.Read({path: "/works/work/title"}); return await tools.Write({path: "/works/work/title", value: r.value});',
                 },
               ),
             ]),
@@ -3397,9 +3431,9 @@ class _SubAgentCodemodeRuntime extends FjsRuntime {
     CodemodeRuntimeLimits limits = const CodemodeRuntimeLimits(),
   }) async {
     toolNames = tools.map((tool) => tool.name).toList();
-    final read = await executeTool('Read', {'path': 'profile/title'});
+    final read = await executeTool('Read', {'path': '/works/work/title'});
     final write = await executeTool('Write', {
-      'path': 'profile/title',
+      'path': '/works/work/title',
       'value': read['value'],
     });
     return CodemodeRuntimeResult(

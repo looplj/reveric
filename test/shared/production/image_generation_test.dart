@@ -6,17 +6,24 @@
 import 'package:reveric/shared/models/generation/task.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'dart:async';
+import 'package:flutter/material.dart' show SizedBox, ValueKey;
+import 'package:reveric/desktop/features/production/image_candidates.dart';
+import '../../desktop/director/harness.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:reveric/shared/models/generation/provider_result.dart';
+import 'package:reveric/shared/services/ai/image/output.dart';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/services/production/grid_orchestrator.dart';
 import 'package:reveric/shared/models/video/request.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/testing.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/production/image_request.dart';
@@ -34,6 +41,9 @@ import 'package:reveric/shared/database/app_database.dart'
 import 'package:reveric/shared/providers/production_media.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/services/ai/image.dart';
+import 'package:reveric/shared/services/ai/trace_reporter_service.dart';
+import 'package:reveric/shared/services/anonymous_outbox_service.dart';
+import 'package:reveric/shared/services/device_id_service.dart';
 import 'package:reveric/shared/services/image_library_service.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/image_generate_orchestrator.dart';
@@ -44,9 +54,12 @@ import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(initializeDirectorTest);
+  setUp(() => rootBundle.clear());
   late Directory root;
   late app.AppDatabase appDb;
   late NovelContentDatabase db;
@@ -60,6 +73,7 @@ void main() {
     ProductionImageInvoke invoke, {
     Future<AiImageGenerationResult> Function(AiProvider, app.GenerationTask)?
     fetch,
+    Future<void> Function(app.GenerationTask)? onGenerationAttempt,
   }) {
     final result = results();
     return ImageTaskService(
@@ -71,6 +85,7 @@ void main() {
       beforeSubmit: result.beforeSubmit,
       recoverSources: result.recover,
       fetchResult: fetch ?? (_, _) => throw StateError('Must not fetch'),
+      onGenerationAttempt: onGenerationAttempt,
     );
   }
 
@@ -158,6 +173,293 @@ void main() {
     await root.delete(recursive: true);
   });
 
+  test('image preview logs the missing model configuration', () async {
+    final provider = (await appDb.aiProviderDao.getById('image'))!;
+    await appDb.aiProviderDao.upsert(
+      provider.copyWith(imageModels: const [], apiKey: 'sk-private-image'),
+    );
+    final previousDebugPrint = debugPrint;
+    final messages = <String>[];
+    debugPrint = (message, {wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+
+    await expectLater(
+      ProductionImageGenerateOrchestrator().preview(canvas, node.id),
+      throwsFormatException,
+    );
+    final diagnostic = messages.singleWhere(
+      (message) => message.contains('Image preview rejected'),
+    );
+    expect(diagnostic, contains('providerId=image'));
+    expect(diagnostic, contains('modelId=gpt-image-2'));
+    expect(diagnostic, contains('reason=model_not_configured'));
+    expect(diagnostic, isNot(contains('sk-private-image')));
+  });
+
+  test(
+    'rejected image generation records use once when reporting is enabled',
+    () async {
+      SharedPreferences.setMockInitialValues({'device_id': 'test-device'});
+      var enabled = true;
+      final client = MockClient(
+        (_) async => throw StateError('Unexpected flush'),
+      );
+      final outbox = AnonymousOutboxService(
+        database: appDb,
+        httpClient: client,
+        getBaseUrl: () => null,
+        getEnabled: () => enabled,
+        autoFlush: false,
+      );
+      addTearDown(client.close);
+      addTearDown(outbox.dispose);
+      final reporter = TraceReporterService(
+        deviceIdService: DeviceIdService(),
+        outbox: outbox,
+      );
+      var submissions = 0;
+      final service = jobs((_, _, _, _, _, _) async {
+        submissions++;
+        throw StateError('Provider denied generation');
+      }, onGenerationAttempt: reporter.onMediaGenerationAttempt);
+      addTearDown(service.shutdown);
+      final preview = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      Future<String> generate(String id) => service.submit(
+        novelId: preview.novelId,
+        sourceType: preview.sourceType,
+        sourceId: preview.sourceId,
+        request: preview.request,
+        taskId: id,
+      );
+
+      final id = await generate('first-image');
+      expect(
+        (await service.requireRun(id)).status,
+        GenerationTaskStatus.failed,
+      );
+      await generate(id);
+      enabled = false;
+      await generate('opted-out-image');
+      expect(submissions, 2);
+
+      final row = await appDb.select(appDb.anonymousOutboxEvents).getSingle();
+      final event = jsonDecode(row.payloadJson) as Map<String, dynamic>;
+      expect(event['event_type'], 'media_generation_attempted');
+      expect(event['model'], 'gpt-image-2');
+      expect(event['session_id'], row.eventId);
+      expect(jsonDecode(event['message'] as String), {
+        'media_kind': 'image',
+        'provider_type': 'openai',
+      });
+    },
+  );
+
+  testWidgets(
+    'candidate grid shows all four and selects the third without generation',
+    (tester) async {
+      late app.GenerationTask task;
+      await tester.runAsync(() async {
+        final service = jobs(
+          (taskId, _, _, _, _, cancellation) async =>
+              AiImageGenerationResult.group([
+                for (var i = 0; i < 4; i++)
+                  AiImageGenerationResult(
+                    localFilePath:
+                        (await File('${root.path}/grid-$i.png').writeAsBytes(
+                          img.encodePng(
+                            img.Image(width: 8, height: 8)
+                              ..setPixelRgb(0, 0, i * 60, 20, 30),
+                          ),
+                        )).path,
+                  ),
+              ]),
+        );
+        final preview = await ProductionImageGenerateOrchestrator().preview(
+          canvas,
+          node.id,
+        );
+        final id = await submit(service, preview);
+        await service.shutdown();
+        task = (await appDb.generationTaskDao.getById(id))!;
+      });
+      String? selected;
+      await tester.pumpWidget(
+        directorTestApp(
+          SizedBox(
+            width: 340,
+            child: ProductionImageCandidates(
+              service: canvas,
+              task: task,
+              selected: task.resultAssetId,
+              onAdopt: (id) async {
+                selected = id;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ProductionImageCandidates), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('image-candidate-adopt-4')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('image-candidate-adopt-3')));
+      await tester.pumpAndSettle();
+      expect(selected, task.resultAssetIds[2]);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test(
+    'download receipt survives failure and retries all candidates without another submission',
+    () async {
+      final urls = [
+        for (var i = 0; i < 4; i++) 'https://images.example/$i.png',
+      ];
+      var generations = 0;
+      final service = jobs(
+        (taskId, provider, _, _, onOutputs, cancellation) async {
+          generations++;
+          await onOutputs(
+            ProviderSucceeded(urls.map(ProviderUrlOutput.new).toList()),
+            ImageOutputContext(provider, taskId: taskId),
+          );
+          throw AiImageFetchException('download failed', urls: urls);
+        },
+        fetch: (_, task) async {
+          expect(task.imageOutputs!.items.map((item) => item.url), urls);
+          return AiImageGenerationResult.group([
+            for (var i = 0; i < 4; i++)
+              AiImageGenerationResult(
+                localFilePath:
+                    (await File('${root.path}/retry-$i.png').writeAsBytes(
+                      img.encodePng(
+                        img.Image(width: 8, height: 8)
+                          ..setPixelRgb(0, 0, i * 60, 20, 30),
+                      ),
+                    )).path,
+              ),
+          ]);
+        },
+      );
+      final preview = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      final id = await submit(service, preview);
+      expect(
+        (await service.requireRun(id)).status,
+        GenerationTaskStatus.action_required,
+      );
+      await service.retrySaveOutput(id);
+      final task = await service.requireRun(id);
+      expect(task.status, GenerationTaskStatus.completed);
+      expect(task.resultAssetIds, hasLength(4));
+      expect(generations, 1);
+      service.dispose();
+    },
+  );
+
+  test(
+    'one generation preserves four candidates and adopts any member',
+    () async {
+      final files = <File>[];
+      for (var i = 0; i < 4; i++) {
+        files.add(
+          await File('${root.path}/candidate-$i.png').writeAsBytes(
+            img.encodePng(
+              img.Image(width: 8, height: 8)..setPixelRgb(0, 0, i * 60, 20, 30),
+            ),
+          ),
+        );
+      }
+      final service = jobs(
+        (taskId, _, _, _, _, cancellation) async =>
+            AiImageGenerationResult.group([
+              for (final file in files)
+                AiImageGenerationResult(localFilePath: file.path),
+            ]),
+      );
+      final preview = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      final id = await submit(service, preview);
+      await service.shutdown();
+      final task = (await appDb.generationTaskDao.getById(id))!;
+      expect(task.status, GenerationTaskStatus.completed);
+      expect(task.resultAssetIds, hasLength(4));
+      expect(task.resultAssetId, task.resultAssetIds.first);
+      for (final item in task.imageOutputs!.items) {
+        expect(item.path, isNull);
+        expect(item.hash, isNull);
+        expect(item.url, isNull);
+        final asset = (await appDb.assetDao.getAsset(item.assetId!))!;
+        expect(
+          File(RevericPaths.resolveStored(asset.path)!).existsSync(),
+          isTrue,
+        );
+      }
+      await canvas.adoptGenerated(node.id, id, assetId: task.resultAssetIds[2]);
+      expect(
+        (await canvas.shots.getShot(node.clipId!))!.adoptedAssetId,
+        task.resultAssetIds[2],
+      );
+      await expectLater(
+        canvas.adoptGenerated(node.id, id, assetId: oldAsset),
+        throwsA(isA<Exception>()),
+      );
+      expect(await appDb.select(appDb.generationTasks).get(), hasLength(1));
+    },
+  );
+
+  test(
+    'submitted image task freezes expanded text inputs without media references',
+    () async {
+      final text = await canvas.addText(
+        node.canvasId,
+        content: 'Shared description',
+      );
+      await canvas.shots.restoreInputs(node.clipId!, [
+        ProductionInput.text(text.id).toJson(),
+      ]);
+      final prepared = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      expect(prepared.request.prompt, 'Shared description\nBody');
+      await canvas.updateText(
+        text.id,
+        title: '',
+        content: 'Changed after preview',
+      );
+      final service = jobs((taskId, _, request, _, _, cancellation) async {
+        expect(request.prompt, prepared.request.prompt);
+        expect(request.references, isEmpty);
+        return AiImageGenerationResult(localFilePath: output.path);
+      });
+      try {
+        final task = await service.requireRun(await submit(service, prepared));
+        expect(task.status, GenerationTaskStatus.completed);
+        expect(task.imageRequest.prompt, prepared.request.prompt);
+        expect(task.imageRequest.references, isEmpty);
+      } finally {
+        await service.shutdown();
+      }
+    },
+  );
+
   test(
     'derived requests retain their prepared values after later draft edits',
     () async {
@@ -201,7 +503,8 @@ void main() {
       await part.parent.create(recursive: true);
       await output.copy(part.path);
       final service = jobs(
-        (_, _, _) async => AiImageGenerationResult(localFilePath: part.path),
+        (taskId, _, _, _, _, cancellation) async =>
+            AiImageGenerationResult(localFilePath: part.path),
       );
       try {
         final preview = await ProductionImageGenerateOrchestrator().preview(
@@ -213,7 +516,7 @@ void main() {
         expect(task.path, startsWith('file_workspaces/work/images/'));
         expect(task.path, endsWith('.png'));
         final asset = (await appDb.assetDao.getAsset(task.resultAssetId!))!;
-        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+        expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
         expect(asset.path, task.path);
         expect(
           await File('${root.path}/${asset.path}').readAsBytes(),
@@ -231,7 +534,9 @@ void main() {
     'rejected submission never changes another active task for the same source',
     () async {
       final pending = Completer<AiImageGenerationResult>();
-      final service = jobs((_, _, _) => pending.future);
+      final service = jobs(
+        (taskId, _, _, _, _, cancellation) => pending.future,
+      );
       final preview = await ProductionImageGenerateOrchestrator().preview(
         canvas,
         node.id,
@@ -309,7 +614,7 @@ void main() {
         final service = _RecordFailJobs(
           database: appDb,
           images: buildImageLibraryService(appDb),
-          invoke: (_, _, _) async =>
+          invoke: (taskId, _, _, _, _, cancellation) async =>
               AiImageGenerationResult(localFilePath: output.path),
 
           beforeCreate: (novelId, type, sourceId) async {
@@ -403,7 +708,7 @@ void main() {
         final service = ImageTaskService(
           database: appDb,
           images: buildImageLibraryService(appDb),
-          invoke: (_, request, _) async {
+          invoke: (taskId, _, request, _, _, cancellation) async {
             requests.add(request);
             return AiImageGenerationResult(localFilePath: output.path);
           },
@@ -807,7 +1112,7 @@ void main() {
 
   test('panel generation returns once the task exists', () async {
     final release = Completer<void>();
-    final service = jobs((_, _, _) async {
+    final service = jobs((taskId, _, _, _, _, cancellation) async {
       await release.future;
       throw StateError('released');
     });
@@ -836,7 +1141,8 @@ void main() {
 
   test('a failed task leaves the complete derived draft for retry', () async {
     final service = jobs(
-      (_, _, _) async => throw StateError('fake network failure'),
+      (taskId, _, _, _, _, cancellation) async =>
+          throw StateError('fake network failure'),
     );
     final derived = await ViewDeriveOrchestrator().run(
       service: canvas,
@@ -944,7 +1250,7 @@ void main() {
           'resolution': '2K',
         });
         final service = jobs(
-          (_, _, _) async =>
+          (taskId, _, _, _, _, cancellation) async =>
               AiImageGenerationResult(localFilePath: output.path),
         );
         final preview = await ProductionImageGenerateOrchestrator().preview(
@@ -1018,7 +1324,7 @@ void main() {
         node.id,
       );
       final service = jobs(
-        (_, request, _) async =>
+        (taskId, _, request, _, _, cancellation) async =>
             AiImageGenerationResult(localFilePath: output.path),
       );
       final id = await submit(service, preview);
@@ -1034,7 +1340,8 @@ void main() {
       );
       expect(await appDb.select(appDb.assets).get(), hasLength(2));
       final failure = jobs(
-        (_, request, _) async => throw StateError('provider failed'),
+        (taskId, _, request, _, _, cancellation) async =>
+            throw StateError('provider failed'),
       );
       final failed = await failure.requireRun(await submit(failure, preview));
       expect(failed.status.name, 'failed');
@@ -1048,7 +1355,7 @@ void main() {
     'new image generation resets dismissal; repeated failure does not',
     () async {
       await canvas.shots.setErrorDismissed(node.clipId!, true);
-      final service = jobs((_, _, _) async {
+      final service = jobs((taskId, _, _, _, _, cancellation) async {
         expect(
           (await canvas.shots.getShot(node.clipId!))!.errorDismissed,
           isFalse,
@@ -1111,7 +1418,8 @@ void main() {
           );
       await canvas.shots.setErrorDismissed(node.clipId!, true);
       final service = jobs(
-        (_, _, _) async => throw StateError('Must not generate'),
+        (taskId, _, _, _, _, cancellation) async =>
+            throw StateError('Must not generate'),
       );
       await expectLater(
         service.retrySaveOutput('save-failed'),
@@ -1136,7 +1444,7 @@ void main() {
       final downloads = <String>[];
       var downloadFails = true;
       final service = jobs(
-        (_, _, _) async {
+        (taskId, _, _, _, _, cancellation) async {
           generations++;
           throw const AiImageFetchException('download failed', url: url);
         },
@@ -1164,7 +1472,9 @@ void main() {
         expect(task.path, isNull);
 
         // 启动恢复不能把待重新下载的任务改成生成失败。
-        final restarted = jobs((_, _, _) async => throw StateError('No AI'));
+        final restarted = jobs(
+          (taskId, _, _, _, _, cancellation) async => throw StateError('No AI'),
+        );
         await restarted.recover();
         restarted.dispose();
         task = await service.requireRun(id);
@@ -1206,8 +1516,8 @@ void main() {
       );
       final pending = Completer<AiImageGenerationResult>();
       final submitted = Completer<void>();
-      final service = jobs((_, _, onSubmitted) async {
-        await onSubmitted('prediction-1');
+      final service = jobs((taskId, _, _, onSubmitted, _, cancellation) async {
+        await onSubmitted(ProviderSubmitted('prediction-1'));
         submitted.complete();
         return pending.future;
       });
@@ -1217,7 +1527,9 @@ void main() {
       expect(task.providerTaskId, 'prediction-1');
 
       // 模拟进程在轮询中退出：同一行留在 running，重启后可重新获取。
-      final restarted = jobs((_, _, _) async => throw StateError('No AI'));
+      final restarted = jobs(
+        (taskId, _, _, _, _, cancellation) async => throw StateError('No AI'),
+      );
       await restarted.recover();
       restarted.dispose();
       final recovered = await service.requireRun(task.id);
@@ -1238,7 +1550,7 @@ void main() {
       var generations = 0;
       final fetched = <app.GenerationTask>[];
       final service = jobs(
-        (_, _, _) async {
+        (taskId, _, _, _, _, cancellation) async {
           generations++;
           throw const AiImageFetchException(
             'poll failed',
@@ -1265,7 +1577,9 @@ void main() {
         expect(task.providerTaskId, 'prediction-1');
         expect(task.outputUrl, isNull);
 
-        final restarted = jobs((_, _, _) async => throw StateError('No AI'));
+        final restarted = jobs(
+          (taskId, _, _, _, _, cancellation) async => throw StateError('No AI'),
+        );
         await restarted.recover();
         restarted.dispose();
         expect((await service.requireRun(id)).errorCode, 'result_fetch_failed');
@@ -1298,7 +1612,9 @@ void main() {
     'durable cancellation retains a late asset without adopting after restart',
     () async {
       final pending = Completer<AiImageGenerationResult>();
-      final service = jobs((_, _, _) => pending.future);
+      final service = jobs(
+        (taskId, _, _, _, _, cancellation) => pending.future,
+      );
       final preview = await ProductionImageGenerateOrchestrator().preview(
         canvas,
         node.id,
@@ -1325,7 +1641,7 @@ void main() {
     'a stable image request ID does not invoke twice and rejects a different request',
     () async {
       var calls = 0;
-      final service = jobs((_, _, _) async {
+      final service = jobs((taskId, _, _, _, _, cancellation) async {
         calls++;
         return AiImageGenerationResult(localFilePath: output.path);
       });
@@ -1359,7 +1675,9 @@ void main() {
 
   test('cancelled late result never replaces adopted asset', () async {
     final pending = Completer<AiImageGenerationResult>();
-    final service = jobs((_, request, _) => pending.future);
+    final service = jobs(
+      (taskId, _, request, _, _, cancellation) => pending.future,
+    );
     final preview = await ProductionImageGenerateOrchestrator().preview(
       canvas,
       node.id,
@@ -1379,7 +1697,9 @@ void main() {
 
   test('a deleted node stays deleted when its result arrives', () async {
     final pending = Completer<AiImageGenerationResult>();
-    final service = jobs((_, request, _) => pending.future);
+    final service = jobs(
+      (taskId, _, request, _, _, cancellation) => pending.future,
+    );
     final future = submit(
       service,
       await ProductionImageGenerateOrchestrator().preview(canvas, node.id),
@@ -1438,7 +1758,8 @@ void main() {
             ),
           );
       final service = jobs(
-        (_, _, _) async => throw StateError('Recovery must never generate'),
+        (taskId, _, _, _, _, cancellation) async =>
+            throw StateError('Recovery must never generate'),
       );
       await service.recover();
       expect(
@@ -1496,7 +1817,7 @@ void main() {
         canvas.requireAcyclic(node.id, source.id, node.canvasId),
         throwsA(isA<StoryboardException>()),
       );
-      final service = jobs((_, request, _) async {
+      final service = jobs((taskId, _, request, _, _, cancellation) async {
         expect(request.references.single.assetId, oldAsset);
         return AiImageGenerationResult(localFilePath: output.path);
       });
@@ -1559,7 +1880,10 @@ void main() {
             );
       }
       expect(
-        (await jobs((_, _, _) async => throw StateError('not called'))
+        (await jobs(
+                  (taskId, _, _, _, _, cancellation) async =>
+                      throw StateError('not called'),
+                )
                 .watchSource(
                   novelId: 'work',
                   sourceType: 'production_clip',
@@ -1579,7 +1903,7 @@ void main() {
       final service = ImageTaskService(
         database: appDb,
         images: buildImageLibraryService(appDb),
-        invoke: (_, _, _) async =>
+        invoke: (taskId, _, _, _, _, cancellation) async =>
             AiImageGenerationResult(localFilePath: output.path),
 
         beforeCreate: resultService.beforeCreate,
@@ -1633,7 +1957,9 @@ void main() {
     'shutdown waits for in-flight image requests and rejects further submissions',
     () async {
       final pending = Completer<AiImageGenerationResult>();
-      final service = jobs((_, _, _) => pending.future);
+      final service = jobs(
+        (taskId, _, _, _, _, cancellation) => pending.future,
+      );
       final preview = await ProductionImageGenerateOrchestrator().preview(
         canvas,
         node.id,
@@ -1653,7 +1979,8 @@ void main() {
       expect(stopped, true);
       expect((await service.requireRun(task.id)).resultAssetId, isNull);
       final restarted = jobs(
-        (_, _, _) async => throw StateError('Must not regenerate'),
+        (taskId, _, _, _, _, cancellation) async =>
+            throw StateError('Must not regenerate'),
       );
       await restarted.recover();
       expect((await restarted.requireRun(task.id)).errorCode, 'interrupted');
@@ -1717,7 +2044,7 @@ void main() {
           mediaLibraryServiceProvider.overrideWithValue(canvas.library),
 
           productionImageInvokeProvider.overrideWithValue(
-            (_, _, _) => pending.future,
+            (taskId, _, _, _, _, cancellation) => pending.future,
           ),
         ],
       );

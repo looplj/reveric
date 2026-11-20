@@ -49,11 +49,12 @@ void main() {
       }
     });
 
-    test('uses the canonical profile path for novel metadata', () {
+    test('uses the work identity to address its description', () {
       expect(
-        NovelWorkspaceSection.novel_description.aiResourcePath(),
-        '/profile',
+        NovelWorkspaceSection.novel_description.aiResourcePath(itemId: 'work'),
+        '/works/work/description',
       );
+      expect(NovelWorkspaceSection.novel_description.aiResourcePath(), isNull);
     });
 
     test('uses structured screenplay paths for screenplay sections', () {

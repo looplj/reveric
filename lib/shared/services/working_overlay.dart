@@ -10,7 +10,9 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../database/app_database.dart' show Novel;
 import '../database/novel_content_database.dart';
+import '../database/novel_content_daos/working_change_dao.dart';
 import '../database/type_converters.dart';
 import '../models/outline.dart';
 import '../models/screenplay_element.dart';
@@ -171,11 +173,48 @@ class WorkingOverlayService {
     this._contentDatabase,
     this._contentService, {
     required this._novelActionsService,
+    this._novelId,
   });
 
   final NovelContentDatabase _contentDatabase;
   final NovelContentService _contentService;
   final NovelActionsService _novelActionsService;
+  final String? _novelId;
+
+  WorkingOverlayService forNovel(String novelId) => _novelId == novelId
+      ? this
+      : WorkingOverlayService(
+          _contentDatabase,
+          _contentService.forNovel(novelId),
+          novelActionsService: _novelActionsService,
+          novelId: novelId,
+        );
+
+  Future<Novel?> _registeredNovel([String? resourceId]) async {
+    final novelId = _novelId ?? resourceId;
+    if (novelId == null || (resourceId != null && resourceId != novelId)) {
+      return null;
+    }
+    return _novelActionsService.getNovel(novelId);
+  }
+
+  Future<void> _markContentEdited() async {
+    final novelId = _novelId;
+    if (novelId != null) {
+      await _novelActionsService.markContentEdited(novelId);
+    }
+  }
+
+  StoryboardService get _storyboardService => StoryboardService(
+    _contentDatabase,
+    resolveContentKind: () async {
+      final novel = await _registeredNovel();
+      if (novel == null) {
+        throw StateError('Production work registration is unavailable');
+      }
+      return novel.contentKind;
+    },
+  );
 
   Stream<List<WorkingChange>> watchWorkingChanges() {
     return _contentDatabase.workingChangeDao.watchAll();
@@ -325,7 +364,11 @@ class WorkingOverlayService {
         value: newText,
       );
     }
-    resourcePath = canonicalResourcePath(resourcePath);
+    resourcePath = canonicalWorkingChangePath(
+      resourcePath,
+      resourceType: resourceType,
+      resourceId: resourceId,
+    );
     final now = DateTime.now();
     final prior = !allowCoalescing
         ? null
@@ -337,6 +380,7 @@ class WorkingOverlayService {
           );
     if (prior != null) {
       final nextPatch = prior.copyWith(
+        resourcePath: resourcePath,
         oldText: Value(prior.oldText),
         newText: Value(newText),
         sourceSessionId: sourceSessionId == null
@@ -365,6 +409,7 @@ class WorkingOverlayService {
             _contentDatabase.workingChanges,
           )..where((table) => table.id.equals(prior.id))).write(
             WorkingChangesCompanion(
+              resourcePath: Value(resourcePath),
               oldText: Value(prior.oldText),
               newText: Value(newText),
               sourceSessionId: sourceSessionId == null
@@ -389,7 +434,7 @@ class WorkingOverlayService {
         });
       } catch (error, stackTrace) {
         _log.error(
-          'UPDATE working_changes id=${prior.id} error=$error',
+          '[DB] UPDATE working_changes id=${prior.id}',
           error: error,
           stackTrace: stackTrace,
         );
@@ -620,7 +665,7 @@ class WorkingOverlayService {
       resourcePath,
     )).firstWhere((change) => change.status == workingChangeStatusActive);
     if (resourceType == 'production_clips') {
-      await _novelActionsService.markContentEdited(_contentDatabase.filePath);
+      await _markContentEdited();
     }
     return active;
   }
@@ -827,7 +872,7 @@ class WorkingOverlayService {
                 id: buildRandomId('commit_item'),
                 commitId: commitId,
                 workingChangeId: row.id,
-                resourcePath: row.resourcePath,
+                resourcePath: _workingChangePath(row),
                 resourceType: row.resourceType,
                 resourceId: Value(row.resourceId),
                 field: Value(row.field),
@@ -875,7 +920,7 @@ class WorkingOverlayService {
           (change) =>
               change.status == workingChangeStatusActive &&
               change.source == workingChangeSourceAi &&
-              _resourcePathInScopes(change.resourcePath, scopes),
+              _resourcePathInScopes(_workingChangePath(change), scopes),
         )
         .map((change) => change.id)
         .toList();
@@ -900,8 +945,11 @@ class WorkingOverlayService {
     final latest =
         await (_contentDatabase.select(_contentDatabase.workingChanges)
               ..where(
-                (table) => table.resourcePath.equals(
-                  canonicalResourcePath(resourcePath),
+                (table) => matchesWorkingChangePath(
+                  resourcePath,
+                  resourcePath: table.resourcePath,
+                  resourceType: table.resourceType,
+                  resourceId: table.resourceId,
                 ),
               )
               ..orderBy([(table) => OrderingTerm.desc(table.rowId)])
@@ -990,9 +1038,11 @@ class WorkingOverlayService {
     }
     switch (row.resourceType) {
       case 'novel':
-        final novel = await _novelActionsService.getNovelByContentDatabasePath(
-          _contentDatabase.filePath,
-        );
+        final id = row.resourceId;
+        if (id == null) {
+          return false;
+        }
+        final novel = await _registeredNovel(id);
         if (novel == null) return false;
         await _novelActionsService.updateNovel(
           novel: novel,
@@ -1030,43 +1080,37 @@ class WorkingOverlayService {
         if (root == null || root.id != row.resourceId) {
           return false;
         }
-        await StoryboardService(_contentDatabase).write(
-          'UPDATE_STYLE',
-          root.id,
-          () async {
-            await (_contentDatabase.update(
-              _contentDatabase.screenplays,
-            )..where((table) => table.id.equals(root.id))).write(
-              ScreenplaysCompanion(
-                styleId: Value(jsonDecode(value) as String?),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-          },
-        );
+        await _storyboardService.write('UPDATE_STYLE', root.id, () async {
+          await (_contentDatabase.update(
+            _contentDatabase.screenplays,
+          )..where((table) => table.id.equals(root.id))).write(
+            ScreenplaysCompanion(
+              styleId: Value(jsonDecode(value) as String?),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
+        });
         return true;
       case 'production_clips':
         if (row.resourceId != null && row.field == 'inputs') {
-          await StoryboardService(_contentDatabase).restoreInputs(
+          await _storyboardService.restoreInputs(
             row.resourceId!,
             (jsonDecode(value) as List)
                 .map((item) => Map<String, dynamic>.from(item as Map))
                 .toList(),
           );
-          await _novelActionsService.markContentEdited(
-            _contentDatabase.filePath,
-          );
+          await _markContentEdited();
           return true;
         }
         if (row.resourceId == null || row.field != 'document') {
           return false;
         }
-        await StoryboardService(_contentDatabase).apply(
+        await _storyboardService.apply(
           row.resourceId!,
           jsonDecode(value) as Map<String, dynamic>,
           restoring: restoreHistory,
         );
-        await _novelActionsService.markContentEdited(_contentDatabase.filePath);
+        await _markContentEdited();
         return true;
       case workingChangeResourceTypeScreenplayScenes:
         final id = row.resourceId;
@@ -1074,6 +1118,7 @@ class WorkingOverlayService {
         final service = ScreenplayService(
           _contentDatabase,
           novelActionsService: _novelActionsService,
+          novelId: _novelId,
         );
         switch (row.field) {
           case 'title':
@@ -1143,6 +1188,7 @@ class WorkingOverlayService {
         await ScreenplayService(
           _contentDatabase,
           novelActionsService: _novelActionsService,
+          novelId: _novelId,
         ).updateEpisodeOutline(episodeId: id, outline: value);
         return true;
       case 'volumes':
@@ -1511,7 +1557,7 @@ class WorkingOverlayService {
 
     final targetByPath = <String, ChangeCommitItem>{};
     for (final item in orderedItems.take(lastSelectedItemIndex + 1)) {
-      targetByPath[canonicalResourcePath(item.resourcePath)] = item;
+      targetByPath[_commitItemPath(item)] = item;
     }
     if (targetByPath.isEmpty) {
       return RestoreResourceResult.failed;
@@ -1678,10 +1724,7 @@ class WorkingOverlayService {
 
     final rollbackByPath = <String, ChangeCommitItem>{};
     for (final item in orderedItems) {
-      rollbackByPath.putIfAbsent(
-        canonicalResourcePath(item.resourcePath),
-        () => item,
-      );
+      rollbackByPath.putIfAbsent(_commitItemPath(item), () => item);
     }
 
     // 缺失目标只跳过对应字段，保留它的历史状态供后续处理。
@@ -1694,7 +1737,7 @@ class WorkingOverlayService {
             text: item.oldText,
           )) {
         skipped = true;
-        rollbackByPath.remove(canonicalResourcePath(item.resourcePath));
+        rollbackByPath.remove(_commitItemPath(item));
         _log.warning(
           'Rollback skipped missing target/history path=${item.resourcePath}',
         );
@@ -1771,9 +1814,7 @@ class WorkingOverlayService {
     }
 
     for (final item in orderedItems) {
-      if (rollbackByPath.containsKey(
-        canonicalResourcePath(item.resourcePath),
-      )) {
+      if (rollbackByPath.containsKey(_commitItemPath(item))) {
         await _markChangeRejected(item.workingChangeId);
       }
     }
@@ -1886,7 +1927,12 @@ class WorkingOverlayService {
       final earlierQuery = _contentDatabase.selectOnly(table)
         ..addColumns([table.id])
         ..where(
-          table.resourcePath.equals(canonicalResourcePath(first.resourcePath)) &
+          matchesWorkingChangePath(
+                _workingChangePath(first),
+                resourcePath: table.resourcePath,
+                resourceType: table.resourceType,
+                resourceId: table.resourceId,
+              ) &
               table.status.equals(workingChangeStatusActive) &
               table.rowId.isSmallerThanValue(order[first.id]!),
         );
@@ -2357,7 +2403,7 @@ class WorkingOverlayService {
   String _resourceScopeForItem(ChangeCommitItem item) {
     final resourcePath = item.resourcePath.trim();
     if (resourcePath.isNotEmpty) {
-      return resourcePath;
+      return _commitItemPath(item);
     }
     final resourceId = item.resourceId?.trim();
     if (resourceId == null || resourceId.isEmpty) {
@@ -2365,6 +2411,18 @@ class WorkingOverlayService {
     }
     return '/${item.resourceType}/$resourceId';
   }
+
+  String _workingChangePath(WorkingChange change) => canonicalWorkingChangePath(
+    change.resourcePath,
+    resourceType: change.resourceType,
+    resourceId: change.resourceId,
+  );
+
+  String _commitItemPath(ChangeCommitItem item) => canonicalWorkingChangePath(
+    item.resourcePath,
+    resourceType: item.resourceType,
+    resourceId: item.resourceId,
+  );
 
   String? _resourceKeyForItem(ChangeCommitItem item) {
     final resourceId = item.resourceId?.trim();
@@ -2404,9 +2462,7 @@ class WorkingOverlayService {
 
     switch (resourceType) {
       case 'novel':
-        final novel = await _novelActionsService.getNovelByContentDatabasePath(
-          _contentDatabase.filePath,
-        );
+        final novel = await _registeredNovel(id);
         if (novel == null) {
           return null;
         }
@@ -2437,7 +2493,7 @@ class WorkingOverlayService {
         }
         return jsonEncode(root.styleId);
       case 'production_clips':
-        final service = StoryboardService(_contentDatabase);
+        final service = _storyboardService;
         if (field == 'inputs') {
           return jsonEncode(await service.inputSnapshot(id));
         }
@@ -2629,8 +2685,7 @@ class WorkingOverlayService {
       'relations' =>
         await _contentService.entityRelationsService.getRelationById(id) !=
             null,
-      'production_clips' =>
-        await StoryboardService(_contentDatabase).getShot(id) != null,
+      'production_clips' => await _storyboardService.getShot(id) != null,
       workingChangeResourceTypeScreenplayScenes =>
         await _contentDatabase.screenplayDao.getScene(id) != null,
       _ => await _contentService.getItemById(id) != null,
@@ -2674,13 +2729,14 @@ class WorkingOverlayService {
         await _contentService.entityRelationsService.deleteRelation(id);
         return;
       case 'production_clips':
-        await StoryboardService(_contentDatabase).softDelete(id);
-        await _novelActionsService.markContentEdited(_contentDatabase.filePath);
+        await _storyboardService.softDelete(id);
+        await _markContentEdited();
         return;
       case workingChangeResourceTypeScreenplayScenes:
         await ScreenplayService(
           _contentDatabase,
           novelActionsService: _novelActionsService,
+          novelId: _novelId,
         ).deleteScene(id);
         return;
       default:

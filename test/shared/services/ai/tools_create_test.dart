@@ -20,6 +20,8 @@ import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 import '../../../helpers/working_change_test_helper.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 void main() {
   group('AiToolManager.stripChapterTitlePrefix', () {
     test('strips "第X章" prefix with Chinese numerals', () {
@@ -435,7 +437,11 @@ void main() {
     test('pathSchema prompt explains the readonly marker', () {
       final prompt = PromptFragments.pathSchemaBlock();
 
-      expect(prompt, contains('未标类型为 string'));
+      expect('未标类型为 string'.allMatches(prompt), hasLength(1));
+      expect(prompt, contains('标为可选的字段不保证出现'));
+      expect(prompt, contains('未列默认值的字段不承诺默认值'));
+      expect(prompt, contains('列表分页：total、limit、has_more、next_offset'));
+      expect(prompt, contains('返回的 contract 是字段与操作说明'));
       expect(prompt, contains('readonly 不可传入写操作'));
       expect(prompt, contains('- status（readonly）：发布状态'));
     });
@@ -476,7 +482,6 @@ void main() {
         );
         expect(notes, contains('- skills（技能）\n  path: skills/{skill_id}'));
         for (final label in [
-          'profile（作品信息）',
           'story_state（故事状态）',
           'volumes（卷）',
           'characters（角色）',
@@ -499,7 +504,6 @@ void main() {
           notes,
           contains('path: lore/{title}；支持多级：lore/{folder}/{title}'),
         );
-        expect(notes, contains('  path: profile\n'));
         final grammar = pathSchema();
         for (final kind in ['novel', 'screenplay']) {
           final prompt = PromptFragments.pathSchemaBlock(kind: kind);
@@ -550,10 +554,7 @@ void main() {
       for (final collection in ['canvas', 'relations']) {
         expect(notes, isNot(contains('\n- $collection')));
         expect(screenplayNotes, isNot(contains('\n- $collection')));
-        final contract = await toolManager.executeTool(
-          name: 'Read',
-          input: {'path': '/_schema/$collection'},
-        );
+        final contract = resourceContractTreeForTesting('/_schema/$collection');
         if (collection == 'canvas' && !ideationCanvasEnabled) {
           expect(contract['error'], isNotNull);
           continue;

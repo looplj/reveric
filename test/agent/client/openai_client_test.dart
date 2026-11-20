@@ -20,13 +20,13 @@ import 'package:reveric/shared/agent/round_assembler.dart';
 OpenAiClient _make() => OpenAiClient(
   apiKey: 'sk-test',
   baseUrl: 'https://example.invalid',
-  model: 'gpt-4o-mini',
+  model: 'custom-chat-model',
 );
 
 OpenAiClient _makeWithThinking({http.Client? httpClient}) => OpenAiClient(
   apiKey: 'sk-test',
   baseUrl: 'https://example.invalid',
-  model: 'gpt-4o-mini',
+  model: 'custom-chat-model',
   useThinkingField: true,
   httpClient: httpClient,
 );
@@ -534,31 +534,113 @@ void main() {
     });
   });
 
+  group('temperature is omitted when the model rejects it', () {
+    Future<Map<String, dynamic>> bodyFor({
+      required String model,
+      AgentConfig? options,
+    }) async {
+      Map<String, dynamic>? body;
+      final client = OpenAiClient(
+        apiKey: 'sk-test',
+        baseUrl: 'https://example.invalid',
+        model: model,
+        httpClient: MockClient((req) async {
+          body = jsonDecode(req.body) as Map<String, dynamic>;
+          return _okResponse();
+        }),
+      );
+      await client.chat(
+        messages: [AgentMessage.user(id: 'u1', content: 'hi')],
+        options: options,
+      );
+      return body!;
+    }
+
+    test('the provider default omits temperature', () async {
+      final body = await bodyFor(model: 'custom-chat-model');
+      expect(body.containsKey('temperature'), isFalse);
+    });
+
+    test('fixed-sampling models do not send temperature', () async {
+      for (final model in ['kimi-k3', 'gpt-5']) {
+        final body = await bodyFor(
+          model: model,
+          options: const AgentConfig(enableTemperature: true),
+        );
+        expect(body.containsKey('temperature'), isFalse, reason: model);
+      }
+    });
+
+    test('gpt-5.4 keeps temperature until a reasoning effort is set', () async {
+      final plain = await bodyFor(
+        model: 'gpt-5.4',
+        options: const AgentConfig(enableTemperature: true),
+      );
+      expect(plain['temperature'], 0.7);
+
+      final reasoning = await bodyFor(
+        model: 'gpt-5.4',
+        options: const AgentConfig(
+          enableTemperature: true,
+          reasoningEffort: 'medium',
+        ),
+      );
+      expect(reasoning.containsKey('temperature'), isFalse);
+      expect(reasoning['reasoning_effort'], 'medium');
+    });
+
+    test('deepseek sends temperature only while thinking is off', () async {
+      final off = await bodyFor(
+        model: 'deepseek-v4-flash',
+        options: const AgentConfig(
+          enableTemperature: true,
+          temperature: 0.2,
+          reasoningEffort: 'none',
+        ),
+      );
+      expect(off['temperature'], 0.2);
+
+      final on = await bodyFor(
+        model: 'deepseek-v4-flash',
+        options: const AgentConfig(
+          enableTemperature: true,
+          temperature: 0.2,
+          reasoningEffort: 'high',
+        ),
+      );
+      expect(on.containsKey('temperature'), isFalse);
+      expect(on['reasoning_effort'], 'high');
+    });
+  });
+
   group('defaultHeaders reach transport via abortTrigger wrapper', () {
     // Regression: 非流式 chat() 恒带 abortTrigger，SDK 用
     // _AbortableRequestWrapper 包装请求，其 finalize() 会 clear 再从 inner
     // 重拷 headers，丢掉 TraceHeadersHttpClient 在 send 阶段加的头。静态
     // 自定义静态请求头必须走 SDK defaultHeaders，进入 inner request headers，
     // 才能在 wrapper 重拷时保留。
-    test('X-Custom-Header from defaultHeaders is present on the wire', () async {
-      Map<String, String>? seenHeaders;
-      final mock = MockClient((req) async {
-        seenHeaders = Map<String, String>.from(req.headers);
-        return _okResponse();
-      });
-      final client = OpenAiClient(
-        apiKey: 'sk-test',
-        baseUrl: 'https://example.invalid',
-        model: 'gpt-4o-mini',
-        httpClient: mock,
-        defaultHeaders: const {'X-Custom-Header': 'test-value'},
-      );
-      await client.chat(
-        messages: [AgentMessage.user(id: 'u1', content: 'hi')],
-      );
-      expect(seenHeaders, isNotNull);
-      expect(seenHeaders!['X-Custom-Header'], 'test-value');
-    });
+    test(
+      'X-Custom-Header from defaultHeaders is present on the wire',
+      () async {
+        Map<String, String>? seenHeaders;
+        final mock = MockClient((req) async {
+          seenHeaders = Map<String, String>.from(req.headers);
+          return _okResponse();
+        });
+        final client = OpenAiClient(
+          apiKey: 'sk-test',
+          baseUrl: 'https://example.invalid',
+          model: 'custom-chat-model',
+          httpClient: mock,
+          defaultHeaders: const {'X-Custom-Header': 'test-value'},
+        );
+        await client.chat(
+          messages: [AgentMessage.user(id: 'u1', content: 'hi')],
+        );
+        expect(seenHeaders, isNotNull);
+        expect(seenHeaders!['X-Custom-Header'], 'test-value');
+      },
+    );
 
     test('omits X-Custom-Header when defaultHeaders not provided', () async {
       Map<String, String>? seenHeaders;
@@ -569,7 +651,7 @@ void main() {
       final client = OpenAiClient(
         apiKey: 'sk-test',
         baseUrl: 'https://example.invalid',
-        model: 'gpt-4o-mini',
+        model: 'custom-chat-model',
         httpClient: mock,
       );
       await client.chat(

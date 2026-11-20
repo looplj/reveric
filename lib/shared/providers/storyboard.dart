@@ -11,8 +11,26 @@ import 'novel_providers.dart';
 part 'storyboard.g.dart';
 
 @riverpod
-StoryboardService storyboardService(Ref ref, String databasePath) =>
-    StoryboardService(ref.watch(novelContentDatabaseProvider(databasePath)));
+StoryboardService storyboardService(
+  Ref ref,
+  String databasePath, {
+  String? novelId,
+}) {
+  final actions = ref.watch(novelActionsProvider);
+  return StoryboardService(
+    ref.watch(novelContentDatabaseProvider(databasePath)),
+    resolveContentKind: novelId == null
+        ? null
+        : () async {
+            final novel = await actions.getNovel(novelId);
+            if (novel == null) {
+              throw StateError('Production work registration is unavailable');
+            }
+            return novel.contentKind;
+          },
+  );
+}
+
 @riverpod
 Stream<List<ProductionClipRow>> storyboardShots(
   Ref ref,

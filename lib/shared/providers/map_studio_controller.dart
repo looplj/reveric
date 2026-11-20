@@ -140,10 +140,45 @@ class MapStudioController extends _$MapStudioController {
   GenerateMapOrchestrator _orchestrator({
     MapGenerationImageReady? onImageReady,
   }) {
+    final generate = ref.read(
+      mapImageGenerateCallbackProvider(modelId: _generationOptionId),
+    );
+    final edit = ref.read(
+      mapImageEditCallbackProvider(modelId: _generationOptionId),
+    );
+    final selectedModel = _generationModelId;
     return GenerateMapOrchestrator(
       database: _database,
-      imageGenerateCallback: ref.read(mapImageGenerateCallbackProvider),
-      imageEditCallback: ref.read(mapImageEditCallbackProvider),
+      imageChoices: ref.read(mapImageChoicesProvider(_generationOptionId)),
+      imageGenerateCallback: generate == null
+          ? null
+          : (prompt, {model, size, quality, complexity, options}) => generate(
+              prompt,
+              model: model ?? selectedModel,
+              size: size,
+              quality: quality,
+              complexity: complexity,
+              options: options,
+            ),
+      imageEditCallback: edit == null
+          ? null
+          : (
+              prompt, {
+              required imageData,
+              model,
+              size,
+              quality,
+              complexity,
+              options,
+            }) => edit(
+              prompt,
+              imageData: imageData,
+              model: model ?? selectedModel,
+              size: size,
+              quality: quality,
+              complexity: complexity,
+              options: options,
+            ),
       placeNameReader: ref.read(mapPlaceNameReaderProvider),
       onProgress: (stage, note) {
         state = state.copyWith(stageIndex: stage.index, stageNote: note);
@@ -162,6 +197,18 @@ class MapStudioController extends _$MapStudioController {
     if (state.isBusy) {
       return;
     }
+    final selection = ref.read(
+      mapDraftImageModelSelectionProvider(request.modelId),
+    );
+    if (selection == null) {
+      state = state.copyWith(
+        errorMessage: tr(LocaleKeys.aiModelUnavailableReselect),
+      );
+      return;
+    }
+    _generationOptionId =
+        request.modelId ?? '${selection.config.id}::${selection.model}';
+    _generationModelId = selection.model;
     final keepAlive = ref.keepAlive();
     _lastRequest = request;
     _lastNovelId = novelId;
@@ -314,7 +361,7 @@ class MapStudioController extends _$MapStudioController {
         for (final place in draft.places)
           if (!matchedIds.contains(place.locationId)) place.locationId,
       ];
-      final model = ref.read(mapStudioImageModelSelectionProvider)?.model;
+      final model = _generationModelId;
       final newSettings = MapStudioSettings(
         version: version,
         image: imagePath,
@@ -356,7 +403,7 @@ class MapStudioController extends _$MapStudioController {
     required String novelId,
     required String sourceMapName,
   }) async {
-    final model = ref.read(mapStudioImageModelSelectionProvider)?.model;
+    final model = _generationModelId;
     final asset = await ref
         .read(imageLibraryServiceProvider)
         .importMapImage(
@@ -398,6 +445,7 @@ class MapStudioController extends _$MapStudioController {
       }
       final bytes = await file.readAsBytes();
       final metadata = MapAssetMetadata.fromJson(asset.metadataJson);
+      _generationModelId = asset.model;
       _lastNovelId = novelId;
       _lastSourceMapName = sourceMapName;
       _lastRequest ??= MapGenerationRequest(
@@ -522,6 +570,8 @@ class MapStudioController extends _$MapStudioController {
     state = state.copyWith(clearError: true);
   }
 
+  String? _generationOptionId;
+  String? _generationModelId;
   MapGenerationRequest? _lastRequest;
   String? _lastNovelId;
   String? _lastSourceMapName;

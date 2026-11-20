@@ -73,4 +73,50 @@ void main() {
       await tester.pumpAndSettle();
     });
   }
+
+  testWidgets('selecting an existing skill returns it for replacement', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    List<AgentSkillImportCandidate>? selected;
+    const candidate = AgentSkillImportCandidate(
+      filePath: 'skills/h3-fight/SKILL.md',
+      parsed: AgentSkillImportParseResult(
+        name: 'h3-fight',
+        description: 'Fight',
+        body: 'Instructions',
+      ),
+      nameConflict: true,
+    );
+    await tester.pumpWidget(
+      marketplaceTestHost(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () async => selected = await showAgentSkillImportDialog(
+              context,
+              candidates: [candidate],
+            ),
+            child: const Text('Open import'),
+          ),
+        ),
+        TargetPlatform.macOS,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open import'));
+    await tester.pumpAndSettle();
+    expect(find.text(tr(LocaleKeys.agentSkillImportExists)), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNull,
+    );
+    await tester.tap(find.text('h3-fight'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FilledButton));
+    await tester.pumpAndSettle();
+    expect(selected, [candidate]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
 }

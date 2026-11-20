@@ -7,6 +7,7 @@
 //   .agents/rules/hooks.md
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import '../history_region.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:mobx/mobx.dart' show reaction, runInAction;
@@ -35,6 +36,7 @@ class ProductionStoryboardCell extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final history = ProductionHistoryScope.maybeOf(context)?.history;
     final colors = RevericTheme.colorsOf(context);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final saving = useState(false);
@@ -43,10 +45,14 @@ class ProductionStoryboardCell extends HookWidget {
     final drag = useValueNotifier(Offset.zero);
     final dragStart = useRef(Offset.zero);
     final lift = useAnimationController(
-      duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 140),
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 140),
     );
     final settle = useAnimationController(
-      duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 180),
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
       initialValue: 1,
     );
     final settleFrom = useRef(Offset.zero);
@@ -167,7 +173,12 @@ class ProductionStoryboardCell extends HookWidget {
           saving.value = true;
           productionRun(context, () async {
             try {
-              await service.swapSlot(group.id, memberId, slot);
+              await service.swapSlot(
+                group.id,
+                memberId,
+                slot,
+                history: history,
+              );
             } catch (_) {
               if (identical(group.layout, layout)) {
                 place(slots);
@@ -188,8 +199,7 @@ class ProductionStoryboardCell extends HookWidget {
             animation: Listenable.merge([drag, lift, settle]),
             builder: (_, child) {
               final lifted = Curves.easeOut.transform(lift.value);
-              final settling =
-                  1 - Curves.easeOutCubic.transform(settle.value);
+              final settling = 1 - Curves.easeOutCubic.transform(settle.value);
               return Transform.translate(
                 offset: drag.value + settleFrom.value * settling,
                 child: Transform.scale(

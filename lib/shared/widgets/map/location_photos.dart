@@ -36,11 +36,13 @@ class LocationPhotos extends HookConsumerWidget {
   const LocationPhotos({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.location,
     required this.pickImages,
   });
 
   final String databasePath;
+  final String novelId;
   final Location location;
 
   /// 平台选图入口，返回 `dart:io` 可读的图片路径；取消时返回空列表。
@@ -78,9 +80,6 @@ class LocationPhotos extends HookConsumerWidget {
           return;
         }
         final library = ref.read(imageLibraryServiceProvider);
-        final novelId = await ref
-            .read(novelContentServiceProvider(databasePath))
-            .requireNovelId();
         // 逐张导入，单张失败跳过不影响其余；导入完成后一次写入地点。
         final imported = <String>[];
         var failed = false;

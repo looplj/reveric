@@ -114,9 +114,7 @@ class _Toolbar extends ConsumerWidget {
         child: SizedBox(
           height: DesktopWindowFrame.titleBarHeight,
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: RevericSpacing.x2l,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: RevericSpacing.x2l),
             child: Row(
               children: [
                 const Spacer(),
@@ -597,9 +595,13 @@ class _Actions extends ConsumerWidget {
     final current = selected;
     final canRework = current != null && !state.busy;
     final canUseImage = current?.asset != null && !state.busy;
-    final resolutionLabel = coverResolutionOf(
-      state.resolutionId,
-    ).id.toUpperCase();
+    final resolutionLabel =
+        ref
+            .watch(coverDraftImageChoicesProvider(novelId))
+            ?.resolution(state.resolutionId) ??
+        (RegExp(r'^[124]k$').hasMatch(state.resolutionId)
+            ? state.resolutionId.toUpperCase()
+            : state.resolutionId);
 
     return Row(
       children: [

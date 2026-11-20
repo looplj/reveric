@@ -34,6 +34,7 @@ import '../../localization/locale_keys.dart';
 import '../../models/ai_provider.dart';
 import '../../providers/settings_providers.dart';
 import '../../theme/theme.dart';
+import '../guide/trigger.dart';
 import 'ai_providers_section.dart';
 import 'provider_actions.dart';
 
@@ -46,6 +47,9 @@ class MobileProviderList extends HookConsumerWidget {
 
   final ValueChanged<String> onSelect;
   final VoidCallback onAddCustom;
+  final GlobalKey? listKey;
+  final GlobalKey? addButtonKey;
+  final VoidCallback? onReplayGuide;
 
   const MobileProviderList({
     super.key,
@@ -55,6 +59,9 @@ class MobileProviderList extends HookConsumerWidget {
 
     required this.onSelect,
     required this.onAddCustom,
+    this.listKey,
+    this.addButtonKey,
+    this.onReplayGuide,
   });
 
   @override
@@ -88,7 +95,12 @@ class MobileProviderList extends HookConsumerWidget {
               ),
             ),
             const SizedBox(width: RevericSpacing.sm),
+            if (onReplayGuide != null) ...[
+              GuideReplayButton(onPressed: onReplayGuide),
+              const SizedBox(width: RevericSpacing.xxs),
+            ],
             RevericIconButton(
+              key: addButtonKey,
               icon: RevericIcons.add,
               tooltip: context.t(LocaleKeys.commonAdd),
               onPressed: onAddCustom,
@@ -103,6 +115,7 @@ class MobileProviderList extends HookConsumerWidget {
           ),
         if (filtered.isNotEmpty)
           Container(
+            key: listKey,
             clipBehavior: Clip.hardEdge,
             decoration: BoxDecoration(
               color: colors.surface,

@@ -21,6 +21,7 @@
 //   .agents/rules/db-migration.md
 // ⚠️ 修改此文件后必须运行 `make codegen`，否则 .drift.dart / .g.dart 不会更新
 // ⚠️ 新增字段时需要同步更新：DB → service → AI tools（schema/read/write/create/edit） → tool card i18n（fieldLabel/translation）
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -51,6 +52,7 @@ import '../utils/short_entity_id.dart';
 import '../utils/short_entity_id_allocator.dart';
 import '../utils/storage_paths.dart';
 import '../utils/windows_safe_path.dart';
+import 'migration_columns.dart';
 import 'novel_content_daos/agent_rule_dao.dart';
 import 'novel_content_daos/ai_chat_message_dao.dart';
 import 'novel_content_daos/canvas_dao.dart';
@@ -197,10 +199,16 @@ const String canvasNodeTypeMedia = 'media';
 const String canvasNodeTypeStaging = 'staging';
 // 制作画布分组；成员用 parent_id 指向它，布局参数在 style.group。
 const String canvasNodeTypeGroup = 'group';
+const String canvasNodeTypeText = 'text';
+const String canvasNodeTypeEditing = 'editing';
+// 制作画布场次：每场一个，refType 为 screenplay_scene，x / y 是场次框内第一张卡片的左上角。
+// 场内片段由 production_clips.scene_id 决定并按成片顺序排在它下方，不用 parent_id 挂靠。
+const String canvasNodeTypeScene = 'scene';
 // 制作画布节点用 refType/refId 指向内容；不进构思画布的 [canvasNodeRefTypes]。
 const String canvasNodeRefTypeProductionClip = 'production_clip';
 const String canvasNodeRefTypeAsset = 'asset';
 const String canvasNodeRefTypeStaging = 'staging';
+const String canvasNodeRefTypeEditing = 'editing';
 const String canvasEdgeTypeInput = 'generation_input';
 // 导演台节点到它导出结果节点的连线，只由导出生成。
 const String canvasEdgeTypeStagingOutput = 'staging_output';
@@ -217,6 +225,8 @@ extension ProductionCanvasNodeRef on CanvasNode {
       refType == canvasNodeRefTypeProductionClip ? refId : null;
   String? get mediaAssetId => refType == canvasNodeRefTypeAsset ? refId : null;
   String? get stagingId => refType == canvasNodeRefTypeStaging ? refId : null;
+  String? get editingId => refType == canvasNodeRefTypeEditing ? refId : null;
+  String? get sceneId => type == canvasNodeTypeScene ? refId : null;
 }
 
 const List<String> canvasKinds = <String>[canvasKindUser];
@@ -1287,6 +1297,7 @@ class VideoStagings extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// 剧本节拍功能已移除；暂时保留此表中的节拍数据及场次对节拍的引用。
 @DataClassName('ScreenplayBeatRow')
 class ScreenplayBeats extends Table {
   TextColumn get id => text()();
@@ -1564,33 +1575,63 @@ class ProductionClips extends Table {
 class NovelContentDatabase extends _$NovelContentDatabase {
   static final _log = AppLogger.forModule('NovelContentDB');
 
-  factory NovelContentDatabase(String filePath) {
-    final normalizedPath = _normalizedDatabasePath(filePath);
+  factory NovelContentDatabase(String contentDatabasePath) {
+    final normalizedPath = _normalizedDatabasePath(contentDatabasePath);
     final cachedDatabase = _databaseCache[normalizedPath];
     if (cachedDatabase != null) {
       cachedDatabase.referenceCount += 1;
       return cachedDatabase.database;
     }
 
-    final database = NovelContentDatabase._internal(normalizedPath);
+    final database = NovelContentDatabase._internal(
+      contentDatabasePath,
+      normalizedPath,
+    );
     _databaseCache[normalizedPath] = _CachedNovelContentDatabase(
       database: database,
     );
     return database;
   }
 
-  NovelContentDatabase._internal(this.filePath)
+  NovelContentDatabase._internal(this.contentDatabasePath, this.filePath)
     : super(_openConnection(filePath));
 
   @visibleForTesting
-  NovelContentDatabase.forTest(super.executor) : filePath = ':memory:';
+  NovelContentDatabase.forTest(super.executor)
+    : contentDatabasePath = ':memory:',
+      filePath = ':memory:';
 
   /// 供受控维护操作在内存库中生成当前 schema 参考。
-  NovelContentDatabase.forSchemaRepair(super.executor) : filePath = ':memory:';
+  NovelContentDatabase.forSchemaRepair(super.executor)
+    : contentDatabasePath = ':memory:',
+      filePath = ':memory:';
+
+  /// 供画廊只读预览等短期沙箱使用的临时内存库，不参与路径缓存。
+  NovelContentDatabase.ephemeral(super.executor)
+    : contentDatabasePath = ':memory:',
+      filePath = ':memory:';
 
   static final Map<String, _CachedNovelContentDatabase> _databaseCache = {};
 
+  /// 打开内容库时传入的路径，保留平台转换前的值。
+  final String contentDatabasePath;
+
+  /// SQLite 打开路径和连接缓存键，仅用于访问数据库文件。
   final String filePath;
+
+  final Object _transactionContext = Object();
+
+  /// 需要在提交后更新内存状态的操作据此确保自己拥有最外层事务。
+  bool get isInTransaction => Zone.current[_transactionContext] == true;
+
+  @override
+  Future<T> transaction<T>(
+    Future<T> Function() action, {
+    bool requireNew = false,
+  }) => super.transaction(
+    () => runZoned(action, zoneValues: {_transactionContext: true}),
+    requireNew: requireNew,
+  );
 
   late final chapterDao = ChapterDao(this);
 
@@ -1603,7 +1644,7 @@ class NovelContentDatabase extends _$NovelContentDatabase {
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (migrator, from, to) async {
       if (from < 2) {
-        await migrator.addColumn(
+        await migrator.addColumnIfMissing(
           productionClips,
           productionClips.generateAudio,
         );
@@ -1726,7 +1767,7 @@ class NovelContentDatabase extends _$NovelContentDatabase {
   @override
   Future<void> close() async {
     final cachedDatabase = _databaseCache[filePath];
-    if (cachedDatabase == null) {
+    if (cachedDatabase == null || !identical(cachedDatabase.database, this)) {
       return super.close();
     }
 

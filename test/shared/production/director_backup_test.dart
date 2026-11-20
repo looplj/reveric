@@ -3,6 +3,7 @@
 //   lib/shared/services/production/backup_media.dart
 //   test/helpers/backup_fixture.dart
 import 'dart:convert';
+import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/models/audio/request.dart';
 import 'package:reveric/shared/models/generation/task.dart';
 import 'dart:io';
@@ -11,6 +12,68 @@ import '../../helpers/backup_fixture.dart';
 import 'package:reveric/shared/services/production/backup_media.dart';
 
 void main() {
+  test(
+    'selected backup includes every candidate, including shared assets',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('candidates-backup-');
+      final schemas = await BackupDatabases.create();
+      final db = schemas.writeMain('${dir.path}/reveric.sqlite');
+      for (var i = 0; i < 4; i++) {
+        insertBackupRow(db, 'assets', {
+          'id': 'candidate-$i',
+          'type': 'image',
+          'purpose': 'production.generated',
+          'path': 'file_workspaces/shared/images/$i.png',
+        });
+      }
+      insertBackupRow(db, 'generation_tasks', {
+        'id': 'task',
+        'kind': 'image',
+        'novel_id': 'work',
+        'source_type': 'production_clip',
+        'source_id': 'clip',
+        'provider_id': 'p',
+        'provider_type': 'api88',
+        'model_id': 'midjourney-v8.2',
+        'status': 'completed',
+        'result_asset_id': 'candidate-0',
+        'request_json': jsonEncode(
+          ImageGenerationRequest(
+            ProductionImageRequest(
+              providerId: 'p',
+              modelId: 'midjourney-v8.2',
+              originalPrompt: 'city',
+              prompt: 'city',
+              ratio: '1:1',
+              resolution: 'auto',
+              size: null,
+            ),
+          ).toJson(),
+        ),
+        'image_outputs': jsonEncode(
+          ImageTaskOutputs([
+            for (var i = 0; i < 4; i++)
+              ImageTaskOutput(assetId: 'candidate-$i'),
+          ]).toJson(),
+        ),
+      });
+      db.close();
+      try {
+        final backup = collectSelectedMedia(
+          backup: dir,
+          novelIds: {'work'},
+          contentPaths: [],
+        );
+        expect(backup.rows['assets']!.map((row) => row['id']).toSet(), {
+          for (var i = 0; i < 4; i++) 'candidate-$i',
+        });
+        expect(backup.rows['generation_tasks'], hasLength(1));
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    },
+  );
+
   test(
     'selected backups keep shared voices and removed voices selected by a shot',
     () async {

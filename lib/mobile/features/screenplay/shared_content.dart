@@ -124,6 +124,7 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
             defaultName: context.t(LocaleKeys.workspaceNewCharacter),
           );
           editor = MobileCharacterEditorPage(
+            novelId: novel.id,
             databasePath: path,
             characterId: id,
             onOpenGraph: openGraph,
@@ -146,7 +147,11 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
                 type: locationTypeWorld,
                 parentId: null,
               );
-          editor = MobileLocationEditorPage(databasePath: path, locationId: id);
+          editor = MobileLocationEditorPage(
+            databasePath: path,
+            novelId: novel.id,
+            locationId: id,
+          );
         } else {
           final entrySection = simple!;
           final id = await service.createItem(
@@ -154,6 +159,7 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
             defaultTitle: context.t(entrySection.newLabelKey),
           );
           editor = MobileEntryEditorPage(
+            novelId: novel.id,
             databasePath: path,
             section: entrySection,
             entryId: id,
@@ -185,6 +191,7 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
     final Widget body;
     if (simple != null) {
       body = MobileSectionPanel(
+        novelId: novel.id,
         databasePath: path,
         section: simple,
         onCreate: create,
@@ -198,6 +205,7 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
           onCreate: create,
         ),
         ScreenplayWorkspaceSection.characters => MobileCharactersPanel(
+          novelId: novel.id,
           databasePath: path,
           onCreate: create,
           onOpenGraph: openGraph,

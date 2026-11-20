@@ -19,7 +19,7 @@ const _replaceDescription = r'''在作品工作区资源文本字段中批量正
 先空跑看命中，确认无误再传 `dry_run: false` 执行。
 中文没有词边界，`\b` 对汉字不生效；排除误伤要用负向断言，如 `李明(?!月)` 避开「李明月」。
 一次处理范围内全部命中，不分页、不截断。
-剧本只替换场次 synopsis、非 character 元素的 text、集大纲和节拍说明；标题跳过。
+剧本只替换场次 synopsis、非 character 元素的 text 和集大纲；标题跳过。
 
 返回：
 - 空跑：matched_fields、total_matches、samples（全部命中变体，每条 `"匹配串+后2字 次数"`）。

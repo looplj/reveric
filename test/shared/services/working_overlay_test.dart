@@ -49,6 +49,93 @@ void main() {
   }
 
   test(
+    'new work description changes share history and rollback with legacy rows',
+    () async {
+      await appDb.novelDao.create(
+        id: 'work',
+        title: '作品',
+        description: '旧简介',
+        contentDatabasePath: db.filePath,
+      );
+      const historyPath = '/works/work/description';
+      const legacyPath = 'profile/description';
+      const message = 'history.commit_message.manual_novel_description_save';
+      final change = await service.stageTextChange(
+        resourcePath: historyPath,
+        resourceType: 'novel',
+        resourceId: 'work',
+        field: 'description',
+        oldText: '旧简介',
+        newText: '中间版本',
+        source: workingChangeSourceManual,
+      );
+      final commit = await service.commitManualSave(
+        manualChangeIds: [change.id],
+        resourceScopes: const [historyPath],
+        manualMessage: message,
+      );
+      // 模拟升级前已保存的历史数据。
+      await (db.update(
+        db.workingChanges,
+      )..where((table) => table.id.equals(change.id))).write(
+        const WorkingChangesCompanion(resourcePath: Value(legacyPath)),
+      );
+      await (db.update(
+        db.changeCommitItems,
+      )..where((table) => table.workingChangeId.equals(change.id))).write(
+        const ChangeCommitItemsCompanion(resourcePath: Value(legacyPath)),
+      );
+
+      final current = await service.stageTextChange(
+        resourcePath: historyPath,
+        resourceType: 'novel',
+        resourceId: 'work',
+        field: 'description',
+        oldText: '中间版本',
+        newText: '新简介',
+        source: workingChangeSourceManual,
+      );
+      expect(current.resourcePath, historyPath);
+      final nextCommit = await service.commitManualSave(
+        manualChangeIds: [current.id],
+        resourceScopes: const [historyPath],
+        manualMessage: message,
+      );
+      expect(nextCommit, commit);
+      final history = await service.getChangeCommitItemsForResource(
+        historyPath,
+      );
+      expect(
+        history.map((item) => item.resourcePath),
+        unorderedEquals([legacyPath, historyPath]),
+      );
+      final changes = await service.getWorkingChangesForResource(historyPath);
+      expect(
+        changes.map((row) => row.id),
+        unorderedEquals([change.id, current.id]),
+      );
+      expect(
+        await service.getWorkingChangesForResource('/works/other/description'),
+        isEmpty,
+      );
+      expect((await appDb.novelDao.get('work'))?.description, '新简介');
+
+      await service.rollbackCommit(commitId: commit!);
+      expect((await appDb.novelDao.get('work'))?.description, '旧简介');
+      final afterRollback = await service.getChangeCommitItemsForResource(
+        historyPath,
+      );
+      expect(
+        afterRollback
+            .where((item) => item.commitId != commit)
+            .single
+            .resourcePath,
+        historyPath,
+      );
+    },
+  );
+
+  test(
     'overwriting a folder with a document keeps its children reachable',
     () async {
       final documents = contentService.documentsService;

@@ -14,6 +14,8 @@ const fjs = Object.freeze({bridge_call(value) {
   return __nativeBridge(JSON.stringify({...JSON.parse(value), token:__TOKEN__}));
 }});
 const __tools = Object.create(null);
+const __provider = Object.create(null);
+let __providerRegistered = false;
 const __tasks = Object.create(null);
 const __prompts = Object.create(null);
 const __views = Object.create(null);
@@ -53,6 +55,28 @@ function __take(value, key, table, label) {
 }
 const __setup = Object.freeze({
   plugin: __plugin,
+  provider: Object.freeze({register(handlers) {
+    __open();
+    if (__providerRegistered || !handlers || typeof handlers !== 'object' || Array.isArray(handlers)) __reject('Invalid or duplicate provider');
+    __providerRegistered = true;
+    const methods = [];
+    const add = (name, handler) => {
+      __provider[name] = handler;
+      methods.push(name);
+    };
+    // The host decides which methods it supports; unknown entries are reported there and ignored.
+    for (const key of Object.keys(handlers)) {
+      const value = handlers[key];
+      if (typeof value === 'function') {
+        add(key, value);
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const method of Object.keys(value)) {
+          if (typeof value[method] === 'function') add(key + '.' + method, value[method]);
+        }
+      }
+    }
+    __definitions.push({kind:'provider', methods:methods.sort()});
+  }}),
   tools: Object.freeze({register(tool) {
     if (tool && typeof tool === 'object' && 'kind' in tool) __reject('Reserved tool property: kind');
     __definitions.push(__take(tool, 'name', __tools, 'tool'));
@@ -235,5 +259,32 @@ await __finish(async () => {
     throw new Error('Task must return a summary object or void');
   }
   return {summary: result?.summary ?? null};
+});
+''';
+
+String pluginInvokeProvider(
+  String method,
+  Map<String, dynamic> input,
+  String callId,
+  Map<String, dynamic> identity,
+) =>
+    '''
+await __finish(async () => {
+  const method = ${jsonEncode(method)};
+  const handler = await __handler(__provider, method, 'Provider');
+  const identity = ${jsonEncode(identity)};
+  const extra = {};
+  if (method === 'uploadReference' || method === 'assets.submit') {
+    extra.files = Object.freeze({upload(handle, request) { return __call('files.upload', {handle, request}); }});
+  }
+  if (method.startsWith('image.') || method.startsWith('video.')) {
+    const kind = method.split('.')[0];
+    extra[kind] = Object.freeze({request(url, request) { return __call(kind + '.request', {url, request}); }});
+    extra.taskId = identity.taskId;
+  }
+  const context = Object.freeze({plugin:__plugin, provider:Object.freeze({id:identity.id}), callId:${jsonEncode(callId)}, log:__log, settings:__settings, secrets:__secrets, storage:__storage, http:__http, ...extra});
+  const value = method === 'listModels' || method === 'checkConnection' || method.startsWith('actions.')
+    ? await handler(context) : await handler(${jsonEncode(input)}, context);
+  return {value};
 });
 ''';

@@ -73,11 +73,18 @@ class GenerationTaskDao extends DatabaseAccessor<AppDatabase>
       task.submittedAt == null &&
       task.errorCode != 'provider_configuration_changed';
 
-  /// 音视频一旦拿到输出便继续下载和保存，避免丢弃已经生成的结果。
+  /// 音视频提交请求发出后中断也无法撤销远端计费，只会丢失远端身份；
+  /// 音频同步提交以 running 表示，收到远端 ID 后才可停止轮询。
+  /// 一旦拿到输出便继续下载和保存，避免丢弃已经生成的结果。
   static bool canRequestCancellation(GenerationTask task) =>
       !task.status.isTerminal &&
       (task.kind == GenerationKind.image ||
-          (task.status != GenerationTaskStatus.saving &&
+          (task.status != GenerationTaskStatus.submitting &&
+              !(task.kind == GenerationKind.audio &&
+                  task.status == GenerationTaskStatus.running &&
+                  task.submittedAt != null &&
+                  task.providerTaskId == null) &&
+              task.status != GenerationTaskStatus.saving &&
               task.outputUrl == null &&
               task.outputHash == null &&
               task.path == null &&
@@ -288,6 +295,37 @@ class GenerationTaskDao extends DatabaseAccessor<AppDatabase>
       rethrow;
     }
   }
+
+  /// 同一次任务的所有候选原子登记；列表保留顺序，即使两个候选复用同一资产。
+  Future<String?> completeImageResults(
+    String id,
+    Future<List<AssetRow>> Function() register,
+  ) => completeResult(id, () async {
+    final task = (await getById(id))!;
+    if (task.kind != GenerationKind.image) {
+      throw ArgumentError('Only image tasks have candidates');
+    }
+    final assets = await register();
+    if (assets.isEmpty ||
+        assets.length != task.imageOutputs?.items.length ||
+        assets.any(
+          (asset) =>
+              asset.type != 'image' ||
+              (asset.novelId != null && asset.novelId != task.novelId),
+        )) {
+      throw ArgumentError('Candidate assets do not match task');
+    }
+    await (update(generationTasks)..where((t) => t.id.equals(id))).write(
+      GenerationTasksCompanion(
+        imageOutputs: Value(
+          ImageTaskOutputs(
+            assets.map((asset) => ImageTaskOutput(assetId: asset.id)),
+          ),
+        ),
+      ),
+    );
+    return assets.first;
+  });
 
   Future<String?> registerResult(String id, AssetsCompanion asset) =>
       completeResult(id, () async {

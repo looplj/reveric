@@ -257,10 +257,164 @@ void main() {
           c.content is EditingTextContent &&
           (c.content as EditingTextContent).text == '开船了',
     );
-    expect(EditingRenderService.burns(title, EditingSubtitles.srt), isTrue);
-    expect(EditingRenderService.burns(subtitle, EditingSubtitles.srt), isFalse);
-    expect(EditingRenderService.burns(title, EditingSubtitles.none), isFalse);
+    final t1 = withTitle.track('T1');
+    expect(EditingRenderService.burns(t1, title, EditingSubtitles.srt), isTrue);
+    expect(
+      EditingRenderService.burns(t1, subtitle, EditingSubtitles.srt),
+      isFalse,
+    );
+    expect(
+      EditingRenderService.burns(t1, title, EditingSubtitles.none),
+      isFalse,
+    );
   });
+
+  test('text tracks stack freely, always burn and stay out of SRT', () {
+    var doc = EditingCommands.addTextTrack(fixture());
+    doc = EditingCommands.addTextTrack(doc);
+    final added = doc.tracks.where((t) => t.role == EditingRole.text).toList();
+    expect(added.map((t) => (t.kind, t.order)), [('text', 1), ('text', 2)]);
+    doc = EditingCommands.addText(doc, added.first.id, 48, 'LOGO');
+    doc = EditingCommands.addText(doc, added.last.id, 48, '第一集');
+    final logo = doc.clips.singleWhere((c) => c.trackId == added.first.id);
+    for (final mode in [
+      EditingSubtitles.burn,
+      EditingSubtitles.srt,
+      EditingSubtitles.none,
+    ]) {
+      expect(EditingRenderService.burns(added.first, logo, mode), isTrue);
+    }
+    expect(EditingRenderService.srt(doc), EditingRenderService.srt(fixture()));
+    expect(
+      EditingRenderService.cacheKey(doc, 48, 48, (854, 480)),
+      isNot(
+        EditingRenderService.cacheKey(
+          doc.copyWith(
+            tracks: [
+              for (final t in doc.tracks)
+                t.id == added.first.id
+                    ? EditingTrack(
+                        id: t.id,
+                        kind: t.kind,
+                        role: EditingRole.subtitle,
+                        order: t.order,
+                      )
+                    : t,
+            ],
+          ),
+          48,
+          48,
+          (854, 480),
+        ),
+      ),
+    );
+    final removed = EditingCommands.removeTrack(doc, added.first.id);
+    expect(removed.clips.where((c) => c.id == logo.id), isEmpty);
+    expect(removed.tracks.singleWhere((t) => t.id == added.last.id).order, 1);
+  });
+
+  test(
+    'text placement keeps scale, opacity and anchors within product range',
+    () {
+      final doc = fixture();
+      final sub = doc.clips.singleWhere((c) => c.id == 'sub');
+      final content = sub.content as EditingTextContent;
+      EditingDocument update(EditingTextContent next) =>
+          EditingCommands.update(doc, sub.copyWith(content: next));
+      const corner = EditingTransform(
+        scale: 2,
+        x: .96,
+        y: .04,
+        anchorX: 1,
+        anchorY: 0,
+      );
+      final placed = update(content.copyWith(transform: corner, opacity: .5));
+      expect(placed.clips.singleWhere((c) => c.id == 'sub').content.toJson(), {
+        'kind': 'text',
+        'text': '开船了',
+        'style': 'subtitle',
+        'transform': corner.toJson(),
+        'opacity': .5,
+      });
+      expect(
+        () => update(
+          content.copyWith(transform: content.transform.copyWith(scale: 2.5)),
+        ),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('.2..2'),
+          ),
+        ),
+      );
+      for (final invalid in [
+        content.copyWith(transform: corner.copyWith(anchorX: 1.5)),
+        content.copyWith(transform: corner.copyWith(y: -.1)),
+        content.copyWith(opacity: 1.2),
+      ]) {
+        expect(() => update(invalid), throwsFormatException);
+      }
+      expect(
+        () => update(content.copyWith(style: 'caption')),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('subtitle, title'),
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'legacy text positions and centred transforms read as equivalent anchors',
+    () {
+      final json = fixture().toJson();
+      final clips = json['clips'] as List;
+      final video = (clips.first as Map)['content'] as Map;
+      video['transform'] = {'scale': .4, 'x': .74, 'y': .26};
+      final text = (clips.last as Map)['content'] as Map;
+      final expected = {
+        'top': const EditingTransform(y: .09, anchorY: 0),
+        'center': const EditingTransform(),
+        'bottom': EditingTextContent.bottom,
+      };
+      for (final MapEntry(key: position, value: transform)
+          in expected.entries) {
+        text
+          ..clear()
+          ..addAll(<String, dynamic>{
+            'kind': 'text',
+            'text': '旧字幕',
+            'style': 'subtitle',
+            'position': position,
+          });
+        final doc = EditingDocument.fromJson(Map<String, dynamic>.from(json));
+        final content = doc.clips.last.content as EditingTextContent;
+        expect(content.transform.toJson(), transform.toJson());
+        expect(content.opacity, 1);
+        expect(content.toJson().containsKey('position'), isFalse);
+        final old =
+            (doc.mainClips.first.content as EditingVideoContent).transform;
+        expect((old.anchorX, old.anchorY), (.5, .5));
+        // 旧版自动摆放的右上角画面，换缩放后仍按自动规则重新摆放。
+        final resized = EditingCommands.update(
+          doc,
+          doc.mainClips.first.copyWith(
+            content: (doc.mainClips.first.content as EditingVideoContent)
+                .copyWith(transform: old.copyWith(scale: .6)),
+          ),
+        );
+        expect(
+          (resized.mainClips.first.content as EditingVideoContent).transform
+              .toJson(),
+          EditingCommands.autoPlacement(.6).toJson(),
+        );
+      }
+    },
+  );
   test(
     'cache keys ignore track locks and names, invalidate changed interval only',
     () {
@@ -297,6 +451,34 @@ void main() {
       );
     },
   );
+  test('preview invalidates only the streams affected by video edits', () {
+    final doc = fixture();
+    final clip = doc.mainClips.first;
+    final video = clip.content as EditingVideoContent;
+    String key(EditingDocument project, EditingRenderPart part) =>
+        EditingRenderService.cacheKey(project, 0, 96, (854, 480), part: part);
+    for (final (change, redraw, remix) in [
+      (video.copyWith(gainDb: -10), false, true),
+      (video.copyWith(audioDetached: true), false, true),
+      (video.copyWith(opacity: .5), true, false),
+      (video.copyWith(fadeOutFrames: 12), true, true),
+    ]) {
+      final edited = EditingCommands.update(
+        doc,
+        clip.copyWith(content: change),
+      );
+      expect(
+        key(edited, EditingRenderPart.video) !=
+            key(doc, EditingRenderPart.video),
+        redraw,
+      );
+      expect(
+        key(edited, EditingRenderPart.audio) !=
+            key(doc, EditingRenderPart.audio),
+        remix,
+      );
+    }
+  });
   test('source endpoints preserve microsecond rounding tolerance', () {
     const source = EditingSource(
       assetId: 'boundary',
@@ -350,7 +532,13 @@ void main() {
     expect(content['audio_detached'], false);
     expect((content['source'] as Map)['asset_id'], videoSource.assetId);
     final text = doc.clips.last.content.toJson();
-    expect(text.keys.toSet(), {'kind', 'text', 'style', 'position'});
+    expect(text.keys.toSet(), {
+      'kind',
+      'text',
+      'style',
+      'transform',
+      'opacity',
+    });
     expect(EditingDocument.fromJson(json).toJson(), json);
     expect(EditingDocument.fromJson(json).clips.first.origin, isNull);
     content['kind'] = 'future';
@@ -428,8 +616,13 @@ void main() {
       );
       final changed = resized.mainClips.first;
       final transform = (changed.content as EditingVideoContent).transform;
-      expect(transform.x, closeTo(.74, 1e-9));
-      expect(transform.y, closeTo(.26, 1e-9));
+      expect(transform.toJson(), {
+        'scale': .4,
+        'x': .94,
+        'y': .06,
+        'anchor_x': 1.0,
+        'anchor_y': 0.0,
+      });
       final renamed = EditingCommands.update(
         resized,
         changed.copyWith(name: 'Name'),
@@ -445,7 +638,36 @@ void main() {
       expect(
         (full.mainClips.first.content as EditingVideoContent).transform
             .toJson(),
-        {'scale': 1.0, 'x': .5, 'y': .5},
+        {'scale': 1.0, 'x': .5, 'y': .5, 'anchor_x': .5, 'anchor_y': .5},
+      );
+      final placed = EditingCommands.update(
+        full,
+        full.mainClips.first.copyWith(
+          content: video.copyWith(
+            transform: const EditingTransform(
+              scale: .5,
+              x: .1,
+              y: .9,
+              anchorX: 0,
+              anchorY: 1,
+            ),
+          ),
+        ),
+      );
+      final manual = placed.mainClips.first;
+      final rescaled = EditingCommands.update(
+        placed,
+        manual.copyWith(
+          content: (manual.content as EditingVideoContent).copyWith(
+            transform: (manual.content as EditingVideoContent).transform
+                .copyWith(scale: .3),
+          ),
+        ),
+      );
+      expect(
+        (rescaled.mainClips.first.content as EditingVideoContent).transform
+            .toJson(),
+        {'scale': .3, 'x': .1, 'y': .9, 'anchor_x': 0.0, 'anchor_y': 1.0},
       );
     },
   );
@@ -684,6 +906,200 @@ void main() {
         );
         expect(() => invalid.validate(), throwsFormatException);
       }
+    },
+  );
+
+  test(
+    'speed keeps the source range, ripples the main track and caps by source',
+    () {
+      final doc = fixture();
+      final fast = EditingCommands.retime(doc, 'm2', 2);
+      expect(mainLayout(fast), [
+        ('m1', 0, 96),
+        ('m2', 96, 60),
+        ('m3', 156, 120),
+      ]);
+      final m2 = fast.clips.singleWhere((c) => c.id == 'm2');
+      expect(
+        (m2.media!.sourceInUs, m2.sourceEndUs, m2.media!.speed),
+        (1000000, 6000000, 2.0),
+      );
+      expect(m2.media!.framesFromSourceStart, 12);
+      expect(m2.media!.framesToSourceEnd, 108);
+      fast.validate();
+      final slow = EditingCommands.retime(doc, 'm2', .5);
+      expect(mainLayout(slow)[1], ('m2', 96, 240));
+      expect(slow.clips.singleWhere((c) => c.id == 'm2').sourceEndUs, 6000000);
+      final back = EditingCommands.retime(fast, 'm2', 1);
+      expect(mainLayout(back), mainLayout(doc));
+      expect(
+        back.clips.singleWhere((c) => c.id == 'm2').toJson(),
+        doc.clips.singleWhere((c) => c.id == 'm2').toJson(),
+      );
+
+      final split = EditingCommands.split(fast, 'm2', 126);
+      final halves = split.mainClips.where((c) => c.media!.speed == 2).toList();
+      expect(halves.map((c) => (c.media!.sourceInUs, c.sourceEndUs)), [
+        (1000000, 3500000),
+        (3500000, 6000000),
+      ]);
+      split.validate();
+      expect(
+        () => EditingCommands.trim(fast, 'm2', 96, 96 + 108).validate(),
+        returnsNormally,
+      );
+      expect(
+        () => EditingCommands.trim(fast, 'm2', 96, 96 + 109).validate(),
+        throwsFormatException,
+      );
+      expect(
+        EditingCommands.trim(
+          fast,
+          'm2',
+          96 - 12,
+          156,
+        ).clips.singleWhere((c) => c.id == 'm2').media!.sourceInUs,
+        0,
+      );
+
+      final faded = EditingCommands.update(
+        doc,
+        doc.clips
+            .singleWhere((c) => c.id == 'm2')
+            .copyWith(
+              content: doc.clips
+                  .singleWhere((c) => c.id == 'm2')
+                  .media!
+                  .copyWith(fadeInFrames: 48, fadeOutFrames: 48),
+            ),
+      );
+      final quick = EditingCommands.retime(faded, 'm2', 4);
+      final q = quick.clips.singleWhere((c) => c.id == 'm2');
+      expect(
+        (q.durationFrames, q.media!.fadeInFrames, q.media!.fadeOutFrames),
+        (30, 30, 0),
+      );
+      quick.validate();
+
+      final audio = EditingCommands.extractAudio(fast, 'm2').clips.last;
+      expect((audio.durationFrames, audio.media!.speed), (60, 2.0));
+
+      final replaced = EditingCommands.replace(fast, 'm2', videoSource);
+      expect(replaced.clips.singleWhere((c) => c.id == 'm2').media!.speed, 2.0);
+      const short = EditingSource(
+        assetId: 'short',
+        mediaType: 'video',
+        durationUs: 1000000,
+      );
+      expect(
+        EditingCommands.replace(
+          fast,
+          'm2',
+          short,
+        ).clips.singleWhere((c) => c.id == 'm2').durationFrames,
+        12,
+      );
+      const image = EditingSource(
+        assetId: 'image',
+        mediaType: 'image',
+        durationUs: 0,
+      );
+      final still = EditingCommands.replace(fast, 'm2', image);
+      expect(still.clips.singleWhere((c) => c.id == 'm2').media!.speed, 1.0);
+      expect(() => EditingCommands.retime(still, 'm2', 2), throwsStateError);
+    },
+  );
+
+  test(
+    'speed rejects bad values, overlaps and stays compatible with old JSON',
+    () {
+      final doc = fixture();
+      for (final speed in [.2, 4.5, double.nan]) {
+        expect(
+          () => EditingCommands.retime(doc, 'm2', speed),
+          throwsFormatException,
+        );
+      }
+      expect(() => EditingCommands.retime(doc, 'sub', 2), throwsStateError);
+      final crowded = EditingCommands.place(
+        doc,
+        const EditingClip(
+          id: 'sfx',
+          trackId: 'A3',
+          startFrame: 270,
+          durationFrames: 24,
+          content: EditingAudioContent(source: audioSource),
+        ),
+      );
+      expect(
+        () => EditingCommands.retime(crowded, 'music', .5),
+        throwsStateError,
+      );
+      final music = EditingCommands.retime(
+        crowded,
+        'music',
+        2,
+      ).clips.singleWhere((c) => c.id == 'music');
+      expect(
+        (music.startFrame, music.durationFrames, music.sourceEndUs),
+        (24, 120, 10000000),
+      );
+
+      final m2 = doc.clips.singleWhere((c) => c.id == 'm2');
+      expect(
+        () => doc
+            .copyWith(
+              clips: [
+                for (final c in doc.clips)
+                  c.id == 'm2'
+                      ? c.copyWith(content: m2.media!.copyWith(speed: 4.5))
+                      : c,
+              ],
+            )
+            .validate(),
+        throwsFormatException,
+      );
+      expect(
+        () => EditingDocument.empty('16:9')
+            .copyWith(
+              clips: const [
+                EditingClip(
+                  id: 'still',
+                  trackId: 'V1',
+                  startFrame: 0,
+                  durationFrames: 24,
+                  content: EditingVideoContent(
+                    source: EditingSource(
+                      assetId: 'image',
+                      mediaType: 'image',
+                      durationUs: 0,
+                    ),
+                    speed: 2,
+                  ),
+                ),
+              ],
+            )
+            .validate(),
+        throwsFormatException,
+      );
+
+      final json = EditingCommands.retime(doc, 'm2', 1.5).toJson();
+      final clips = (json['clips'] as List).cast<Map<String, dynamic>>();
+      expect(
+        clips.singleWhere((c) => c['id'] == 'm2')['content']['speed'],
+        1.5,
+      );
+      expect(EditingDocument.fromJson(json).toJson(), json);
+      for (final clip in clips) {
+        (clip['content'] as Map).remove('speed');
+      }
+      final legacy = EditingDocument.fromJson(json);
+      expect(legacy.clips.map((c) => c.media?.speed).whereType<double>(), [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+      ]);
     },
   );
 }

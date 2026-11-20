@@ -1,8 +1,12 @@
 import Cocoa
 import FlutterMacOS
+import Darwin
 
 class MainFlutterWindow: NSWindow {
   private static var directorStorageChannel: FlutterMethodChannel?
+  private static var processExitChannel: FlutterMethodChannel?
+  private static var exitDeadlineArmed = false
+
   private static var menuChannel: FlutterMethodChannel?
   private static var systemFontsChannel: FlutterMethodChannel?
   private static var windowPositionChannel: FlutterMethodChannel?
@@ -11,6 +15,42 @@ class MainFlutterWindow: NSWindow {
   /// 窗口已可见、但 NSApp 的应用级 occlusion 还没跟上时的补拍次数。
   /// 窗口 order in 之后 occlusionState 不是同步更新的，只看一次会漏。
   private var pendingLifecycleSyncRetries = 0
+
+  private var unhandledKeyEvent: NSEvent?
+
+  override func keyDown(with event: NSEvent) {
+    let previousEvent = unhandledKeyEvent
+    unhandledKeyEvent = event
+    defer { unhandledKeyEvent = previousEvent }
+    super.keyDown(with: event)
+  }
+
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    // Flutter asynchronously returns unhandled keys to NSWindow. AppKit's
+    // cancel-key fallback can create another Escape when NSApp.currentEvent
+    // has changed. Flutter's identity-based redispatch guard misses that copy,
+    // sending it through Dart and back here indefinitely. Let AppKit finish
+    // its native cancellation instead of feeding the copy into Flutter again.
+    if let unhandledKeyEvent,
+      unhandledKeyEvent.keyCode == 53,
+      event.keyCode == 53,
+      event !== unhandledKeyEvent
+    {
+      return false
+    }
+    return super.performKeyEquivalent(with: event)
+  }
+
+  private static func armExitDeadline() {
+    // Called on the platform thread; repeated clicks must not extend the deadline.
+    guard !exitDeadlineArmed else { return }
+    exitDeadlineArmed = true
+    Thread.detachNewThread {
+      Thread.sleep(forTimeInterval: 5)
+      // Bypass AppKit/Dart shutdown, even when their threads are blocked.
+      _exit(1)
+    }
+  }
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -24,6 +64,19 @@ class MainFlutterWindow: NSWindow {
     self.styleMask.insert(.fullSizeContentView)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    let processExitChannel = FlutterMethodChannel(
+      name: "reveric/process_exit",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    MainFlutterWindow.processExitChannel = processExitChannel
+    processExitChannel.setMethodCallHandler { call, result in
+      guard call.method == "arm" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      MainFlutterWindow.armExitDeadline()
+      result(nil)
+    }
     let directorStorageChannel = FlutterMethodChannel(name: "ai.reveric.director/storage", binaryMessenger: flutterViewController.engine.binaryMessenger)
     MainFlutterWindow.directorStorageChannel = directorStorageChannel
     directorStorageChannel.setMethodCallHandler { call, result in

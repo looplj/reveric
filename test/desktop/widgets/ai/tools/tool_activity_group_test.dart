@@ -32,6 +32,53 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
 
+  testWidgets('failed edits show a check while details retain the error', (
+    tester,
+  ) async {
+    await _pumpWrapped(
+      tester,
+      const AiToolActivityGroup(
+        blocks: [
+          AiToolCallBlock(
+            id: 'failed-edit',
+            callId: 'failed-edit',
+            toolName: 'Edit',
+            arguments: {'path': '/chapters/1/content'},
+            status: AiToolCallStatus.error,
+            result: {
+              'error': 'old_text not found',
+              'error_code': 'old_text_not_found',
+            },
+            errorMessage: 'old_text not found',
+          ),
+          AiThinkingBlock(id: 'thinking', text: 'Try another edit'),
+        ],
+      ),
+    );
+    expect(
+      tester
+          .widgetList<AiToolStatusDot>(find.byType(AiToolStatusDot))
+          .map((dot) => dot.status),
+      [AiToolCallStatus.success, AiToolCallStatus.success],
+    );
+    await tester.tap(find.byType(AiToolStatusDot).first);
+    await _pumpAnimation(tester);
+    expect(find.byType(AiToolDetailBody), findsOneWidget);
+    expect(
+      tester
+          .widget<AiToolDetailBody>(find.byType(AiToolDetailBody))
+          .block
+          .status,
+      AiToolCallStatus.error,
+    );
+    expect(
+      tester.widget<AiToolStatusBadge>(find.byType(AiToolStatusBadge)).status,
+      AiToolCallStatus.error,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('renders process group and expands tool detail inline', (
     tester,
   ) async {
@@ -119,7 +166,7 @@ void main() {
     expect(find.byType(SelectionArea), findsOneWidget);
   });
 
-  testWidgets('hides failed tool status outside debug mode', (tester) async {
+  testWidgets('failed tools show a check outside debug mode', (tester) async {
     const failedGroup = AiToolActivityGroup(
       blocks: [
         AiToolCallBlock(
@@ -134,7 +181,10 @@ void main() {
     );
 
     await _pumpWrapped(tester, failedGroup);
-    expect(find.byType(AiToolStatusDot), findsNothing);
+    expect(
+      tester.widget<AiToolStatusDot>(find.byType(AiToolStatusDot)).status,
+      AiToolCallStatus.success,
+    );
   });
 
   testWidgets(
@@ -180,7 +230,7 @@ void main() {
       await _pumpWrapped(tester, group('failed'));
       expect(
         tester.widget<AiToolStatusDot>(find.byType(AiToolStatusDot)).status,
-        AiToolCallStatus.error,
+        AiToolCallStatus.success,
       );
       expect(find.text('Running…'), findsNothing);
       await tester.tap(find.byType(AiToolStatusDot));

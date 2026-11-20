@@ -52,7 +52,9 @@ class DirectorObjectsPanel extends HookWidget {
                 icon: RevericIcons.cube,
                 selected: session.selected == o['id'],
                 onTap: () => session.select(o['id']),
-                menu: () => objectMenu(context, session, o['id']),
+                menu: session.readOnly
+                    ? null
+                    : () => objectMenu(context, session, o['id']),
               ),
             const SizedBox(height: RevericSpacing.sm),
           ],
@@ -65,7 +67,9 @@ class DirectorObjectsPanel extends HookWidget {
             trailing: '${c['focal_length_mm']}mm',
             selected: session.selected == c['id'],
             onTap: () => session.select(c['id']),
-            menu: () => objectMenu(context, session, c['id']),
+            menu: session.readOnly
+                ? null
+                : () => objectMenu(context, session, c['id']),
           ),
         if (active.isEmpty && query.value.isNotEmpty)
           Text(

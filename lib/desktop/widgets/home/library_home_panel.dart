@@ -44,6 +44,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
     required this.onCreateNovel,
     required this.onImportNovel,
     required this.onImportScreenplay,
+    this.onOpenCanvasGallery,
     required this.onCreateDemoNovel,
     required this.onDeleteNovel,
     required this.onAdaptNovel,
@@ -63,6 +64,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
   final VoidCallback onCreateNovel;
   final VoidCallback onImportNovel;
   final VoidCallback onImportScreenplay;
+  final VoidCallback? onOpenCanvasGallery;
   final VoidCallback onCreateDemoNovel;
   final ValueSetter<Novel> onDeleteNovel;
   final ValueSetter<Novel> onAdaptNovel;
@@ -84,6 +86,7 @@ class HomeLibraryPanel extends HookConsumerWidget {
       const Duration(milliseconds: 250),
     );
     final isScreenplay = contentKind == contentKindScreenplay;
+    final isCanvas = contentKind == contentKindCanvas;
     final settingsAsync = ref.watch(appSettingsProvider);
     final username = settingsAsync.maybeWhen(
       data: (s) => s.username.isNotEmpty ? s.username : null,
@@ -144,11 +147,15 @@ class HomeLibraryPanel extends HookConsumerWidget {
                   ),
                   sliver: SliverToBoxAdapter(
                     child: GreetingHeader(
-                      // 快速开书只落在小说库；剧本库导入走 AI 改编。
-                      onQuickStart: isScreenplay ? null : onQuickStart,
+                      // 快速开书只落在小说库。剧本库导入走 AI 改编，画布库导入画布包。
+                      onQuickStart: contentKind == contentKindNovel
+                          ? onQuickStart
+                          : null,
                       onCreateNovel: onCreateNovel,
                       createLabel: context.t(
-                        isScreenplay
+                        isCanvas
+                            ? LocaleKeys.libraryCreateCanvas
+                            : isScreenplay
                             ? LocaleKeys.libraryCreateScreenplay
                             : LocaleKeys.libraryCreateNovel,
                       ),
@@ -156,10 +163,13 @@ class HomeLibraryPanel extends HookConsumerWidget {
                           ? onImportScreenplay
                           : onImportNovel,
                       importLabel: context.t(
-                        isScreenplay
+                        isCanvas
+                            ? LocaleKeys.productionImportCanvas
+                            : isScreenplay
                             ? LocaleKeys.libraryImportScreenplay
                             : LocaleKeys.libraryImportTxt,
                       ),
+                      onOpenCanvasGallery: onOpenCanvasGallery,
                       username: username,
                       featuredTitle: recent.firstOrNull?.title,
                       headerGestureExclusionKey: headerGestureExclusionKey,
@@ -229,7 +239,39 @@ class HomeLibraryPanel extends HookConsumerWidget {
                 else if (!isDraftFilter && novels.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: isScreenplay
+                    child: isCanvas
+                        ? RevericPlaceholder.empty(
+                            icon: RevericIcons.flow_arrow,
+                            title: context.t(LocaleKeys.libraryCreateCanvas),
+                            description: context.t(
+                              LocaleKeys.homeCreateCanvasCardSubtitle,
+                            ),
+                            action: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                RevericButton.primary(
+                                  label: context.t(
+                                    LocaleKeys.libraryCreateCanvas,
+                                  ),
+                                  onPressed: onCreateNovel,
+                                ),
+                                const SizedBox(height: RevericSpacing.sm),
+                                OutlinedButton.icon(
+                                  onPressed: onImportNovel,
+                                  icon: const RevericIcon(
+                                    RevericIcons.upload,
+                                    size: 16,
+                                  ),
+                                  label: Text(
+                                    context.t(
+                                      LocaleKeys.productionImportCanvas,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : isScreenplay
                         ? EmptyScreenplayState(
                             onCreate: onCreateNovel,
                             onImport: onImportScreenplay,

@@ -50,7 +50,7 @@ class ProductionCharacterInput extends HookWidget {
         service,
         input.refType,
         input.refId,
-        input.role,
+        input.roleName,
       ]),
     );
     final asset = useProductionAsset(service, input.voiceAssetId);

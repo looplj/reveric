@@ -6,10 +6,13 @@
 // 遵循的 Rules:
 //   .agents/rules/error-handling.md
 //   .agents/rules/service-naming.md
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
 import '../../models/screenplay.dart';
+import '../../models/content_kind.dart';
 import '../../models/production/settings.dart';
 import '../../models/storyboard/prompt.dart';
 import '../../models/video/request.dart';
@@ -19,12 +22,37 @@ import '../../utils/short_entity_id.dart';
 import '../../utils/short_entity_id_allocator.dart';
 
 class StoryboardException implements Exception {
-  const StoryboardException(this.code);
+  const StoryboardException(this.code, [this.detail]) : field = null;
+  const StoryboardException.field(this.code, this.field) : detail = null;
   final String code;
+
+  /// 校验失败的字段或引用条件，供界面映射可操作的提示。
+  final String? field;
+
+  /// 给 Agent 的具体原因；界面按 [code] 映射文案，不展示它。
+  final String? detail;
+
+  /// Code plus detail for Agent-facing messages.
+  String get reason => detail == null ? code : '$code: $detail';
+
+  @override
+  String toString() => detail == null
+      ? 'StoryboardException($code${field == null ? '' : ', field=$field'})'
+      : 'StoryboardException($code): $detail';
 }
 
 class StoryboardService {
-  StoryboardService(this.database);
+  StoryboardService(
+    this.database, {
+    this.contentKind = contentKindScreenplay,
+    this.resolveContentKind,
+  });
+  final String contentKind;
+  final Future<String> Function()? resolveContentKind;
+
+  /// 空集归属只允许来自作品登记或创建上下文的画布类型；不能从数据形状推断。
+  Future<bool> get isCanvasWork async =>
+      (await resolveContentKind?.call() ?? contentKind) == contentKindCanvas;
   final NovelContentDatabase database;
   static final _log = AppLogger.forModule('Storyboard');
   static const _settingsPromptStateKey = 'production_settings';
@@ -127,7 +155,10 @@ class StoryboardService {
   Future<ScreenplayRow> requireSettings() async {
     final row = await getSettings();
     if (row == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'The screenplay was not found.',
+      );
     }
     return row;
   }
@@ -156,6 +187,16 @@ class StoryboardService {
   }
 
   Future<void> requireEpisode(String id) async {
+    if (id.isEmpty) {
+      if (await isCanvasWork &&
+          await database.screenplayDao.getRoot() != null) {
+        return;
+      }
+      throw StoryboardException(
+        'source_missing',
+        'No episode was given and the work has no screenplay.',
+      );
+    }
     final episode = await database.screenplayDao.getEpisode(id);
     final root = await database.screenplayDao.getRoot();
     final season = episode == null
@@ -166,18 +207,24 @@ class StoryboardService {
         root == null ||
         episode.screenplayId != root.id ||
         season.screenplayId != root.id) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Episode $id was not found in this screenplay.',
+      );
     }
   }
 
   Future<ScreenplaySceneRecord> requireScene(String id) async {
     final scene = await database.screenplayDao.getScene(id);
     if (scene == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException('source_missing', 'Scene $id was not found.');
     }
     await requireEpisode(scene.episodeId);
     if (scene.screenplayId != (await database.screenplayDao.getRoot())!.id) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Scene $id belongs to another screenplay.',
+      );
     }
     return scene;
   }
@@ -311,131 +358,260 @@ class StoryboardService {
     return (await getShot(id))!;
   });
 
-  Future<CanvasEntry> ensureCanvas(String episodeId) => write(
-    'ENSURE_CANVAS',
-    episodeId,
-    () async {
-      await requireEpisode(episodeId);
-      final production = (await database.screenplayDao.getEpisode(episodeId))!;
-      if (production.canvasId != null) {
-        final canvas = await database.canvasDao.getCanvasById(
-          production.canvasId!,
+  Future<CanvasEntry> ensureCanvas(
+    String episodeId,
+  ) => write('ENSURE_CANVAS', episodeId, () async {
+    await requireEpisode(episodeId);
+    if (episodeId.isEmpty) {
+      return _ensureWorkCanvas();
+    }
+    final production = (await database.screenplayDao.getEpisode(episodeId))!;
+    if (production.canvasId != null) {
+      final canvas = await database.canvasDao.getCanvasById(
+        production.canvasId!,
+      );
+      if (canvas == null || canvas.kind != canvasKindProduction) {
+        throw StoryboardException(
+          'source_missing',
+          'Production canvas ${production.canvasId} of episode $episodeId was not found.',
         );
-        if (canvas == null || canvas.kind != canvasKindProduction) {
-          throw const StoryboardException('source_missing');
-        }
-        return canvas;
       }
-      final id = await insertWithShortEntityId(
-        type: ShortEntityIdType.canvas,
-        tableName: 'canvases',
-        idExists: database.canvasDao.canvasIdExists,
-        insert: (id) => database
-            .into(database.canvases)
-            .insert(
-              CanvasesCompanion.insert(
-                id: id,
-                name: 'production-$episodeId',
-                kind: const Value(canvasKindProduction),
-              ),
-            ),
-      );
-      await (database.update(
-        database.screenplayEpisodes,
-      )..where((t) => t.id.equals(production.id))).write(
-        ScreenplayEpisodesCompanion(
-          canvasId: Value(id),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
-      final clips =
-          await (database.select(database.productionClips)..where(
-                (t) =>
-                    t.episodeId.equals(episodeId) &
-                    t.deletedAt.equals(notDeletedSentinel),
-              ))
-              .get();
-      for (final clip in clips) {
-        await ensureClipNode(clip.id);
-      }
-      return (await database.canvasDao.getCanvasById(id))!;
-    },
-  );
-
-  Future<CanvasNode> ensureClipNode(
-    String clipId,
-  ) => write('ENSURE_NODE', clipId, () async {
-    final clip = await getShot(clipId);
-    if (clip == null) {
-      throw const StoryboardException('source_missing');
-    }
-    final canvas = await ensureCanvas(clip.episodeId);
-    final existing =
-        await (database.select(database.canvasNodes)..where(
-              (t) =>
-                  t.refType.equals(canvasNodeRefTypeProductionClip) &
-                  t.refId.equals(clipId) &
-                  t.deletedAt.equals(notDeletedSentinel),
-            ))
-            .getSingleOrNull();
-    if (existing != null) {
-      if (existing.canvasId != canvas.id) {
-        throw const StoryboardException('source_missing');
-      }
-      return existing;
-    }
-    final scenes = await database.screenplayDao.getSceneRows(clip.episodeId);
-    final sceneIndex = scenes.indexWhere((s) => s.id == clip.sceneId);
-    var x = 360.0 + (clip.sortOrder ?? 0) * 360;
-    var y = 80.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 280;
-    final nodes = await database.canvasDao.getNodesByCanvas(canvas.id);
-    if (clip.sceneId != null) {
-      // 每场占一列，场内片段向下排列。
-      x = 360.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 360;
-      y = 80.0 + (clip.sortOrder ?? 0) * 280;
-      final siblingIds = (await sceneShots(
-        clip.sceneId!,
-      )).map((sibling) => sibling.id).toSet();
-      final siblings = nodes.where((node) => siblingIds.contains(node.clipId));
-      if (siblings.isNotEmpty) {
-        // 新段跟随已移动的场次，避免旧的默认坐标改变整场的布局原点。
-        x = siblings.map((node) => node.x).reduce((a, b) => a < b ? a : b);
-        y =
-            siblings.map((node) => node.y).reduce((a, b) => a > b ? a : b) +
-            280;
-      }
-    }
-    // 画布卡片按画面比例渲染，长边最大 260，上方还有一行标题；占位按最大卡片加间距算。
-    const slot = 300.0;
-    while (nodes.any(
-      (n) =>
-          x < n.x + slot && x + slot > n.x && y < n.y + slot && y + slot > n.y,
-    )) {
-      y += slot;
+      await _ensureSceneNodes(canvas.id, episodeId);
+      return canvas;
     }
     final id = await insertWithShortEntityId(
-      type: ShortEntityIdType.canvasNode,
-      tableName: 'canvas_nodes',
-      idExists: database.canvasDao.nodeIdExists,
+      type: ShortEntityIdType.canvas,
+      tableName: 'canvases',
+      idExists: database.canvasDao.canvasIdExists,
       insert: (id) => database
-          .into(database.canvasNodes)
+          .into(database.canvases)
           .insert(
-            CanvasNodesCompanion.insert(
+            CanvasesCompanion.insert(
               id: id,
-              canvasId: canvas.id,
-              type: Value(clip.kind),
-              refType: const Value(canvasNodeRefTypeProductionClip),
-              refId: Value(clipId),
-              title: Value(clip.title),
-              x: Value(x),
-              y: Value(y),
-              width: const Value(300),
-              height: const Value(220),
+              name: 'production-$episodeId',
+              kind: const Value(canvasKindProduction),
             ),
           ),
     );
-    return (await database.canvasDao.getNodeById(id))!;
+    await (database.update(
+      database.screenplayEpisodes,
+    )..where((t) => t.id.equals(production.id))).write(
+      ScreenplayEpisodesCompanion(
+        canvasId: Value(id),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    final clips =
+        await (database.select(database.productionClips)..where(
+              (t) =>
+                  t.episodeId.equals(episodeId) &
+                  t.deletedAt.equals(notDeletedSentinel),
+            ))
+            .get();
+    for (final clip in clips) {
+      await ensureClipNode(clip.id);
+    }
+    await _ensureSceneNodes(id, episodeId);
+    return (await database.canvasDao.getCanvasById(id))!;
   });
+
+  Future<CanvasEntry> _ensureWorkCanvas() async {
+    final existing =
+        await (database.select(database.canvases)
+              ..where(
+                (t) =>
+                    t.kind.equals(canvasKindProduction) &
+                    t.deletedAt.equals(notDeletedSentinel),
+              )
+              ..orderBy([
+                (t) => OrderingTerm.asc(t.createdAt),
+                (t) => OrderingTerm.asc(t.id),
+              ])
+              ..limit(2))
+            .get();
+    if (existing.isNotEmpty) {
+      if (existing.length > 1) {
+        _log.error(
+          '[DB] table=canvases operation=SELECT duplicate production canvases; using ${existing.first.id}',
+        );
+      }
+      return existing.first;
+    }
+    final id = await insertWithShortEntityId(
+      type: ShortEntityIdType.canvas,
+      tableName: 'canvases',
+      idExists: database.canvasDao.canvasIdExists,
+      insert: (id) => database
+          .into(database.canvases)
+          .insert(
+            CanvasesCompanion.insert(
+              id: id,
+              name: 'production',
+              kind: const Value(canvasKindProduction),
+            ),
+          ),
+    );
+    return (await database.canvasDao.getCanvasById(id))!;
+  }
+
+  Future<CanvasNode> ensureClipNode(String clipId) =>
+      write('ENSURE_NODE', clipId, () async {
+        final clip = await getShot(clipId);
+        if (clip == null) {
+          throw StoryboardException(
+            'source_missing',
+            'Clip $clipId was not found.',
+          );
+        }
+        final canvas = await ensureCanvas(clip.episodeId);
+        final existing =
+            await (database.select(database.canvasNodes)..where(
+                  (t) =>
+                      t.refType.equals(canvasNodeRefTypeProductionClip) &
+                      t.refId.equals(clipId) &
+                      t.deletedAt.equals(notDeletedSentinel),
+                ))
+                .getSingleOrNull();
+        if (existing != null) {
+          if (existing.canvasId != canvas.id) {
+            throw StoryboardException(
+              'source_missing',
+              'The canvas node of clip $clipId is on another canvas.',
+            );
+          }
+          return existing;
+        }
+        final scenes = clip.episodeId.isEmpty
+            ? <ScreenplaySceneRecord>[]
+            : await database.screenplayDao.getSceneRows(clip.episodeId);
+        final sceneIndex = scenes.indexWhere((s) => s.id == clip.sceneId);
+        var x = 360.0 + (clip.sortOrder ?? 0) * 360;
+        var y = 80.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 280;
+        final nodes = await database.canvasDao.getNodesByCanvas(canvas.id);
+        final anchor = nodes
+            .where((n) => n.sceneId != null && n.sceneId == clip.sceneId)
+            .firstOrNull;
+        if (clip.sceneId != null) {
+          // 每场占一列，场内片段向下排列。
+          x = 360.0 + (sceneIndex < 0 ? scenes.length : sceneIndex) * 360;
+          y = 80.0 + (clip.sortOrder ?? 0) * 280;
+          final siblingIds = (await sceneShots(
+            clip.sceneId!,
+          )).map((sibling) => sibling.id).toSet();
+          final siblings = nodes.where(
+            (node) => siblingIds.contains(node.clipId),
+          );
+          if (siblings.isNotEmpty) {
+            // 新段跟随已移动的场次，避免旧的默认坐标改变整场的布局原点。
+            x = siblings.map((node) => node.x).reduce((a, b) => a < b ? a : b);
+            y =
+                siblings.map((node) => node.y).reduce((a, b) => a > b ? a : b) +
+                280;
+          } else if (anchor != null) {
+            // 空场次的第一段落在场次框原位。
+            x = anchor.x;
+            y = anchor.y;
+          }
+        }
+        // 画布卡片按画面比例渲染，长边最大 260，上方还有一行标题；占位按最大卡片加间距算。
+        // 场内片段由场次节点排位，不另找空位。
+        const slot = 300.0;
+        while (anchor == null &&
+            nodes.any(
+              (n) =>
+                  x < n.x + slot &&
+                  x + slot > n.x &&
+                  y < n.y + slot &&
+                  y + slot > n.y,
+            )) {
+          y += slot;
+        }
+        final id = await insertWithShortEntityId(
+          type: ShortEntityIdType.canvasNode,
+          tableName: 'canvas_nodes',
+          idExists: database.canvasDao.nodeIdExists,
+          insert: (id) => database
+              .into(database.canvasNodes)
+              .insert(
+                CanvasNodesCompanion.insert(
+                  id: id,
+                  canvasId: canvas.id,
+                  type: Value(clip.kind),
+                  refType: const Value(canvasNodeRefTypeProductionClip),
+                  refId: Value(clipId),
+                  title: Value(clip.title),
+                  x: Value(x),
+                  y: Value(y),
+                  width: const Value(300),
+                  height: const Value(220),
+                ),
+              ),
+        );
+        return (await database.canvasDao.getNodeById(id))!;
+      });
+
+  /// 给本集每个还没有场次节点的场次补一个。已有片段节点的场次取这些节点最左、最上的坐标，
+  /// 与原先由片段推出的场次位置一致；空场次排在已有场次右侧，与它们顶边对齐，被占用时往下让。
+  Future<void> _ensureSceneNodes(String canvasId, String episodeId) async {
+    if (episodeId.isEmpty) {
+      return;
+    }
+    final scenes = await database.screenplayDao.getSceneRows(episodeId);
+    final nodes = await database.canvasDao.getNodesByCanvas(canvasId);
+    final anchored = {for (final n in nodes) ?n.sceneId};
+    final missing = scenes.where((s) => !anchored.contains(s.id)).toList();
+    if (missing.isEmpty) {
+      return;
+    }
+    final clips = await (_shots()..where((t) => t.episodeId.equals(episodeId)))
+        .get();
+    final sceneOfClip = {for (final c in clips) c.id: c.sceneId};
+    for (final scene in missing) {
+      final members = nodes.where((n) => sceneOfClip[n.clipId] == scene.id);
+      double x;
+      double y;
+      if (members.isNotEmpty) {
+        x = members.map((n) => n.x).reduce(math.min);
+        y = members.map((n) => n.y).reduce(math.min);
+      } else {
+        final others = nodes.where((n) => n.sceneId != null);
+        x = others.isEmpty
+            ? 360.0 + scenes.indexOf(scene) * 360
+            : others.map((n) => n.x).reduce(math.max) + 360;
+        y = others.isEmpty ? 80.0 : others.map((n) => n.y).reduce(math.min);
+        // 空场次只有标题和添加入口，按一张卡片的占位找空位。
+        const slot = 300.0;
+        while (nodes.any(
+          (n) =>
+              x < n.x + slot &&
+              x + slot > n.x &&
+              y < n.y + slot &&
+              y + slot > n.y,
+        )) {
+          y += slot;
+        }
+      }
+      final id = await insertWithShortEntityId(
+        type: ShortEntityIdType.canvasNode,
+        tableName: 'canvas_nodes',
+        idExists: database.canvasDao.nodeIdExists,
+        insert: (id) => database
+            .into(database.canvasNodes)
+            .insert(
+              CanvasNodesCompanion.insert(
+                id: id,
+                canvasId: canvasId,
+                type: const Value(canvasNodeTypeScene),
+                refType: const Value(canvasNodeRefTypeScreenplayScene),
+                refId: Value(scene.id),
+                x: Value(x),
+                y: Value(y),
+              ),
+            ),
+      );
+      nodes.add((await database.canvasDao.getNodeById(id))!);
+    }
+  }
 
   Future<void> apply(
     String id,
@@ -445,7 +621,7 @@ class StoryboardService {
   }) => write(creating ? 'INSERT' : 'UPDATE', id, () async {
     final previous = await getShot(id);
     if (!creating && previous == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException('source_missing', 'Clip $id was not found.');
     }
     final sceneId = values['scene_id'] as String?;
     final kind = values['kind'] as String;
@@ -474,6 +650,16 @@ class StoryboardService {
     final locationId = values['location_id'] as String?;
     final itemId = values['item_id'] as String?;
     final subjectCount = [characterId, locationId, itemId].nonNulls.length;
+    if (episodeId.isEmpty &&
+        (sceneId != null ||
+            order != null ||
+            locationId != null ||
+            itemId != null)) {
+      throw const StoryboardException('invalid_config');
+    }
+    if (episodeId.isEmpty && restoring) {
+      await requireEpisode(episodeId);
+    }
     if ((previous != null &&
             (previous.characterId != characterId ||
                 previous.locationId != locationId ||
@@ -486,12 +672,18 @@ class StoryboardService {
             await database.characterProfileDao.getById(characterId) == null ||
         locationId != null &&
             await database.locationDao.getById(locationId) == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Character $characterId or location $locationId was not found.',
+      );
     }
     if (itemId != null) {
       final item = await database.itemDao.getById(itemId);
       if (item == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Item $itemId was not found.',
+        );
       }
       if (!compendiumEntityTypes.contains(item.type)) {
         throw const StoryboardException('invalid_config');
@@ -505,22 +697,30 @@ class StoryboardService {
     final model = values['model_id'] as String?;
     // 用户只选全参考 / 首尾帧；文生视频、首帧由提交时按输入换算。
     if (!{
-          VideoMode.reference.name,
-          VideoMode.first_last_frame.name,
-        }.contains(mode) ||
-        (duration != null && duration <= 0) ||
-        (provider == null) != (model == null) ||
+      VideoMode.reference.name,
+      VideoMode.first_last_frame.name,
+    }.contains(mode)) {
+      throw const StoryboardException.field('invalid_config', 'reference_mode');
+    }
+    if (duration != null && duration <= 0) {
+      throw const StoryboardException.field('invalid_config', 'duration');
+    }
+    if ((provider == null) != (model == null) ||
         (provider != null &&
-            (provider.trim().isEmpty || model!.trim().isEmpty)) ||
-        (order != null && order < 0) ||
-        (values['resolution'] as String).trim().isEmpty) {
+            (provider.trim().isEmpty || model!.trim().isEmpty))) {
+      throw const StoryboardException.field('invalid_config', 'model');
+    }
+    if (order != null && order < 0) {
       throw const StoryboardException('invalid_config');
+    }
+    if ((values['resolution'] as String).trim().isEmpty) {
+      throw const StoryboardException.field('invalid_config', 'resolution');
     }
     final ratio = values['ratio'] as String;
     if (!RegExp(r'^\d+:\d+$').hasMatch(ratio) &&
         ratio != 'adaptive' &&
         !(kind == 'image' && ratio == 'auto')) {
-      throw const StoryboardException('invalid_config');
+      throw const StoryboardException.field('invalid_config', 'ratio');
     }
     final companion = ProductionClipsCompanion.insert(
       id: id,
@@ -558,13 +758,24 @@ class StoryboardService {
       await (database.update(
         database.productionClips,
       )..where((t) => t.id.equals(id))).write(companion);
+      final title = companion.title.value;
+      if (previous!.title != title) {
+        await database.canvasDao.updateReferenceTitles(
+          refType: canvasNodeRefTypeProductionClip,
+          refId: id,
+          title: title,
+        );
+      }
     }
   });
 
   Future<List<Map<String, dynamic>>> inputSnapshot(String clipId) async {
     final clip = await getShot(clipId);
     if (clip == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Clip $clipId was not found.',
+      );
     }
     return clip.inputs.map((input) => input.toJson()).toList();
   }
@@ -576,7 +787,10 @@ class StoryboardService {
     final values = inputs.map(ProductionInput.fromJson).toList();
     ProductionInput.validateList(values);
     if (await getShot(clipId) == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Clip $clipId was not found.',
+      );
     }
     final references = values
         .where((input) => input.sourceNodeId != null)
@@ -607,7 +821,11 @@ class StoryboardService {
               ));
       for (final input in references) {
         final source = await database.canvasDao.getNodeById(input.refId);
-        // 删除的来源保持为失效参考，让用户在卡片中修复。
+        if (input.isPrompt && source?.type != canvasNodeTypeText ||
+            !input.isPrompt && source?.type == canvasNodeTypeText) {
+          throw const StoryboardException('invalid_reference');
+        }
+        // 删除的媒体来源保持为失效参考，让用户在卡片中修复。
         if (source != null && source.canvasId != target.canvasId ||
             reaches(target.id, input.refId, {})) {
           throw const StoryboardException('invalid_reference');
@@ -627,7 +845,10 @@ class StoryboardService {
   Future<void> setErrorDismissed(String clipId, bool dismissed) =>
       write('SET_ERROR_DISMISSED', clipId, () async {
         if (await getShot(clipId) == null) {
-          throw const StoryboardException('source_missing');
+          throw StoryboardException(
+            'source_missing',
+            'Clip $clipId was not found.',
+          );
         }
         await (database.update(database.productionClips)
               ..where((t) => t.id.equals(clipId)))
@@ -637,7 +858,7 @@ class StoryboardService {
   Future<void> softDelete(String id) => write('SOFT_DELETE', id, () async {
     final row = await getShot(id);
     if (row == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException('source_missing', 'Clip $id was not found.');
     }
     final nodes =
         await (database.select(database.canvasNodes)..where(

@@ -25,18 +25,25 @@ import '../video/reference_storage_service.dart';
 import 'atlascloud.dart';
 import 'client.dart';
 import 'volcengine.dart';
+import 'plugin.dart';
+import '../../plugins/host.dart';
 
 final _log = AppLogger.forModule('ProviderAssets');
 
 /// 渠道是否支持私域素材认证，且已填好所需凭据：火山用 AK/SK，AtlasCloud 用 API Key。
-bool providerSupportsAssetCertification(AiProvider provider) =>
-    switch (AiProviderType.values.asNameMap()[provider.type]) {
-      AiProviderType.volcengine =>
-        (provider.accessKeyId?.trim().isNotEmpty ?? false) &&
-            (provider.secretAccessKey?.trim().isNotEmpty ?? false),
-      AiProviderType.atlascloud => provider.apiKey.trim().isNotEmpty,
-      _ => false,
-    };
+bool providerSupportsAssetCertification(AiProvider provider) {
+  if (aiProviderTypeConfigs[provider.type]?.supportsAssetCertification !=
+      true) {
+    return false;
+  }
+  if (provider.isPluginProvider) {
+    return true;
+  }
+  return provider.type == AiProviderType.volcengine.name
+      ? (provider.accessKeyId?.trim().isNotEmpty ?? false) &&
+            (provider.secretAccessKey?.trim().isNotEmpty ?? false)
+      : provider.apiKey.trim().isNotEmpty;
+}
 
 /// 火山与 AtlasCloud 素材库对单张图片的要求一致；不满足的图片不发请求。
 const providerAssetImageMimeTypes = {
@@ -56,6 +63,7 @@ class ProviderAssetService {
     required this.database,
     required this.references,
     required this.probe,
+    this.pluginHost,
     http.Client Function(AiProvider)? transport,
     this.pollDelays = const [
       Duration(seconds: 5),
@@ -67,6 +75,7 @@ class ProviderAssetService {
            ((provider) => provider.createProxyClient() ?? http.Client());
 
   final AppDatabase database;
+  final PluginHostService? pluginHost;
   final ReferenceStorageService references;
   final Future<MediaInfo> Function(String path) probe;
   final http.Client Function(AiProvider) transport;
@@ -74,6 +83,7 @@ class ProviderAssetService {
   /// 依次使用的轮询间隔，用完后停在最后一个。
   final List<Duration> pollDelays;
   final _polling = <String>{};
+  final _clients = <ProviderAssetClient>{};
   bool _disposed = false;
 
   /// 认证一张图片：先本地校验，再上传、提交到渠道；提交成功后转入后台轮询。
@@ -84,6 +94,7 @@ class ProviderAssetService {
     required String mimeType,
     required String name,
   }) async {
+    await pluginHost?.start();
     final provider = await database.aiProviderDao.getById(providerId);
     if (provider == null ||
         !provider.enabled ||
@@ -93,17 +104,10 @@ class ProviderAssetService {
     await _validateImage(file, mimeType);
     final row = await database.providerAssetDao.start(assetId, providerId);
     final client = _client(provider);
+    _clients.add(client);
     try {
-      final reference = await references.ensure(
-        VideoInput(
-          role: VideoInputRole.reference_image,
-          assetId: assetId,
-          mimeType: mimeType,
-        ),
-        file,
-      );
       final submission = await client.submit(
-        url: Uri.parse(reference.url),
+        file: (file: file, assetId: assetId, mimeType: mimeType),
         name: name,
       );
       await database.providerAssetDao.write(
@@ -123,6 +127,7 @@ class ProviderAssetService {
       await _fail(row.id, error);
       rethrow;
     } finally {
+      _clients.remove(client);
       client.close();
     }
     unawaited(_poll(row.id));
@@ -130,6 +135,7 @@ class ProviderAssetService {
 
   /// 启动时接着轮询上次没出结果的记录；还没提交到渠道就中断的记录判为失败。
   Future<void> resume() async {
+    await pluginHost?.start();
     for (final row in await database.providerAssetDao.processing()) {
       if (row.remoteId == null) {
         await database.providerAssetDao.write(
@@ -147,6 +153,9 @@ class ProviderAssetService {
 
   void dispose() {
     _disposed = true;
+    for (final client in _clients.toList()) {
+      client.close();
+    }
   }
 
   Future<void> _poll(String id) async {
@@ -171,14 +180,21 @@ class ProviderAssetService {
           return;
         }
         final provider = await database.aiProviderDao.getById(row.providerId);
-        if (provider == null || !providerSupportsAssetCertification(provider)) {
-          await _fail(
-            id,
-            const ProviderAssetException('configuration_required'),
-          );
-          return;
+        if (provider == null ||
+            !provider.enabled ||
+            !providerSupportsAssetCertification(provider)) {
+          if (row.errorCode != 'configuration_required') {
+            await database.providerAssetDao.write(
+              id,
+              const ProviderAssetsCompanion(
+                errorCode: Value('configuration_required'),
+              ),
+            );
+          }
+          continue;
         }
         final client = _client(provider);
+        _clients.add(client);
         try {
           final remote = await client.state(row.remoteTaskId ?? row.remoteId!);
           if (remote.status != ProviderAssetStatus.processing) {
@@ -196,6 +212,7 @@ class ProviderAssetService {
           // 网络抖动不改状态，下一轮继续查。
           _log.warning('poll asset=${row.remoteId} error=$error\n$stack');
         } finally {
+          _clients.remove(client);
           client.close();
         }
       }
@@ -242,19 +259,41 @@ class ProviderAssetService {
         ),
       );
 
-  ProviderAssetClient _client(AiProvider provider) =>
-      provider.type == AiProviderType.atlascloud.name
-      ? AtlasCloudAssetClient(
-          httpClient: transport(provider),
-          apiKey: provider.apiKey.trim(),
-        )
-      : VolcengineAssetClient(
-          httpClient: transport(provider),
-          accessKeyId: provider.accessKeyId!.trim(),
-          secretAccessKey: provider.secretAccessKey!.trim(),
-          projectName: switch (provider.assetProjectName?.trim()) {
-            final name? when name.isNotEmpty => name,
-            _ => 'default',
-          },
-        );
+  Future<Uri> _referenceUrl(ProviderAssetFile file) async {
+    final reference = await references.ensure(
+      VideoInput(
+        role: VideoInputRole.reference_image,
+        assetId: file.assetId,
+        mimeType: file.mimeType,
+      ),
+      file.file,
+    );
+    return Uri.parse(reference.url);
+  }
+
+  ProviderAssetClient _client(AiProvider provider) {
+    if (provider.isPluginProvider) {
+      final host = pluginHost;
+      if (host == null) {
+        throw const ProviderAssetException('configuration_required');
+      }
+      return PluginAssetClient(provider, host);
+    }
+    return provider.type == AiProviderType.atlascloud.name
+        ? AtlasCloudAssetClient(
+            referenceUrl: _referenceUrl,
+            httpClient: transport(provider),
+            apiKey: provider.apiKey.trim(),
+          )
+        : VolcengineAssetClient(
+            referenceUrl: _referenceUrl,
+            httpClient: transport(provider),
+            accessKeyId: provider.accessKeyId!.trim(),
+            secretAccessKey: provider.secretAccessKey!.trim(),
+            projectName: switch (provider.assetProjectName?.trim()) {
+              final name? when name.isNotEmpty => name,
+              _ => 'default',
+            },
+          );
+  }
 }

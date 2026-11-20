@@ -38,6 +38,7 @@ void main() {
       ShortEntityIdType.canvasEdge: 'ced',
       ShortEntityIdType.novel: 'nov',
       ShortEntityIdType.screenplay: 'scr',
+      ShortEntityIdType.canvas_work: 'cnv',
       ShortEntityIdType.screenplaySeason: 'sea',
       ShortEntityIdType.screenplayEpisode: 'epi',
       ShortEntityIdType.screenplayBeat: 'sbt',
@@ -66,6 +67,20 @@ void main() {
       expect(id, 'cha_0AZ918');
       expect(id, matches(RegExp(r'^[a-z]{3}_[A-Z0-9]{6}$')));
       expect(id, hasLength(10));
+    },
+  );
+
+  test(
+    'generation tasks use twelve random characters; other IDs stay short',
+    () {
+      for (final type in ShortEntityIdType.values) {
+        final id = buildShortEntityId(type);
+        final suffixLength = type == ShortEntityIdType.generationTask ? 12 : 6;
+        expect(
+          id,
+          matches('^${shortEntityIdPrefixes[type]}_[A-Z0-9]{$suffixLength}\$'),
+        );
+      }
     },
   );
 

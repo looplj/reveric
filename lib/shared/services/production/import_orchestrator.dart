@@ -40,6 +40,7 @@ class MediaImportOrchestrator {
     String? batchId,
     String? prompt,
     String? model,
+    void Function(double progress)? onProgress,
   }) async {
     RevericPaths.mediaDirectory(novelId, 'file');
     final extension = p.extension(name).toLowerCase();
@@ -69,6 +70,7 @@ class MediaImportOrchestrator {
       if (imagePart) {
         size = await staged.length();
       } else {
+        final expected = await file.length();
         final sink = staged.openWrite();
         try {
           await for (final chunk in file.openRead()) {
@@ -81,6 +83,9 @@ class MediaImportOrchestrator {
             }
             sink.add(chunk);
             await sink.flush();
+            if (expected > 0) {
+              onProgress?.call((size / expected).clamp(0.0, 1.0));
+            }
           }
         } finally {
           await sink.close();
@@ -174,7 +179,7 @@ class MediaImportOrchestrator {
               _log.info('reused id=${existing.id}');
               return (await database.assetDao.getAsset(existing.id))!;
             }
-            final id = existing?.id ?? buildRandomId('ast');
+            final id = existing?.id ?? buildRandomId('ast', length: 12);
             final sibling = await database.assetDao.findByHash(
               digest,
               format.$1,

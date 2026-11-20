@@ -11,10 +11,10 @@ depth_source="$depth_reduced/source"
 mkdir -p "$depth_reduced"
 if [ ! -d "$depth_source/.git" ]; then
   git clone --filter=blob:none --depth 1 --branch v1.31.0 --sparse \
-    https://github.com/microsoft/onnxruntime.git "$depth_source"
+    https://github.com/looplj/onnxruntime.git "$depth_source"
 fi
-if [ "$(git -C "$depth_source" rev-parse HEAD)" != 402979ac1bef89dcd55add41eaa7277c407599eb ]; then
-  echo 'ONNX Runtime source is not the pinned v1.31.0 commit.' >&2
+if [ "$(git -C "$depth_source" rev-parse 'HEAD^{tree}')" != 6ebffa882d87ca25e05568f369892e4036124e14 ]; then
+  echo 'ONNX Runtime source does not match the pinned v1.31.0 tree.' >&2
   exit 2
 fi
 git -C "$depth_source" sparse-checkout set cmake include model_package onnxruntime/core \

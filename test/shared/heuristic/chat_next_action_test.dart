@@ -110,6 +110,30 @@ void main() {
   );
 
   group('ChatNextActionArbiter.judge', () {
+    test('work navigation targets do not require a creation record', () {
+      final result = ChatNextActionArbiter.judge([
+        {'kind': 'work', 'label': '打开', 'work_id': 'old'},
+        {
+          'kind': 'work',
+          'label': '继续',
+          'work_id': 'new_work',
+          'prompt': '  写第一集  ',
+        },
+        {'kind': 'work', 'label': '缺少作品 ID', 'work_id': ' '},
+      ], allowFeatures: false);
+      expect(result.actions, hasLength(2));
+      final openTarget = result.actions.first.target as WorkActionTarget;
+      expect(openTarget.workId, 'old');
+      expect(openTarget.prompt, isNull);
+      expect(result.drops.single.reason, 'missing_work_id');
+      final restored = deserializeChatNextAction(
+        serializeChatNextAction(result.actions.last),
+      )!;
+      final target = restored.target as WorkActionTarget;
+      expect(target.workId, 'new_work');
+      expect(target.prompt, '写第一集');
+    });
+
     test('保留合法的 prompt 与 feature 建议', () {
       final result = ChatNextActionArbiter.judge([
         {'kind': 'prompt', 'label': '核对第 3 章时间线', 'prompt': '请核对第 3 章的时间线'},

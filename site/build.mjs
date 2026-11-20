@@ -18,6 +18,7 @@ const ROOT = join(SITE, '..');
 const SRC = join(ROOT, 'designs', 'website');
 const DIST = join(SITE, 'dist');
 const REPO = 'https://github.com/looplj/reveric';
+const DOWNLOADS = 'https://downloads.reveric.app';
 
 // 页面和它引用的资源；directions.html 等设计过程文件不发布
 const PAGE_FILES = ['index.html', 'landing.css', 'landing.js', 'assets', 'fonts', 'vendor'];
@@ -32,9 +33,10 @@ function resolveVersion() {
   return tags[0].slice(1);
 }
 
-// 与 distribute_options.yaml 的 artifact_name、build-android.sh 的 ANDROID_RELEASE_NAME 保持一致
+// 与 distribute_options.yaml 的 artifact_name、build-android.sh 的 ANDROID_RELEASE_NAME，
+// 以及 Package workflow 上传到 R2 的 releases/<tag>/<文件名> 保持一致。
 function assetUrls(version) {
-  const base = `${REPO}/releases/download/v${version}`;
+  const base = `${DOWNLOADS}/releases/v${version}`;
   return {
     mac: `${base}/reveric-${version}-macos-arm64.dmg`,
     win: `${base}/reveric-${version}-windows-setup.exe`,

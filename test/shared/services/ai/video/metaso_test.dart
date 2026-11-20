@@ -37,7 +37,7 @@ void main() {
   );
 
   test('METASO exposes its video catalog and keeps native limits separate', () {
-    expect(customAiProviderTypes, contains(AiProviderType.metaso));
+    expect(customAiProviderTypes, contains(AiProviderType.metaso.name));
     expect(provider.isValid, isTrue);
     expect(provider.supportedModelKinds, {AiModelKind.video});
     expect(provider.effectiveBaseUrl, 'https://metaso.cn/api/minimax');
@@ -93,8 +93,8 @@ void main() {
       endpoint: Uri.parse(provider.effectiveBaseUrl),
       apiKey: provider.apiKey,
     );
-    final submission = await client.submit(request(), []);
-    final result = await client.query(submission);
+    final submission = await client.submitNative(request(), []);
+    final result = await client.queryNative(submission);
     expect(result.status, VideoRemoteStatus.succeeded);
     expect(result.videoUrl.toString(), 'https://cdn.example/video.mp4');
     expect(calls, hasLength(2));
@@ -114,7 +114,7 @@ void main() {
       isNotEmpty,
     );
     await expectLater(
-      client.submit(request(resolution: '2K', duration: 16), []),
+      client.submitNative(request(resolution: '2K', duration: 16), []),
       throwsA(
         isA<VideoException>().having((e) => e.field, 'field', 'duration'),
       ),
@@ -135,7 +135,7 @@ void main() {
       endpoint: Uri.parse(provider.effectiveBaseUrl),
       apiKey: provider.apiKey,
     );
-    final result = await client.query(
+    final result = await client.queryNative(
       VideoSubmission(
         taskId: 'job',
         modelId: 'MiniMax-H3',
@@ -179,7 +179,7 @@ void main() {
         endpoint: Uri.parse(provider.effectiveBaseUrl),
         apiKey: provider.apiKey,
       );
-      final submission = await client.submit(
+      final submission = await client.submitNative(
         VideoRequest(
           modelId: model,
           prompt: 'A paper boat floats on a lake.',
@@ -191,12 +191,12 @@ void main() {
         [],
       );
       expect(
-        (await client.query(submission)).videoUrl.toString(),
+        (await client.queryNative(submission)).videoUrl.toString(),
         'https://cdn.example/seedance.mp4',
       );
       final channel = lookupVideoChannelModel('metaso', model)!;
       expect(channel.requiresAudio, false);
-      expect(channel.protocolOptions.supportsProviderAssets, false);
+      expect(channel.capabilities.supportsCertifiedAssets, false);
       expect(channel.resolutions.contains('4k'), model == 'seedance-2.0');
       expect(channel.durations, isNot(contains(16)));
       transport.close();
@@ -293,10 +293,10 @@ void main() {
       );
       final restored = VideoRequest.fromJson(request(modelId: alias).toJson());
       expect(restored.modelId, alias);
-      final submission = await client().submit(restored, []);
+      final submission = await client().submitNative(restored, []);
       expect(submission.modelId, alias);
       expect(
-        (await client().query(submission)).status,
+        (await client().queryNative(submission)).status,
         VideoRemoteStatus.succeeded,
       );
       final ordinary = lookupVideoChannelModel('metaso', 'MiniMax-H3')!;
@@ -309,8 +309,8 @@ void main() {
         ordinary.maxDurationByResolution,
       );
       expect(
-        priority.protocolOptions.framesRequireAdaptiveRatio,
-        ordinary.protocolOptions.framesRequireAdaptiveRatio,
+        priority.capabilities.framesRequireAdaptiveRatio,
+        ordinary.capabilities.framesRequireAdaptiveRatio,
       );
       expect(priority.highlights, contains(VideoModelHighlight.priority));
       expect(
@@ -342,7 +342,7 @@ void main() {
         true,
       );
       await expectLater(
-        client.submit(
+        client.submitNative(
           request(modelId: alias, resolution: '2K', duration: 16),
           [],
         ),

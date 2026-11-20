@@ -192,7 +192,11 @@ class _LoadedDirectorViewport extends HookWidget {
                 selected: session.selected,
                 frame: session.frame.value,
               );
-        final gizmo = selected == null || preview || session.pathEditor.active
+        final gizmo =
+            selected == null ||
+                preview ||
+                session.readOnly ||
+                session.pathEditor.active
             ? null
             : GizmoProjection(
                 camera: camera,
@@ -235,47 +239,64 @@ class _LoadedDirectorViewport extends HookWidget {
                 gesture.generation = session.history.gestureGeneration;
                 gesture.buttons = e.buttons;
                 if (e.buttons == kPrimaryMouseButton) {
-                  if (!session.claimEditGesture(gesture, e.pointer)) {
-                    gesture.clearDrag();
-                    return;
-                  }
-                  gesture.handle = gizmo?.hitTest(
-                    e.localPosition,
-                    tolerance: e.kind == PointerDeviceKind.touch ? 22 : 12,
-                  );
-                  String? id = session.selected;
-                  if (gesture.handle == null) {
+                  if (session.readOnly) {
                     final cameraHit = overlay?.hitCamera(e.localPosition);
                     final hit = builder.scene.raycast(
                       camera.screenPointToRay(e.localPosition, size),
                     );
-                    id =
+                    final id =
                         cameraHit ??
                         (hit == null ? null : builder.owners[hit.node]);
-                    // 空白处按下：拖动即环绕视角，未拖动的单击回到当前机位。
+                    // 只读模式：点中对象选中它，点空白松手回当前机位，任意拖动均只环绕视角。
                     gesture.orbit = id == null && !view.output;
                     if (id != null) {
                       session.select(id);
                     } else if (view.output) {
                       session.select(cameraId);
                     }
-                  }
-                  gesture.original = sampleDocument(
-                    document,
-                    session.frame.value,
-                  ).objects.where((o) => o['id'] == id).firstOrNull;
-                  if (gesture.original != null) {
-                    gesture.ground = gesture.planePoint(e.position);
-                  }
-                  if (gesture.handle == GizmoHandle.y_ring &&
-                      gesture.original != null) {
-                    final p = gesture.planePoint(e.position, ring: true);
-                    if (p != null) {
-                      final center = vec(gesture.original!['position']);
-                      gesture.lastRingAngle = math.atan2(
-                        p.x - center.x,
-                        p.z - center.z,
+                  } else {
+                    if (!session.claimEditGesture(gesture, e.pointer)) {
+                      gesture.clearDrag();
+                      return;
+                    }
+                    gesture.handle = gizmo?.hitTest(
+                      e.localPosition,
+                      tolerance: e.kind == PointerDeviceKind.touch ? 22 : 12,
+                    );
+                    String? id = session.selected;
+                    if (gesture.handle == null) {
+                      final cameraHit = overlay?.hitCamera(e.localPosition);
+                      final hit = builder.scene.raycast(
+                        camera.screenPointToRay(e.localPosition, size),
                       );
+                      id =
+                          cameraHit ??
+                          (hit == null ? null : builder.owners[hit.node]);
+                      // 空白处按下：拖动即环绕视角，未拖动的单击回到当前机位。
+                      gesture.orbit = id == null && !view.output;
+                      if (id != null) {
+                        session.select(id);
+                      } else if (view.output) {
+                        session.select(cameraId);
+                      }
+                    }
+                    gesture.original = sampleDocument(
+                      document,
+                      session.frame.value,
+                    ).objects.where((o) => o['id'] == id).firstOrNull;
+                    if (gesture.original != null) {
+                      gesture.ground = gesture.planePoint(e.position);
+                    }
+                    if (gesture.handle == GizmoHandle.y_ring &&
+                        gesture.original != null) {
+                      final p = gesture.planePoint(e.position, ring: true);
+                      if (p != null) {
+                        final center = vec(gesture.original!['position']);
+                        gesture.lastRingAngle = math.atan2(
+                          p.x - center.x,
+                          p.z - center.z,
+                        );
+                      }
                     }
                   }
                 }
@@ -293,6 +314,7 @@ class _LoadedDirectorViewport extends HookWidget {
                 final pan =
                     gesture.buttons == kMiddleMouseButton ||
                     ((gesture.orbit ||
+                            session.readOnly ||
                             gesture.buttons == kSecondaryMouseButton) &&
                         HardwareKeyboard.instance.isShiftPressed);
                 if (!view.output && pan) {
@@ -303,9 +325,13 @@ class _LoadedDirectorViewport extends HookWidget {
                 }
                 if (!view.output &&
                     (gesture.buttons == kSecondaryMouseButton ||
-                        gesture.orbit)) {
+                        gesture.orbit ||
+                        session.readOnly)) {
                   gesture.moved = true;
                   view.orbit(e.delta.dx, e.delta.dy);
+                  return;
+                }
+                if (session.readOnly) {
                   return;
                 }
                 if ((e.position - gesture.down!).distance < 4 &&

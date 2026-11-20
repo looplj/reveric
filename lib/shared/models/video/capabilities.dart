@@ -1,4 +1,4 @@
-// 职责: 在收费提交前按渠道登记的能力校验视频模型的模式、规格和参考媒体限制。
+// 职责: 在收费提交前按实例声明或任务快照校验视频模型的模式、规格和参考媒体限制。
 // 关联文件:
 //   lib/shared/models/video/catalog.dart
 //   lib/shared/models/video/request.dart
@@ -6,21 +6,62 @@
 //   lib/shared/services/ai/video/client.dart
 
 import 'catalog.dart';
+import '../ai_provider.dart';
+import '../provider_model.dart';
 import 'channels.dart';
 import 'request.dart';
 import 'task_result.dart';
 
-/// 只校验登记了能力的型号；未登记型号原样提交，是否允许使用由业务层决定。
+/// 内置未登记型号保留原有校验；插件必须提供实例声明或冻结能力。
 class VideoCapabilities {
-  const VideoCapabilities(this.providerType);
+  const VideoCapabilities(this.providerType)
+    : _provider = null,
+      _snapshot = null,
+      _defaults = null;
+  VideoCapabilities.forProvider(
+    AiProvider provider, {
+    VideoModelCapabilities? capabilities,
+    this._defaults,
+  }) : providerType = provider.type,
+       _provider = provider,
+       _snapshot = capabilities;
   final String providerType;
+  final AiProvider? _provider;
+  final VideoModelCapabilities? _snapshot;
+  final VideoRequestDefaults? _defaults;
+  VideoModelSpec? _model(String id) {
+    if (_snapshot case final caps?) {
+      return (
+        capabilities: caps,
+        requestDefaults: _defaults ?? const VideoRequestDefaults(),
+        rawDefaults: _defaults?.toJson() ?? {},
+      );
+    }
+    if (_provider case final provider?) {
+      return resolveVideoModel(provider, id);
+    }
+    final channel = lookupVideoChannelModel(providerType, id);
+    return channel == null
+        ? null
+        : (
+            capabilities: channel.capabilities,
+            requestDefaults: channel.requestDefaults,
+            rawDefaults: channel.requestDefaults.toJson(),
+          );
+  }
 
   static const ratios = videoRatios;
 
   /// 校验无需读取媒体文件的参数，供编辑器与提交前校验共用。
   void validateParameters(VideoRequest request, List<VideoInputRole> roles) {
-    final channel = lookupVideoChannelModel(providerType, request.modelId);
+    final channel = _model(request.modelId);
     if (channel == null) {
+      if (providerType.startsWith('plugin:')) {
+        throw const VideoException(
+          VideoErrorCode.configuration_required,
+          field: 'model',
+        );
+      }
       _check(request.prompt.trim().isNotEmpty, 'prompt');
       _check(!roles.contains(VideoInputRole.middle_frame), 'references');
       return;
@@ -29,13 +70,12 @@ class VideoCapabilities {
   }
 
   void _validateParameters(
-    VideoChannelModel channel,
+    VideoModelSpec channel,
     VideoRequest request,
     List<VideoInputRole> roles,
   ) {
     final model = channel.capabilities;
-    final requiredMode = channel.protocolOptions.requiredMode;
-    _check(requiredMode == null || request.mode == requiredMode, 'references');
+    _check(model.modes.contains(request.mode), 'references');
     _check(request.prompt.trim().isNotEmpty, 'prompt');
     if (model.maxPromptCharacters != null) {
       _check(
@@ -84,7 +124,7 @@ class VideoCapabilities {
           'references',
         );
         _check(
-          !channel.protocolOptions.framesRequireAdaptiveRatio ||
+          !channel.capabilities.framesRequireAdaptiveRatio ||
               request.ratio == 'adaptive',
           'ratio',
         );
@@ -107,12 +147,15 @@ class VideoCapabilities {
           'references',
         );
         _check(
-          !channel.protocolOptions.framesRequireAdaptiveRatio ||
+          !channel.capabilities.framesRequireAdaptiveRatio ||
               request.ratio == 'adaptive',
           'ratio',
         );
       case VideoMode.reference:
-        _check(channel.capabilities.allowsReferenceMode, 'references');
+        _check(
+          channel.capabilities.modes.contains(VideoMode.reference),
+          'references',
+        );
         _check(
           roles.isNotEmpty &&
               !roles.contains(VideoInputRole.first_frame) &&
@@ -183,7 +226,7 @@ class VideoCapabilities {
         'file_size',
       );
     }
-    final channel = lookupVideoChannelModel(providerType, request.modelId);
+    final channel = _model(request.modelId);
     if (channel == null) {
       validateParameters(request, references.map((r) => r.role).toList());
       return;

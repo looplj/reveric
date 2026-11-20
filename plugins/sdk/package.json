@@ -1,6 +1,6 @@
 {
   "name": "reveric-plugin-sdk",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "SDK, TSX page compiler and build CLI for Reveric plugins.",
   "license": "MIT",
   "repository": {

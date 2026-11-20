@@ -1,5 +1,8 @@
-// 职责: 桌面端设置对话框 — 组织设置导航与各设置分区入口（分区实现委托给共享 section widget）。
+// 职责: 桌面端设置页 — 组织设置导航与各设置分区入口（分区实现委托给共享 section widget），首页内嵌展示并提供独立弹窗入口。
 // 关联文件:
+//   lib/desktop/pages/home.dart
+//   lib/desktop/widgets/agent_management/home_management_cards.dart
+//   lib/desktop/widgets/agent_management/page_dialog.dart
 //   lib/shared/widgets/settings/general_settings_section.dart
 //   lib/shared/widgets/settings/appearance_settings_section.dart
 //   lib/shared/widgets/settings/editor_settings_section.dart
@@ -19,12 +22,10 @@
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/directory-structure.md
-import 'settings_plugins_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../../shared/components/dialog_feedback.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/providers/settings_providers.dart';
@@ -42,6 +43,8 @@ import '../../../shared/widgets/settings/remote_bridge_settings_section.dart';
 import '../../../shared/widgets/settings/trash_settings_section.dart';
 import '../../../shared/widgets/settings/usage_settings_section.dart';
 import '../../pages/settings/usage_page.dart';
+import '../agent_management/home_management_cards.dart';
+import '../agent_management/page_dialog.dart';
 import 'settings_storage_section.dart';
 
 part 'settings_general_section.dart';
@@ -55,9 +58,28 @@ part 'settings_trash_section.dart';
 part 'settings_about_section.dart';
 part 'settings_debug_section.dart';
 
-/// 打开设置对话框并定位到「套餐」页 — 各功能门禁升级引导的统一跳转目标。
+/// 首页之外的入口（关于菜单、更新提示、编辑器、Agent 跳转）只需某一分区，
+/// 以独立弹窗单独展示该分区，不带设置导航。
+Future<void> showSettingsSectionDialog(BuildContext context, String section) {
+  final item = SettingsRegion._navItemOf(section);
+  return showManagementPageDialog(
+    context,
+    builder: (headerKey, closeButton) => HomeManagementScaffold(
+      headerGestureExclusionKey: headerKey,
+      secondaryAction: closeButton,
+      icon: item.icon,
+      titleKey: item.labelKey,
+      child: Builder(
+        builder: (context) => SettingsRegion._sectionContent(
+          section,
+          onCloseDebugSection: () => Navigator.of(context).pop(),
+        ),
+      ),
+    ),
+  );
+}
 
-/// 设置对话框导航项
+/// 设置导航项
 class _SettingsNavItem {
   final String id;
   final String labelKey;
@@ -70,16 +92,35 @@ class _SettingsNavItem {
   });
 }
 
-/// 桌面端设置对话框
-class SettingsDialog extends HookConsumerWidget {
-  final String initialNavId;
-  final String? initialUsageSessionId;
-
-  const SettingsDialog({
+/// 桌面端设置页：在首页主区域展示全部分区。
+class DesktopSettingsPage extends StatelessWidget {
+  const DesktopSettingsPage({
     super.key,
-    this.initialNavId = 'general',
-    this.initialUsageSessionId,
+    required this.headerGestureExclusionKey,
+    this.headerTrailingInset = 0,
+    this.headerAction,
   });
+
+  final GlobalKey headerGestureExclusionKey;
+  final double headerTrailingInset;
+  final Widget? headerAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return HomeManagementScaffold(
+      headerGestureExclusionKey: headerGestureExclusionKey,
+      headerTrailingInset: headerTrailingInset,
+      secondaryAction: headerAction,
+      icon: RevericIcons.settings_outlined,
+      titleKey: LocaleKeys.librarySettings,
+      child: const SettingsRegion(),
+    );
+  }
+}
+
+/// 设置分区导航与内容区；切换分区前询问外层 [SettingsLeaveScope] 中的编辑守卫。
+class SettingsRegion extends HookConsumerWidget {
+  const SettingsRegion({super.key});
 
   static const _baseNavItems = [
     _SettingsNavItem(
@@ -106,11 +147,6 @@ class SettingsDialog extends HookConsumerWidget {
       id: 'usage',
       labelKey: LocaleKeys.settingsUsage,
       icon: RevericIcons.bar_chart_outlined,
-    ),
-    _SettingsNavItem(
-      id: 'plugins',
-      labelKey: LocaleKeys.settingsPlugins,
-      icon: RevericIcons.layers_outlined,
     ),
     _SettingsNavItem(
       id: 'remote',
@@ -150,17 +186,18 @@ class SettingsDialog extends HookConsumerWidget {
     icon: RevericIcons.bug_beetle_outlined,
   );
 
+  static _SettingsNavItem _navItemOf(String id) =>
+      [..._baseNavItems, _debugNavItem].firstWhere((item) => item.id == id);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
-    final selectedNavId = useState(initialNavId);
+    final selectedNavId = useState('general');
     final aboutTapCount = useState(0);
     final debugMode = ref.watch(appDebugModeProvider);
     final debugPageUnlocked = ref.watch(appDebugPageUnlockedProvider);
-    final debugUnlocked = useState(
-      debugMode || debugPageUnlocked || initialNavId == 'debug',
-    );
-    final leave = useMemoized(SettingsLeaveController.new);
+    final debugUnlocked = useState(debugMode || debugPageUnlocked);
+    final leave = SettingsLeaveScope.maybeOf(context);
     final navItems = [
       ..._baseNavItems,
       if (debugUnlocked.value || debugMode) _debugNavItem,
@@ -173,117 +210,45 @@ class SettingsDialog extends HookConsumerWidget {
       return null;
     }, [debugMode]);
 
-    return Dialog(
-      backgroundColor: colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(RevericRadius.x2l),
-      ),
-      child: Container(
-        width: 860,
-        height: 620,
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(RevericRadius.x2l),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(RevericRadius.x2l),
-          child: SettingsLeaveScope(
-            controller: leave,
-            child: DialogFeedback(
-              builder: (context) => Row(
-                children: [
-                  _buildSidebar(
-                    context,
-                    colors,
-                    navItems,
-                    selectedNavId.value,
-                    (id) async {
-                      if (id != selectedNavId.value &&
-                          !await leave.confirmLeave()) {
-                        return;
-                      }
-                      if (!context.mounted) {
-                        return;
-                      }
-                      if (id == 'about') {
-                        aboutTapCount.value++;
-                        if (aboutTapCount.value >= 10) {
-                          debugUnlocked.value = true;
-                          ref
-                              .read(appSettingsProvider.notifier)
-                              .setDebugPageUnlocked(true);
-                          selectedNavId.value = 'debug';
-                          return;
-                        }
-                      } else {
-                        aboutTapCount.value = 0;
-                      }
-                      selectedNavId.value = id;
-                    },
-                  ),
-                  Container(
-                    width: RevericSizes.dividerThickness,
-                    color: colors.border,
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        _buildHeader(context, colors, leave),
-                        Expanded(
-                          child: _buildContent(
-                            context,
-                            selectedNavId.value,
-                            () {
-                              debugUnlocked.value = false;
-                              selectedNavId.value = 'general';
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(
-    BuildContext context,
-    RevericColors colors,
-    SettingsLeaveController leave,
-  ) {
-    final typo = RevericTheme.typographyOf(context);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: RevericSpacing.x4l,
-        vertical: RevericSpacing.lg,
-      ),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.border)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            context.t(LocaleKeys.settingsTitle),
-            style: typo.heading2.copyWith(color: colors.textPrimary),
-          ),
-          const Spacer(),
-          IconButton(
-            onPressed: () async {
-              if (await leave.confirmLeave() && context.mounted) {
-                Navigator.of(context).pop();
-              }
+    // 拉伸到满高：内容区的滚动视图在宽松约束下会收缩并被垂直居中。
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSidebar(context, colors, navItems, selectedNavId.value, (
+          id,
+        ) async {
+          if (id != selectedNavId.value &&
+              leave != null &&
+              !await leave.confirmLeave()) {
+            return;
+          }
+          if (!context.mounted) {
+            return;
+          }
+          if (id == 'about') {
+            aboutTapCount.value++;
+            if (aboutTapCount.value >= 10) {
+              debugUnlocked.value = true;
+              ref.read(appSettingsProvider.notifier).setDebugPageUnlocked(true);
+              selectedNavId.value = 'debug';
+              return;
+            }
+          } else {
+            aboutTapCount.value = 0;
+          }
+          selectedNavId.value = id;
+        }),
+        Container(width: RevericSizes.dividerThickness, color: colors.border),
+        Expanded(
+          child: _sectionContent(
+            selectedNavId.value,
+            onCloseDebugSection: () {
+              debugUnlocked.value = false;
+              selectedNavId.value = 'general';
             },
-            icon: RevericIcon(RevericIcons.close, color: colors.textSubtle),
-            hoverColor: colors.hover,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -302,7 +267,6 @@ class SettingsDialog extends HookConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: RevericSpacing.x2l),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(
@@ -371,17 +335,15 @@ class SettingsDialog extends HookConsumerWidget {
     );
   }
 
-  Widget _buildContent(
-    BuildContext context,
-    String selectedId,
-    VoidCallback onCloseDebugSection,
-  ) {
+  static Widget _sectionContent(
+    String selectedId, {
+    required VoidCallback onCloseDebugSection,
+  }) {
     return switch (selectedId) {
       'general' => const _GeneralSettingsSection(),
       'appearance' => const _AppearanceSettingsSection(),
       'remote' => _RemoteSettingsSection(),
-      'plugins' => const PluginsDesktopSettingsSection(),
-      'usage' => _UsageSettingsSection(initialSessionId: initialUsageSessionId),
+      'usage' => const _UsageSettingsSection(),
       'editor' => const _EditorSettingsSection(),
       'reading' => const _ReadingSettingsSection(),
       'storage' => const StorageSettingsSection(),

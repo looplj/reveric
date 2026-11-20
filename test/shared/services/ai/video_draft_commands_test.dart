@@ -22,6 +22,8 @@ import 'package:reveric/shared/services/ai/media/production.dart';
 import 'package:reveric/shared/services/ai/tool_operations.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
 import 'package:reveric/shared/services/ai/video/task_service.dart';
+import 'package:reveric/shared/services/ai/video/draft.dart';
+import 'package:reveric/shared/models/video/config.dart';
 import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
 import 'package:reveric/shared/services/object_storage/service.dart';
 import 'package:reveric/shared/services/novel_actions.dart';
@@ -158,7 +160,8 @@ void main() {
       references: ReferenceStorageService(
         database: appDb,
         storage: ObjectStorageService(database: appDb),
-        probe: (_) => throw StateError('No reference upload expected'),
+        probe: (_, {cancellation}) =>
+            throw StateError('No reference upload expected'),
       ),
       providerTransport: (_) => MockClient((request) async {
         if (request.method == 'POST') {
@@ -311,8 +314,9 @@ void main() {
       expect(result['can_complete_draft'], true);
       expect(
         DateTime.parse(result['draft_expires_at'] as String),
-        now.add(const Duration(days: 7)),
+        now.add(const Duration(days: 7)).toUtc(),
       );
+      expect(result['draft_expires_at'], endsWith('Z'));
       final record = await readTask(result['task_id'] as String);
       expect(record['draft'], true, reason: '$record');
       expect(record['can_complete_draft'], true);
@@ -449,6 +453,62 @@ void main() {
         (await generate({'draft_task_id': 'foreign'}))['error_code'],
         'not_found',
       );
+      expect(bodies, hasLength(1));
+    },
+  );
+
+  test(
+    'draft completion uses frozen capability and rejects legacy snapshots',
+    () async {
+      final result = await finish(await generate({'draft': true}));
+      final source = (await appDb.generationTaskDao.getById(
+        result['task_id'] as String,
+      ))!;
+      final saved = source.requestJson as app.VideoGenerationRequest;
+      expect(saved.capabilities!.draft!.ttlHours, 168);
+      final frozen =
+          app.GenerationRequest.fromJson(saved.toJson())
+              as app.VideoGenerationRequest;
+      expect(frozen.capabilities!.toJson(), saved.capabilities!.toJson());
+      final alternate = source.copyWith(
+        requestJson: app.VideoGenerationRequest(
+          saved.request,
+          inputs: saved.inputs,
+          capabilities: saved.capabilities!.merge(
+            const VideoModelCapabilities(
+              draft: ConfigValue(
+                VideoDraftCapabilities(
+                  resolution: '360p',
+                  completionResolution: '720p',
+                  ttlHours: 12,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(
+        alternate.draftExpiresAt,
+        source.submittedAt!.add(const Duration(hours: 12)),
+      );
+      expect(alternate.draftCapabilities!.completionResolution, '720p');
+      final legacy = source.copyWith(
+        id: 'legacy-draft',
+        requestJson: app.VideoGenerationRequest(
+          saved.request,
+          inputs: saved.inputs,
+        ),
+      );
+      await appDb.into(appDb.generationTasks).insert(legacy.toCompanion(true));
+      expect(legacy.supportsDraftCompletion, false);
+      expect(legacy.draftExpiresAt, isNull);
+      await expectLater(
+        video.createDraftCompletion(legacy.id),
+        throwsA(isA<Exception>()),
+      );
+      final retained = (await appDb.generationTaskDao.getById(legacy.id))!;
+      expect(retained.resultAssetId, source.resultAssetId);
+      expect(retained.status, source.status);
       expect(bodies, hasLength(1));
     },
   );

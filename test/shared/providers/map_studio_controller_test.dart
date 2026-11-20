@@ -5,6 +5,9 @@
 // 遵循的 Rules:
 //   .agents/rules/testing.md
 import 'dart:io';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/plugin/provider.dart';
+import 'package:reveric/shared/models/plugin/provider_registry.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 
 import 'package:drift/native.dart';
@@ -13,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/services/generate_map_orchestrator.dart';
 import 'package:reveric/shared/providers/map_studio_controller.dart';
+import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/models/map_studio_models.dart';
 import 'package:reveric/shared/providers/map_studio_providers.dart';
 import 'package:reveric/shared/database/app_database.dart';
@@ -45,26 +49,87 @@ void main() {
       final library = buildImageLibraryService(appDatabase);
       var imageCalls = 0;
       final reader = _PlaceReader();
+      final imageProvider = aiProviderBuiltinById('openai')!.copyWith(
+        id: 'map-plugin',
+        type: 'plugin:map.test',
+        enabled: true,
+        apiKey: 'test',
+        imageModels: ['map'],
+      );
+      aiProviderTypeConfigs['plugin:map.test'] = const AiProviderTypeConfig(
+        displayName: 'Map test',
+        modelIdSource: ModelIdSource.registered,
+        providerModelKinds: {AiModelKind.image},
+      );
+      addTearDown(() => aiProviderTypeConfigs.remove('plugin:map.test'));
+      pluginProviderModels.replace(
+        imageProvider,
+        parsePluginProviderModels([
+          {
+            'kind': 'image',
+            'id': 'map',
+            'capabilities': {
+              'ratios': ['7:5'],
+              'resolutions': ['custom'],
+              'sizes': {
+                'custom': {'7:5': '1400x1000'},
+              },
+              'minReferences': 0,
+              'maxReferences': 1,
+              'unlimitedReferences': false,
+              'referenceTransport': 'file',
+              'complexityLevels': ['fine'],
+            },
+            'requestDefaults': {
+              'quality': 'studio',
+              'complexity': 'fine',
+              'workflow': {'node': 'map'},
+            },
+          },
+        ]),
+      );
+      addTearDown(() => pluginProviderModels.remove(imageProvider.id));
+      Future<AiImageGenerationResult> imageCallback(
+        String prompt, {
+        String? model,
+        String? size,
+        String? quality,
+        String? complexity,
+        ImageInvocationOptions? options,
+        List<String>? imageData,
+      }) async {
+        expect(model, 'map');
+        expect(size, '1400x1000');
+        expect(quality, 'studio');
+        expect(complexity, 'fine');
+        expect(options?.aspectRatio, '7:5');
+        expect(options?.resolution, 'custom');
+        expect(options?.defaults?['workflow'], {'node': 'map'});
+        expect(imageData?.length, imageCalls == 0 ? isNull : 1);
+        imageCalls++;
+        return const AiImageGenerationResult(
+          imageBase64:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        );
+      }
+
       final container = ProviderContainer(
         overrides: [
           novelContentDatabaseProvider('test-map').overrideWithValue(database),
           imageLibraryServiceProvider.overrideWithValue(library),
-          mapStudioImageModelSelectionProvider.overrideWithValue(null),
+          mapStudioImageModelSelectionProvider.overrideWithValue(
+            MapStudioImageModelSelection(config: imageProvider, model: 'map'),
+          ),
+          aiSettingsProvider.overrideWithValue(
+            AiSettings(providers: [imageProvider]),
+          ),
           mapPlaceNameReaderProvider.overrideWithValue(reader),
-          mapImageEditCallbackProvider.overrideWithValue(null),
-          mapImageGenerateCallbackProvider.overrideWithValue((
-            prompt, {
-            model,
-            size,
-            quality,
-            complexity,
-          }) async {
-            imageCalls++;
-            return const AiImageGenerationResult(
-              imageBase64:
-                  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-            );
-          }),
+          mapImageEditCallbackProvider(
+            modelId: 'map-plugin::map',
+          ).overrideWithValue(imageCallback),
+          mapImageGenerateCallbackProvider(
+            modelId: 'map-plugin::map',
+          ).overrideWithValue(imageCallback),
         ],
       );
       addTearDown(() async {
@@ -93,10 +158,14 @@ void main() {
       final subscription = container.listen(provider, (_, _) {});
       addTearDown(subscription.close);
       final controller = container.read(provider.notifier);
-      Future<void> generate() => controller.generate(
-        const MapGenerationRequest(
+      Future<void> generate({bool edit = false}) => controller.generate(
+        MapGenerationRequest(
+          modelId: 'map-plugin::map',
+          referenceCurrentImage: edit,
           styleId: 'parchment',
-          resolutionId: '1k',
+          resolutionId: 'custom',
+          ratioId: '7:5',
+          quality: 'studio',
           includeLocations: true,
         ),
         novelId: 'novel-test',
@@ -125,8 +194,9 @@ void main() {
       );
       expect(first.hasImage, isTrue);
       expect(first.version, 1);
+      expect(first.model, 'map');
 
-      await generate();
+      await generate(edit: true);
       final second = MapStudioSettings.fromMap(
         (await maps.getMapById(mapId))!.settings,
       );
@@ -136,6 +206,7 @@ void main() {
           .watchAssets(novelId: 'novel-test', purpose: AssetPurpose.map.value)
           .first;
       expect(assets, hasLength(2));
+      expect(assets.every((asset) => asset.model == 'map'), isTrue);
       expect(reader.calls, 2);
       final oldAsset = assets.singleWhere((asset) => asset.path == first.image);
       await controller.previewAsset(

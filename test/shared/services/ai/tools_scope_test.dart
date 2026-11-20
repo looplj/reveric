@@ -85,6 +85,7 @@ void main() {
       final manager = AiToolManager(
         content,
         workingOverlayService: overlay,
+        workId: 'current',
         novelReader: () async {
           if (!entered.isCompleted) {
             entered.complete();
@@ -100,7 +101,7 @@ void main() {
       final future = manager.executeTool(
         name: 'Write',
         input: {
-          'path': 'profile',
+          'path': '/works/current',
           'fields': {'description': 'after'},
         },
         context: ToolExecutionContext(
@@ -126,6 +127,7 @@ void main() {
     final manager = AiToolManager(
       content,
       workingOverlayService: overlay,
+      workId: 'current',
       novelReader: () async => {'title': 'test'},
       onToolCallRequested: (_, _, _) {
         topEvents++;
@@ -139,7 +141,7 @@ void main() {
     )..registerAllTools();
     final result = await manager.executeTool(
       name: 'Read',
-      input: {'path': 'profile'},
+      input: {'path': '/works/current'},
       callId: 'child',
       context: ToolExecutionContext(
         parentToolCallId: 'parent',
@@ -166,6 +168,7 @@ void main() {
     final manager = AiToolManager(
       content,
       workingOverlayService: overlay,
+      workId: 'current',
       novelReader: () async {
         reads++;
         return {'title': 'test'};
@@ -174,7 +177,7 @@ void main() {
     final scope = ToolExecutionScope()..cancel();
     final result = await manager.executeTool(
       name: 'Read',
-      input: {'path': 'profile'},
+      input: {'path': '/works/current'},
       context: ToolExecutionContext(
         parentToolCallId: 'parent',
         cancellationToken: scope.token,

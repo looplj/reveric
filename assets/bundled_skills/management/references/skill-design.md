@@ -46,7 +46,7 @@ Reference 只放篇幅较长、仅部分任务需要、可独立维护的材料�
 - `references` 清单：每个文件的 `references/**` 路径、用途和内容概要。
 - 验收样例：至少 2 条应触发、2 条不应触发、1 条信息不足时的预期行为。
 
-若 prompt 要使用附件，必须要求 Agent 从 `<skill_resources>` 中复制精确的 `Run agent-skills reference-list` 调用，再从返回的 path 中选择文件以 `reference-get` 读取；禁止臆造路径或预读全部附件。
+若 prompt 要使用附件，在正文给出准确路径并允许 Agent 直接 `reference-get`；未知路径时才从 `<skill_resources>` 的 `reference-list` 返回目录中选择；禁止臆造路径或预读全部附件。
 
 ### 4. 显式确认后写入
 

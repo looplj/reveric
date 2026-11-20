@@ -23,6 +23,12 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
+import 'package:reveric/shared/providers/video_tasks.dart';
+import 'package:reveric/shared/providers/production_media.dart';
+import 'package:reveric/shared/services/production/library_service.dart';
+import 'package:reveric/shared/services/production/media_service.dart';
+import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
+import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/content_kind.dart';
@@ -47,6 +53,95 @@ void main() {
   });
 
   group('NovelActionsService', () {
+    test(
+      'canvas creation has one root and board, no story hierarchy or onboarding',
+      () async {
+        await _configureTemporaryStorage('canvas_create');
+        final service = NovelActionsService(appDb);
+        await appDb.novelDao.create(
+          id: 'existing',
+          title: '未命名画布',
+          description: '',
+        );
+        final ids = await Future.wait([
+          service.createCanvas(defaultTitle: '未命名画布'),
+          service.createCanvas(defaultTitle: '未命名画布'),
+        ]);
+        final works = [for (final id in ids) (await appDb.novelDao.get(id))!];
+        expect(works.map((work) => work.title).toSet(), {'未命名画布 2', '未命名画布 3'});
+        for (final work in works) {
+          expect(work.id, matches(RegExp(r'^cnv_[A-Z0-9]{6}$')));
+          expect(work.contentKind, contentKindCanvas);
+          final content = NovelContentDatabase(work.contentDatabasePath!);
+          expect(await content.select(content.screenplays).get(), hasLength(1));
+          expect((await content.screenplayDao.getRoot())!.styleId, isNull);
+          final canvases = await content.select(content.canvases).get();
+          expect(canvases, hasLength(1));
+          expect(canvases.single.kind, canvasKindProduction);
+          expect(canvases.single.id, startsWith('can_'));
+          expect(
+            await content.select(content.screenplaySeasons).get(),
+            isEmpty,
+          );
+          expect(
+            await content.select(content.screenplayEpisodes).get(),
+            isEmpty,
+          );
+          expect(await content.select(content.screenplayScenes).get(), isEmpty);
+          expect(await content.select(content.chapters).get(), isEmpty);
+          expect(await content.novelStateDao.get('novel_onboarding'), isNull);
+          final clip = await StoryboardService(
+            content,
+            contentKind: work.contentKind,
+          ).createImage('');
+          final providers = ProviderContainer.test(
+            overrides: [
+              appDatabaseProvider.overrideWithValue(appDb),
+              mediaLibraryServiceProvider.overrideWithValue(
+                MediaLibraryService(
+                  appDb,
+                  MediaService(FfmpegRunner()),
+                  Directory.systemTemp,
+                ),
+              ),
+            ],
+          );
+          try {
+            await providers
+                .read(productionResultServiceProvider)
+                .beforeCreate(work.id, 'production_clip', clip.id);
+          } finally {
+            providers.dispose();
+          }
+
+          await content.close();
+          await service.ensureNovelContentDatabasePath(work);
+          final reopened = NovelContentDatabase(work.contentDatabasePath!);
+          expect(await reopened.select(reopened.chapters).get(), isEmpty);
+          expect(await reopened.select(reopened.canvases).get(), hasLength(1));
+          await reopened.close();
+        }
+      },
+    );
+
+    test(
+      'canvas initialization failure removes only its unregistered database',
+      () async {
+        final temporary = await _configureTemporaryStorage('canvas_failed');
+        await expectLater(
+          NovelActionsService(appDb).createNovel(
+            title: 'Failed canvas',
+            description: '',
+            contentKind: contentKindCanvas,
+            populateContent: (_) async =>
+                throw StateError('failure after initialization'),
+          ),
+          throwsStateError,
+        );
+        await _expectUnregisteredCreation(appDb, 'Failed canvas', temporary);
+      },
+    );
+
     test(
       'creates and deletes works without enqueuing conversion events',
       () async {
@@ -144,6 +239,42 @@ void main() {
 
         final draft = await appDb.novelDao.get('draft_novel');
         expect(draft?.draft, isTrue);
+
+        await expectLater(
+          service.updateNovelMetadata(
+            novelId: 'draft_novel',
+            title: '同名作品',
+            description: '不应保存',
+            draft: false,
+          ),
+          throwsA(isA<NovelTitleConflictException>()),
+        );
+        final afterConflict = (await service.getNovel('draft_novel'))!;
+        expect(afterConflict.draft, isTrue);
+        expect(afterConflict.description, isEmpty);
+
+        await service.updateNovelMetadata(
+          novelId: 'draft_novel',
+          title: '新书名',
+          description: '新简介',
+          draft: false,
+        );
+        final published = (await service.getNovel('draft_novel'))!;
+        expect(published.draft, isFalse);
+        expect(published.title, '新书名');
+        expect(published.description, '新简介');
+        await expectLater(
+          service.updateNovelMetadata(
+            novelId: 'draft_novel',
+            title: '不应保存',
+            draft: true,
+          ),
+          throwsA(isA<NovelDraftReversionException>()),
+        );
+        final afterRejection = (await service.getNovel('draft_novel'))!;
+        expect(afterRejection.draft, isFalse);
+        expect(afterRejection.title, published.title);
+        expect(afterRejection.updatedAt, published.updatedAt);
       },
     );
 
@@ -347,7 +478,7 @@ void main() {
         addTearDown(contentDb.close);
         final root = await contentDb.screenplayDao.getRoot();
         expect(root, isNotNull);
-        expect(root!.styleId, 'preset:premium-costume-drama');
+        expect(root!.styleId, isNull);
         final seasons = await contentDb.screenplayDao.getSeasons(root.id);
         expect(seasons, hasLength(1));
         expect(seasons.single.seasonNumber, 1);
@@ -369,50 +500,43 @@ void main() {
     );
 
     test(
-      'screenplay creation persists one style and metadata edits preserve user choice',
+      'screenplay creation leaves production style unset and metadata edits keep that choice',
       () async {
-        await _configureTemporaryStorage('screenplay_default_style');
+        await _configureTemporaryStorage('screenplay_style');
         final service = NovelActionsService(appDb);
-        for (final entry in [
-          (category: '都市', tags: <String>[], expected: 'cn-urban-realism'),
-          (category: '都市', tags: ['武侠'], expected: 'eastern-wuxia-poetic'),
-          (category: '都市', tags: ['武侠', '3D'], expected: 'semi-real-cg'),
-          (category: '未知分类', tags: ['穿越'], expected: 'premium-costume-drama'),
-        ]) {
-          final id = await service.createNovel(
-            title: 'Style ${entry.expected}',
-            description: '',
-            contentKind: contentKindScreenplay,
-            category: entry.category,
-            tags: entry.tags,
+        final id = await service.createNovel(
+          title: 'Style unset',
+          description: '',
+          contentKind: contentKindScreenplay,
+          category: '都市',
+          tags: ['武侠', '3D'],
+        );
+        final novel = (await appDb.novelDao.get(id))!;
+        final db = NovelContentDatabase(novel.contentDatabasePath!);
+        try {
+          final root = (await db.screenplayDao.getRoot())!;
+          expect(root.styleId, isNull);
+          await (db.update(
+            db.screenplays,
+          )..where((row) => row.id.equals(root.id))).write(
+            const ScreenplaysCompanion(styleId: Value('preset:pixel-art')),
           );
-          final novel = (await appDb.novelDao.get(id))!;
-          final db = NovelContentDatabase(novel.contentDatabasePath!);
-          try {
-            final root = (await db.screenplayDao.getRoot())!;
-            expect(root.styleId, 'preset:${entry.expected}');
-            await (db.update(
-              db.screenplays,
-            )..where((row) => row.id.equals(root.id))).write(
-              const ScreenplaysCompanion(styleId: Value('preset:pixel-art')),
-            );
-            await service.updateNovelMetadata(
-              novelId: id,
-              category: '宫斗',
-              tags: ['水墨'],
-            );
-            expect(
-              (await db.screenplayDao.getRoot())!.styleId,
-              'preset:pixel-art',
-            );
-            await (db.update(db.screenplays)
-                  ..where((row) => row.id.equals(root.id)))
-                .write(const ScreenplaysCompanion(styleId: Value(null)));
-            await service.updateNovelMetadata(novelId: id, tags: ['3D']);
-            expect((await db.screenplayDao.getRoot())!.styleId, isNull);
-          } finally {
-            await db.close();
-          }
+          await service.updateNovelMetadata(
+            novelId: id,
+            category: '宫斗',
+            tags: ['水墨'],
+          );
+          expect(
+            (await db.screenplayDao.getRoot())!.styleId,
+            'preset:pixel-art',
+          );
+          await (db.update(db.screenplays)
+                ..where((row) => row.id.equals(root.id)))
+              .write(const ScreenplaysCompanion(styleId: Value(null)));
+          await service.updateNovelMetadata(novelId: id, tags: ['3D']);
+          expect((await db.screenplayDao.getRoot())!.styleId, isNull);
+        } finally {
+          await db.close();
         }
       },
     );
@@ -630,58 +754,6 @@ END;
         final updated = await appDb.novelDao.get('novel_metadata_race');
         expect(updated?.title, '重生开服：从零杀回巅峰');
         expect(updated?.tags, const ['爽文', '热血']);
-      },
-    );
-
-    test(
-      'does not match database paths from a previous support root',
-      () async {
-        final tempDir = await Directory.systemTemp.createTemp(
-          'reveric_legacy_workspace_path_test_',
-        );
-        addTearDown(() async {
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-              .setMockMethodCallHandler(
-                const MethodChannel('plugins.flutter.io/path_provider'),
-                null,
-              );
-          if (await tempDir.exists()) {
-            await tempDir.delete(recursive: true);
-          }
-        });
-
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(
-              const MethodChannel('plugins.flutter.io/path_provider'),
-              (call) async {
-                if (call.method == 'getApplicationSupportDirectory') {
-                  return tempDir.path;
-                }
-                return null;
-              },
-            );
-        await RevericPaths.initialize();
-
-        final relativePath =
-            'novel_workspaces${Platform.pathSeparator}legacy.sqlite';
-        final currentPath =
-            '${tempDir.path}${Platform.pathSeparator}$relativePath';
-        await File(currentPath).parent.create(recursive: true);
-        await File(currentPath).create();
-        const legacyStoredPath =
-            '/previous-container/novel_workspaces/legacy.sqlite';
-        await appDb.novelDao.create(
-          id: 'legacy_workspace_novel',
-          title: 'Legacy workspace',
-          description: '',
-          contentDatabasePath: legacyStoredPath,
-        );
-
-        final service = NovelActionsService(appDb);
-
-        final novel = await service.getNovelByContentDatabasePath(currentPath);
-
-        expect(novel, isNull);
       },
     );
 

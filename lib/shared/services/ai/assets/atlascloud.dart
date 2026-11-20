@@ -20,9 +20,14 @@ final _log = AppLogger.forModule('AtlasCloudAssets');
 const _maxNameBytes = 64;
 
 class AtlasCloudAssetClient implements ProviderAssetClient {
-  AtlasCloudAssetClient({required this.httpClient, required this.apiKey});
+  AtlasCloudAssetClient({
+    required this.httpClient,
+    required this.referenceUrl,
+    required this.apiKey,
+  });
 
   final http.Client httpClient;
+  final ProviderAssetUrl referenceUrl;
   final String apiKey;
 
   /// 素材库在 console 域名下，生成接口所在的 api 域名对它返回 404。
@@ -33,9 +38,10 @@ class AtlasCloudAssetClient implements ProviderAssetClient {
   /// 创建返回整数 `id` 与 `atlas_asset_id`：前者只用于查询，后者才是 `asset://` 引用的 id。
   @override
   Future<ProviderAssetSubmission> submit({
-    required Uri url,
+    required ProviderAssetFile file,
     required String name,
   }) async {
+    final url = await referenceUrl(file);
     final data = await _send(
       'POST',
       endpoint,
@@ -95,6 +101,9 @@ class AtlasCloudAssetClient implements ProviderAssetClient {
       await httpClient.send(request),
     );
     final text = utf8.decode(response.bodyBytes, allowMalformed: true);
+    if (_log.isDebugEnabled) {
+      _log.debug("$method $uri status=${response.statusCode} body=$text");
+    }
     Map<String, dynamic>? json;
     try {
       json = (jsonDecode(text) as Map).cast<String, dynamic>();

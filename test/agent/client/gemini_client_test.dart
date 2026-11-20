@@ -11,6 +11,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:reveric/shared/agent/client.dart';
+import 'package:reveric/shared/agent/agent_event.dart';
+import 'package:reveric/shared/agent/round_assembler.dart';
+import 'package:reveric/shared/services/ai/agent_message_mapping.dart';
+import 'package:reveric/shared/agent/agent_config.dart';
 import 'package:reveric/shared/agent/client/gemini_client.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
@@ -31,6 +35,250 @@ String _finishReasonStream(String finishReason) {
 }
 
 void main() {
+  group('Gemini signature replay', () {
+    const wireSignature = 'AP+A6QEC';
+    for (final part in <Map<String, dynamic>>[
+      {'text': '', 'thoughtSignature': wireSignature},
+      {'text': '', 'thought': false, 'thoughtSignature': wireSignature},
+      {'thoughtSignature': wireSignature},
+      {'text': 'answer', 'thoughtSignature': wireSignature},
+      {'text': 'reasoning', 'thought': true, 'thoughtSignature': wireSignature},
+    ]) {
+      for (final streaming in [true, false]) {
+        test('replays signature stream=$streaming part=$part', () async {
+          final payload = {
+            'candidates': [
+              {
+                'content': {
+                  'role': 'model',
+                  'parts': [part],
+                },
+                'finishReason': 'STOP',
+              },
+            ],
+          };
+          Map<String, dynamic>? replayBody;
+          var calls = 0;
+          final client = _make(
+            httpClient: MockClient((request) async {
+              calls++;
+              if (calls > 1) {
+                replayBody = jsonDecode(request.body) as Map<String, dynamic>;
+              }
+              return http.Response(
+                streaming
+                    ? 'data: ${jsonEncode(payload)}\n\n'
+                    : jsonEncode(payload),
+                200,
+                headers: {
+                  'content-type': streaming
+                      ? 'text/event-stream'
+                      : 'application/json',
+                },
+              );
+            }),
+          );
+          final input = [AgentMessage.user(id: 'u', content: 'hello')];
+          late AgentRoundResult round;
+          if (streaming) {
+            final events = await assembleRound(
+              client.chatStream(messages: input),
+            ).toList();
+            round = events.whereType<AgentRoundComplete>().single.result;
+          } else {
+            final response = await client.chat(messages: input);
+            round = AgentRoundResult(
+              text: response.text,
+              thinking: response.thinking,
+              thinkingSignature: response.signature,
+              toolCalls: response.toolCalls,
+            );
+          }
+          expect(round.thinking, part['thought'] == true ? part['text'] : '');
+          expect(round.text, part['thought'] == true ? '' : part['text'] ?? '');
+          expect(
+            base64Encode(round.thinkingSignature!.codeUnits),
+            wireSignature,
+          );
+          final stored = convertAgentMessageToAiMessage(
+            AgentMessage.assistant(
+              id: 'a',
+              content: round.text,
+              blocks: [
+                ThinkingBlock(
+                  round.thinking,
+                  signature: round.thinkingSignature,
+                ),
+              ],
+            ),
+          );
+          final next = [
+            ...input,
+            ...convertAiMessageToAgentMessagesForModel(stored),
+            AgentMessage.user(id: 'u2', content: 'continue'),
+          ];
+          if (streaming) {
+            await client.chatStream(messages: next).toList();
+          } else {
+            await client.chat(messages: next);
+          }
+          final contents = replayBody!['contents'] as List;
+          final model = contents.cast<Map>().singleWhere(
+            (c) => c['role'] == 'model',
+          );
+          final signed = (model['parts'] as List).cast<Map>().singleWhere(
+            (p) => p.containsKey('thoughtSignature'),
+          );
+          expect(signed['thoughtSignature'], wireSignature);
+          if (round.thinking.isEmpty) {
+            expect(signed['text'], '');
+            expect(signed.containsKey('thought'), isFalse);
+          }
+        });
+      }
+    }
+  });
+
+  for (final streaming in [false, true]) {
+    for (final enabled in [false, true]) {
+      test(
+        'Gemini temperature opt-in enabled=$enabled stream=$streaming',
+        () async {
+          Map<String, dynamic>? body;
+          final client = GeminiClient(
+            apiKey: 'test',
+            model: 'gemini-4-carbon',
+            httpClient: MockClient((request) async {
+              body = jsonDecode(request.body) as Map<String, dynamic>;
+              return http.Response(
+                streaming
+                    ? _finishReasonStream('STOP')
+                    : '{"candidates":[{"finishReason":"STOP"}]}',
+                200,
+                headers: {
+                  'content-type': streaming
+                      ? 'text/event-stream'
+                      : 'application/json',
+                },
+              );
+            }),
+          );
+          final messages = [AgentMessage.user(id: 'u', content: 'hi')];
+          final options = AgentConfig(
+            enableTemperature: enabled,
+            temperature: 0.3,
+            reasoningEffort: 'high',
+          );
+          if (streaming) {
+            await client
+                .chatStream(messages: messages, options: options)
+                .toList();
+          } else {
+            await client.chat(messages: messages, options: options);
+          }
+          final generation = body!['generationConfig'] as Map;
+          expect(generation.containsKey('temperature'), enabled);
+          expect(generation['temperature'], enabled ? 0.3 : null);
+        },
+      );
+    }
+  }
+
+  group('Gemini thinking configuration', () {
+    for (final streaming in [false, true]) {
+      for (final (model, effort, budget, wire) in [
+        ('gemini-4-hydrogen', 'xhigh', null, 'XHIGH'),
+        ('google/gemini-4-hydrogen-preview', 'medium', null, 'MEDIUM'),
+        ('gemini-4-carbon', 'low', null, 'LOW'),
+        ('gemini-4-argon', 'high', null, 'HIGH'),
+        ('gemini-3-flash-preview', 'minimal', null, 'MINIMAL'),
+        ('gemini-2.5-pro', 'high', 8192, null),
+        ('gemini-4-hydrogen', null, null, null),
+      ]) {
+        test(
+          '$model $effort ${streaming ? 'stream' : 'chat'} wire config',
+          () async {
+            final requests = <Map<String, dynamic>>[];
+            final client = GeminiClient(
+              apiKey: 'k',
+              model: model,
+              httpClient: MockClient((request) async {
+                requests.add(jsonDecode(request.body) as Map<String, dynamic>);
+                return http.Response(
+                  streaming
+                      ? _finishReasonStream('STOP')
+                      : '{"candidates":[{"finishReason":"STOP"}]}',
+                  200,
+                  headers: {
+                    'content-type': streaming
+                        ? 'text/event-stream'
+                        : 'application/json',
+                  },
+                );
+              }),
+            );
+            final options = AgentConfig(
+              reasoningEffort: effort,
+              reasoningBudget: budget,
+            );
+            final messages = [AgentMessage.user(id: 'u', content: 'hi')];
+            if (streaming) {
+              await client
+                  .chatStream(messages: messages, options: options)
+                  .toList();
+            } else {
+              await client.chat(messages: messages, options: options);
+            }
+            final generation = requests.single['generationConfig'] as Map;
+            if (effort == null) {
+              expect(generation.containsKey('thinkingConfig'), isFalse);
+            } else {
+              final thinking = generation['thinkingConfig'] as Map;
+              expect(thinking['thinkingLevel'], wire);
+              expect(thinking['thinkingBudget'], budget);
+              expect(thinking['includeThoughts'], isTrue);
+              expect(
+                thinking.containsKey(
+                  wire == null ? 'thinkingLevel' : 'thinkingBudget',
+                ),
+                isFalse,
+              );
+            }
+          },
+        );
+      }
+    }
+
+    for (final (model, options) in [
+      ('gemini-4-hydrogen', const AgentConfig(reasoningEffort: 'minimal')),
+      ('gemini-4-carbon', const AgentConfig(reasoningEffort: 'xhigh')),
+      (
+        'gemini-4-hydrogen',
+        const AgentConfig(reasoningEffort: 'high', reasoningBudget: 8192),
+      ),
+    ]) {
+      test('$model rejects unsupported thinking config before HTTP', () async {
+        var requests = 0;
+        final client = GeminiClient(
+          apiKey: 'k',
+          model: model,
+          httpClient: MockClient((_) async {
+            requests++;
+            return http.Response('{}', 200);
+          }),
+        );
+        await expectLater(
+          client.chat(
+            messages: [AgentMessage.user(id: 'u', content: 'hi')],
+            options: options,
+          ),
+          throwsArgumentError,
+        );
+        expect(requests, 0);
+      });
+    }
+  });
+
   group('GeminiClient failure diagnostics', () {
     late DebugPrintCallback originalDebugPrint;
     late List<String> logs;
@@ -140,6 +388,187 @@ void main() {
   });
 
   group('GeminiClient.convertMessages', () {
+    for (final streaming in [false, true]) {
+      for (final queued in [false, true]) {
+        test(
+          'image tool results stay inside their function response (stream=$streaming queued=$queued)',
+          () async {
+            final requests = <Map<String, dynamic>>[];
+            final client = GeminiClient(
+              apiKey: 'k',
+              model: 'gemini-4-hydrogen',
+              httpClient: MockClient((request) async {
+                requests.add(jsonDecode(request.body) as Map<String, dynamic>);
+                return http.Response(
+                  streaming
+                      ? _finishReasonStream('STOP')
+                      : '{"candidates":[{"finishReason":"STOP"}]}',
+                  200,
+                  headers: {
+                    'content-type': streaming
+                        ? 'text/event-stream'
+                        : 'application/json',
+                  },
+                );
+              }),
+            );
+            final messages = [
+              AgentMessage.user(id: 'u', content: 'compare three images'),
+              const AgentMessage(
+                id: 'a',
+                role: AgentMessageRole.assistant,
+                blocks: [
+                  ToolCallBlock(
+                    callId: 'c1',
+                    toolName: 'Run',
+                    arguments: {},
+                    thoughtSignature: [1, 2, 3],
+                  ),
+                  ToolCallBlock(callId: 'c2', toolName: 'Run', arguments: {}),
+                  ToolCallBlock(callId: 'c3', toolName: 'Run', arguments: {}),
+                ],
+              ),
+              for (final id in ['c1', 'c2', 'c3'])
+                AgentMessage(
+                  id: 'result_$id',
+                  role: AgentMessageRole.user,
+                  type: AgentMessageType.tool_result,
+                  blocks: [
+                    ToolResultBlock(
+                      toolCallId: id,
+                      toolName: 'Run',
+                      content: [
+                        TextBlock('image $id'),
+                        ImageBlock(
+                          data: base64Encode(utf8.encode(id)),
+                          mimeType: 'image/png',
+                        ),
+                        if (id == 'c3')
+                          const ImageBlock(
+                            data: 'ZXh0cmE=',
+                            mimeType: 'image/jpeg',
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              if (queued)
+                AgentMessage.user(id: 'queued', content: 'compare colors'),
+            ];
+            if (streaming) {
+              await client.chatStream(messages: messages).toList();
+            } else {
+              await client.chat(messages: messages);
+            }
+            final contents = requests.single['contents'] as List;
+            final parts = contents[2]['parts'] as List;
+            expect(parts, hasLength(3));
+            for (var i = 0; i < 3; i++) {
+              final id = 'c${i + 1}';
+              final response = parts[i]['functionResponse'] as Map;
+              expect(parts[i].keys, ['functionResponse']);
+              expect(response['id'], id);
+              expect(response['response'], {'output': 'image $id'});
+              final media = response['parts'] as List;
+              expect(media.first, {
+                'inlineData': {
+                  'mimeType': 'image/png',
+                  'data': base64Encode(utf8.encode(id)),
+                },
+              });
+              expect(media, hasLength(i == 2 ? 2 : 1));
+            }
+            expect(contents, hasLength(queued ? 4 : 3));
+            if (queued) {
+              expect(contents.last['parts'], [
+                {'text': 'compare colors'},
+              ]);
+            }
+          },
+        );
+      }
+    }
+
+    for (final streaming in [false, true]) {
+      test(
+        'keeps queued user input separate from tool results (${streaming ? 'stream' : 'chat'})',
+        () async {
+          final requests = <Map<String, dynamic>>[];
+          final client = _make(
+            httpClient: MockClient((request) async {
+              requests.add(jsonDecode(request.body) as Map<String, dynamic>);
+              return http.Response(
+                streaming
+                    ? _finishReasonStream('STOP')
+                    : '{"candidates":[{"finishReason":"STOP"}]}',
+                200,
+                headers: {
+                  'content-type': streaming
+                      ? 'text/event-stream'
+                      : 'application/json',
+                },
+              );
+            }),
+          );
+          final messages = [
+            AgentMessage.user(id: 'u1', content: 'read both values'),
+            const AgentMessage(
+              id: 'a1',
+              role: AgentMessageRole.assistant,
+              blocks: [
+                ToolCallBlock(
+                  callId: 'c1',
+                  toolName: 'Read',
+                  arguments: {},
+                  thoughtSignature: [1, 2, 3],
+                ),
+                ToolCallBlock(callId: 'c2', toolName: 'Read', arguments: {}),
+              ],
+            ),
+            for (final id in ['c1', 'c2'])
+              AgentMessage(
+                id: 'result_$id',
+                role: AgentMessageRole.user,
+                type: AgentMessageType.tool_result,
+                blocks: [
+                  ToolResultBlock(
+                    toolCallId: id,
+                    toolName: 'Read',
+                    content: [TextBlock('value for $id')],
+                  ),
+                ],
+              ),
+            AgentMessage.user(
+              id: 'queued_chat',
+              content: 'use the second value',
+            ),
+            AgentMessage.user(id: 'reminder', content: 'answer briefly'),
+          ];
+          if (streaming) {
+            await client.chatStream(messages: messages).toList();
+          } else {
+            await client.chat(messages: messages);
+          }
+          final contents = requests.single['contents'] as List;
+          expect(contents.map((c) => c['role']), [
+            'user',
+            'model',
+            'user',
+            'user',
+          ]);
+          final calls = contents[1]['parts'] as List;
+          expect(calls.first['thoughtSignature'], 'AQID');
+          final results = contents[2]['parts'] as List;
+          expect(results.map((p) => p['functionResponse']['id']), ['c1', 'c2']);
+          final input = contents.last['parts'] as List;
+          expect(input.map((p) => p['text']), [
+            'use the second value',
+            'answer briefly',
+          ]);
+        },
+      );
+    }
+
     test('skips system messages', () {
       final out = _make().convertMessages([
         AgentMessage.system(id: 's1', content: 'sys'),

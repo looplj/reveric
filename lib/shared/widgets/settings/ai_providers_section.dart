@@ -4,6 +4,7 @@
 //   lib/shared/widgets/settings/provider_draft.dart
 //   lib/shared/widgets/settings/provider_type_picker.dart
 //   lib/shared/widgets/settings/mobile_provider_list.dart
+//   lib/shared/widgets/guide/trigger.dart
 //   lib/shared/providers/settings_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
@@ -12,10 +13,14 @@
 //   assets/translations/zh-CN/provider.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
+//   assets/translations/en/onboarding.json
+//   assets/translations/zh-CN/onboarding.json
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 //   .agents/rules/hooks.md
 //   .agents/rules/widget-decomposition.md
+
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -34,11 +39,15 @@ import '../../localization/locale_keys.dart';
 import '../../models/ai_provider.dart';
 import '../../providers/settings_providers.dart';
 import '../../theme/theme.dart';
+import '../guide/overlay.dart';
+import '../guide/tour.dart';
+import '../guide/trigger.dart';
 import '../unsaved_changes_dialog.dart';
 import 'leave_guard.dart';
 import 'mobile_provider_list.dart';
 import 'provider_config_panel.dart';
 import 'provider_draft.dart';
+import 'plugins/config_form.dart';
 import 'provider_logo.dart';
 import 'provider_overview.dart';
 import 'provider_type_picker.dart';
@@ -47,7 +56,10 @@ import 'providers/registry.dart';
 /// AI providers section：左侧 provider 列表 + 右侧配置面板（桌面），
 /// 或纯列表 + push 到配置页（移动端及宽度 < 600 的窗口）。
 class AiProvidersSection extends ConsumerWidget {
-  const AiProvidersSection({super.key});
+  const AiProvidersSection({super.key, this.onOpenModelSettings});
+
+  /// 引导最后一步跳转到「模型设置」页的可选回调。
+  final VoidCallback? onOpenModelSettings;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -76,8 +88,14 @@ class AiProvidersSection extends ConsumerWidget {
             defaultTargetPlatform == TargetPlatform.iOS;
         final isDesktop = !isMobile && MediaQuery.sizeOf(context).width >= 600;
         return isDesktop
-            ? _DesktopProviders(settings: settings)
-            : _MobileProviders(settings: settings);
+            ? _DesktopProviders(
+                settings: settings,
+                onOpenModelSettings: onOpenModelSettings,
+              )
+            : _MobileProviders(
+                settings: settings,
+                onOpenModelSettings: onOpenModelSettings,
+              );
       },
     );
   }
@@ -86,9 +104,10 @@ class AiProvidersSection extends ConsumerWidget {
 /// 桌面两栏：持有选中项与新建草稿。草稿存在时一定处于选中状态，
 /// 离开草稿（切换供应商、切换设置分区、关闭设置）前先确认。
 class _DesktopProviders extends HookConsumerWidget {
-  const _DesktopProviders({required this.settings});
+  const _DesktopProviders({required this.settings, this.onOpenModelSettings});
 
   final AppSettings settings;
+  final VoidCallback? onOpenModelSettings;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -100,6 +119,69 @@ class _DesktopProviders extends HookConsumerWidget {
     final returnTo = useRef<String?>(null);
     final allConfigs = settings.aiSettings.allConfigs;
     final currentDraft = draft.value;
+    final pluginDraft = useMemoized(PluginConfigDraftController.new, [
+      currentDraft?.id,
+      currentDraft?.type,
+    ]);
+    final listGuideKey = useMemoized(GlobalKey.new);
+    final addGuideKey = useMemoized(GlobalKey.new);
+    final panelGuideKeys = useMemoized(
+      () => ProviderConfigGuideKeys(
+        credentials: GlobalKey(),
+        models: GlobalKey(),
+        enableSwitch: GlobalKey(),
+      ),
+    );
+    final hasConfigured = hasConfiguredAiProvider(settings.aiSettings);
+    final guide = useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.aiProviders,
+      eligible: !hasConfigured,
+      keys: [hasConfigured],
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'providers_list',
+          targetKey: listGuideKey,
+          icon: RevericIcons.hub_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersListTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideProvidersListBody),
+        ),
+        GuideStep(
+          id: 'providers_add',
+          targetKey: addGuideKey,
+          icon: RevericIcons.add,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersAddTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideProvidersAddBody),
+        ),
+        GuideStep(
+          id: 'providers_credentials',
+          targetKey: panelGuideKeys.credentials,
+          icon: RevericIcons.lock_key,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersCredentialsTitle),
+          description: ctx.t(
+            LocaleKeys.onboardingGuideProvidersCredentialsBody,
+          ),
+        ),
+        GuideStep(
+          id: 'providers_models',
+          targetKey: panelGuideKeys.models,
+          icon: RevericIcons.auto_awesome_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersModelsTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideProvidersModelsBody),
+        ),
+        GuideStep(
+          id: 'providers_enable',
+          targetKey: panelGuideKeys.enableSwitch,
+          icon: RevericIcons.tune,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersEnableTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideProvidersEnableBody),
+          primaryActionLabel: onOpenModelSettings != null
+              ? ctx.t(LocaleKeys.onboardingGuideGoModelSettings)
+              : null,
+          onPrimaryAction: onOpenModelSettings,
+        ),
+      ],
+    );
 
     final effectiveSelectedId =
         currentDraft?.id ??
@@ -118,7 +200,11 @@ class _DesktopProviders extends HookConsumerWidget {
       }
       saving.value = true;
       try {
-        final id = await saveProviderDraft(ref, pending);
+        final id = await saveProviderDraft(
+          ref,
+          pending,
+          pluginDraft: pluginDraft,
+        );
         if (context.mounted) {
           draft.value = null;
           selectedId.value = id;
@@ -183,6 +269,9 @@ class _DesktopProviders extends HookConsumerWidget {
             configs: allConfigs,
             draft: currentDraft,
             selectedId: effectiveSelectedId,
+            listKey: listGuideKey,
+            addButtonKey: addGuideKey,
+            onReplayGuide: () => unawaited(guide.replay()),
             onSelect: (id) async {
               if (id == effectiveSelectedId || !await confirmLeave()) {
                 return;
@@ -201,12 +290,10 @@ class _DesktopProviders extends HookConsumerWidget {
               ? ProviderConfigForm(
                   key: ValueKey(currentDraft.id),
                   config: currentDraft,
+                  pluginDraftController: pluginDraft,
+                  guideKeys: panelGuideKeys,
                   onChanged: (config) async => draft.value = config,
-                  onChangeType: (type) => draft.value = retypeProviderDraft(
-                    context,
-                    draft.value!,
-                    type,
-                  ),
+                  isDraft: true,
                   badge: const ProviderDraftBadge(),
                   headerActions: [
                     RevericButton.text(
@@ -227,6 +314,7 @@ class _DesktopProviders extends HookConsumerWidget {
               ? ProviderConfigPanel(
                   key: ValueKey(selectedConfig.id),
                   providerId: selectedConfig.id,
+                  guideKeys: panelGuideKeys,
                 )
               : Center(
                   child: Text(
@@ -243,17 +331,67 @@ class _DesktopProviders extends HookConsumerWidget {
 }
 
 /// 移动端：分组卡片列表，点击进入配置页；添加先选类型，再进入草稿页。
-class _MobileProviders extends StatelessWidget {
-  const _MobileProviders({required this.settings});
+class _MobileProviders extends HookConsumerWidget {
+  const _MobileProviders({required this.settings, this.onOpenModelSettings});
 
   final AppSettings settings;
+  final VoidCallback? onOpenModelSettings;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final listGuideKey = useMemoized(GlobalKey.new);
+    final addGuideKey = useMemoized(GlobalKey.new);
+    final hasConfigured = hasConfiguredAiProvider(settings.aiSettings);
+    final guide = useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.aiProviders,
+      eligible: !hasConfigured,
+      keys: [hasConfigured],
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'mobile_providers_list',
+          targetKey: listGuideKey,
+          icon: RevericIcons.hub_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersListTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideProvidersListBody),
+        ),
+        GuideStep(
+          id: 'mobile_providers_add',
+          targetKey: addGuideKey,
+          icon: RevericIcons.add,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersAddTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideProvidersAddBody),
+        ),
+        GuideStep(
+          id: 'mobile_providers_detail',
+          icon: RevericIcons.lock_key,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersMobileDetailTitle),
+          description: ctx.t(
+            LocaleKeys.onboardingGuideProvidersMobileDetailBody,
+          ),
+        ),
+        GuideStep(
+          id: 'mobile_providers_models',
+          icon: RevericIcons.tune,
+          title: ctx.t(LocaleKeys.onboardingGuideProvidersMobileModelsTitle),
+          description: ctx.t(
+            LocaleKeys.onboardingGuideProvidersMobileModelsBody,
+          ),
+          primaryActionLabel: onOpenModelSettings != null
+              ? ctx.t(LocaleKeys.onboardingGuideGoModelSettings)
+              : null,
+          onPrimaryAction: onOpenModelSettings,
+        ),
+      ],
+    );
+
     return MobileProviderList(
       configs: settings.aiSettings.allConfigs,
 
       selectedId: null,
+      listKey: listGuideKey,
+      addButtonKey: addGuideKey,
+      onReplayGuide: () => unawaited(guide.replay()),
 
       onSelect: (id) {
         final config = settings.aiSettings.findConfigById(id);
@@ -265,6 +403,7 @@ class _MobileProviders extends StatelessWidget {
             builder: (_) => _ProviderConfigRoute(
               title: localizedAiProviderName(context, config),
               providerId: config.id,
+              onOpenModelSettings: onOpenModelSettings,
             ),
           ),
         );
@@ -285,16 +424,71 @@ class _MobileProviders extends StatelessWidget {
   }
 }
 
-class _ProviderConfigRoute extends StatelessWidget {
-  const _ProviderConfigRoute({required this.title, required this.providerId});
+class _ProviderConfigRoute extends HookWidget {
+  const _ProviderConfigRoute({
+    required this.title,
+    required this.providerId,
+    this.onOpenModelSettings,
+  });
 
   final String title;
   final String providerId;
+  final VoidCallback? onOpenModelSettings;
 
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    final guideKeys = useMemoized(
+      () => ProviderConfigGuideKeys(
+        credentials: GlobalKey(),
+        models: GlobalKey(),
+        enableSwitch: GlobalKey(),
+      ),
+    );
+
+    void replayDetailGuide() {
+      unawaited(
+        showGuideTour(
+          context,
+          steps: [
+            GuideStep(
+              id: 'mobile_provider_credentials',
+              targetKey: guideKeys.credentials,
+              icon: RevericIcons.lock_key,
+              title: context.t(
+                LocaleKeys.onboardingGuideProvidersCredentialsTitle,
+              ),
+              description: context.t(
+                LocaleKeys.onboardingGuideProvidersCredentialsBody,
+              ),
+            ),
+            GuideStep(
+              id: 'mobile_provider_models',
+              targetKey: guideKeys.models,
+              icon: RevericIcons.auto_awesome_outlined,
+              title: context.t(LocaleKeys.onboardingGuideProvidersModelsTitle),
+              description: context.t(
+                LocaleKeys.onboardingGuideProvidersModelsBody,
+              ),
+            ),
+            GuideStep(
+              id: 'mobile_provider_enable',
+              targetKey: guideKeys.enableSwitch,
+              icon: RevericIcons.tune,
+              title: context.t(LocaleKeys.onboardingGuideProvidersEnableTitle),
+              description: context.t(
+                LocaleKeys.onboardingGuideProvidersEnableBody,
+              ),
+              primaryActionLabel: onOpenModelSettings != null
+                  ? context.t(LocaleKeys.onboardingGuideGoModelSettings)
+                  : null,
+              onPrimaryAction: onOpenModelSettings,
+            ),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -309,10 +503,14 @@ class _ProviderConfigRoute extends StatelessWidget {
           title,
           style: typo.heading2.copyWith(color: colors.textPrimary),
         ),
+        actions: [
+          GuideReplayButton(onPressed: replayDetailGuide),
+          const SizedBox(width: RevericSpacing.xs),
+        ],
       ),
       body: ProviderConfigPanel(
         providerId: providerId,
-
+        guideKeys: guideKeys,
         onDeleted: () => Navigator.of(context).pop(),
       ),
     );
@@ -330,6 +528,10 @@ class _ProviderDraftRoute extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final draft = useState(initial);
+    final pluginDraft = useMemoized(PluginConfigDraftController.new, [
+      draft.value.id,
+      draft.value.type,
+    ]);
     final saving = useState(false);
 
     Future<void> save() async {
@@ -338,7 +540,7 @@ class _ProviderDraftRoute extends HookConsumerWidget {
       }
       saving.value = true;
       try {
-        await saveProviderDraft(ref, draft.value);
+        await saveProviderDraft(ref, draft.value, pluginDraft: pluginDraft);
         if (context.mounted) {
           Navigator.of(context).pop();
         }
@@ -399,9 +601,9 @@ class _ProviderDraftRoute extends HookConsumerWidget {
         ),
         body: ProviderConfigForm(
           config: draft.value,
+          pluginDraftController: pluginDraft,
           onChanged: (config) async => draft.value = config,
-          onChangeType: (type) =>
-              draft.value = retypeProviderDraft(context, draft.value, type),
+          isDraft: true,
           badge: const ProviderDraftBadge(),
           headerActions: const [],
         ),
@@ -422,14 +624,20 @@ class ProviderList extends HookWidget {
     required this.onSelect,
     required this.onAddCustom,
     this.draft,
+    this.listKey,
+    this.addButtonKey,
+    this.onReplayGuide,
   });
   final List<AiProvider> configs;
   final String? selectedId;
   final ValueChanged<String> onSelect;
-  final ValueChanged<AiProviderType> onAddCustom;
+  final ValueChanged<String> onAddCustom;
 
   /// 未保存的新供应商，固定显示在列表顶部；存在时不能再新建。
   final AiProvider? draft;
+  final GlobalKey? listKey;
+  final GlobalKey? addButtonKey;
+  final VoidCallback? onReplayGuide;
 
   @override
   Widget build(BuildContext context) {
@@ -459,6 +667,10 @@ class ProviderList extends HookWidget {
                     hint: context.t(LocaleKeys.providerSearchHint),
                   ),
                 ),
+                if (onReplayGuide != null) ...[
+                  const SizedBox(width: RevericSpacing.xxs),
+                  GuideReplayButton(onPressed: onReplayGuide),
+                ],
                 const SizedBox(width: RevericSpacing.xxs),
                 RevericPopover(
                   trigger: (context, open, toggle) => RevericIconButton(
@@ -477,6 +689,7 @@ class ProviderList extends HookWidget {
             ),
           ),
           Expanded(
+            key: listKey,
             child: items.isEmpty
                 ? Center(
                     child: Text(
@@ -504,6 +717,7 @@ class ProviderList extends HookWidget {
           ),
           Divider(height: RevericSizes.dividerThickness, color: colors.border),
           Padding(
+            key: addButtonKey,
             padding: const EdgeInsets.all(RevericSpacing.sm),
             // 列表底部向上展开类型选择；已有草稿时先保存或放弃。
             child: RevericPopover(
@@ -691,15 +905,22 @@ class ProviderStatusDot extends StatelessWidget {
 }
 
 /// Provider 类型展示名；兼容协议名称及有中英文品牌名的渠道走 locale key。
-String localizedProviderTypeName(BuildContext context, AiProviderType type) {
-  if (type == AiProviderType.metaso) {
+String localizedProviderTypeName(BuildContext context, String type) {
+  if (type == 'infistar') {
+    return context.t(LocaleKeys.providerTypeInfistar);
+  }
+  if (type == 'metaso') {
     return context.t(LocaleKeys.settingsBuiltinProviderMetaso);
   }
-  if (type == AiProviderType.volcengine) {
+  if (type == 'volcengine') {
     return context.t(LocaleKeys.providerTypeVolcengine);
   }
-  if (type == AiProviderType.openai_compatible) {
+  if (type == 'openai_compatible') {
     return context.t(LocaleKeys.providerTypeOpenaiCompatible);
   }
-  return aiProviderTypeDisplayNames[type] ?? type.name;
+  return aiProviderTypeConfigFor(
+        type,
+      )?.localizedName?.resolve(Localizations.localeOf(context)) ??
+      aiProviderTypeDisplayNames[type] ??
+      type;
 }

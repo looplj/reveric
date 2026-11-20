@@ -244,6 +244,16 @@ SelectedMediaBackup collectSelectedMedia({
         .toSet();
     assetIds.addAll(storyboardAssetIds);
     for (final task in tasks) {
+      final imageOutputs = task['image_outputs'] as String?;
+      if (imageOutputs != null) {
+        for (final output
+            in const ImageTaskOutputsConverter().fromSql(imageOutputs).items) {
+          if (output.assetId != null) {
+            assetIds.add(output.assetId!);
+          }
+          addPath(output.path);
+        }
+      }
       final snapshot = const GenerationRequestConverter().fromSql(
         task['request_json'] as String,
       );

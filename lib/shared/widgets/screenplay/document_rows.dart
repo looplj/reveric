@@ -44,11 +44,13 @@ class ScreenplayDocumentActions {
     this.pickCharacter,
     this.mobile,
     this.databasePath,
+    this.novelId,
   );
   final ScreenplayDocumentSession session;
   final ScreenplayPickCharacter pickCharacter;
   final bool mobile;
   final String databasePath;
+  final String novelId;
 
   void showError(BuildContext context, String key) {
     ScaffoldMessenger.of(

@@ -89,7 +89,11 @@ mixin _AiToolManagerGlobMixin on _AiToolManagerResourceSearchSupportMixin {
       'scan_limit': _resourcePathScanBudget,
       'scan_truncated': paths.truncated,
       if (matches.isEmpty && _targetsRelations([pattern, root]))
-        'hint': _relationsNotSearchableHint,
+        'hint': _relationsNotSearchableHint
+      else if (matches.isEmpty &&
+          paths.scannedPaths <= 1 &&
+          _normalizeResourceDisplayPath(root) != '/')
+        'hint': _noListableChildrenHint(root),
     };
   }
 }

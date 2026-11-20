@@ -31,14 +31,20 @@ class ProductionPanoramaActions extends HookConsumerWidget {
     required this.service,
     required this.node,
     required this.assetId,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
   final String? assetId;
+  final bool readOnly;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(
-      productionPanoramaProvider((service: service, nodeId: node.id)),
+      productionPanoramaProvider((
+        service: service,
+        nodeId: node.id,
+        readOnly: readOnly,
+      )),
     );
     useListenable(controller);
     final capturing = useState(false);
@@ -127,17 +133,18 @@ class ProductionPanoramaActions extends HookConsumerWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        action(
-          RevericIcons.image_outlined,
-          LocaleKeys.productionViewPanoramaCaptureCurrent,
-          asset.hasData && !capturing.value ? () => capture(false) : null,
-        ),
-        action(
-          RevericIcons.space_dashboard_outlined,
-          LocaleKeys.productionViewPanoramaCaptureFour,
-          asset.hasData && !capturing.value ? () => capture(true) : null,
-        ),
-
+        if (!readOnly) ...[
+          action(
+            RevericIcons.image_outlined,
+            LocaleKeys.productionViewPanoramaCaptureCurrent,
+            asset.hasData && !capturing.value ? () => capture(false) : null,
+          ),
+          action(
+            RevericIcons.space_dashboard_outlined,
+            LocaleKeys.productionViewPanoramaCaptureFour,
+            asset.hasData && !capturing.value ? () => capture(true) : null,
+          ),
+        ],
         action(
           RevericIcons.arrow_clockwise,
           LocaleKeys.productionViewPanoramaReset,
@@ -166,14 +173,15 @@ class ProductionPanoramaActions extends HookConsumerWidget {
             child: RevericIcon(RevericIcons.info_outline, size: 16),
           ),
         ),
-        action(
-          RevericIcons.visibility_off,
-          LocaleKeys.productionViewPanoramaExit,
-          () => productionRun(context, () async {
-            await controller.stopSaving();
-            await service.setPanoramaView(node.id, null);
-          }),
-        ),
+        if (!readOnly)
+          action(
+            RevericIcons.visibility_off,
+            LocaleKeys.productionViewPanoramaExit,
+            () => productionRun(context, () async {
+              await controller.stopSaving();
+              await service.setPanoramaView(node.id, null);
+            }),
+          ),
       ],
     );
   }

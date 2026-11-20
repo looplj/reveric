@@ -69,7 +69,7 @@ Run {"command":"agent-skills","subcommand":"delete","options":{"id":"skill_xxx"}
 
 ## Reference CRUD
 
-Reference 是某个 AgentSkill 的可选附件，不是小说工作区资料。运行时加载 Skill 后，Agent 会在 `<skill_resources>` 中看到一次 `Run agent-skills reference-list` 目录发现调用；需要正文时先列目录，再对选中的 path 使用 `reference-get`，不要用 Read 虚拟路径，也不要预读全部文件。
+Reference 是某个 AgentSkill 的可选附件，不是小说工作区资料。运行时加载 Skill 后，Agent 会在 `<skill_resources>` 中看到一次 `Run agent-skills reference-list` 目录发现调用；正文已给出准确附件路径时直接使用 `reference-get`，未知路径时先列目录再选择，不要用 Read 虚拟路径，也不要预读全部文件。
 
 Reference 操作以 Skill 全局唯一 `name` 定位，路径相对 Skill root，必须以 `references/` 开头：
 

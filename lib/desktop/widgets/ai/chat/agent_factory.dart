@@ -129,8 +129,7 @@ extension _AiChatPanelAgentFactory on AiChatPanel {
       promptContext: promptContext,
 
       nextActionEnvironment: _resolveNextActionEnvironment(container),
-      // 宿主没提供跳转能力时建议无处可去，工具不下发。
-      supportsNextActionSuggestions: onOpenFeature != null,
+      supportsNextActionSuggestions: _supportsNextActionSuggestions,
     );
   }
 

@@ -49,6 +49,8 @@ class CommitField extends HookWidget {
     final commit = useRef(onCommit);
     commit.value = onCommit;
 
+    final canEdit = enabled && !session.readOnly;
+
     void setPending(bool pending) {
       if (session.hasPendingInput == pending) {
         return;
@@ -59,7 +61,7 @@ class CommitField extends HookWidget {
     }
 
     void submit() {
-      if (!dirty.value) {
+      if (!canEdit || !dirty.value) {
         return;
       }
       final ok = commit.value(controller.text.trim());
@@ -105,7 +107,7 @@ class CommitField extends HookWidget {
           key: fieldKey,
           controller: controller,
           focusNode: focus,
-          enabled: enabled,
+          enabled: canEdit,
           keyboardType: numeric
               ? const TextInputType.numberWithOptions(
                   signed: true,
@@ -114,11 +116,11 @@ class CommitField extends HookWidget {
               : TextInputType.text,
           textInputAction: TextInputAction.done,
           style: typo.uiSmall.copyWith(
-            color: enabled ? colors.textPrimary : colors.textMuted,
+            color: canEdit ? colors.textPrimary : colors.textMuted,
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
           onChanged: (_) {
-            if (controller.value.composing.isValid) {
+            if (!canEdit || controller.value.composing.isValid) {
               return;
             }
             dirty.value = true;

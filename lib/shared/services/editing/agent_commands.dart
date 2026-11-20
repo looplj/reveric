@@ -15,8 +15,12 @@ class EditingAgentCommands {
   EditingAgentCommands(this.resolveSource);
   final Future<EditingSource> Function(Map<String, dynamic>) resolveSource;
   static void keys(Map value, Set<String> allowed) {
-    if (value.keys.any((key) => !allowed.contains(key))) {
-      throw const FormatException('Unknown editing parameter.');
+    final unknown = value.keys.where((key) => !allowed.contains(key));
+    if (unknown.isNotEmpty) {
+      throw FormatException(
+        'Unknown editing parameter: ${unknown.join(', ')}. '
+        'Allowed: ${allowed.join(', ')}.',
+      );
     }
   }
 
@@ -81,6 +85,7 @@ class EditingAgentCommands {
             'end_frame': clip.endFrame,
             'source_in_us': clip.media?.sourceInUs ?? 0,
             'duration_frames': clip.durationFrames,
+            if (clip.media != null) 'speed': clip.media!.speed,
           };
   }
 
@@ -96,13 +101,48 @@ class EditingAgentCommands {
     String title,
     List<Map<String, dynamic>> commands,
   ) async {
+    var index = 0;
+    String at(String message) {
+      final op = commands[index]['op'];
+      return 'commands[$index]${op is String ? ' ($op)' : ''}: $message';
+    }
+
+    try {
+      return await _apply(original, title, commands, (i) => index = i);
+    } on ToolOperationException catch (error) {
+      throw ToolOperationException(
+        error.code,
+        at(error.message),
+        hint: error.hint,
+      );
+    } on FormatException catch (error) {
+      throw FormatException(at(error.message));
+    } on StateError catch (error) {
+      throw StateError(at(error.message));
+    }
+  }
+
+  Future<
+    ({
+      EditingDocument document,
+      String title,
+      List<Map<String, dynamic>> result,
+    })
+  >
+  _apply(
+    EditingDocument original,
+    String title,
+    List<Map<String, dynamic>> commands,
+    void Function(int index) onCommand,
+  ) async {
     var doc = original;
     final results = <Map<String, dynamic>>[];
     final locked = original.tracks
         .where((t) => t.locked)
         .map((t) => t.id)
         .toSet();
-    for (final command in commands) {
+    for (final (index, command) in commands.indexed) {
+      onCommand(index);
       final before = doc;
       final op = text(command, 'op');
       final clipId = command['clip_id'] as String?;
@@ -110,9 +150,9 @@ class EditingAgentCommands {
           ? null
           : doc.clips.where((c) => c.id == clipId).firstOrNull;
       if (clipId != null && clip == null) {
-        throw const ToolOperationException(
+        throw ToolOperationException(
           'not_found',
-          'Editing clip not found.',
+          'Editing clip not found: $clipId.',
         );
       }
       final trackId = command['track_id'] as String? ?? clip?.trackId;
@@ -120,9 +160,9 @@ class EditingAgentCommands {
           ? null
           : doc.tracks.where((t) => t.id == trackId).firstOrNull;
       if (trackId != null && track == null) {
-        throw const ToolOperationException(
+        throw ToolOperationException(
           'not_found',
-          'Editing track not found.',
+          'Editing track not found: $trackId.',
         );
       }
       final unlock =
@@ -159,10 +199,12 @@ class EditingAgentCommands {
       }
 
       switch (op) {
-        case 'add_audio_track':
+        case 'add_audio_track' || 'add_text_track':
           keys(command, {'op', 'id'});
           final nextId = id();
-          final next = EditingCommands.addAudioTrack(doc);
+          final next = op == 'add_audio_track'
+              ? EditingCommands.addAudioTrack(doc)
+              : EditingCommands.addTextTrack(doc);
           final added = next.tracks.last;
           doc = next.copyWith(
             tracks: [
@@ -311,16 +353,27 @@ class EditingAgentCommands {
         case 'update_clip':
           keys(command, {'op', 'clip_id', 'fields'});
           text(command, 'clip_id');
-          final f = fields({
-            'name',
+          const placement = {
             'scale',
             'opacity',
+            'x',
+            'y',
+            'anchor_x',
+            'anchor_y',
+          };
+          const source = {
             'gain_db',
             'fade_in_frames',
             'fade_out_frames',
-            'text',
-            'text_style',
-            'text_position',
+            'speed',
+          };
+          final f = fields({
+            'name',
+            ...switch (clip!.content) {
+              EditingVideoContent() => {...placement, ...source},
+              EditingAudioContent() => source,
+              EditingTextContent() => {...placement, 'text', 'text_style'},
+            },
           });
           double? number(String key) {
             final value = f[key];
@@ -329,29 +382,21 @@ class EditingAgentCommands {
             }
             return (value as num?)?.toDouble();
           }
-          var content = clip!.content;
-          keys(f, switch (content) {
-            EditingVideoContent() => {
-              'name',
-              'scale',
-              'opacity',
-              'gain_db',
-              'fade_in_frames',
-              'fade_out_frames',
-            },
-            EditingAudioContent() => {
-              'name',
-              'gain_db',
-              'fade_in_frames',
-              'fade_out_frames',
-            },
-            EditingTextContent() => {
-              'name',
-              'text',
-              'text_style',
-              'text_position',
-            },
-          });
+          EditingTransform place(EditingTransform transform) =>
+              transform.copyWith(
+                scale: number('scale'),
+                x: number('x'),
+                y: number('y'),
+                anchorX: number('anchor_x'),
+                anchorY: number('anchor_y'),
+              );
+          // 先按倍速伸缩时长，淡入淡出再按新时长校验。
+          final speed = number('speed');
+          if (speed != null) {
+            doc = EditingCommands.retime(doc, clip.id, speed);
+          }
+          final current = doc.clips.firstWhere((c) => c.id == clip.id);
+          var content = current.content;
           if (content is EditingSourceContent) {
             content = content.copyWith(
               gainDb: number('gain_db'),
@@ -363,28 +408,22 @@ class EditingAgentCommands {
                   : null,
             );
             if (content is EditingVideoContent) {
-              final scale = number('scale');
               content = content.copyWith(
                 opacity: number('opacity'),
-                transform: scale == null
-                    ? null
-                    : EditingTransform(
-                        scale: scale,
-                        x: content.transform.x,
-                        y: content.transform.y,
-                      ),
+                transform: place(content.transform),
               );
             }
           } else if (content is EditingTextContent) {
             content = content.copyWith(
               text: f['text'] as String?,
               style: f['text_style'] as String?,
-              position: f['text_position'] as String?,
+              opacity: number('opacity'),
+              transform: place(content.transform),
             );
           }
           doc = EditingCommands.update(
             doc,
-            clip.copyWith(name: f['name'] as String?, content: content),
+            current.copyWith(name: f['name'] as String?, content: content),
           );
         case 'extract_audio':
           keys(command, {'op', 'clip_id', 'track_id'});

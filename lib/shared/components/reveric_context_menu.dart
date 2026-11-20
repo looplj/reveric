@@ -284,40 +284,43 @@ class _RevericContextMenuState extends State<_RevericContextMenu> {
           ],
         ),
         child: IntrinsicWidth(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final (index, entry) in widget.entries.indexed)
-                switch (entry) {
-                  RevericMenuDivider() => Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: RevericSpacing.xs,
+          child: SingleChildScrollView(
+            primary: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (index, entry) in widget.entries.indexed)
+                  switch (entry) {
+                    RevericMenuDivider() => Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: RevericSpacing.xs,
+                      ),
+                      child: Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: colors.border,
+                      ),
                     ),
-                    child: Divider(
-                      height: 1,
-                      thickness: 1,
-                      color: colors.border,
+                    RevericMenuItem() => _RevericMenuOption(
+                      item: entry,
+                      hovered: _hoveredIndex == index,
+                      colors: colors,
+                      typo: widget.typo,
+                      onHoverChanged: (hovering) {
+                        setState(() {
+                          if (hovering) {
+                            _hoveredIndex = index;
+                          } else if (_hoveredIndex == index) {
+                            _hoveredIndex = null;
+                          }
+                        });
+                      },
+                      onTap: () => _handleTap(entry),
                     ),
-                  ),
-                  RevericMenuItem() => _RevericMenuOption(
-                    item: entry,
-                    hovered: _hoveredIndex == index,
-                    colors: colors,
-                    typo: widget.typo,
-                    onHoverChanged: (hovering) {
-                      setState(() {
-                        if (hovering) {
-                          _hoveredIndex = index;
-                        } else if (_hoveredIndex == index) {
-                          _hoveredIndex = null;
-                        }
-                      });
-                    },
-                    onTap: () => _handleTap(entry),
-                  ),
-                },
-            ],
+                  },
+              ],
+            ),
           ),
         ),
       ),

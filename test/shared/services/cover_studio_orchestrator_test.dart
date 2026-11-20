@@ -6,6 +6,13 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/providers/ai_providers.dart';
+import 'package:reveric/shared/providers/novel_providers.dart';
+import 'package:reveric/shared/providers/cover_studio_providers.dart';
+import 'package:reveric/shared/providers/settings_providers.dart';
+
 import 'package:reveric/shared/models/asset_purpose.dart';
 
 import 'package:drift/native.dart';
@@ -60,6 +67,92 @@ void main() {
       database.imageAssetDao.getSlots(batchId);
 
   test(
+    'cover draft binds generation and reference edits to the selected provider',
+    () async {
+      final first = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(enabled: true, apiKey: 'test', imageModels: ['gpt-image-2']);
+      final second = first.copyWith(
+        id: 'second',
+        imageModels: ['gpt-image-2.5-flare'],
+      );
+      var generateCalls = 0;
+      var editCalls = 0;
+      final library = buildImageLibraryService(database);
+      final container = ProviderContainer(
+        overrides: [
+          appDatabaseProvider.overrideWithValue(database),
+          imageLibraryServiceProvider.overrideWithValue(library),
+          aiSettingsProvider.overrideWithValue(
+            AiSettings(
+              providers: [first, second],
+              defaultImageModelId: 'openai::gpt-image-2',
+            ),
+          ),
+          coverImageGenerationCallbackProvider(
+            modelId: 'second::gpt-image-2.5-flare',
+          ).overrideWithValue((
+            prompt, {
+            model,
+            size,
+            quality,
+            complexity,
+            options,
+          }) async {
+            expect(model, 'gpt-image-2.5-flare');
+            generateCalls++;
+            return AiImageGenerationResult(localFilePath: source.path);
+          }),
+          coverImageMultiEditCallbackProvider(
+            modelId: 'second::gpt-image-2.5-flare',
+          ).overrideWithValue((
+            prompt, {
+            required imageData,
+            model,
+            size,
+            quality,
+            complexity,
+            options,
+          }) async {
+            expect(model, 'gpt-image-2.5-flare');
+            expect(imageData, hasLength(1));
+            editCalls++;
+            return AiImageGenerationResult(localFilePath: source.path);
+          }),
+        ],
+      );
+      final provider = coverStudioControllerProvider('novel_test');
+      final subscription = container.listen(provider, (_, _) {});
+      try {
+        final controller = container.read(provider.notifier);
+        controller.setModel('second::gpt-image-2.5-flare');
+        controller.setBatchCount(1);
+        await controller.generate(prompt: 'draw title');
+        expect(generateCalls, 1);
+        expect(container.read(provider).error, isNull);
+        final batches = await database.select(database.imageBatches).get();
+        expect(batches.single.model, 'gpt-image-2.5-flare');
+        final reference = await library.importFile(
+          source.path,
+          novelId: 'novel_test',
+          purpose: AssetPurpose.reference,
+        );
+        controller.addReference(reference.id);
+        await controller.rework(batchId: batches.single.id, ordinal: 0);
+        expect(editCalls, 1);
+        expect(container.read(provider).error, isNull);
+        expect(
+          container.read(aiSettingsProvider).defaultImageModelId,
+          'openai::gpt-image-2',
+        );
+      } finally {
+        subscription.close();
+        container.dispose();
+      }
+    },
+  );
+
+  test(
     'stop waits for the in-flight request and skips later requests',
     () async {
       final referenceSource = File('${supportDir.path}/reference.png')
@@ -75,7 +168,7 @@ void main() {
       final future = orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality, complexity}) async {
+        callback: (prompt, {model, size, quality, complexity, options}) async {
           calls++;
           await Future<void>.delayed(const Duration(milliseconds: 20));
           return AiImageGenerationResult(localFilePath: source.path);
@@ -122,7 +215,7 @@ void main() {
     final result = await orchestrator.generateBatch(
       database: database,
       imageLibrary: buildImageLibraryService(database),
-      callback: (prompt, {model, size, quality, complexity}) async {
+      callback: (prompt, {model, size, quality, complexity, options}) async {
         orchestrator.stop();
         throw const AiImageGenerationException(
           '图片生成请求过于频繁，请稍后再试。',
@@ -150,7 +243,7 @@ void main() {
     final result = await CoverStudioOrchestrator().generateBatch(
       database: database,
       imageLibrary: buildImageLibraryService(database),
-      callback: (prompt, {model, size, quality, complexity}) async {
+      callback: (prompt, {model, size, quality, complexity, options}) async {
         if (stub.calls++ == 1) {
           throw const AiImageGenerationException(
             '提示词或图片内容未通过审核，请调整后重试。',
@@ -183,7 +276,7 @@ void main() {
     final result = await CoverStudioOrchestrator().generateBatch(
       database: database,
       imageLibrary: buildImageLibraryService(database),
-      callback: (prompt, {model, size, quality, complexity}) async =>
+      callback: (prompt, {model, size, quality, complexity, options}) async =>
           throw const AiImageGenerationException(
             '图片生成请求过于频繁，请稍后再试。',
             code: AiImageErrorCode.rate_limit,
@@ -210,7 +303,7 @@ void main() {
       final result = await CoverStudioOrchestrator().generateBatch(
         database: database,
         imageLibrary: buildImageLibraryService(database),
-        callback: (prompt, {model, size, quality, complexity}) async {
+        callback: (prompt, {model, size, quality, complexity, options}) async {
           calls++;
           throw const AiImageGenerationException(
             'AI 供应商余额不足，请检查供应商账户后重试。',
@@ -244,7 +337,7 @@ void main() {
       final batch = await orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality, complexity}) async {
+        callback: (prompt, {model, size, quality, complexity, options}) async {
           if (stub.calls++ == 1) {
             throw const AiImageGenerationException(
               '提示词或图片内容未通过审核，请调整后重试。',
@@ -265,7 +358,7 @@ void main() {
       final reworked = await orchestrator.regenerateSlot(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality, complexity}) async =>
+        callback: (prompt, {model, size, quality, complexity, options}) async =>
             AiImageGenerationResult(
               localFilePath: stub.nextSource(supportDir).path,
             ),
@@ -299,7 +392,7 @@ void main() {
       final batch = await orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality, complexity}) async =>
+        callback: (prompt, {model, size, quality, complexity, options}) async =>
             AiImageGenerationResult(
               localFilePath: stub.nextSource(supportDir).path,
             ),
@@ -315,7 +408,7 @@ void main() {
       await orchestrator.regenerateSlot(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality, complexity}) async =>
+        callback: (prompt, {model, size, quality, complexity, options}) async =>
             AiImageGenerationResult(
               localFilePath: stub.nextSource(supportDir).path,
             ),
@@ -341,7 +434,7 @@ void main() {
       final batch = await orchestrator.generateBatch(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality, complexity}) async {
+        callback: (prompt, {model, size, quality, complexity, options}) async {
           if (stub.calls++ == 1) {
             throw const AiImageGenerationException(
               '登录已过期。',
@@ -361,7 +454,7 @@ void main() {
       final reworked = await orchestrator.regenerateSlot(
         database: database,
         imageLibrary: imageLibrary,
-        callback: (prompt, {model, size, quality, complexity}) async =>
+        callback: (prompt, {model, size, quality, complexity, options}) async =>
             throw const AiImageGenerationException(
               '登录已过期。',
               code: AiImageErrorCode.auth,

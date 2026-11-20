@@ -71,6 +71,10 @@ String editingTimecode(int frame) =>
 String editingDurationLabel(int frames) =>
     '${editingSeconds(frames).toStringAsFixed(1)}s';
 
+/// 1.5x、0.25x
+String editingSpeedLabel(double speed) =>
+    '${speed.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '')}x';
+
 /// 轨道编号：T1 / V1 / V2 / A1…，按同类轨道的层级。
 String editingTrackCode(EditingTrack track) =>
     '${switch (track.kind) {
@@ -89,6 +93,7 @@ String editingTrackName(BuildContext context, EditingTrack track) =>
         EditingRole.dialogue => LocaleKeys.editingRoleDialogue,
         EditingRole.sfx => LocaleKeys.editingRoleSfx,
         EditingRole.music => LocaleKeys.editingRoleMusic,
+        EditingRole.text => LocaleKeys.editingRoleText,
         _ => LocaleKeys.editingRoleAudio,
       });
 
@@ -98,6 +103,7 @@ String editingTrackIcon(EditingTrack track) => switch (track.role) {
   EditingRole.subtitle => RevericIcons.subtitles,
   EditingRole.dialogue => RevericIcons.microphone,
   EditingRole.music => RevericIcons.music_notes,
+  EditingRole.text => RevericIcons.text_fields_outlined,
   _ => RevericIcons.waveform,
 };
 

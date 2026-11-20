@@ -5,6 +5,10 @@
 //   lib/shared/models/video/task_result.dart
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'dart:async';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
+import 'package:reveric/shared/models/image/config.dart';
+import 'package:reveric/shared/models/production/image_request.dart';
+import 'package:reveric/shared/services/plugins/files.dart';
 import 'dart:io';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:drift/native.dart';
@@ -41,7 +45,7 @@ void main() {
       ReferenceStorageService(
         database: db,
         storage: FakeObjectStorage(db, upload),
-        probe: (_) async => const MediaInfo(
+        probe: (_, {cancellation}) async => const MediaInfo(
           duration: Duration.zero,
           hasAudio: false,
           hasVideo: true,
@@ -50,12 +54,79 @@ void main() {
         ),
       );
   test(
+    'typed video references enforce aggregate inline budget and refuse video inline',
+    () async {
+      final provider = aiProviderBuiltinById('openai')!;
+      final storage = service(null);
+      final scope = PluginFileScope(
+        pluginId: 'builtin',
+        providerId: provider.id,
+        taskId: 'inline',
+      );
+      final refs = await storage.prepareVideos(
+        [(input, file, media)],
+        provider: provider,
+        supportsCertifiedAssets: false,
+        files: scope,
+        taskId: 'inline',
+      );
+      expect(refs.single['source']['kind'], 'file');
+      expect(refs.single['assetId'], input.assetId);
+      await expectLater(
+        storage.prepareVideos(
+          [
+            (
+              const VideoInput(
+                role: VideoInputRole.reference_video,
+                assetId: 'video',
+                mimeType: 'video/mp4',
+              ),
+              file,
+              media,
+            ),
+          ],
+          provider: provider,
+          supportsCertifiedAssets: false,
+          files: scope,
+          taskId: 'inline',
+        ),
+        throwsA(
+          isA<VideoException>().having(
+            (e) => e.code,
+            'code',
+            VideoErrorCode.configuration_required,
+          ),
+        ),
+      );
+      final large = await File(
+        '${directory.path}/large.png',
+      ).open(mode: FileMode.write);
+      await large.truncate(25 * 1024 * 1024);
+      await large.close();
+      final big = File('${directory.path}/large.png');
+      await expectLater(
+        storage.prepareVideos(
+          [(input, big, media), (input, big, media)],
+          provider: provider,
+          supportsCertifiedAssets: false,
+          files: scope,
+          taskId: 'inline',
+        ),
+        throwsA(
+          isA<VideoException>().having((e) => e.field, 'field', 'file_size'),
+        ),
+      );
+      scope.revoke();
+      storage.dispose();
+    },
+  );
+  test(
     'unconfigured storage fails before probing or sending local bytes',
     () async {
       final storage = ReferenceStorageService(
         database: db,
         storage: FakeObjectStorage(db, null),
-        probe: (_) async => throw StateError('must not probe'),
+        probe: (_, {cancellation}) async => throw StateError('must not probe'),
       );
       await expectLater(
         storage.ensure(input, file),
@@ -213,7 +284,7 @@ void main() {
       final storage = ReferenceStorageService(
         database: db,
         storage: FakeObjectStorage(db, null),
-        probe: (_) async => throw StateError('must not probe'),
+        probe: (_, {cancellation}) async => throw StateError('must not probe'),
       );
       const video = VideoInput(
         role: VideoInputRole.reference_video,
@@ -271,7 +342,7 @@ void main() {
     final storage = ReferenceStorageService(
       database: db,
       storage: oss,
-      probe: (_) async => const MediaInfo(
+      probe: (_, {cancellation}) async => const MediaInfo(
         duration: Duration.zero,
         hasAudio: false,
         hasVideo: true,
@@ -302,6 +373,58 @@ void main() {
           isA<VideoException>().having((e) => e.field, 'field', 'file_size'),
         ),
       );
+    },
+  );
+  test(
+    'image preparation cancels an active media probe before upload',
+    () async {
+      final entered = Completer<void>();
+      final stopped = Completer<void>();
+      final storage = FakeObjectStorage(db, null);
+      final references = ReferenceStorageService(
+        database: db,
+        storage: storage,
+        probe: (_, {cancellation}) async {
+          final result = Completer<MediaInfo>();
+          await cancellation!.bind(() async {
+            stopped.complete();
+            result.completeError(const MediaException(MediaFailure.cancelled));
+          });
+          entered.complete();
+          return result.future;
+        },
+      );
+      addTearDown(references.dispose);
+      final provider = aiProviderBuiltinById('openai')!;
+      final cancellation = AgentCancellationController();
+      final scope = PluginFileScope(
+        pluginId: provider.type,
+        providerId: provider.id,
+        taskId: 'probe',
+      );
+      final pending = references.prepareImages(
+        [(const ProductionImageReference(assetId: 'asset'), file, 'image/png')],
+        provider: provider,
+        transport: ImageReferenceTransport.file,
+        files: scope,
+        taskId: 'probe',
+        cancellation: cancellation.token,
+      );
+      final failed = expectLater(
+        pending,
+        throwsA(
+          isA<MediaException>().having(
+            (error) => error.reason,
+            'cancelled probe',
+            MediaFailure.cancelled,
+          ),
+        ),
+      );
+      await entered.future;
+      cancellation.cancel();
+      await stopped.future.timeout(const Duration(seconds: 1));
+      await failed.timeout(const Duration(seconds: 1));
+      expect(storage.loads, 0);
     },
   );
 }

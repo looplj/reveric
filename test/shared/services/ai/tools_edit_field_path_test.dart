@@ -31,6 +31,7 @@ void main() {
     preview = null;
     tools = AiToolManager(
       content,
+      workId: 'current',
       novelReader: () async => {...profile},
       novelWriter: (fields) async => profile.addAll(fields),
       workingOverlayService: WorkingOverlayService(
@@ -54,64 +55,62 @@ void main() {
   Future<Map<String, dynamic>> read(String path) =>
       tools.executeTool(name: 'Read', input: {'path': path});
 
-  test('singleton Create shares Write validation and diff previews', () async {
-    for (final tool in ['Create', 'Write']) {
-      profile['description'] = '旧内容';
-      final result = await tools.executeTool(
-        name: tool,
-        input: {
-          'path': 'profile',
-          'fields': {'description': '  新内容  '},
-        },
-      );
-      expect(result['updated'], isTrue);
-      expect(profile['description'], '新内容');
-      expect(profile['title'], '作品');
-      expect(preview?['diffOldText'], '旧内容');
-      expect(preview?['diffNewText'], '新内容');
+  test('work metadata Write shares validation and diff previews', () async {
+    profile['description'] = '旧内容';
+    final result = await tools.executeTool(
+      name: 'Write',
+      input: {
+        'path': '/works/current',
+        'fields': {'description': '  新内容  '},
+      },
+    );
+    expect(result['updated'], isTrue);
+    expect(profile['description'], '新内容');
+    expect(profile['title'], '作品');
+    expect(preview?['diffOldText'], '旧内容');
+    expect(preview?['diffNewText'], '新内容');
 
-      // 未知字段跳过，可写字段照常落库；只有跳过项时既不写入也不产生预览。
-      final ignored = await tools.executeTool(
-        name: tool,
-        input: {
-          'path': 'profile',
-          'fields': {'description': '再次更新', 'unknown': '无效字段'},
-        },
-      );
-      expect(ignored['ok'], isTrue, reason: '$ignored');
-      expect(ignored['ignored_fields'], ['unknown']);
-      expect(profile['description'], '再次更新');
+    // 未知字段跳过，可写字段照常落库；只有跳过项时既不写入也不产生预览。
+    final ignored = await tools.executeTool(
+      name: 'Write',
+      input: {
+        'path': '/works/current',
+        'fields': {'description': '再次更新', 'unknown': '无效字段'},
+      },
+    );
+    expect(ignored['ok'], isTrue, reason: '$ignored');
+    expect(ignored['ignored_fields'], ['unknown']);
+    expect(profile['description'], '再次更新');
 
-      preview = null;
-      final skipped = await tools.executeTool(
-        name: tool,
-        input: {
-          'path': 'profile',
-          'fields': {'unknown': '无效字段'},
-        },
-      );
-      expect(skipped['updated'], isFalse);
-      expect(skipped['ignored_fields'], ['unknown']);
-      expect(profile['description'], '再次更新');
-      expect(preview, isNot(contains('diffOldText')));
-      expect(preview, isNot(contains('diffNewText')));
+    preview = null;
+    final skipped = await tools.executeTool(
+      name: 'Write',
+      input: {
+        'path': '/works/current',
+        'fields': {'unknown': '无效字段'},
+      },
+    );
+    expect(skipped['updated'], isFalse);
+    expect(skipped['ignored_fields'], ['unknown']);
+    expect(profile['description'], '再次更新');
+    expect(preview, isNot(contains('diffOldText')));
+    expect(preview, isNot(contains('diffNewText')));
 
-      // 可写字段的值非法仍整次拒绝，跳过项一并回报。
-      final rejected = await tools.executeTool(
-        name: tool,
-        input: {
-          'path': 'profile',
-          'fields': {
-            'description': '不应保存',
-            'status': '不存在的状态',
-            'unknown': '无效字段',
-          },
+    // 可写字段的值非法仍整次拒绝，跳过项一并回报。
+    final rejected = await tools.executeTool(
+      name: 'Write',
+      input: {
+        'path': '/works/current',
+        'fields': {
+          'description': '不应保存',
+          'status': '不存在的状态',
+          'unknown': '无效字段',
         },
-      );
-      expect(rejected['error_code'], 'invalid_argument');
-      expect(rejected['ignored_fields'], ['unknown']);
-      expect(profile['description'], '再次更新');
-    }
+      },
+    );
+    expect(rejected['error_code'], 'invalid_argument');
+    expect(rejected['ignored_fields'], ['unknown']);
+    expect(profile['description'], '再次更新');
   });
 
   test('outline Write preview uses the execution payload parser', () async {
@@ -146,7 +145,7 @@ void main() {
 
   test('all formerly implicit paths fail without fabricating a diff', () async {
     for (final path in [
-      'profile',
+      '/works/current',
       'chapters/chapter_1',
       'volumes/volume_1',
       'characters/character_1',
@@ -278,11 +277,11 @@ void main() {
   });
 
   test('profile keeps explicit field editing and offers exact paths', () async {
-    final missing = await edit('profile');
+    final missing = await edit('/works/current');
     expect(missing['error_code'], 'invalid_argument');
-    expect(missing['editable_paths'], contains('profile/description'));
+    expect(missing['editable_paths'], contains('/works/current/description'));
     expect(profile['description'], '旧内容');
-    expect((await edit('profile/description'))['error'], isNull);
+    expect((await edit('/works/current/description'))['error'], isNull);
     expect(profile['description'], '新内容');
   });
 

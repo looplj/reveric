@@ -95,7 +95,7 @@ void main() {
         .select(contentDatabase.locations)
         .get();
     expect(episodes, hasLength(6));
-    expect(beats, hasLength(12));
+    expect(beats, isEmpty);
     expect(scenes, hasLength(18));
     expect(characters, hasLength(4));
     expect(locations, hasLength(7));
@@ -103,14 +103,11 @@ void main() {
     final locationIds = locations.map((row) => row.id).toSet();
     for (final episode in episodes) {
       expect(episode.outline, isNotEmpty);
-      final episodeBeats = beats.where((beat) => beat.episodeId == episode.id);
       final episodeScenes = scenes.where(
         (scene) => scene.episodeId == episode.id,
       );
-      expect(episodeBeats, hasLength(2));
       expect(episodeScenes, hasLength(3));
-      final beatIds = episodeBeats.map((beat) => beat.id).toSet();
-      expect(episodeScenes.map((scene) => scene.beatId).toSet(), beatIds);
+      expect(episodeScenes.map((scene) => scene.beatId), everyElement(isNull));
       for (final scene in episodeScenes) {
         final sceneElements = elements.where(
           (element) => element.sceneId == scene.id,
@@ -141,10 +138,7 @@ void main() {
     expect(documents, hasLength(4));
     expect(documents.map((row) => row.title).toSet(), hasLength(4));
 
-    expect(
-      (await contentDatabase.screenplayDao.getRoot())!.styleId,
-      'preset:cn-suspense-cold',
-    );
+    expect((await contentDatabase.screenplayDao.getRoot())!.styleId, isNull);
     final episode = (await contentDatabase.screenplayDao.getEpisodes(
       (await contentDatabase.screenplayDao.getSeasons(
         (await contentDatabase.screenplayDao.getRoot())!.id,

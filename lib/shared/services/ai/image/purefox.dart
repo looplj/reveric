@@ -7,7 +7,6 @@
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
 import '../../../models/ai_provider.dart';
-import '../image.dart';
 import '../purefox_media.dart';
 import 'client.dart';
 
@@ -18,8 +17,9 @@ class PurefoxImageClient extends ImageClient {
   static const _qualityTiers = {'low': '1K', 'medium': '2K', 'high': '4K'};
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request);
     final caps = channel?.capabilities;
@@ -36,7 +36,7 @@ class PurefoxImageClient extends ImageClient {
         throw invalidImageParameter();
       }
     }
-    final editing = request.images.isNotEmpty;
+    final editing = request.references.isNotEmpty;
     final body = <String, dynamic>{
       'model': purefoxUpstreamModel(request.model),
       'prompt': request.prompt,
@@ -58,8 +58,8 @@ class PurefoxImageClient extends ImageClient {
     }
     if (editing) {
       body['images'] = [
-        for (final input in request.images)
-          await imageInputAsUrlOrDataUri(input),
+        for (final input in request.references)
+          await imageInputAsUrlOrDataUri(input, outputs),
       ];
     }
     final base = config.effectiveBaseUrl.replaceFirst(RegExp(r'/+$'), '');
@@ -67,7 +67,11 @@ class PurefoxImageClient extends ImageClient {
       Uri.parse('$base/images/${editing ? 'edits' : 'generations'}'),
       body,
     );
-    return parseImageResponse(data, emptyMessage: '图片生成服务未返回图片，请稍后重试。');
+    return parseImageResponse(
+      data,
+      outputs,
+      emptyMessage: '图片生成服务未返回图片，请稍后重试。',
+    );
   }
 
   String _quality(String? quality, String? resolution, Set<String>? supported) {

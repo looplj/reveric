@@ -12,18 +12,23 @@
 //   .agents/rules/i18n.md
 //   .agents/rules/testing.md
 
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/mobile/pages/character_editor_page.dart';
+import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/theme/theme.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 import 'package:patrol/patrol.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,10 +36,30 @@ const _databasePath = 'mobile_character_editor_patrol_db';
 const _pastAutoSaveDebounce = Duration(milliseconds: 900);
 
 void main() {
+  const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+  late Directory support;
+
   setUpAll(() async {
     // ignore: invalid_use_of_visible_for_testing_member
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
+    support = await Directory.systemTemp.createTemp('reveric_patrol_support_');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, (call) async {
+          if (call.method == 'getApplicationSupportDirectory' ||
+              call.method == 'getTemporaryDirectory') {
+            return support.path;
+          }
+          return null;
+        });
+    await RevericPaths.initialize();
+  });
+
+  tearDownAll(() async {
+    await AppDatabase.closeCached();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, null);
+    await support.delete(recursive: true);
   });
 
   patrolTest('rejects a duplicate behavior tag after another tag is added', (
@@ -177,6 +202,7 @@ class _MobileCharacterEditorHarness extends StatelessWidget {
                 data: RevericThemeData.reveric,
                 child: Scaffold(
                   body: MobileCharacterEditorPage(
+                    novelId: 'novel-test',
                     databasePath: _databasePath,
                     characterId: characterId,
                   ),

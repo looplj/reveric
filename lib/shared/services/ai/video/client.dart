@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../utils/ai_error.dart';
@@ -23,6 +24,9 @@ import '../../../models/video/capabilities.dart';
 import '../../../models/video/request.dart';
 import '../../../models/video/task_result.dart';
 import '../media_diagnostics.dart';
+import '../../plugins/files.dart';
+import '../../../models/generation/provider_result.dart';
+export '../../../models/generation/provider_result.dart';
 
 final _log = AppLogger.forModule('VideoClient');
 
@@ -41,6 +45,7 @@ abstract class VideoClient {
   final Uri endpoint;
   final String apiKey;
   final Duration timeout;
+  Duration get submitTimeout => timeout;
   String get createPath;
   String queryPath(String id);
   Uri queryUrl(String id, String modelId) =>
@@ -71,7 +76,142 @@ abstract class VideoClient {
     );
   }
 
-  Future<VideoSubmission> submit(
+  SubmitVideoInput? _preparedInput;
+  PluginFileScope? _preparedScope;
+  List<VideoReference>? _preparedReferences;
+
+  Future<void> validateSubmission(
+    SubmitVideoInput input,
+    PluginFileScope files,
+  ) async {
+    final references = await nativeReferences(input, files);
+    final body = encodeSubmission(
+      input.request,
+      references,
+      draft: input.draft,
+      draftId: input.draftOf?.remoteTaskId,
+    );
+    validateInlineBody(body, references);
+  }
+
+  Future<List<VideoReference>> nativeReferences(
+    SubmitVideoInput input,
+    PluginFileScope files,
+  ) async {
+    if (identical(input, _preparedInput) && identical(files, _preparedScope)) {
+      return _preparedReferences!;
+    }
+    files.claim(
+      pluginId: files.pluginId,
+      providerId: files.providerId,
+      taskId: files.taskId,
+    );
+    final result = <VideoReference>[];
+    for (final ref in input.references) {
+      final source = ref.source;
+      final String url;
+      switch (source['kind']) {
+        case 'certified':
+          url = 'asset://${source['remoteId']}';
+        case 'url':
+          url = source['url'] as String;
+        case 'uploaded':
+          url = source['ref'] as String;
+        case 'file':
+          final file = files.resolve(source['handle']);
+          final bytes = await file.file.readAsBytes();
+          if (bytes.length != ref.fileSize || file.mimeType != ref.mimeType) {
+            throw const VideoException(
+              VideoErrorCode.invalid_request,
+              field: 'reference',
+            );
+          }
+          url = 'data:${ref.mimeType};base64,${base64Encode(bytes)}';
+        default:
+          throw const VideoException(
+            VideoErrorCode.invalid_request,
+            field: 'reference',
+          );
+      }
+      result.add(
+        VideoReference(
+          role: ref.role,
+          url: url,
+          mimeType: ref.mimeType,
+          fileSize: ref.fileSize,
+          mediaInfo: ref.mediaInfo,
+        ),
+      );
+    }
+    _preparedInput = input;
+    _preparedScope = files;
+    _preparedReferences = result;
+    return result;
+  }
+
+  Future<ProviderSubmitResult> submit(
+    SubmitVideoInput input,
+    PluginFileScope files,
+  ) async {
+    final references = await nativeReferences(input, files);
+    final receipt = await submitNative(
+      input.request,
+      references,
+      draft: input.draft,
+      draftId: input.draftOf?.remoteTaskId,
+    );
+    return ProviderSubmitted(
+      receipt.taskId,
+      state: {
+        'queryUrl': receipt.pollingUrl.toString(),
+        'modelId': receipt.modelId,
+      },
+    );
+  }
+
+  Map<String, String> outputHeaders(Uri url, VideoSubmission task) => const {};
+
+  Future<ProviderQueryResult> query(ProviderQueryInput input) async {
+    final state = input.state;
+    if (state?['queryUrl'] is! String || state?['modelId'] is! String) {
+      throw const VideoException(VideoErrorCode.configuration_required);
+    }
+    final task = VideoSubmission(
+      taskId: input.remoteTaskId,
+      modelId: state!['modelId'] as String,
+      pollingUrl: Uri.parse(state['queryUrl'] as String),
+    );
+    final result = await queryNative(task);
+    return switch (result.status) {
+      VideoRemoteStatus.queued => ProviderPending(queued: true, state: state),
+      VideoRemoteStatus.running => ProviderPending(state: state),
+      VideoRemoteStatus.succeeded => ProviderSucceeded([
+        ProviderUrlOutput(
+          result.videoUrl!.toString(),
+          headers: outputHeaders(result.videoUrl!, task),
+        ),
+      ]),
+      VideoRemoteStatus.failed => ProviderFailed(
+        ProviderFailure(
+          code: 'upstream_failed',
+          // 内置渠道在此译好文案；插件文案原样展示。
+          message:
+              result.providerMessage ??
+              (result.messageKey == null
+                  ? 'Video generation failed'
+                  : tr(result.messageKey!)),
+          detail: result.detail,
+        ),
+      ),
+      VideoRemoteStatus.cancelled => const ProviderStopped(cancelled: true),
+      VideoRemoteStatus.expired => const ProviderStopped(),
+      VideoRemoteStatus.unknown => const ProviderUnknown(
+        'Upstream task status is unknown',
+      ),
+    };
+  }
+
+  Future<VideoSubmission> submitNative(
     VideoRequest request,
     List<VideoReference> references, {
     bool draft = false,
@@ -84,7 +224,12 @@ abstract class VideoClient {
       draftId: draftId,
     );
     validateInlineBody(body, references);
-    final json = await _request('POST', url(createPath), body: body);
+    final json = await sendRequest(
+      'POST',
+      url(createPath),
+      submitting: true,
+      body: body,
+    );
     try {
       final id = submissionId(json);
       if (id.trim().isEmpty) {
@@ -155,13 +300,13 @@ abstract class VideoClient {
     VideoSubmission task,
   ) => transport.send(http.Request('GET', url));
 
-  Future<VideoTaskResult> query(VideoSubmission task) async {
+  Future<VideoTaskResult> queryNative(VideoSubmission task) async {
     // Never send a changed account's credentials to a persisted foreign origin.
     final expected = queryUrl(task.taskId, task.modelId);
     if (task.pollingUrl != expected) {
       throw const VideoException(VideoErrorCode.configuration_required);
     }
-    final json = await _request('GET', task.pollingUrl);
+    final json = await sendRequest('GET', task.pollingUrl, submitting: false);
     try {
       final result = decodeResult(json);
       if (result.status != VideoRemoteStatus.failed) {
@@ -203,13 +348,19 @@ abstract class VideoClient {
     }
   }
 
-  Future<Map<String, dynamic>> _request(
+  Future<Map<String, dynamic>> sendRequest(
     String method,
     Uri uri, {
+    required bool submitting,
     Map<String, dynamic>? body,
   }) async {
-    final submitting = method == 'POST';
     VideoException? httpFailure;
+    int? receivedStatus;
+    String? receivedRetryAfter;
+    final clock = Stopwatch()..start();
+    final requestTimeout = submitting ? submitTimeout : timeout;
+    var phase = 'preparing';
+    var receivedBytes = 0;
     try {
       return await (() async {
         final request = http.Request(method, uri)
@@ -226,21 +377,37 @@ abstract class VideoClient {
         if (body != null) {
           request.body = jsonEncode(body);
         }
+        phase = 'awaiting_headers';
+        if (_log.isDebugEnabled) {
+          _log.debug(
+            '$method $uri phase=$phase timeout_ms=${requestTimeout.inMilliseconds} request_bytes=${request.bodyBytes.length}',
+          );
+        }
         final response = await httpClient.send(request);
+        receivedStatus = response.statusCode;
+        receivedRetryAfter = response.headers['retry-after'];
+        phase = 'reading_body';
+        final bytes = await http.ByteStream(
+          response.stream.map((chunk) {
+            receivedBytes += chunk.length;
+            return chunk;
+          }),
+        ).toBytes();
+        final responseBody = utf8.decode(bytes, allowMalformed: true);
+        if (_log.isDebugEnabled) {
+          _log.debug(
+            '$method $uri status=${response.statusCode} body=$responseBody',
+          );
+        }
         if (response.statusCode < 200 || response.statusCode >= 300) {
           final status = response.statusCode;
           final retryAfter = _retryAfter(response.headers['retry-after']);
           // Preserve the received status even if reading the error body fails.
           httpFailure = _httpFailure(status, submitting, retryAfter);
-          final bytes = <int>[];
-          await for (final chunk in response.stream) {
-            if (bytes.length + chunk.length > 64 * 1024) {
-              throw const FormatException('Error response too large');
-            }
-            bytes.addAll(chunk);
+          if (bytes.length > 64 * 1024) {
+            throw const FormatException('Error response too large');
           }
-          // Adapt the HTTP body to the same message envelope used by SDK errors.
-          final diagnosticBody = utf8.decode(bytes, allowMalformed: true);
+          final diagnosticBody = responseBody;
           final message = tryReadProviderMessage((message: diagnosticBody));
           httpFailure = _httpFailure(
             status,
@@ -256,18 +423,25 @@ abstract class VideoClient {
           );
           throw httpFailure!;
         }
-        final bytes = <int>[];
-        await for (final chunk in response.stream) {
-          if (bytes.length + chunk.length > 1024 * 1024) {
-            throw const FormatException('Response too large');
-          }
-          bytes.addAll(chunk);
+        if (bytes.length > 1024 * 1024) {
+          throw const FormatException('Response too large');
         }
+        phase = 'parsing_body';
         return jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      })().timeout(timeout);
+      })().timeout(requestTimeout);
     } on VideoException {
       rethrow;
     } catch (error) {
+      final status = receivedStatus;
+      if (httpFailure == null &&
+          status != null &&
+          (status < 200 || status >= 300)) {
+        httpFailure = _httpFailure(
+          status,
+          submitting,
+          _retryAfter(receivedRetryAfter),
+        );
+      }
       if (httpFailure != null) {
         _log.warning(
           '$method ${uri.origin}${uri.path} '
@@ -277,6 +451,7 @@ abstract class VideoClient {
       }
       _log.warning(
         '$method ${uri.origin}${uri.path} '
+        'phase=$phase elapsed_ms=${clock.elapsedMilliseconds} status=${receivedStatus ?? "unknown"} received_bytes=$receivedBytes '
         'type=${error.runtimeType} message=${safeMediaDiagnostic(error, apiKey)}',
       );
       if (error is Error && error is! TypeError) {

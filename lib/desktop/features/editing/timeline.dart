@@ -243,49 +243,58 @@ class _Toolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          RevericIconButton(
-            icon: RevericIcons.undo,
-            tooltip: context.t(LocaleKeys.editingUndo),
-            onPressed: session.canUndo ? session.undo : null,
-          ),
-          RevericIconButton(
-            icon: RevericIcons.redo,
-            tooltip: context.t(LocaleKeys.editingRedo),
-            onPressed: session.canRedo ? session.redo : null,
-          ),
-          separator(),
-          ValueListenableBuilder<int>(
-            valueListenable: controller.playhead,
-            builder: (context, _, _) => labeled(
-              RevericIcons.scissors_outlined,
-              context.t(LocaleKeys.editingSplit),
-              controller.splitTarget == null
+          if (!controller.readOnly) ...[
+            RevericIconButton(
+              icon: RevericIcons.undo,
+              tooltip: context.t(LocaleKeys.editingUndo),
+              onPressed: session.canUndo ? session.undo : null,
+            ),
+            RevericIconButton(
+              icon: RevericIcons.redo,
+              tooltip: context.t(LocaleKeys.editingRedo),
+              onPressed: session.canRedo ? session.redo : null,
+            ),
+            separator(),
+            ValueListenableBuilder<int>(
+              valueListenable: controller.playhead,
+              builder: (context, _, _) => labeled(
+                RevericIcons.scissors_outlined,
+                context.t(LocaleKeys.editingSplit),
+                controller.splitTarget == null
+                    ? null
+                    : () => controller.split(context),
+              ),
+            ),
+            labeled(
+              RevericIcons.delete_outline,
+              context.t(LocaleKeys.commonDelete),
+              session.selected == null
                   ? null
-                  : () => controller.split(context),
+                  : () => controller.remove(context),
             ),
-          ),
-          labeled(
-            RevericIcons.delete_outline,
-            context.t(LocaleKeys.commonDelete),
-            session.selected == null ? null : () => controller.remove(context),
-          ),
-          separator(),
-          _Toggle(
-            icon: RevericIcons.magnet,
-            tooltip: context.t(
-              controller.snap
-                  ? LocaleKeys.editingSnapOn
-                  : LocaleKeys.editingSnapOff,
+            separator(),
+            _Toggle(
+              icon: RevericIcons.magnet,
+              tooltip: context.t(
+                controller.snap
+                    ? LocaleKeys.editingSnapOn
+                    : LocaleKeys.editingSnapOff,
+              ),
+              on: controller.snap,
+              size: 28,
+              onTap: controller.toggleSnap,
             ),
-            on: controller.snap,
-            size: 28,
-            onTap: controller.toggleSnap,
-          ),
-          labeled(
-            RevericIcons.add,
-            context.t(LocaleKeys.editingAudioTrack),
-            () => controller.addAudioTrack(context),
-          ),
+            labeled(
+              RevericIcons.add,
+              context.t(LocaleKeys.editingTextTrack),
+              () => controller.addTextTrack(context),
+            ),
+            labeled(
+              RevericIcons.add,
+              context.t(LocaleKeys.editingAudioTrack),
+              () => controller.addAudioTrack(context),
+            ),
+          ],
           const Spacer(),
           RevericIconButton(
             icon: RevericIcons.remove,
@@ -461,14 +470,19 @@ class _TrackHead extends StatelessWidget {
                 ),
               ),
             ),
-          if (t.kind == 'text')
+          if (!controller.readOnly && t.kind == 'text')
             _Toggle(
               icon: RevericIcons.add,
-              tooltip: context.t(LocaleKeys.editingAddSubtitle),
+              tooltip: context.t(
+                t.role == EditingRole.subtitle
+                    ? LocaleKeys.editingAddSubtitle
+                    : LocaleKeys.editingAddText,
+              ),
               on: false,
               onTap: t.locked ? null : () => controller.addText(context, t),
             ),
-          if (t.role == EditingRole.audio)
+          if (!controller.readOnly &&
+              (t.role == EditingRole.audio || t.role == EditingRole.text))
             _Toggle(
               icon: RevericIcons.close,
               tooltip: context.t(LocaleKeys.editingRemoveTrack),
@@ -482,32 +496,38 @@ class _TrackHead extends StatelessWidget {
                       ),
                     ),
             ),
-          _Toggle(
-            icon: RevericIcons.lock_simple,
-            tooltip: context.t(
-              t.locked ? LocaleKeys.editingUnlock : LocaleKeys.editingLock,
-            ),
-            on: t.locked,
-            onTap: () =>
-                controller.changeTrack(context, t.copyWith(locked: !t.locked)),
-          ),
-          if (t.kind == 'audio')
+          if (!controller.readOnly || t.locked)
             _Toggle(
-              icon: t.muted
-                  ? RevericIcons.speaker_slash
-                  : RevericIcons.speaker_high,
+              icon: RevericIcons.lock_simple,
               tooltip: context.t(
-                t.muted ? LocaleKeys.editingUnmute : LocaleKeys.editingMute,
+                t.locked ? LocaleKeys.editingUnlock : LocaleKeys.editingLock,
               ),
-              on: t.muted,
-              onTap: t.locked
+              on: t.locked,
+              onTap: controller.readOnly
                   ? null
                   : () => controller.changeTrack(
                       context,
-                      t.copyWith(muted: !t.muted),
+                      t.copyWith(locked: !t.locked),
                     ),
-            )
-          else
+            ),
+          if (t.kind == 'audio') ...[
+            if (!controller.readOnly || t.muted)
+              _Toggle(
+                icon: t.muted
+                    ? RevericIcons.speaker_slash
+                    : RevericIcons.speaker_high,
+                tooltip: context.t(
+                  t.muted ? LocaleKeys.editingUnmute : LocaleKeys.editingMute,
+                ),
+                on: t.muted,
+                onTap: controller.readOnly || t.locked
+                    ? null
+                    : () => controller.changeTrack(
+                        context,
+                        t.copyWith(muted: !t.muted),
+                      ),
+              ),
+          ] else if (!controller.readOnly || t.hidden)
             _Toggle(
               icon: t.hidden
                   ? RevericIcons.visibility_off
@@ -516,7 +536,7 @@ class _TrackHead extends StatelessWidget {
                 t.hidden ? LocaleKeys.editingShow : LocaleKeys.editingHide,
               ),
               on: t.hidden,
-              onTap: t.locked
+              onTap: controller.readOnly || t.locked
                   ? null
                   : () => controller.changeTrack(
                       context,
@@ -780,8 +800,11 @@ class _Lane extends StatelessWidget {
     }
 
     return DragTarget<EditingMedia>(
-      onWillAcceptWithDetails: (_) => true,
+      onWillAcceptWithDetails: (_) => !controller.readOnly,
       onMove: (d) {
+        if (controller.readOnly) {
+          return;
+        }
         final frame = frameAt(d.offset);
         hint.value = (
           trackId: t.id,
@@ -797,6 +820,9 @@ class _Lane extends StatelessWidget {
       },
       onAcceptWithDetails: (d) {
         hint.value = null;
+        if (controller.readOnly) {
+          return;
+        }
         editingRun(
           context,
           () => controller.place(context, d.data, t.id, frameAt(d.offset)),

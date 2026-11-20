@@ -6,7 +6,7 @@
 //   lib/shared/models/audio/channels.dart
 //   lib/shared/services/ai/providers_run_command_handler.dart
 import '../../models/ai_provider.dart';
-import '../../models/image/channels.dart';
+import '../../models/provider_model.dart';
 import '../../models/production/image_request.dart';
 import '../../models/video/channels.dart';
 import '../../models/video/request.dart';
@@ -40,8 +40,9 @@ List<String> configuredProviderModels(AiProvider provider, String kind) {
 Map<String, dynamic> providerModelResource(
   AiProvider provider,
   String kind,
-  String model,
-) {
+  String model, {
+  bool includeDetails = true,
+}) {
   final capabilities = switch (kind) {
     'image' => _image(provider, model),
     'video' => _video(provider, model),
@@ -81,8 +82,10 @@ Map<String, dynamic> providerModelResource(
     if (capabilities == null)
       'capabilities_reason':
           'No verified model and adapter capability mapping.',
-    'capabilities': capabilities?['capabilities'],
-    'defaults': capabilities?['defaults'],
+    if (includeDetails) ...{
+      'capabilities': capabilities?['capabilities'],
+      'defaults': capabilities?['defaults'],
+    },
     'availability_scope':
         'local_configuration; remote access and quota are not probed',
   };
@@ -96,7 +99,7 @@ Map<String, dynamic>? _image(AiProvider provider, String model) {
   if (effective == null) {
     return null;
   }
-  final channel = lookupImageChannelModel(provider.type, model);
+  final channel = resolveImageModel(provider, model);
   final defaults = channel?.requestDefaults;
   return {
     'capabilities': {
@@ -132,7 +135,7 @@ Map<String, dynamic>? _image(AiProvider provider, String model) {
 }
 
 Map<String, dynamic>? _video(AiProvider provider, String model) {
-  final channel = lookupVideoChannelModel(provider.type, model);
+  final channel = resolveVideoModel(provider, model);
   if (channel == null) {
     return null;
   }
@@ -140,32 +143,39 @@ Map<String, dynamic>? _video(AiProvider provider, String model) {
   final kinds = caps.references.keys.toSet();
   return {
     'capabilities': {
-      'modes': [
-        if (channel.protocolOptions.requiredMode == null ||
-            channel.protocolOptions.requiredMode == VideoMode.text)
-          'text',
-        if (caps.frameRoles.contains(VideoInputRole.first_frame)) 'first_frame',
-        if (caps.frameRoles.contains(VideoInputRole.first_frame) &&
-            caps.frameRoles.contains(VideoInputRole.last_frame))
-          'first_last_frame',
-        if (caps.allowsReferenceMode && kinds.isNotEmpty) 'reference',
-      ],
+      'modes': caps.modes
+          .where(
+            (mode) =>
+                provider.isPluginProvider ||
+                switch (mode) {
+                  VideoMode.text => true,
+                  VideoMode.first_frame => caps.frameRoles.contains(
+                    VideoInputRole.first_frame,
+                  ),
+                  VideoMode.first_last_frame =>
+                    caps.frameRoles.contains(VideoInputRole.first_frame) &&
+                        caps.frameRoles.contains(VideoInputRole.last_frame),
+                  VideoMode.reference => kinds.isNotEmpty,
+                },
+          )
+          .map((mode) => mode.name)
+          .toList(),
       'ratios': channel.ratios.toList(),
       'resolutions': channel.resolutions.toList(),
       'durations': channel.durations.toList(),
       if (channel.maxDurationByResolution.isNotEmpty)
         'max_duration_by_resolution': channel.maxDurationByResolution,
-      'supports_draft': channel.protocolOptions.supportsDraft,
-      if (channel.protocolOptions.supportsDraft)
+      'supports_draft': channel.capabilities.draft != null,
+      if (channel.capabilities.draft != null)
         'draft': {
-          'resolution': '480p',
-          'completion_resolution': '1080p',
-          'validity_days': 7,
+          'resolution': caps.draft!.resolution,
+          'completion_resolution': caps.draft!.completionResolution,
+          'validity_days': caps.draft!.ttlHours / 24,
           'output_formats': ['mp4'],
         },
       'reference_roles': [
         ...caps.frameRoles.map((role) => role.name),
-        if (caps.allowsReferenceMode)
+        if (caps.modes.contains(VideoMode.reference))
           ...kinds.map((kind) => 'reference_${kind.name}'),
       ],
       'max_middle_frames': caps.maxMiddleFrames,
@@ -175,7 +185,7 @@ Map<String, dynamic>? _video(AiProvider provider, String model) {
       'supports_last_frame_only': caps.supportsLastFrameOnly,
       'supports_adaptive_text_ratio': channel.supportsAdaptiveTextRatio,
       'frames_require_adaptive_ratio':
-          channel.protocolOptions.framesRequireAdaptiveRatio,
+          channel.capabilities.framesRequireAdaptiveRatio,
       'requires_audio': channel.requiresAudio,
       'requires_prompt_extend': channel.requiresPromptExtend,
       'max_input_output_duration_ms': caps.maxInputOutputDurationMs,

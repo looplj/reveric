@@ -23,7 +23,8 @@ extension ProductionVoices on ProductionCanvasService {
           .watchSingle();
 
   Future<CharacterProfile?> inputCharacter(ProductionInput input) async {
-    if (input.refType != ProductionInputType.node ||
+    if (input.isPrompt ||
+        input.refType != ProductionInputType.node ||
         input.role.kind != VideoMediaKind.image) {
       return null;
     }
@@ -57,7 +58,7 @@ extension ProductionVoices on ProductionCanvasService {
   ) async {
     final audio = <String?>[];
     final voices = <String?>[];
-    for (final input in inputs) {
+    for (final input in inputs.where((input) => !input.isPrompt)) {
       if (input.role.kind == VideoMediaKind.audio) {
         try {
           audio.add((await inputAsset(input)).name);
@@ -90,6 +91,20 @@ extension ProductionVoices on ProductionCanvasService {
     }
     return (audio: audio, voices: voices);
   }
+
+  Future<void> setCharacterVoices(
+    String characterId,
+    List<CharacterVoice> voices,
+  ) => _editCharacterVoices(characterId, (_) async {
+    if (voices.map((voice) => voice.assetId).toSet().length != voices.length) {
+      throw const StoryboardException('invalid_reference');
+    }
+    for (final voice in voices) {
+      final asset = await requireAsset(voice.assetId, type: 'audio');
+      await requireFile(asset.path!, type: 'audio');
+    }
+    return voices;
+  });
 
   Future<void> addCharacterVoice(String characterId, String assetId) =>
       _editCharacterVoices(characterId, (voices) async {

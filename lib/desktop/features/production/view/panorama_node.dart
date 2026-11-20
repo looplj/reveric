@@ -21,15 +21,21 @@ class ProductionPanoramaNode extends HookConsumerWidget {
     required this.node,
     required this.path,
     required this.selected,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
   final String path;
   final bool selected;
+  final bool readOnly;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(
-      productionPanoramaProvider((service: service, nodeId: node.id)),
+      productionPanoramaProvider((
+        service: service,
+        nodeId: node.id,
+        readOnly: readOnly,
+      )),
     );
     final persisted = PanoramaView.fromStyle(node.style)!;
     useEffect(() {

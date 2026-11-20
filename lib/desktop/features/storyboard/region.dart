@@ -69,8 +69,12 @@ class StoryboardRegion extends HookConsumerWidget {
     );
     final busy = useState(false);
     final episodeId = workspace.episodeId;
-    final service = ref.watch(storyboardServiceProvider(path));
-    final overlay = ref.watch(workingOverlayServiceProvider(path));
+    final service = ref.watch(
+      storyboardServiceProvider(path, novelId: novel.id),
+    );
+    final overlay = ref.watch(
+      workOverlayServiceProvider((path: path, novelId: novel.id)),
+    );
     final shotsState = episodeId == null
         ? null
         : ref.watch(storyboardShotsProvider(path, episodeId));
@@ -158,6 +162,7 @@ class StoryboardRegion extends HookConsumerWidget {
           context: context,
           barrierDismissible: false,
           builder: (_) => ShotEditForm(
+            novelId: novel.id,
             path: path,
             sceneId: sceneId,
             shot: shot,
@@ -447,6 +452,7 @@ class StoryboardRegion extends HookConsumerWidget {
                               ? null
                               : InlineShotEditor(
                                   key: ValueKey(group.value[i].id),
+                                  novelId: novel.id,
                                   path: path,
                                   shot: group.value[i],
                                   session: editSession!,

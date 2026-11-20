@@ -26,6 +26,7 @@ import 'files/management.dart';
 import 'ffmpeg/arguments.dart';
 import 'ffmpeg/command.dart';
 import 'media/production.dart';
+import 'media/nodes.dart' as production_nodes;
 import 'assets/client.dart' show ProviderAssetException;
 import '../../models/provider_asset.dart';
 import 'styles_run_command_handler.dart';
@@ -48,7 +49,7 @@ import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:path/path.dart' as p;
 import '../../database/app_database.dart';
 import '../../utils/entity_relation_types.dart';
@@ -61,10 +62,13 @@ import '../../models/canvas_ai_activity.dart';
 import '../../models/canvas_layout.dart';
 import '../../models/content_status.dart';
 import '../../models/content_kind.dart';
+import '../../models/novel_type.dart';
 import '../../models/map_agent.dart';
 import '../../models/screenplay.dart';
 import '../../models/production/settings.dart';
 import '../production/canvas_service.dart';
+import '../production/voices.dart';
+import '../../models/production/media.dart';
 import '../../models/screenplay_element.dart';
 import '../../models/screenplay_element_render.dart';
 import '../../models/subagent.dart';
@@ -82,6 +86,9 @@ import '../../models/director/schema.dart' as director;
 import '../director/query.dart' as director;
 import '../director/contact_sheet.dart' as director;
 import '../director/renderer.dart' show FrameRenderer;
+import '../director/export_task.dart' show ExportTaskOrchestrator;
+import '../production/staging_export_orchestrator.dart';
+import '../screenplay/staging.dart' show VideoStagingBinding;
 import '../director/batch_commands.dart' show directorCommandFields;
 import 'package:uuid/uuid.dart';
 import '../storyboard/edit_orchestrator.dart';
@@ -97,7 +104,8 @@ import '../../utils/json_repair.dart' show tryExtractJson;
 import '../../utils/storage_paths.dart';
 import '../../utils/text_unit_count.dart' show countTextUnitStats;
 import '../../logger/app_logger.dart';
-import '../bundled_control_skills.dart' show bundledControlRunCommandToCallName;
+import '../bundled_control_skills.dart'
+    show bundledControlRunCommandToCallName, bundledControlSkillForRun;
 import '../working_overlay.dart';
 import '../../agent/agent_tool_dispatcher.dart'
     show AgentToolDispatcher, ToolDef, ToolExecutionContext, ToolWorkingChange;
@@ -286,7 +294,7 @@ List<SubjectPhoto> _normalizeSubjectPhotos(List values) =>
 /// 序列化已规范化的输入或持久化字段，保持 Working Change 文本格式。
 String _encodeCharacterWorkingValue(String field, Object? value) {
   return switch (field) {
-    'aliases' => jsonEncode(value ?? const []),
+    'aliases' || 'voices' => jsonEncode(value ?? const []),
     'photos' => jsonEncode(
       (value as List? ?? const [])
           .map((raw) => SubjectPhoto.fromJson(raw).toJson())
@@ -1085,74 +1093,7 @@ Set<String> readableResourceIdPathsForTesting() {
 }
 
 const _resourceDefinitions = <String, _ResourceDefinition>{
-  'profile': _ResourceDefinition(
-    segment: 'profile',
-    address: _ResourceAddress(_AddressKind.singleton),
-    description: '作品信息',
-    hidden: false,
-    fields: {
-      'title': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-        search: {_FieldSearch.short_text},
-      ),
-      'author_name': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(path: true),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-        search: {_FieldSearch.body},
-      ),
-      'description': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-        search: {_FieldSearch.body},
-      ),
-      'category': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-        search: {_FieldSearch.body},
-      ),
-      'status': _ResourceField(
-        value: _ValueSchema(
-          _ValueType.string,
-          enumAliases: _ChineseEnumMappings.novelStatusZh,
-          enumValues: _aiNovelStatuses,
-        ),
-        read: _FieldRead(listing: true, path: true),
-        write: _FieldInputUse(field: true),
-      ),
-      'tags': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(path: true),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-        description: '逗号分隔字符串',
-        search: {_FieldSearch.body},
-      ),
-    },
-    operations: [
-      _ResourceOperation(
-        _ResourceTool.read,
-        _ResourceTargetKind.resource,
-        result: _ResourceResult(
-          _ResourceResultKind.entity,
-          references: ['path'],
-        ),
-      ),
-      _ResourceOperation(
-        _ResourceTool.write,
-        _ResourceTargetKind.resource,
-        input: _ResourceInput(_ResourceInputKind.resource_fields),
-      ),
-    ],
-  ),
+  'production': _canvasProductionDefinition,
   'story_state': _ResourceDefinition(
     segment: 'story_state',
     address: _ResourceAddress(_AddressKind.singleton),
@@ -1435,6 +1376,26 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
     hidden: false,
     listing: _ResourceListing(),
     fields: {
+      'voices': _ResourceField(
+        value: _ValueSchema(
+          _ValueType.array,
+          items: _ValueSchema(
+            _ValueType.object,
+            properties: {
+              'asset_id': _ValueProperty(
+                _ValueSchema(_ValueType.string),
+                required: true,
+              ),
+              'name': _ValueProperty(
+                _ValueSchema(_ValueType.string),
+                required: true,
+              ),
+            },
+          ),
+        ),
+        read: _FieldRead(path: true),
+        write: _FieldInputUse(field: true),
+      ),
       'photos': _ResourceField(
         value: _subjectPhotosValue,
         read: _FieldRead(path: true),
@@ -3190,17 +3151,12 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
     hidden: false,
     listing: _ResourceListing(parentQuery: 'scene_id'),
     fields: {
+      ..._productionClipFields,
       'is_storyboard': _ResourceField(
         value: _ValueSchema(_ValueType.boolean),
         description: '是否已编入场次的分镜，可为图片或视频；查询分镜使用 is_storyboard=true。',
         read: _FieldRead(listing: true, path: true),
         query: _FieldQuery(normalization: _QueryNormalization.boolean),
-      ),
-      'style_selection': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
       ),
       'character_id': _ResourceField(
         value: _ValueSchema(_ValueType.string, nullable: true),
@@ -3216,19 +3172,6 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
         value: _ValueSchema(_ValueType.string, nullable: true),
         read: _FieldRead(listing: true, path: true),
         create: _FieldInputUse(),
-      ),
-      'kind': _ResourceField(
-        value: _ValueSchema(
-          _ValueType.string,
-          enumValues: ['video', 'image', 'audio'],
-        ),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(hasDefault: true, defaultValue: 'video'),
-        query: _FieldQuery(),
-      ),
-      'id': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
       ),
       'scene_id': _ResourceField(
         value: _ValueSchema(
@@ -3252,143 +3195,9 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
         read: _FieldRead(listing: true, path: true),
         write: _FieldInputUse(field: true),
       ),
-      'title': _ResourceField(
-        search: {_FieldSearch.short_text},
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-      ),
-      'inputs': _ResourceField(
-        value: _ValueSchema(
-          _ValueType.array,
-          items: _ValueSchema(
-            _ValueType.object,
-            properties: {
-              'id': _ValueProperty(
-                _ValueSchema(_ValueType.string),
-                required: true,
-              ),
-              'ref_type': _ValueProperty(
-                _ValueSchema(_ValueType.string, enumValues: ['asset', 'node']),
-                required: true,
-              ),
-              'ref_id': _ValueProperty(
-                _ValueSchema(_ValueType.string),
-                required: true,
-              ),
-              'role': _ValueProperty(
-                _ValueSchema(
-                  _ValueType.string,
-                  enumValues: [
-                    'reference_image',
-                    'reference_video',
-                    'reference_audio',
-                    'first_frame',
-                    'middle_frame',
-                    'last_frame',
-                  ],
-                ),
-                required: true,
-              ),
-            },
-          ),
-        ),
-        read: _FieldRead(path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'adopted_asset_id': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        write: _FieldInputUse(field: true),
-      ),
-      'prompt': _ResourceField(
-        search: {_FieldSearch.body},
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-        edit: _FieldEdit(),
-      ),
-      'provider_id': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'model_id': _ResourceField(
-        value: _ValueSchema(_ValueType.string, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'reference_mode': _ResourceField(
-        value: _ValueSchema(
-          _ValueType.string,
-          enumValues: ['reference', 'first_last_frame'],
-        ),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'duration_ms': _ResourceField(
-        description: '视频生成的计划时长（毫秒），不是已生成媒体或整集成片的实测时长。',
-        value: _ValueSchema(_ValueType.integer, nullable: true, minimum: 1),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'generate_audio': _ResourceField(
-        description: '是否生成音频；null 跟随模型默认。',
-        value: _ValueSchema(_ValueType.boolean, nullable: true),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'ratio': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
-      'resolution': _ResourceField(
-        value: _ValueSchema(_ValueType.string),
-        read: _FieldRead(listing: true, path: true),
-        create: _FieldInputUse(),
-        write: _FieldInputUse(field: true),
-      ),
     },
     children: [_clipGenerations],
-    operations: [
-      _ResourceOperation(
-        _ResourceTool.read,
-        _ResourceTargetKind.listing,
-        result: _ResourceResult(
-          _ResourceResultKind.listing,
-          references: ['entries[].path'],
-        ),
-      ),
-      _ResourceOperation(
-        _ResourceTool.read,
-        _ResourceTargetKind.resource,
-        result: _ResourceResult(
-          _ResourceResultKind.entity,
-          references: ['path'],
-        ),
-      ),
-      _ResourceOperation(
-        _ResourceTool.create,
-        _ResourceTargetKind.listing,
-        input: _ResourceInput(_ResourceInputKind.create_fields),
-      ),
-      _ResourceOperation(
-        _ResourceTool.write,
-        _ResourceTargetKind.resource,
-        input: _ResourceInput(_ResourceInputKind.resource_fields),
-      ),
-    ],
+    operations: _productionClipOperations,
   ),
   'scenes': _ResourceDefinition(
     segment: 'scenes',
@@ -3613,12 +3422,17 @@ const _resourceDefinitions = <String, _ResourceDefinition>{
   ),
 };
 
+const _toolResourceDefinitions = <String, _ResourceDefinition>{
+  'works': _worksDefinition,
+  ..._resourceDefinitions,
+};
+
 ParsedPath parseAiToolPath(String rawPath) {
-  return ParsedPath.parse(
-    rawPath,
-    schemaLookup: (name) => _resourceDefinitions[name],
-  );
+  return ParsedPath.parse(rawPath, schemaLookup: _toolResourceDefinition);
 }
+
+_ResourceDefinition? _toolResourceDefinition(String name) =>
+    _toolResourceDefinitions[name];
 
 typedef AiToolEventCallback =
     void Function(
@@ -3631,9 +3445,6 @@ typedef AiToolEventCallback =
 
 typedef AiNovelReader = Future<Map<String, dynamic>?> Function();
 typedef AiNovelWriter = Future<void> Function(Map<String, dynamic> fields);
-// 清除快速开书占位标记（「加入书架」）：由 Run 的 add-to-library 命令显式触发，
-// 不耦合任何写入动作。内部预检测，已非 draft 时无 DB 写入。
-typedef AiNovelDraftClearer = Future<void> Function();
 
 typedef AiToolCallRequestedCallback =
     void Function(
@@ -3646,10 +3457,11 @@ typedef AiImageGenerationCallback =
     Future<AiImageGenerationResult> Function(
       String prompt, {
       String? model,
+      ImageInvocationOptions? options,
       String? size,
       // 出图质量。null 表示不写这个参数，交给服务端默认。
       String? quality,
-      // 复杂度。原样传用户的选择，由生图服务按型号校验并补目录默认值。
+      // 复杂度。原样传用户的选择，由 Host 按模型声明校验并补默认值。
       String? complexity,
     });
 typedef AiImageEditCallback =
@@ -3657,12 +3469,14 @@ typedef AiImageEditCallback =
       String prompt, {
       required String imageData,
       String? model,
+      ImageInvocationOptions? options,
     });
 typedef AiMultiImageEditCallback =
     Future<AiImageGenerationResult> Function(
       String prompt, {
       required List<String> imageData,
       String? model,
+      ImageInvocationOptions? options,
       String? size,
       String? quality,
       String? complexity,
@@ -3712,6 +3526,7 @@ abstract class _AiToolManagerBase {
   AiNovelReader? get _primaryNovelReader;
   NovelContentService get _contentService;
   CrossWorkAccess? get crossWorkAccess;
+  NovelActionsService? get workCreationService;
   Future<List<AiProvider>> Function()? get providerReader;
   WorkingOverlayService get workingOverlayService;
   String? get sessionId;
@@ -3734,7 +3549,6 @@ abstract class _AiToolManagerBase {
 
   AiNovelReader? get novelReader;
   AiNovelWriter? get novelWriter;
-  AiNovelDraftClearer? get novelDraftClearer;
   AiImageGenerationCallback? get imageGenerationCallback;
   AiImageEditCallback? get imageEditCallback;
   AiAgentSkillsCommandCallback? get agentSkillsCommandCallback;
@@ -3765,7 +3579,7 @@ abstract class _AiToolManagerBase {
   AiCreateLocationCallback? createLocationCallback;
 
   _ResourceDefinition? _getCollectionSchema(String name) =>
-      _resourceDefinitions[name];
+      _toolResourceDefinition(name);
 
   /// Publish after the outermost tool-owned transaction commits. A failed
   /// savepoint discards only its own compact capture, never earlier commits.
@@ -4024,7 +3838,6 @@ class AiToolManager extends _AiToolManagerBase
     this.crossWorkAccess,
     this.providerReader,
     this.novelWriter,
-    this.novelDraftClearer,
     this.onToolCallRequested,
     this.onToolStarted,
     this.onToolFinished,
@@ -4104,7 +3917,7 @@ class AiToolManager extends _AiToolManagerBase
   final AiNovelWriter? novelWriter;
 
   @override
-  final AiNovelDraftClearer? novelDraftClearer;
+  NovelActionsService? workCreationService;
 
   final AiToolCallRequestedCallback? onToolCallRequested;
 
@@ -4156,7 +3969,7 @@ class AiToolManager extends _AiToolManagerBase
   final ValueNotifier<AiSessionMode>? sessionModeNotifier;
   final AiAskUserCallback? askUserCallback;
 
-  /// 已裁决建议的挂载回调。为 null（宿主未提供导航能力，或用户在设置里关闭）时，
+  /// 已裁决建议的挂载回调。为 null（宿主未启用建议，或用户在设置里关闭）时，
   /// SuggestNextAction 既不注册 dispatch 也不下发 ToolDef。
   @override
   final SuggestNextActionCallback? suggestNextActionCallback;
@@ -4364,11 +4177,17 @@ class AiToolManager extends _AiToolManagerBase
             ),
           );
         },
-        run: () => _handleCrossWorkMutation(
-          toolName: 'Create',
-          input: input,
-          run: (localInput) => _handleCreate(localInput),
-        ),
+        run: () {
+          final path = parseAiToolPath(_parseStringArgument(input['path']));
+          if (path.isWorksListing) {
+            return _handleCreate(input, worksPath: path);
+          }
+          return _handleCrossWorkMutation(
+            toolName: 'Create',
+            input: input,
+            run: _handleCreate,
+          );
+        },
         ref: callId,
       ),
     );
@@ -5000,7 +4819,7 @@ class AiToolManager extends _AiToolManagerBase
         ),
       );
     }
-    // 宿主未提供导航能力，或用户在设置里关闭建议时，工具连 schema 都不下发。
+    // 宿主未启用建议，或用户在设置里关闭建议时，工具连 schema 都不下发。
     if (suggestNextActionCallback != null) {
       defs.add(
         ToolDef(

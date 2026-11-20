@@ -106,6 +106,8 @@ Future<List<PluginConfigSubmission>> _pump(
   Set<String> savedSecrets = const {},
   Object? failWith,
   PluginActionRunner? onAction,
+  PluginConfigDraftController? draftController,
+  String? Function(String action)? actionSuccessText,
   ValueNotifier<bool>? dirty,
 }) async {
   final submissions = <PluginConfigSubmission>[];
@@ -124,6 +126,8 @@ Future<List<PluginConfigSubmission>> _pump(
         },
         actions: _actions,
         onAction: onAction,
+        draftController: draftController,
+        actionSuccessText: actionSuccessText,
         dirty: dirty,
       ),
     ),
@@ -326,6 +330,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Verify key: Succeeded'), findsNothing);
   });
+
+  testWidgets(
+    'successful action details clear on credential edits and failures',
+    (tester) async {
+      var ok = true;
+      await _pump(
+        tester,
+        savedSecrets: {'apiKey'},
+        onAction: (_, _) async => (ok: ok, code: ok ? null : 'unauthorized'),
+        actionSuccessText: (_) => 'Credits remaining: 0',
+      );
+      await tester.ensureVisible(_button('Verify key'));
+      await tester.tap(_button('Verify key'));
+      await tester.pumpAndSettle();
+      expect(find.text('Verify key: Credits remaining: 0'), findsOneWidget);
+      await tester.enterText(_field('API Key'), 'changed-key');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Credits remaining'), findsNothing);
+      ok = false;
+      await tester.ensureVisible(_button('Verify key'));
+      await tester.tap(_button('Verify key'));
+      await tester.pumpAndSettle();
+      expect(find.text('Verify key: Invalid credentials'), findsOneWidget);
+      expect(find.textContaining('Credits remaining'), findsNothing);
+    },
+    timeout: const Timeout(Duration(minutes: 1)),
+  );
+
+  testWidgets('draft form exposes a validated snapshot without saving', (
+    tester,
+  ) async {
+    final draft = PluginConfigDraftController();
+    final saved = await _pump(
+      tester,
+      draftController: draft,
+      onAction: (_, submission) async => (ok: true, code: null),
+    );
+    expect(_button('Save'), findsNothing);
+    expect(() => draft.read(), throwsFormatException);
+    await tester.enterText(_field('API Key'), 'draft-key');
+    await tester.pumpAndSettle();
+    expect(draft.read().secrets, {'apiKey': 'draft-key'});
+    expect(saved, isEmpty);
+    await tester.ensureVisible(_button('Verify key'));
+    await tester.tap(_button('Verify key'));
+    await tester.pumpAndSettle();
+    expect(find.text('Verify key: Succeeded'), findsOneWidget);
+    expect(draft.read().secrets, {'apiKey': 'draft-key'});
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(() => draft.read(), throwsStateError);
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('the result line shows only the latest outcome', (tester) async {
     await _pump(
@@ -582,4 +638,235 @@ void main() {
     expect(submissions.single.secrets, isEmpty);
     expect(dirty.value, false);
   });
+
+  test('combo stores typed text and a picked suggestion as a string', () {
+    final fields = parsePluginSettingFields({
+      'primaryModel': {
+        'type': 'combo',
+        'title': 'Primary model',
+        'required': true,
+        'default': 'listed/model',
+        'options': [
+          {'value': 'listed/model', 'label': 'Listed'},
+          {'value': 'other/model', 'label': 'Other'},
+        ],
+      },
+    });
+    const strings = PluginConfigStrings(
+      save: '',
+      saved: '',
+      saveFailed: '',
+      clear: '',
+      required: '',
+      secretSavedHint: '',
+      secretClearHint: '',
+      requiredSecretClearHint: '',
+      invalidInteger: '',
+      invalidNumber: '',
+      maxLength: _noLength,
+      range: _noRange,
+      actionSucceeded: '',
+      actionUnauthorized: '',
+      actionNetwork: '',
+      actionTimeout: '',
+      actionFailed: '',
+      actionRequires: _noField,
+      actionResult: _noResult,
+      modelDefault: '',
+      modelUnavailable: _gone,
+    );
+    final messages = buildPluginConfigMessages(
+      fields: fields,
+      values: const {},
+      savedSecrets: const {},
+      strings: strings,
+      locale: const Locale('en'),
+    );
+    final surface = messages.single['createSurface'] as Map<String, Object?>;
+    final field = (surface['components'] as List).cast<Map>().firstWhere(
+      (component) => component['id'] == 'field_primaryModel',
+    );
+    expect(field['component'], 'ComboField');
+    expect(
+      [for (final option in field['options'] as List) option['value']],
+      ['listed/model', 'other/model'],
+    );
+
+    final data = surface['dataModel'] as Map<String, Object?>;
+    expect((data['settings'] as Map)['primaryModel'], 'listed/model');
+    expect(
+      readPluginConfigSubmission(
+        fields: fields,
+        data: {
+          'settings': {'primaryModel': 'openai/gpt-6-luna'},
+        },
+      ).submission.settings,
+      {'primaryModel': 'openai/gpt-6-luna'},
+    );
+    expect(
+      readPluginConfigSubmission(
+        fields: fields,
+        data: {
+          'settings': {'primaryModel': ''},
+        },
+      ).issues['primaryModel'],
+      PluginSettingIssue.missing,
+    );
+  });
+
+  testWidgets('combo menu writes a suggestion and keeps a custom model id', (
+    tester,
+  ) async {
+    final fields = parsePluginSettingFields({
+      'primaryModel': {
+        'type': 'combo',
+        'title': 'Primary model',
+        'required': true,
+        'default': 'deepseek/deepseek-v4.1-flash-1017',
+        'options': [
+          {
+            'value': 'deepseek/deepseek-v4.1-flash-1017',
+            'label': 'DeepSeek V4.1 Flash',
+          },
+          {'value': 'zai/glm-5.3-flash', 'label': 'GLM 5.3 Flash'},
+        ],
+      },
+    });
+    final submissions = <PluginConfigSubmission>[];
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      _wrap(
+        PluginConfigForm(
+          fields: fields,
+          values: const {},
+          savedSecrets: const {},
+          onSave: (submission) async => submissions.add(submission),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(_field('Primary model')).controller!.text,
+      'deepseek/deepseek-v4.1-flash-1017',
+    );
+    await tester.tap(find.byTooltip('Choose…'));
+    await tester.pumpAndSettle();
+    expect(find.text('GLM 5.3 Flash'), findsOneWidget);
+    await tester.tap(find.text('GLM 5.3 Flash'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_field('Primary model')).controller!.text,
+      'zai/glm-5.3-flash',
+    );
+
+    await tester.enterText(_field('Primary model'), 'openai/gpt-6-luna');
+    await tester.pump();
+    await _save(tester);
+    expect(submissions.single.settings, {'primaryModel': 'openai/gpt-6-luna'});
+  });
+
+  testWidgets(
+    'combo chevron keeps 13px size, custom value opens all options, typing filters to empty state, and outside tap dismisses',
+    (tester) async {
+      final fields = parsePluginSettingFields({
+        'primaryModel': {
+          'type': 'combo',
+          'title': 'Primary model',
+          'default': 'custom/my-model',
+          'options': [
+            {'value': 'deepseek/v4', 'label': 'DeepSeek V4'},
+            {'value': 'zai/glm5', 'label': 'GLM 5'},
+          ],
+        },
+      });
+      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      await tester.pumpWidget(
+        _wrap(
+          PluginConfigForm(
+            fields: fields,
+            values: const {},
+            savedSecrets: const {},
+            onSave: (_) async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final chevronIcon = find.descendant(
+        of: find.byTooltip('Choose…'),
+        matching: find.byType(RevericIcon),
+      );
+      expect(chevronIcon, findsOneWidget);
+      expect(tester.getSize(chevronIcon), const Size(13, 13));
+
+      await tester.tap(find.byTooltip('Choose…'));
+      await tester.pumpAndSettle();
+      expect(find.text('DeepSeek V4'), findsOneWidget);
+      expect(find.text('GLM 5'), findsOneWidget);
+
+      await tester.tap(_field('Primary model'));
+      await tester.pumpAndSettle();
+      expect(find.text('DeepSeek V4'), findsOneWidget);
+
+      await tester.enterText(_field('Primary model'), 'no-such-model');
+      await tester.pumpAndSettle();
+      expect(find.text('DeepSeek V4'), findsNothing);
+      expect(find.text('No matches'), findsOneWidget);
+
+      await tester.tapAt(const Offset(300, 500));
+      await tester.pumpAndSettle();
+      expect(find.text('No matches'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'field group attaches description closer to its field than to the following field on macOS and Android',
+    (tester) async {
+      final fields = parsePluginSettingFields({
+        'primaryModel': {
+          'type': 'combo',
+          'title': 'Primary model',
+          'description': 'Model description',
+          'options': [
+            {'value': 'deepseek/v4', 'label': 'DeepSeek V4'},
+          ],
+        },
+        'prompt': {
+          'type': 'text',
+          'title': 'Prompt',
+          'description': 'Prompt description',
+        },
+      });
+      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+
+      for (final platform in [TargetPlatform.macOS, TargetPlatform.android]) {
+        debugDefaultTargetPlatformOverride = platform;
+        try {
+          await tester.pumpWidget(
+            _wrap(
+              PluginConfigForm(
+                fields: fields,
+                values: const {},
+                savedSecrets: const {},
+                onSave: (_) async {},
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final modelFieldRect = tester.getRect(_field('Primary model'));
+          final modelDescRect = tester.getRect(find.text('Model description'));
+          final promptLabelRect = tester.getRect(find.text('Prompt'));
+
+          final gapAbove = modelDescRect.top - modelFieldRect.bottom;
+          final gapBelow = promptLabelRect.top - modelDescRect.bottom;
+          expect(gapAbove, lessThan(gapBelow));
+          expect(tester.takeException(), isNull);
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
+      }
+    },
+  );
 }

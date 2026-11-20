@@ -45,20 +45,26 @@ final _log = AppLogger.forModule('AgentRuleCopy');
 Future<int?> showAgentRuleCopyDialog({
   required BuildContext context,
   required String databasePath,
+  required String novelId,
 }) {
   return showRevericDialog<int>(
     context: context,
     builder: (_) => DialogFeedback.scope(
-      builder: (_) => _AgentRuleCopyDialog(databasePath: databasePath),
+      builder: (_) =>
+          _AgentRuleCopyDialog(databasePath: databasePath, novelId: novelId),
     ),
   );
 }
 
 class _AgentRuleCopyDialog extends HookConsumerWidget {
-  const _AgentRuleCopyDialog({required this.databasePath});
+  const _AgentRuleCopyDialog({
+    required this.databasePath,
+    required this.novelId,
+  });
 
   /// 当前作品的内容库路径，即复制的目标。
   final String databasePath;
+  final String novelId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -78,11 +84,7 @@ class _AgentRuleCopyDialog extends HookConsumerWidget {
     // 只有建过内容库的其他作品才可能有规则可复制。
     final sourceNovels = (novelsAsync.asData?.value ?? const <Novel>[])
         .shelfVisible
-        .where(
-          (novel) =>
-              novel.hasContentDatabase &&
-              novel.contentDatabasePath != databasePath,
-        )
+        .where((novel) => novel.hasContentDatabase && novel.id != novelId)
         .toList(growable: false);
     final filteredNovels = sourceNovels
         .where(

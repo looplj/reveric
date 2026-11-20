@@ -10,26 +10,26 @@ import 'package:easy_localization/easy_localization.dart';
 import '../../../models/ai_provider.dart';
 import '../../../localization/locale_keys.dart';
 import '../../../models/image/channels.dart';
-import '../image.dart';
 import 'client.dart';
 
 class QwenImageClient extends ImageClient {
   QwenImageClient(super.config);
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request);
-    final defaults = channel?.requestDefaults;
+    final defaults = request.nativeDefaults;
     final size = request.size;
     final requestedSize =
         channel != null && channel.capabilities.resolutions.contains(size)
         ? channel.capabilities.size('1:1', size!)
-        : size ?? defaults?.size;
+        : size ?? defaults.size;
     final references = <String>[];
-    for (final image in request.images) {
-      references.add(await imageInputAsUrlOrDataUri(image));
+    for (final image in request.references) {
+      references.add(await imageInputAsUrlOrDataUri(image, outputs));
     }
     final base = Uri.parse(config.effectiveBaseUrl);
     final basePath = base.path.replaceFirst(RegExp(r'/+$'), '');
@@ -51,8 +51,8 @@ class QwenImageClient extends ImageClient {
               'prompt': request.prompt,
               'n': 1,
               'size': ?requestedSize,
-              'watermark': ?defaults?.watermark,
-              'prompt_extend': ?defaults?.promptExtend,
+              'watermark': ?defaults.watermark,
+              'prompt_extend': ?defaults.promptExtend,
               if (references.isNotEmpty) 'image': references,
             }
           : {
@@ -72,14 +72,15 @@ class QwenImageClient extends ImageClient {
                 'n': 1,
                 if (requestedSize != null && requestedSize != 'auto')
                   'size': requestedSize.replaceAll('x', '*'),
-                'watermark': ?defaults?.watermark,
-                'prompt_extend': ?defaults?.promptExtend,
+                'watermark': ?defaults.watermark,
+                'prompt_extend': ?defaults.promptExtend,
               },
             },
     );
     if (modern) {
       return parseImageResponse(
         data,
+        outputs,
         emptyMessage: tr(LocaleKeys.aiImageNoResult),
       );
     }
@@ -95,8 +96,10 @@ class QwenImageClient extends ImageClient {
         }
       }
     }
-    return parseImageResponse({
-      'data': images,
-    }, emptyMessage: tr(LocaleKeys.aiImageNoResult));
+    return parseImageResponse(
+      {'data': images},
+      outputs,
+      emptyMessage: tr(LocaleKeys.aiImageNoResult),
+    );
   }
 }

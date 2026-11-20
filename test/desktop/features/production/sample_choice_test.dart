@@ -73,6 +73,7 @@ void main() {
                 ratio: '9:16',
                 resolution: '1080p',
                 sample: supportsDraft ? sample : null,
+                sampleResolution: supportsDraft ? '360p' : null,
                 onChanged: ({ratio, resolution}) => picked.add(resolution),
               ),
             ),
@@ -92,7 +93,7 @@ void main() {
       await tester.tap(find.text('Sample'));
       await tester.pumpAndSettle();
       expect(sample.value, isTrue);
-      expect(find.text('9:16 · 480P sample'), findsOneWidget);
+      expect(find.text('9:16 · 360P sample'), findsOneWidget);
       await tester.tap(find.text('720P'));
       await tester.pumpAndSettle();
       expect(sample.value, isFalse);

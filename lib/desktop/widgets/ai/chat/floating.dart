@@ -42,6 +42,7 @@ class FloatingAiChat extends HookConsumerWidget {
     required this.onOpenChanged,
     required this.sessionId,
     required this.panel,
+    this.readOnly = false,
   });
 
   final bool open;
@@ -53,17 +54,23 @@ class FloatingAiChat extends HookConsumerWidget {
   /// 收起时只隐藏不卸载，流式输出、滚动位置和输入草稿都保留。
   final Widget panel;
 
+  /// 只读模式（如画布画廊）：不订阅运行态/任务/审批 provider，仅复用浮窗外壳与悬浮球。
+  final bool readOnly;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final appBackgroundActive = ref.watch(appBackgroundActiveProvider);
-    final busy = ref.watch(
-      aiChatRuntimeProvider(sessionId).select((s) => s.isEditing),
-    );
-    final todos =
-        ref.watch(sessionTodosProvider(sessionId)).value ?? const <Todo>[];
+    final busy = readOnly
+        ? false
+        : ref.watch(
+            aiChatRuntimeProvider(sessionId).select((s) => s.isEditing),
+          );
+    final todos = readOnly
+        ? const <Todo>[]
+        : ref.watch(sessionTodosProvider(sessionId)).value ?? const <Todo>[];
     final id = sessionId;
-    final waiting = id == null
+    final waiting = readOnly || id == null
         ? 0
         : ref.watch(pendingToolApprovalsProvider(id)).value?.length ?? 0;
 

@@ -1,7 +1,6 @@
 // 职责: 提供短剧制作的内置风格分类、名称与前后提示词。
 // 关联文件:
 //   lib/shared/models/production/style.dart
-//   lib/shared/models/production/default_style.dart
 import 'style.dart';
 
 // 风格名称与提示词作为同一份创作素材维护，不随界面语言切换。

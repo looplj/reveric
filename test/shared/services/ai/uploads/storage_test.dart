@@ -51,7 +51,7 @@ void main() {
     storage: oss == null
         ? ObjectStorageService(database: db)
         : FakeObjectStorage(db, oss),
-    probe: (_) async => const MediaInfo(
+    probe: (_, {cancellation}) async => const MediaInfo(
       duration: Duration.zero,
       hasAudio: false,
       hasVideo: true,
@@ -206,7 +206,7 @@ void main() {
       final references = ReferenceStorageService(
         database: db,
         storage: ObjectStorageService(database: db),
-        probe: (_) async => const MediaInfo(
+        probe: (_, {cancellation}) async => const MediaInfo(
           duration: Duration.zero,
           hasAudio: false,
           hasVideo: true,
@@ -299,7 +299,7 @@ void main() {
   });
 
   test(
-    'concurrent upload persists once but broken OSS blocks cached references',
+    'concurrent channel upload remains reusable despite broken unused OSS',
     () async {
       final storage = service();
       await Future.wait([
@@ -311,13 +311,13 @@ void main() {
         key: ObjectStorageConfig.appSettingsKey,
         value: 'broken',
       );
-      await expectLater(
-        service().preflight(providerId: provider.id, inputs: [input]),
-        throwsA(isA<VideoException>()),
+      expect(
+        await service().preflight(providerId: provider.id, inputs: [input]),
+        isTrue,
       );
-      await expectLater(
-        service().ensure(input, file, provider: provider),
-        throwsA(isA<VideoException>()),
+      expect(
+        (await service().ensure(input, file, provider: provider)).url,
+        'https://read.example/a',
       );
       expect(posts, 1);
       expect(await db.providerAssetDao.watchByAssets(['a']).first, isEmpty);
@@ -331,7 +331,7 @@ void main() {
       );
     },
   );
-  test('OSS takes priority even with a cached channel upload', () async {
+  test('channel upload takes priority over OSS and reuses cache', () async {
     var uploads = 0;
     final storage = service(
       oss:
@@ -347,16 +347,16 @@ void main() {
     );
     expect(
       (await storage.ensure(input, file, provider: provider)).url,
-      'https://oss.example/a',
+      'https://read.example/a',
     );
-    expect(posts, 0);
-    expect(uploads, 1);
+    expect(posts, 1);
+    expect(uploads, 0);
     await service().ensure(input, file, provider: provider);
     expect(
       (await storage.ensure(input, file, provider: provider)).url,
-      'https://oss.example/a',
+      'https://read.example/a',
     );
-    expect(uploads, 2);
+    expect(uploads, 0);
     expect(posts, 1);
   });
   test('failed uploads stay failed and retries use the same row', () async {
@@ -421,6 +421,11 @@ void main() {
           value: raw,
         );
       }
+      expect(
+        await service().preflight(providerId: provider.id, inputs: [input]),
+        isTrue,
+      );
+      await db.aiProviderDao.upsert(provider.copyWith(type: 'openai'));
       final check = service().preflight(
         providerId: provider.id,
         inputs: [input],

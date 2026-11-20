@@ -155,6 +155,7 @@ class ExpandedChatArea extends StatelessWidget {
               width: RevericSizes.chatPanelWidth,
               child: RepaintBoundary(
                 child: ChatSidePanel(
+                  novelId: novel.id,
                   databasePath: databasePath,
                   changes: pendingAiChanges,
                   sessionId: activeSessionId,

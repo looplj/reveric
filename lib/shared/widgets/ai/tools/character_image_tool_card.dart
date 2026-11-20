@@ -3,6 +3,7 @@
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/services/ai/tools_image.dart
 //   lib/shared/widgets/ai/chat/chat_message_view.dart
+//   lib/shared/widgets/ai/chat/published_chat_image.dart
 //   lib/shared/utils/storage_paths.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
@@ -23,16 +24,20 @@ import 'package:reveric/shared/models/ai_message_block.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
 
+import '../chat/published_chat_image.dart';
+
 class AiCharacterImageToolCard extends StatefulWidget {
   const AiCharacterImageToolCard({
     super.key,
     required this.block,
+    this.readOnly = false,
     this.onSetAsAvatar,
     this.onAddPhoto,
     this.onConfigureImageModel,
   });
 
   final AiImageBlock block;
+  final bool readOnly;
 
   /// Receives the registered image asset ID.
   final Future<void> Function(String assetId)? onSetAsAvatar;
@@ -59,13 +64,14 @@ class _AiCharacterImageToolCardState extends State<AiCharacterImageToolCard> {
 
   bool get _hasRenderableImage =>
       _localImageFile != null ||
-      block.imageBase64 != null ||
-      block.imageUrl != null;
+      (!widget.readOnly &&
+          (block.imageBase64 != null || block.imageUrl != null));
 
   bool get _canToggle =>
       _hasRenderableImage || block.status != AiImageStatus.generating;
 
   bool get _canApplyAction =>
+      !widget.readOnly &&
       block.status == AiImageStatus.success &&
       block.assetId != null &&
       block.assetId!.isNotEmpty &&
@@ -371,6 +377,9 @@ class _AiCharacterImageToolCardState extends State<AiCharacterImageToolCard> {
 
   ImageProvider? get _imageProvider {
     final file = _localImageFile;
+    if (widget.readOnly) {
+      return file == null ? null : PublishedChatImage(file.path);
+    }
     if (file != null) {
       return FileImage(file);
     }

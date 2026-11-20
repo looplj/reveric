@@ -19,6 +19,7 @@ import 'package:reveric/shared/services/director/session.dart';
 import 'package:reveric/shared/services/screenplay/staging.dart';
 import 'package:reveric/shared/widgets/screenplay/director_workspace.dart';
 import 'harness.dart';
+import 'package:reveric/shared/services/system_tray_service.dart';
 import 'package:reveric/desktop/widgets/desktop_save_shortcut.dart';
 
 class FailingDao extends ScreenplayDao {
@@ -230,6 +231,61 @@ void main() {
       reopened.session.dispose();
     },
   );
+
+  testWidgets('hidden tray exit commits focused input without another frame', (
+    tester,
+  ) async {
+    final session = await mount(tester, const Size(1200, 900));
+    await tester.enterText(
+      find.byKey(const ValueKey('director-field:duration')),
+      '6',
+    );
+    await tester.pump();
+    expect(session.hasPendingInput, isTrue);
+    const channels = [
+      MethodChannel('reveric/process_exit'),
+      MethodChannel('window_manager'),
+    ];
+    for (final channel in channels) {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        (_) async => null,
+      );
+    }
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    expect(tester.binding.framesEnabled, isFalse);
+    int? exitCode;
+    try {
+      // Real event-loop time, deliberately no pump/frame until exit completes.
+      await tester.runAsync(() async {
+        await SystemTrayService().exitApplicationForTesting(
+          (code) {
+            exitCode = code;
+          },
+          timeout: const Duration(milliseconds: 500),
+          unlock: () {},
+          cleanExit: () async {},
+        );
+      });
+      expect(exitCode, 0);
+      expect(session.hasPendingInput, isFalse);
+      expect(
+        (await dao.getStaging('staging'))!.document!['duration_frames'],
+        144,
+      );
+    } finally {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (final channel in channels) {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        );
+      }
+      await tester.pumpAndSettle();
+    }
+  });
 
   testWidgets(
     'system back commits a valid focused field and flushes before closing',

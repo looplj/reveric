@@ -60,15 +60,15 @@ final class AnonymousReportingConsentServiceProvider
 String _$anonymousReportingConsentServiceHash() =>
     r'f5d61a4a2c0b76dc7e83e81335f504ed33337315';
 
-/// 用户是否同意匿名诊断上报（opt-in，默认 false）。
+/// 匿名诊断上报设置。首次使用默认开启。
 
 @ProviderFor(AnonymousReportingConsent)
 final anonymousReportingConsentProvider = AnonymousReportingConsentProvider._();
 
-/// 用户是否同意匿名诊断上报（opt-in，默认 false）。
+/// 匿名诊断上报设置。首次使用默认开启。
 final class AnonymousReportingConsentProvider
     extends $AsyncNotifierProvider<AnonymousReportingConsent, bool> {
-  /// 用户是否同意匿名诊断上报（opt-in，默认 false）。
+  /// 匿名诊断上报设置。首次使用默认开启。
   AnonymousReportingConsentProvider._()
     : super(
         from: null,
@@ -91,7 +91,7 @@ final class AnonymousReportingConsentProvider
 String _$anonymousReportingConsentHash() =>
     r'3ad629cbe0a1fdbb713da3e1439cc5b00b98ad9c';
 
-/// 用户是否同意匿名诊断上报（opt-in，默认 false）。
+/// 匿名诊断上报设置。首次使用默认开启。
 
 abstract class _$AnonymousReportingConsent extends $AsyncNotifier<bool> {
   FutureOr<bool> build();
@@ -157,4 +157,4 @@ final class AnonymousOutboxServiceProvider
 }
 
 String _$anonymousOutboxServiceHash() =>
-    r'2f6590ee9d63e1817a95842cb813810603700d92';
+    r'48a053770a53884543da6c34afa3858adf38b143';

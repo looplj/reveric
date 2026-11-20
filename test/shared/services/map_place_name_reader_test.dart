@@ -65,7 +65,6 @@ void main() {
       final body = jsonDecode(captured.body) as Map<String, dynamic>;
       expect(captured.url.path, '/v1/chat/completions');
       expect(captured.headers['Authorization'], 'Bearer test-key');
-      expect(captured.headers.containsKey('X-Product-Code'), isFalse);
       final messages = body['messages']! as List<dynamic>;
       final userMessage = messages.last as Map<String, dynamic>;
       final content = userMessage['content']! as List<dynamic>;

@@ -14,7 +14,11 @@
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
 //   .agents/rules/state-management.md
+//   .agents/rules/hooks.md
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../shared/components/dialog_feedback.dart';
@@ -27,6 +31,8 @@ import '../../../shared/providers/settings_providers.dart';
 import '../../../shared/providers/subagent_providers.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/agent_avatar.dart';
+import '../../../shared/widgets/guide/tour.dart';
+import '../../../shared/widgets/guide/trigger.dart';
 import '../ai/model/model_selector.dart';
 import 'home_management_cards.dart';
 
@@ -80,7 +86,7 @@ Future<void> showAgentModelSettingsDialog(BuildContext context) {
   );
 }
 
-class AgentModelSettingsPage extends ConsumerWidget {
+class AgentModelSettingsPage extends HookConsumerWidget {
   const AgentModelSettingsPage({
     super.key,
     required this.headerGestureExclusionKey,
@@ -96,10 +102,46 @@ class AgentModelSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(appSettingsProvider);
     final agentsAsync = ref.watch(globalSubAgentsProvider);
+    final chatRowKey = useMemoized(GlobalKey.new);
+    final imageRowKey = useMemoized(GlobalKey.new);
+    final agentsRowKey = useMemoized(GlobalKey.new);
+    final ready = settingsAsync.hasValue && agentsAsync.hasValue;
+    final guide = useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.modelSettings,
+      ready: ready,
+      keys: [ready],
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'model_settings_chat',
+          targetKey: chatRowKey,
+          icon: RevericIcons.chat_bubble_outline,
+          title: ctx.t(LocaleKeys.onboardingGuideModelSettingsChatTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideModelSettingsChatBody),
+        ),
+        GuideStep(
+          id: 'model_settings_image',
+          targetKey: imageRowKey,
+          icon: RevericIcons.image_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideModelSettingsImageTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideModelSettingsImageBody),
+        ),
+        GuideStep(
+          id: 'model_settings_agents',
+          targetKey: agentsRowKey,
+          icon: RevericIcons.smart_toy_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideModelSettingsAgentsTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideModelSettingsAgentsBody),
+        ),
+      ],
+    );
 
     return HomeManagementScaffold(
       headerGestureExclusionKey: headerGestureExclusionKey,
       headerTrailingInset: headerTrailingInset,
+      secondaryAction: GuideReplayButton(
+        onPressed: () => unawaited(guide.replay()),
+      ),
       icon: RevericIcons.tune,
       titleKey: LocaleKeys.agentStudioModelSettings,
       child: settingsAsync.when(
@@ -115,6 +157,9 @@ class AgentModelSettingsPage extends ConsumerWidget {
           data: (agents) => _AgentModelSettingsContent(
             settings: settings,
             agents: agents,
+            chatRowKey: chatRowKey,
+            imageRowKey: imageRowKey,
+            agentsRowKey: agentsRowKey,
 
             onEditPrompt: onEditPrompt,
             onDefaultChanged: (kind, optionId) =>
@@ -262,6 +307,9 @@ class _AgentModelSettingsContent extends StatelessWidget {
   const _AgentModelSettingsContent({
     required this.settings,
     required this.agents,
+    this.chatRowKey,
+    this.imageRowKey,
+    this.agentsRowKey,
 
     required this.onEditPrompt,
     required this.onDefaultChanged,
@@ -272,6 +320,9 @@ class _AgentModelSettingsContent extends StatelessWidget {
 
   final AppSettings settings;
   final List<SubAgent> agents;
+  final GlobalKey? chatRowKey;
+  final GlobalKey? imageRowKey;
+  final GlobalKey? agentsRowKey;
   final ValueChanged<SubAgent>? onEditPrompt;
   final Future<void> Function(AiModelKind kind, String? optionId)
   onDefaultChanged;
@@ -349,6 +400,12 @@ class _AgentModelSettingsContent extends StatelessWidget {
             const SizedBox(height: RevericSpacing.x3l),
             for (var index = 0; index < items.length; index++) ...[
               _AgentModelSettingRow(
+                key: switch (index) {
+                  0 => chatRowKey,
+                  1 => imageRowKey,
+                  2 => agentsRowKey,
+                  _ => null,
+                },
                 item: items[index],
                 aiSettings: settings.aiSettings,
               ),
@@ -397,7 +454,11 @@ class _AgentModelSettingItem {
 }
 
 class _AgentModelSettingRow extends StatelessWidget {
-  const _AgentModelSettingRow({required this.item, required this.aiSettings});
+  const _AgentModelSettingRow({
+    super.key,
+    required this.item,
+    required this.aiSettings,
+  });
 
   final _AgentModelSettingItem item;
   final AiSettings aiSettings;

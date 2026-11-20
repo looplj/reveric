@@ -5,8 +5,8 @@
 import 'package:drift/drift.dart';
 
 import '../novel_content_database.dart';
-import '../../utils/resource_path.dart';
 import '../../logger/app_logger.dart';
+import 'working_change_dao.dart';
 
 part 'change_commit_dao.drift.dart';
 
@@ -63,8 +63,12 @@ class ChangeCommitDao extends DatabaseAccessor<NovelContentDatabase>
   }) {
     final query = select(changeCommitItems)
       ..where(
-        (table) =>
-            table.resourcePath.equals(canonicalResourcePath(resourcePath)),
+        (table) => matchesWorkingChangePath(
+          resourcePath,
+          resourcePath: table.resourcePath,
+          resourceType: table.resourceType,
+          resourceId: table.resourceId,
+        ),
       )
       ..orderBy([
         (table) =>

@@ -4,6 +4,7 @@
 //   lib/shared/providers/settings_providers.dart
 //   lib/shared/utils/windows_safe_path.dart
 //   lib/shared/services/production/backup_media.dart
+//   lib/shared/services/backup_zip.dart
 
 import 'dart:convert';
 import 'dart:io';
@@ -18,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'production/backup_media.dart';
+import 'backup_zip.dart';
 import 'plugins/host.dart';
 import 'plugins/runtime.dart';
 import '../logger/app_logger.dart';
@@ -319,8 +321,10 @@ class BackupService {
 
   /// 校验备份包并读取可恢复小说，不修改当前数据。
   Future<BackupInspectionResult> inspectBackup(String zipPath) async {
+    _log.info('Restore inspection started');
     final zipFile = File(zipPath);
     if (!await zipFile.exists()) {
+      _log.warning('Restore inspection failed: file not found');
       return const BackupInspectionResult(
         success: false,
         failureReason: RestoreFailureReason.fileNotFound,
@@ -329,28 +333,39 @@ class BackupService {
 
     final extractDir = await _createRestoreExtractDirectory();
     try {
-      await Isolate.run(
+      _log.info(
+        'Restore inspection extracting bytes=${await zipFile.length()}',
+      );
+      final extraction = await Isolate.run(
         () => _extractZipSafely(
           zipPath: zipPath,
           extractDirPath: extractDir.path,
         ),
       );
+      _log.info('Restore inspection extracted $extraction');
       final appSupportDir = await getApplicationSupportDirectory();
-      final backup = _readExtractedBackup(
-        sourceDir: extractDir,
+      _log.info('Restore inspection validating databases');
+      final backup = await _readExtractedBackupInBackground(
+        sourceDirPath: extractDir.path,
         zipPath: zipPath,
-        appSupportDir: appSupportDir,
+        appSupportDirPath: appSupportDir.path,
         expectedVersion: _backupVersion,
+      );
+      _log.info(
+        'Restore inspection completed novels=${backup.preview.novels.length}',
       );
       return BackupInspectionResult(success: true, preview: backup.preview);
     } on _RestoreValidationFailure catch (error) {
+      _log.warning(
+        'Restore inspection rejected: ${error.reason.name} details=${error.details}',
+      );
       return BackupInspectionResult(
         success: false,
         failureReason: error.reason,
       );
     } catch (error, stackTrace) {
       _log.error(
-        'Restore inspection failed path=$zipPath',
+        'Restore inspection failed',
         error: error,
         stackTrace: stackTrace,
       );
@@ -387,21 +402,23 @@ class BackupService {
 
       _log.info('Restore: extracting zip in isolate');
       extractDir = await _createRestoreExtractDirectory();
-      await Isolate.run(
+      final extraction = await Isolate.run(
         () => _extractZipSafely(
           zipPath: zipPath,
           extractDirPath: extractDir!.path,
         ),
       );
-      _log.info('Restore: zip extracted');
+      _log.info('Restore: zip extracted $extraction');
 
       final appSupportDir = await getApplicationSupportDirectory();
-      final backup = _readExtractedBackup(
-        sourceDir: extractDir,
+      _log.info('Restore: validating databases in isolate');
+      final backup = await _readExtractedBackupInBackground(
+        sourceDirPath: extractDir.path,
         zipPath: zipPath,
-        appSupportDir: appSupportDir,
+        appSupportDirPath: appSupportDir.path,
         expectedVersion: _backupVersion,
       );
+      _log.info('Restore: database validation completed');
       final selectedIds = mode == RestoreMode.selectedNovels
           ? Set<String>.unmodifiable(novelIds)
           : backup.novelRows.keys.toSet();
@@ -474,6 +491,9 @@ class BackupService {
         restoredNovelCount: selectedIds.length,
       );
     } on _RestoreValidationFailure catch (error) {
+      _log.warning(
+        'Restore rejected mode=${mode.name}: ${error.reason.name} details=${error.details}',
+      );
       return RestoreResult(
         success: false,
         failureReason: error.reason,
@@ -565,8 +585,11 @@ void _validateBackupSchemas(Directory sourceDir) {
       final version =
           database.select('PRAGMA user_version').single['user_version'] as int;
       if (version != supported) {
-        throw const _RestoreValidationFailure(
+        throw _RestoreValidationFailure(
           RestoreFailureReason.unsupportedBackup,
+          details:
+              'database=${jsonEncode(p.relative(file.path, from: sourceDir.path))} '
+              'schema=$version supported=$supported',
         );
       }
     } finally {
@@ -590,6 +613,22 @@ void _validateBackupSchemas(Directory sourceDir) {
     }
   }
 }
+
+// 单独建立闭包作用域，只传路径和版本，避免捕获恢复回调及其 UI/数据库状态。
+// SQLite 连接在工作 isolate 内打开并关闭，返回的只有校验后的普通数据。
+Future<_ExtractedBackup> _readExtractedBackupInBackground({
+  required String sourceDirPath,
+  required String appSupportDirPath,
+  required String zipPath,
+  required int expectedVersion,
+}) => Isolate.run(
+  () => _readExtractedBackup(
+    sourceDir: Directory(sourceDirPath),
+    appSupportDir: Directory(appSupportDirPath),
+    zipPath: zipPath,
+    expectedVersion: expectedVersion,
+  ),
+);
 
 _ExtractedBackup _readExtractedBackup({
   required Directory sourceDir,
@@ -1102,9 +1141,10 @@ class _SelectedNovelPlan {
 }
 
 class _RestoreValidationFailure implements Exception {
-  const _RestoreValidationFailure(this.reason);
+  const _RestoreValidationFailure(this.reason, {this.details});
 
   final RestoreFailureReason reason;
+  final String? details;
 }
 
 class _RestoreApplyFailure implements Exception {
@@ -1528,39 +1568,37 @@ Future<void> _copyFileWithOptionalWarning(
 
 /// 在 isolate 中从临时目录创建 zip 文件。
 /// 所有参数均为 Sendable（String），可安全传给 [Isolate.run]。
-String _createZipFromDir({
+Future<String> _createZipFromDir({
   required String tempDirPath,
   required String outputDirPath,
   required String zipName,
-}) {
+}) async {
   final zipPath = p.join(outputDirPath, zipName);
-  final encoder = ZipFileEncoder();
-  encoder.create(zipPath);
-
-  final dir = Directory(tempDirPath);
-  final files = dir.listSync(recursive: true);
-  for (final entity in files) {
-    if (entity is File) {
-      final relativePath = p.relative(entity.path, from: tempDirPath);
-      encoder.addFileSync(entity, relativePath);
-    }
-  }
-  encoder.closeSync();
+  await createBackupZip(Directory(tempDirPath), zipPath);
   return zipPath;
 }
 
 /// 在 isolate 中解压 zip 文件到目标目录。
 /// 所有参数均为 sendable，不依赖类上下文。
-void _extractZipSafely({
+String _extractZipSafely({
   required String zipPath,
   required String extractDirPath,
 }) {
+  final watch = Stopwatch()..start();
   final input = InputFileStream(zipPath);
+  var index = -1;
+  var files = 0;
+  var bytes = 0;
+  var stage = 'directory';
+  ArchiveFile? activeEntry;
   try {
     final archive = ZipDecoder().decodeStream(input);
 
     final extractRoot = p.normalize(extractDirPath);
     for (final entry in archive) {
+      index++;
+      activeEntry = entry;
+      stage = 'path_validation';
       final portableName = entry.name.replaceAll('\\', '/');
       if (p.posix.isAbsolute(portableName) ||
           p.windows.isAbsolute(entry.name) ||
@@ -1586,15 +1624,33 @@ void _extractZipSafely({
         if (!p.isWithin(extractRoot, outputPath)) {
           throw const FormatException('Unsafe zip entry path');
         }
+        stage = 'output_open';
         Directory(p.dirname(outputPath)).createSync(recursive: true);
         final output = OutputFileStream(outputPath);
         try {
+          stage = 'decompress';
           entry.writeContent(output);
+          stage = 'output_close';
         } finally {
           output.closeSync();
         }
+        files++;
+        bytes += entry.size;
       }
     }
+    return 'files=$files bytes=$bytes elapsedMs=${watch.elapsedMilliseconds}';
+  } catch (error, stackTrace) {
+    final entry = activeEntry;
+    Error.throwWithStackTrace(
+      FormatException(
+        'ZIP extraction failed stage=$stage entryIndex=$index '
+        'entry=${jsonEncode(entry?.name)} size=${entry?.size} '
+        'compression=${entry?.compression} expectedCrc32=${entry?.crc32} '
+        'completedFiles=$files completedBytes=$bytes elapsedMs=${watch.elapsedMilliseconds} '
+        'causeType=${error.runtimeType} cause=$error',
+      ),
+      stackTrace,
+    );
   } finally {
     input.closeSync();
   }

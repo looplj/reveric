@@ -40,7 +40,7 @@ class ProductionImageCommands {
     } on StoryboardException catch (error) {
       throw ToolOperationException(
         error.code == 'request_conflict' ? 'conflict' : 'failed_precondition',
-        'StoryboardException(${error.code})',
+        'StoryboardException(${error.reason})',
       );
     } on MediaException catch (error) {
       throw ToolOperationException(
@@ -212,15 +212,14 @@ class ProductionImageCommands {
     }
     // node_id 指向作品内素材，本地操作无需文件审批。生成审批期间允许换图、改配置；
     // 批准后读取当前来源并组装请求，不比较旧快照，也不为提交前的短时间窗再次审批。
-    final target =
-        '/episodes/${source.episodeId}/production/canvas/nodes/$nodeId';
+    final target = productionNodePath(source.episodeId, nodeId);
     Future<void> resolveSource() async {
       try {
         source = await ProductionNodeSource.image(host.canvas, nodeId);
       } on StoryboardException catch (error) {
         throw ToolOperationException(
           'failed_precondition',
-          'The source image is unavailable: StoryboardException(${error.code})',
+          'The source image is unavailable: ${error.reason}',
         );
       }
     }

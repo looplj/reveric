@@ -15,6 +15,7 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
   ScreenplayService get _screenplayService => ScreenplayService(
     _contentService.database,
     novelActionsService: _contentService.novelActionsService,
+    novelId: _contentService.novelId,
   );
 
   @override
@@ -22,12 +23,14 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       _currentResourceCallContext?.scope.kind.name ?? contentKind;
 
   @override
-  bool isScreenplayPath(ParsedPath parsed) =>
-      _resourceDefinitions[parsed.collection]?.group == 'screenplay';
+  bool isScreenplayPath(ParsedPath parsed) => const {
+    contentKindScreenplay,
+    contentKindCanvas,
+  }.contains(_resourceDefinitions[parsed.collection]?.group);
 
   @override
   Map<String, dynamic>? _contentKindGate(ParsedPath parsed) {
-    final schema = _resourceDefinitions[parsed.collection];
+    final schema = _getCollectionSchema(parsed.collection);
     if (parsed.collection.isNotEmpty && schema == null) {
       return _resourceError(
         parsed.displayPath,
@@ -88,8 +91,12 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       _productionCanvas,
       _productionNodes,
       _productionEdges,
+      _canvasProductionDefinition,
+      _canvasProductionCanvas,
+      _canvasProductionNodes,
+      _canvasProductionEdges,
     }.contains(parsed._resource!.schema)) {
-      return _executeProduction(parsed, operation, fields: fields);
+      return _executeProduction(parsed, operation, fields: fields, edit: edit);
     }
     if (parsed.resourceSegment == 'generations') {
       try {
@@ -98,11 +105,12 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
         return {'ok': false, 'error_code': error.code, 'error': error.message};
       }
     }
-    if (parsed.collection == 'screenplay' &&
-        operation.tool != _ResourceTool.read) {
+    if ((parsed.collection == 'screenplay' &&
+            operation.tool != _ResourceTool.read) ||
+        parsed._resource.schema == _canvasProductionSettings) {
       return _executeScreenplayStyle(parsed, operation, fields, edit);
     }
-    if (parsed.collection == 'clips') {
+    if (parsed.resourceSegment == 'clips') {
       return _executeStoryboard(parsed, operation, fields: fields, edit: edit);
     }
     return switch (operation.tool) {
@@ -888,7 +896,9 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       if (!toolResultIsSuccess(result)) {
         return result;
       }
-      return {...result, 'edited': changed, 'match_count': matchCount};
+      // Edit never creates elements, so the element listing adds nothing.
+      return {...result, 'edited': changed, 'match_count': matchCount}
+        ..remove('entries');
     }
 
     try {
@@ -1108,7 +1118,11 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     return {
       'ok': true,
       'path': 'scenes/$sceneId/elements',
-      'entries': await _elementEntries(saved),
+      // New element IDs are needed for follow-up edits; the text is not.
+      'entries': [
+        for (final entry in await _elementEntries(saved))
+          Map<String, dynamic>.from(entry)..remove('text'),
+      ],
     };
   }
 
@@ -1150,7 +1164,12 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       expectedCurrentText: oldText,
     );
     _reportWorkingChange(change);
-    return {'ok': true, 'path': 'scenes/$sceneId/$field', field: target};
+    return {
+      'ok': true,
+      'path': 'scenes/$sceneId/$field',
+      'updated': true,
+      'fields': [field],
+    };
   }
 
   Future<Map<String, dynamic>> _stageSynopsis(
@@ -1174,7 +1193,12 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
       expectedCurrentText: current,
     );
     _reportWorkingChange(change);
-    return {'ok': true, 'path': 'scenes/$sceneId/synopsis', 'synopsis': target};
+    return {
+      'ok': true,
+      'path': 'scenes/$sceneId/synopsis',
+      'updated': true,
+      'fields': ['synopsis'],
+    };
   }
 
   Future<Map<String, dynamic>> _stageEpisodeOutline(
@@ -1201,7 +1225,8 @@ mixin _AiToolManagerScreenplayMixin on _AiToolManagerBase {
     return {
       'ok': true,
       'path': 'episodes/$episodeId/outline',
-      'outline': target,
+      'updated': true,
+      'fields': ['outline'],
     };
   }
 

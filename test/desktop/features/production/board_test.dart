@@ -4,6 +4,7 @@
 //   lib/desktop/features/production/interaction.dart
 //   lib/shared/services/production/canvas_service.dart
 import 'dart:io';
+import 'package:reveric/shared/models/content_kind.dart';
 
 import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
@@ -15,6 +16,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/desktop/features/production/board.dart';
 import 'package:reveric/desktop/features/production/node_card.dart';
+import 'package:reveric/shared/components/reveric_text_field.dart';
+import 'package:reveric/shared/widgets/confirm_dialog.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
@@ -35,6 +38,112 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
+  });
+
+  testWidgets('same input ID follows a replaced character reference', (
+    tester,
+  ) async {
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    final main = app.AppDatabase.forTest(NativeDatabase.memory());
+    await ScreenplayService(db).createCanvasStructure();
+    final shots = StoryboardService(db, contentKind: contentKindCanvas);
+    final source = await shots.ensureClipNode((await shots.createImage('')).id);
+    final replacement = await shots.ensureClipNode(
+      (await shots.createImage('')).id,
+    );
+    final target = await shots.ensureClipNode((await shots.createVideo('')).id);
+    final service = ProductionCanvasService(
+      shots,
+      MediaLibraryService(
+        main,
+        MediaService(FfmpegRunner()),
+        Directory.systemTemp,
+      ),
+      'work',
+    );
+    Future<void> reference(String nodeId) =>
+        shots.restoreInputs(target.clipId!, [
+          {
+            'id': 'person',
+            'ref_type': 'node',
+            'ref_id': nodeId,
+            'role': 'reference_image',
+          },
+        ]);
+    await reference(source.id);
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appBackgroundActiveProvider.overrideWithValue(false)],
+          child: EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData(),
+                home: RevericTheme(
+                  data: RevericThemeData.reveric,
+                  child: Scaffold(
+                    body: ProductionBoard(
+                      service: service,
+                      canvasId: source.canvasId,
+                      selected: null,
+                      segments: const [],
+                      segmentLabels: const {},
+                      sceneLabels: const {},
+                      camera: ProductionBoardCamera(),
+                      onSelect: (_) {},
+                      onClear: () {},
+                      onConnect: (_, _, _) {},
+                      onOpenDirector: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final controller = tester
+          .widget<flow.NodeFlowEditor<String, String>>(
+            find.byType(flow.NodeFlowEditor<String, String>),
+          )
+          .controller;
+      final edgeId = '${target.id}:person';
+      expect(controller.getConnection(edgeId)!.sourceNodeId, source.id);
+      controller.selectNode(target.id);
+      final viewport = controller.viewport;
+      final targetNode = controller.getNode(target.id);
+      for (final next in [replacement.id, source.id]) {
+        await reference(next);
+        await tester.pumpAndSettle();
+        expect(controller.connections, hasLength(1));
+        expect(controller.getConnection(edgeId)!.sourceNodeId, next);
+        expect(controller.getConnection(edgeId)!.targetNodeId, target.id);
+        expect(controller.getNode(target.id), same(targetNode));
+        expect(targetNode!.selected.value, true);
+        expect(controller.viewport, viewport);
+        expect(
+          (await shots.getShot(target.clipId!))!.inputs.single.refId,
+          next,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await db.close();
+        await main.close();
+      });
+    }
   });
 
   for (final platform in [TargetPlatform.macOS, TargetPlatform.windows]) {
@@ -77,6 +186,8 @@ void main() {
         second.id: (x: 500, y: 150),
       });
       final selected = ValueNotifier<String?>(null);
+      final typingFocus = FocusNode();
+      addTearDown(typingFocus.dispose);
       addTearDown(selected.dispose);
       try {
         await tester.pumpWidget(
@@ -111,7 +222,18 @@ void main() {
                           onClear: () => selected.value = null,
                           onConnect: (_, _, _) {},
                           onOpenDirector: (_) {},
-                          bar: const Text('Selection tools'),
+                          bar: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Selection tools'),
+                              SizedBox(
+                                width: 200,
+                                child: RevericTextField(
+                                  focusNode: typingFocus,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -514,7 +636,47 @@ void main() {
           await pointer.removePointer();
           await tester.pumpAndSettle();
         }
-        controller.clearSelection();
+        // Typing inside a selected node's controls must not delete that node.
+        controller.selectNode(first.id);
+        selected.value = first.id;
+        await tester.pumpAndSettle();
+        typingFocus.requestFocus();
+        await tester.pump();
+        expect(typingFocus.hasPrimaryFocus, isTrue);
+        await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmDialog), findsNothing);
+        expect(await db.canvasDao.getNodeById(first.id), isNotNull);
+
+        controller.selectNode(second.id, toggle: true);
+        controller.canvasFocusNode.requestFocus();
+        await tester.pumpAndSettle();
+        expect(controller.selectedNodeIds, {first.id, second.id});
+        await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmDialog), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(await db.canvasDao.getNodeById(first.id), isNotNull);
+        expect(await db.canvasDao.getNodeById(second.id), isNotNull);
+
+        controller.canvasFocusNode.requestFocus();
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmDialog), findsOneWidget);
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ConfirmDialog),
+            matching: find.widgetWithText(FilledButton, 'Delete'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(await db.canvasDao.getNodeById(first.id), isNull);
+        expect(await db.canvasDao.getNodeById(second.id), isNull);
+        expect(await db.canvasDao.getNodeById(videoNode.id), isNotNull);
+        expect(controller.getNode(first.id), isNull);
+        expect(controller.getNode(second.id), isNull);
       } finally {
         debugDefaultTargetPlatformOverride = null;
         await tester.pumpWidget(const SizedBox.shrink());
@@ -711,6 +873,215 @@ void main() {
       expect(selected, [node.id]);
       expect(menus, [(node.id, at)]);
       controller.clearSelection();
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await db.close();
+      await main.close();
+    }
+  });
+
+  testWidgets('empty scene band adds a segment and drags its scene node', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    final main = app.AppDatabase.forTest(NativeDatabase.memory());
+    final shots = StoryboardService(db);
+    final screenplay = ScreenplayService(db);
+    final episode = (await screenplay.createInitialStructure()).episodeId;
+    final scene = await screenplay.createScene(
+      screenplayId: (await db.screenplayDao.getRoot())!.id,
+      episodeId: episode,
+    );
+    final canvas = await shots.ensureCanvas(episode);
+    final anchor = (await db.canvasDao.getNodesByCanvas(
+      canvas.id,
+    )).singleWhere((n) => n.sceneId == scene);
+    final service = ProductionCanvasService(
+      shots,
+      MediaLibraryService(
+        main,
+        MediaService(FfmpegRunner()),
+        Directory.systemTemp,
+      ),
+      'work',
+    );
+    final added = <String>[];
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appBackgroundActiveProvider.overrideWithValue(false)],
+          child: EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData(),
+                home: RevericTheme(
+                  data: RevericThemeData.reveric,
+                  child: Scaffold(
+                    body: ProductionBoard(
+                      service: service,
+                      canvasId: canvas.id,
+                      selected: null,
+                      segments: const [],
+                      segmentLabels: const {},
+                      sceneLabels: {scene: 'Scene 1'},
+                      onAddSegment: added.add,
+                      camera: ProductionBoardCamera(),
+                      onSelect: (_) {},
+                      onClear: () {},
+                      onConnect: (_, _, _) {},
+                      onOpenDirector: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Scene 1'), findsOneWidget);
+      await tester.tap(find.text('Segment'));
+      await tester.pumpAndSettle();
+      expect(added, [scene]);
+
+      final zoom = tester
+          .widget<flow.NodeFlowEditor<String, String>>(
+            find.byType(flow.NodeFlowEditor<String, String>),
+          )
+          .controller
+          .viewport
+          .zoom;
+      await tester.runAsync(() async {
+        await tester.drag(
+          find.text('Scene 1'),
+          const Offset(120, 60),
+          kind: PointerDeviceKind.mouse,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+      final moved = (await tester.runAsync(
+        () => db.canvasDao.getNodeById(anchor.id),
+      ))!;
+      // 拖动距离按画布缩放换算回画布坐标；拖动起步阈值吃掉一小段，只核对方向和量级。
+      expect(moved.x - anchor.x, closeTo(120 / zoom, 40 / zoom));
+      expect(moved.y - anchor.y, closeTo(60 / zoom, 40 / zoom));
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await db.close();
+      await main.close();
+    }
+  });
+
+  testWidgets('dragging a segment title moves the whole scene together', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    final main = app.AppDatabase.forTest(NativeDatabase.memory());
+    final shots = StoryboardService(db);
+    final screenplay = ScreenplayService(db);
+    final episode = (await screenplay.createInitialStructure()).episodeId;
+    final scene = await screenplay.createScene(
+      screenplayId: (await db.screenplayDao.getRoot())!.id,
+      episodeId: episode,
+    );
+    for (final title in ['a', 'b', 'c']) {
+      await shots.create(scene, values: {'title': title});
+    }
+    final canvas = await shots.ensureCanvas(episode);
+    final segments = await shots.episodeShots(episode);
+    final service = ProductionCanvasService(
+      shots,
+      MediaLibraryService(
+        main,
+        MediaService(FfmpegRunner()),
+        Directory.systemTemp,
+      ),
+      'work',
+    );
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appBackgroundActiveProvider.overrideWithValue(false)],
+          child: EasyLocalization(
+            supportedLocales: const [Locale('en')],
+            path: 'assets/translations',
+            assetLoader: const MergingAssetLoader(),
+            startLocale: const Locale('en'),
+            fallbackLocale: const Locale('en'),
+            child: Builder(
+              builder: (context) => MaterialApp(
+                localizationsDelegates: context.localizationDelegates,
+                supportedLocales: context.supportedLocales,
+                locale: context.locale,
+                theme: RevericThemeData.reveric.toThemeData(),
+                home: RevericTheme(
+                  data: RevericThemeData.reveric,
+                  child: Scaffold(
+                    body: ProductionBoard(
+                      service: service,
+                      canvasId: canvas.id,
+                      selected: null,
+                      segments: segments,
+                      segmentLabels: const {},
+                      sceneLabels: {scene: 'Scene 1'},
+                      camera: ProductionBoardCamera(),
+                      onSelect: (_) {},
+                      onClear: () {},
+                      onConnect: (_, _, _) {},
+                      onOpenDirector: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final controller = tester
+          .widget<flow.NodeFlowEditor<String, String>>(
+            find.byType(flow.NodeFlowEditor<String, String>),
+          )
+          .controller;
+      final g = await tester.startGesture(
+        tester.getCenter(find.text('a').first),
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var i = 0; i < 5; i++) {
+        await g.moveBy(const Offset(40, -12));
+        await tester.pump();
+        // 标题在卡片外，按下时不能被画布当成空白框选：整场一直同步移动。
+        final xs = {
+          for (final n in controller.nodes.values) n.position.value.dx,
+        };
+        expect(xs, hasLength(1), reason: 'step $i');
+      }
+      await g.up();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      final rows = (await tester.runAsync(
+        () => db.canvasDao.getNodesByCanvas(canvas.id),
+      ))!;
+      expect({for (final n in rows) n.x}, hasLength(1));
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();

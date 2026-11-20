@@ -28,6 +28,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
@@ -194,6 +195,40 @@ void main() {
         );
     await root.delete(recursive: true);
   });
+
+  test('audio preview logs why a disabled provider cannot be used', () async {
+    final provider = (await appDb.aiProviderDao.getById('audio'))!;
+    await appDb.aiProviderDao.upsert(
+      provider.copyWith(enabled: false, apiKey: 'sk-private-audio'),
+    );
+    final previousDebugPrint = debugPrint;
+    final messages = <String>[];
+    debugPrint = (message, {wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+
+    await expectLater(
+      preview(),
+      throwsA(
+        isA<StoryboardException>().having(
+          (error) => error.code,
+          'code',
+          'invalid_config',
+        ),
+      ),
+    );
+    final diagnostic = messages.singleWhere(
+      (message) => message.contains('Audio preview rejected'),
+    );
+    expect(diagnostic, contains('providerId=audio'));
+    expect(diagnostic, contains('modelId=seed-audio-1.0'));
+    expect(diagnostic, contains('reason=provider_disabled'));
+    expect(diagnostic, isNot(contains('sk-private-audio')));
+  });
+
   test(
     'saved audio uses the actual MIME and preserves returned bytes',
     () async {
@@ -424,7 +459,7 @@ void main() {
       final first = await service.requireRun(await submit(service, p));
       expect(first.status, GenerationTaskStatus.completed);
       final asset = (await appDb.assetDao.getAsset(first.resultAssetId!))!;
-      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
       expect(await File('${root.path}/${asset.path}.part').exists(), false);
       expect(asset.source, 'generated');
       expect(asset.novelId, 'work');
@@ -548,8 +583,21 @@ void main() {
       ...canvas.shots.snapshot(clip),
       'model_id': 'music-3.0',
     });
+    final text = await canvas.addText(
+      node.canvasId,
+      content: 'Shared music direction',
+    );
+    await canvas.shots.restoreInputs(clip.id, [
+      ProductionInput.text(text.id).toJson(),
+    ]);
     final frozen = await preview();
     final frozenPrompt = frozen.request.prompt;
+    expect(frozenPrompt, startsWith('Shared music direction'));
+    await canvas.updateText(
+      text.id,
+      title: '',
+      content: 'Changed after preview',
+    );
     await canvas.shots.apply(clip.id, {
       ...canvas.shots.snapshot((await canvas.shots.getShot(clip.id))!),
       'prompt': 'New draft',
@@ -585,20 +633,37 @@ void main() {
     }).recover();
     expect(calls, 1);
   });
-  test('cancelled late response cannot adopt output', () async {
-    final pending = Completer<AudioGenerationResult>();
-    final service = jobs((_, _, _, _) => pending.future);
-    final future = submit(service, await preview());
-    final task = await running();
-    await service.cancel(task.id);
-    pending.complete(AudioGenerationResult(bytes));
-    await future;
-    expect(
-      (await service.requireRun(task.id)).status,
-      GenerationTaskStatus.cancelled,
-    );
-    expect((await canvas.shots.getShot(node.clipId!))!.adoptedAssetId, isNull);
-  });
+  test(
+    'audio submission rejects cancellation and preserves its result',
+    () async {
+      final pending = Completer<AudioGenerationResult>();
+      var aborted = false;
+      final service = jobs((_, _, _, abortTrigger) {
+        abortTrigger.then((_) => aborted = true);
+        return pending.future;
+      });
+      final future = submit(service, await preview());
+      final task = await running();
+      await service.cancel(task.id);
+      expect(aborted, isFalse);
+      expect(
+        (await service.requireRun(task.id)).status,
+        GenerationTaskStatus.running,
+      );
+      final results = ProductionResultService(appDb, (_) async => canvas);
+      expect((await results.requestCancellation(task.id)).accepted, isFalse);
+      pending.complete(AudioGenerationResult(bytes));
+      await future;
+      expect(
+        (await service.requireRun(task.id)).status,
+        GenerationTaskStatus.completed,
+      );
+      expect(
+        (await canvas.shots.getShot(node.clipId!))!.adoptedAssetId,
+        isNotNull,
+      );
+    },
+  );
   test(
     'audio download rejects cancellation and still saves and adopts',
     () async {
@@ -638,41 +703,22 @@ void main() {
       );
     },
   );
-  for (final shutdown in [false, true]) {
-    test(
-      '${shutdown ? "shutdown" : "cancel"} signals the active audio request',
-      () async {
-        final entered = Completer<void>();
-        final aborted = Completer<void>();
-        final service = jobs((_, _, _, abortTrigger) async {
-          entered.complete();
-          await abortTrigger;
-          aborted.complete();
-          throw const AudioException('cancelled');
-        });
-        final pending = submit(service, await preview());
-        await entered.future;
-        final task = await running();
-        if (shutdown) {
-          await service.shutdown().timeout(const Duration(seconds: 2));
-        } else {
-          await service.cancel(task.id);
-        }
-        await aborted.future.timeout(const Duration(seconds: 2));
-        await pending.timeout(const Duration(seconds: 2));
-        if (!shutdown) {
-          expect(
-            (await service.requireRun(task.id)).status,
-            GenerationTaskStatus.cancelled,
-          );
-        }
-        expect(
-          (await canvas.shots.getShot(node.clipId!))!.adoptedAssetId,
-          isNull,
-        );
-      },
-    );
-  }
+  test('shutdown signals the active audio request', () async {
+    final entered = Completer<void>();
+    final aborted = Completer<void>();
+    final service = jobs((_, _, _, abortTrigger) async {
+      entered.complete();
+      await abortTrigger;
+      aborted.complete();
+      throw const AudioException('cancelled');
+    });
+    final pending = submit(service, await preview());
+    await entered.future;
+    await service.shutdown().timeout(const Duration(seconds: 2));
+    await aborted.future.timeout(const Duration(seconds: 2));
+    await pending.timeout(const Duration(seconds: 2));
+    expect((await canvas.shots.getShot(node.clipId!))!.adoptedAssetId, isNull);
+  });
   test(
     'known audio HTTP failures persist a safe reason without regeneration',
     () async {

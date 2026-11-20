@@ -59,7 +59,7 @@ class CoverChip extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final String? icon;
 
   @override
@@ -89,7 +89,12 @@ class CoverChip extends StatelessWidget {
                 RevericIcon(icon!, size: 12, color: foreground),
                 const SizedBox(width: RevericSpacing.xxs),
               ],
-              Text(label, style: typo.uiTiny.copyWith(color: foreground)),
+              Flexible(
+                child: Text(
+                  label,
+                  style: typo.uiTiny.copyWith(color: foreground),
+                ),
+              ),
             ],
           ),
         ),

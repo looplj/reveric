@@ -4,7 +4,9 @@
 //   lib/shared/services/editing/agent_commands.dart
 //   lib/shared/services/editing/sessions.dart
 import 'dart:async';
-import 'commands_test.dart' show fixture, videoSource;
+import 'package:reveric/shared/models/content_kind.dart';
+import 'package:reveric/shared/models/asset_purpose.dart';
+import 'commands_test.dart' show fixture, mainLayout, videoSource;
 import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/agent/message.dart';
@@ -18,6 +20,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/models/editing/document.dart';
+import 'package:reveric/shared/models/director/document.dart';
+import 'package:reveric/shared/services/director/renderer.dart';
+import 'package:reveric/shared/services/screenplay/staging_edit.dart';
+import 'package:flutter/services.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 import 'package:reveric/shared/models/tool_permission.dart';
 import 'package:reveric/shared/services/ai/media/editing.dart';
 import 'package:reveric/shared/services/ai/tools.dart';
@@ -42,6 +49,9 @@ import 'package:reveric/shared/services/storyboard/service.dart';
 class _FrameRunner extends FfmpegRunner {
   bool unsupported = false;
   bool withAudio = false;
+  int width = 854;
+  int height = 480;
+  int frameCount = 1;
   @override
   Future<String> execute(
     List<String> args, {
@@ -58,16 +68,33 @@ class _FrameRunner extends FfmpegRunner {
           {
             'codec_type': 'video',
             'codec_name': 'h264',
-            'width': 854,
-            'height': 480,
+            'width': width,
+            'height': height,
             'avg_frame_rate': '24/1',
-            'nb_frames': '1',
+            'nb_frames': '$frameCount',
             'time_base': '1/24000',
             'pix_fmt': 'yuv420p',
           },
         ],
-        'format': {'duration': '0.041667', 'format_name': 'mp4'},
+        'format': {'duration': '${frameCount / 24}', 'format_name': 'mp4'},
       });
+    }
+    if (args.last == '-') {
+      return '';
+    }
+    if (args.last.endsWith('/limited.f32')) {
+      await File(args[args.indexOf('-i') + 1]).copy(args.last);
+      return '';
+    }
+    if (args.last.endsWith('.f32')) {
+      final samples = int.parse(
+        args
+            .firstWhere((arg) => arg.startsWith('atrim=end_sample='))
+            .split('=')
+            .last,
+      );
+      await File(args.last).writeAsBytes(Uint8List(samples * 8));
+      return '';
     }
     await File(args.last).writeAsBytes(
       args.last.endsWith('.png')
@@ -104,7 +131,7 @@ void main() {
     root = await Directory.systemTemp.createTemp('editing-agent-');
     runner = _FrameRunner();
     final library = MediaLibraryService(app, MediaService(runner), root);
-    service = EditingService(db, library);
+    service = EditingService(db, library, novelId: 'work');
     sessions = EditingSessions();
     registry = ToolOperationRegistry();
     operations = ToolOperationManager(
@@ -210,6 +237,59 @@ void main() {
   );
 
   test(
+    'inspect_audio delivers the requested revision and leaves the timeline unchanged',
+    () async {
+      final created = await run('create', {'title': 'Audio', 'ratio': '16:9'});
+      final id = created['id'] as String;
+      await run('apply', {
+        'editing_id': id,
+        'expected_revision': 0,
+        'commands': [
+          {
+            'op': 'add_text',
+            'track_id': 'T1',
+            'start_frame': 0,
+            'text': 'Caption',
+          },
+        ],
+      });
+      final options = {
+        'editing_id': id,
+        'expected_revision': 1,
+        'start_frame': 10,
+        'end_frame': 12,
+      };
+      await expectLater(
+        run('inspect_audio', {...options, 'expected_revision': 0}),
+        throwsA(
+          isA<ToolOperationException>().having(
+            (e) => e.code,
+            'code',
+            'conflict',
+          ),
+        ),
+      );
+      final response = await run('inspect_audio', options);
+      expect(response['ok'], true, reason: '$response');
+      final result = response['result'];
+      expect(result['mix']['silence_ranges'], [
+        {'start_frame': 10, 'end_frame': 12},
+      ]);
+      expect(result['clips'], isEmpty);
+      expect(resultFilePaths(response), isEmpty);
+      expect(result.containsKey('files'), isFalse);
+      expect(
+        await root
+            .list(recursive: true)
+            .where((e) => e.path.endsWith('.wav'))
+            .isEmpty,
+        isTrue,
+      );
+      expect((await db.editingDao.get(id))!.revision, 1);
+    },
+  );
+
+  test(
     'frames rejects stale revisions, empty timelines and invalid positions before rendering',
     () async {
       final created = await run('create', {'title': 'Frames', 'ratio': '16:9'});
@@ -253,7 +333,7 @@ void main() {
         [-1],
         [72],
         [0.5],
-        List.filled(13, 0),
+        List.filled(17, 0),
       ]) {
         await expectLater(
           run('frames', {
@@ -269,7 +349,7 @@ void main() {
   );
 
   test(
-    'export is unavailable and preview still requires the latest revision',
+    'editing export rejects file destinations and preview requires the latest revision',
     () async {
       final created = await run('create', {
         'title': 'Preview',
@@ -283,13 +363,7 @@ void main() {
           'output_path': 'export.mp4',
           'request_id': 'export',
         }),
-        throwsA(
-          isA<ToolOperationException>().having(
-            (e) => e.code,
-            'code',
-            'unsupported',
-          ),
-        ),
+        throwsFormatException,
       );
       await expectLater(
         run('preview', {'editing_id': id}),
@@ -313,6 +387,159 @@ void main() {
         ),
       );
       expect(registry.records, isEmpty);
+    },
+  );
+
+  test(
+    'Run exports both saved projects as linked, reusable video nodes',
+    () async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const paths = MethodChannel('plugins.flutter.io/path_provider');
+      const directorStorage = MethodChannel('ai.reveric.director/storage');
+      messenger.setMockMethodCallHandler(paths, (_) async => root.path);
+      messenger.setMockMethodCallHandler(directorStorage, (_) async => 1 << 40);
+      addTearDown(() => messenger.setMockMethodCallHandler(paths, null));
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(directorStorage, null),
+      );
+      await RevericPaths.initialize();
+      await ScreenplayService(db).createCanvasStructure();
+      await app.novelDao.create(
+        id: 'work',
+        title: 'Canvas',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: db.filePath,
+      );
+      final canvas = ProductionCanvasService(
+        StoryboardService(db, contentKind: contentKindCanvas),
+        host.production.canvas.library,
+        'work',
+      );
+      final production = ProductionToolHost(
+        canvas: canvas,
+        images: _Images(),
+        audio: _Audio(),
+        video: () => throw StateError('No video generation'),
+        results: _Results(),
+        editingSessions: sessions,
+      );
+      // Give the real Run dispatcher a frame renderer with no GPU dependency.
+      final content = _StagingContent(db);
+      final manager = AiToolManager(
+        content,
+        workingOverlayService: WorkingOverlayService(
+          db,
+          content,
+          novelActionsService: NovelActionsService(app),
+        ),
+        contentKind: contentKindCanvas,
+        workId: 'work',
+        sessionId: 'session',
+        operationHost: ToolOperationHost(
+          operations,
+          production: () async => production,
+        ),
+      )..registerAllTools();
+      Future<Map<String, dynamic>> dispatch(
+        String command,
+        Map<String, dynamic> options,
+      ) => manager.executeTool(
+        name: 'Run',
+        input: {'command': command, 'subcommand': 'export', 'options': options},
+        context: context,
+        callId: 'export-$command',
+      );
+      Future<void> expectOutput(
+        Future<Map<String, dynamic>> request,
+        CanvasNode source,
+        String edgeType,
+      ) async {
+        final started = await request;
+        expect(started['run_id'], isA<String>(), reason: '$started');
+        final finished = await operations.wait(
+          started['run_id'] as String,
+          context,
+        );
+        expect(finished['status'], 'completed', reason: '$finished');
+        final output = finished['result']['output'] as Map;
+        final id = output['node_id'] as String;
+        expect(output['node_path'], '/production/canvas/nodes/$id');
+        final node = await canvas.requireNode(id);
+        expect(node.canvasId, source.canvasId);
+        final asset = await canvas.videoSource(id);
+        expect(output['asset_id'], asset.id);
+        expect(await File(canvas.library.resolve(asset)).exists(), isTrue);
+        final edges = await db.canvasDao.getEdgesByCanvas(source.canvasId);
+        expect(
+          edges
+              .where(
+                (edge) =>
+                    edge.sourceNodeId == source.id && edge.targetNodeId == id,
+              )
+              .single
+              .type,
+          edgeType,
+        );
+      }
+
+      final board = await canvas.ensureCanvas('');
+      final director = await canvas.addDirector(board.id, 'Director');
+      final row = (await db.screenplayDao.getStaging(director.stagingId!))!;
+      final document = DirectorDocument.fromJson(row.document!);
+      runner
+        ..width = document.width
+        ..height = document.height
+        ..frameCount = document.durationFrames;
+      final stale = await dispatch('stagings', {
+        'staging_id': row.id,
+        'expected_version': row.version + 1,
+      });
+      expect(stale['error_code'], 'conflict', reason: '$stale');
+      await expectOutput(
+        dispatch('stagings', {
+          'staging_id': row.id,
+          'expected_version': row.version,
+        }),
+        director,
+        canvasEdgeTypeStagingOutput,
+      );
+
+      host = EditingToolHost(production, runner: runner);
+      final created = await run('create', {'title': 'Cut', 'ratio': '16:9'});
+      final id = created['editing_id'] as String;
+      final changed = await run('apply', {
+        'editing_id': id,
+        'expected_revision': 0,
+        'commands': [
+          {
+            'op': 'add_text',
+            'track_id': 'T1',
+            'start_frame': 0,
+            'text': 'Title',
+          },
+        ],
+      });
+      final editing = await canvas.requireNode(created['node_id'] as String);
+      final staleEditing = await dispatch('editing', {
+        'editing_id': id,
+        'expected_revision': 0,
+      });
+      expect(staleEditing['error_code'], 'conflict', reason: '$staleEditing');
+      runner
+        ..width = 1280
+        ..height = 720
+        ..frameCount = changed['total_frames'] as int
+        ..withAudio = true;
+      await expectOutput(
+        run('export', {
+          'editing_id': id,
+          'expected_revision': changed['revision'],
+        }),
+        editing,
+        canvasEdgeTypeDerivedOutput,
+      );
     },
   );
 
@@ -603,6 +830,70 @@ void main() {
     },
   );
   test(
+    'canvas Run editing imports an adopted clip with empty episode',
+    () async {
+      await ScreenplayService(db).createCanvasStructure();
+      await app.novelDao.create(
+        id: 'work',
+        title: 'Canvas',
+        description: '',
+        contentKind: contentKindCanvas,
+        contentDatabasePath: db.filePath,
+      );
+      final library = host.production.canvas.library;
+      final canvas = ProductionCanvasService(
+        StoryboardService(db, contentKind: contentKindCanvas),
+        library,
+        'work',
+      );
+      host = EditingToolHost(
+        ProductionToolHost(
+          canvas: canvas,
+          images: _Images(),
+          audio: _Audio(),
+          video: () => throw StateError('No generation'),
+          results: _Results(),
+          editingSessions: sessions,
+        ),
+        runner: runner,
+      );
+      final source = await outputFile('source.mp4');
+      final asset = await library.importFile(
+        source,
+        name: 'Source.mp4',
+        novelId: 'work',
+        purpose: AssetPurpose.production_output,
+        cancellation: MediaCancellation(),
+      );
+      final clip = await canvas.shots.createVideo(
+        '',
+        values: {'title': 'Shot'},
+      );
+      await (db.update(db.productionClips)..where((t) => t.id.equals(clip.id)))
+          .write(ProductionClipsCompanion(adoptedAssetId: Value(asset.id)));
+      final created = await run('create', {'title': 'Cut', 'ratio': '16:9'});
+      expect(created['node_id'], isNotNull);
+      expect(created['revision'], 0);
+      final result = await run('apply', {
+        'editing_id': created['id'],
+        'expected_revision': 0,
+        'commands': [
+          {
+            'op': 'add_media',
+            'track_id': 'V1',
+            'index': 0,
+            'production_clip_id': clip.id,
+          },
+        ],
+      });
+      expect(result['revision'], 1);
+      final saved = await db.editingDao.get(created['id'] as String);
+      expect(saved!.document.mainClips.single.media!.source.assetId, asset.id);
+      expect(clip.episodeId, '');
+    },
+  );
+
+  test(
     'headless create/list/read and atomic batch share UI undo and rename history',
     () async {
       final created = await run('create', {'title': 'First', 'ratio': '16:9'});
@@ -673,7 +964,18 @@ void main() {
             },
           ],
         }),
-        throwsA(isA<ToolOperationException>()),
+        throwsA(
+          isA<ToolOperationException>().having(
+            (e) => e.message,
+            'message',
+            matches(
+              RegExp(
+                r'^commands\[2\] \(add_text\): Occupied: track T1 already has '
+                r'clip \S+ at frames 0-\d+\.$',
+              ),
+            ),
+          ),
+        ),
       );
       final row = (await db.editingDao.get(id))!;
       expect(row.revision, 0);
@@ -968,7 +1270,11 @@ void main() {
         throwsA(
           isA<ToolOperationException>()
               .having((e) => e.code, 'code', 'failed_precondition')
-              .having((e) => e.message, 'message', 'Audio already detached'),
+              .having(
+                (e) => e.message,
+                'message',
+                'commands[0] (extract_audio): Audio already detached',
+              ),
         ),
       );
       final detached = ui.document!.toJson();
@@ -1024,15 +1330,30 @@ void main() {
           'fields': {
             'text': 'After',
             'text_style': 'title',
-            'text_position': 'center',
+            'scale': 1.5,
+            'opacity': .8,
+            'x': .96,
+            'y': .04,
+            'anchor_x': 1,
+            'anchor_y': 0,
           },
+        },
+        {'op': 'add_text_track', 'id': 'marks'},
+        {
+          'op': 'add_text',
+          'id': 'mark',
+          'track_id': 'marks',
+          'start_frame': 0,
+          'text': 'LOGO',
         },
       ]);
       final video = built.document.mainClips.single;
       expect(video.origin!.id, 'shot-one');
       final content = video.content as EditingVideoContent;
-      expect(content.transform.scale, .4);
-      expect(content.transform.x, closeTo(.74, 1e-9));
+      expect(
+        content.transform.toJson(),
+        EditingCommands.autoPlacement(.4).toJson(),
+      );
       expect(content.opacity, .6);
       final audio = built.document.clips.singleWhere(
         (c) => c.content is EditingAudioContent,
@@ -1047,12 +1368,44 @@ void main() {
         ),
         (-6, 6, 12),
       );
-      expect(built.document.clips.last.content.toJson(), {
-        'kind': 'text',
-        'text': 'After',
-        'style': 'title',
-        'position': 'center',
-      });
+      expect(
+        built.document.clips
+            .singleWhere((c) => c.id == 'text')
+            .content
+            .toJson(),
+        {
+          'kind': 'text',
+          'text': 'After',
+          'style': 'title',
+          'transform': {
+            'scale': 1.5,
+            'x': .96,
+            'y': .04,
+            'anchor_x': 1.0,
+            'anchor_y': 0.0,
+          },
+          'opacity': .8,
+        },
+      );
+      final marks = built.document.track('marks');
+      expect((marks.kind, marks.role, marks.order), ('text', 'text', 1));
+      expect(
+        built.document.clips.singleWhere((c) => c.id == 'mark').trackId,
+        'marks',
+      );
+      final moved = await engine.apply(built.document, 'A', [
+        {
+          'op': 'update_clip',
+          'clip_id': 'main',
+          'fields': {'x': .1, 'anchor_x': 0},
+        },
+      ]);
+      expect(
+        (moved.document.mainClips.single.content as EditingVideoContent)
+            .transform
+            .toJson(),
+        EditingCommands.autoPlacement(.4).copyWith(x: .1, anchorX: 0).toJson(),
+      );
       final replaced = await engine.apply(built.document, 'A', [
         {
           'op': 'replace_source',
@@ -1078,11 +1431,16 @@ void main() {
         {
           'op': 'update_clip',
           'clip_id': 'text',
-          'fields': {'opacity': .5},
+          'fields': {'anchor_x': 1.5},
         },
         {
           'op': 'update_clip',
-          'clip_id': 'main',
+          'clip_id': 'text',
+          'fields': {'scale': 3},
+        },
+        {
+          'op': 'update_clip',
+          'clip_id': audio.id,
           'fields': {'x': .5},
         },
       ]) {
@@ -1091,6 +1449,26 @@ void main() {
           throwsFormatException,
         );
       }
+      await expectLater(
+        engine.apply(built.document, 'A', [
+          {
+            'op': 'update_clip',
+            'clip_id': 'text',
+            'fields': {'text_position': 'center'},
+          },
+        ]),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('text_position'),
+              contains('anchor_x'),
+              contains('text_style'),
+            ),
+          ),
+        ),
+      );
     },
   );
 
@@ -1120,6 +1498,180 @@ void main() {
       }
     },
   );
+
+  test(
+    'duplicate clones timeline tracks and clips independently and checks expected_revision',
+    () async {
+      runner.withAudio = true;
+      final created = await run('create', {
+        'title': 'Master Cut',
+        'ratio': '16:9',
+      });
+      final sourceId = created['id'] as String;
+      final sourceFile = File('${root.path}/file_workspaces/work/clip.mp4');
+      await sourceFile.parent.create(recursive: true);
+      await sourceFile.writeAsBytes([1, 2, 3]);
+      final applied = await run('apply', {
+        'editing_id': sourceId,
+        'expected_revision': created['revision'],
+        'commands': [
+          {
+            'op': 'add_media',
+            'id': 'v1',
+            'track_id': 'V1',
+            'index': 0,
+            'path': 'clip.mp4',
+          },
+          {'op': 'add_text_track', 'id': 'T2'},
+          {
+            'op': 'add_text',
+            'id': 'txt1',
+            'track_id': 'T2',
+            'start_frame': 0,
+            'text': 'Watermark',
+          },
+          {
+            'op': 'add_text',
+            'id': 'sub1',
+            'track_id': 'T1',
+            'start_frame': 0,
+            'text': 'Subtitle line',
+          },
+          {'op': 'extract_audio', 'clip_id': 'v1', 'track_id': 'A2'},
+        ],
+      });
+      expect(applied['ok'], true, reason: '$applied');
+      final rev = applied['revision'] as int;
+
+      await expectLater(
+        run('duplicate', {
+          'editing_id': sourceId,
+          'expected_revision': rev - 1,
+        }),
+        throwsA(
+          isA<ToolOperationException>().having(
+            (e) => e.code,
+            'code',
+            'conflict',
+          ),
+        ),
+      );
+
+      final defaultCopy = await run('duplicate', {'editing_id': sourceId});
+      expect(defaultCopy['ok'], true, reason: '$defaultCopy');
+      expect(defaultCopy['id'], isNot(sourceId));
+      expect(defaultCopy['editing_id'], defaultCopy['id']);
+      expect(defaultCopy['source_editing_id'], sourceId);
+      expect(defaultCopy['title'], 'Master Cut Copy');
+      expect(defaultCopy['ratio'], '16:9');
+      expect(defaultCopy['revision'], 0);
+
+      final customCopy = await run('duplicate', {
+        'editing_id': sourceId,
+        'title': 'Experiment Cut',
+        'expected_revision': rev,
+      });
+      expect(customCopy['ok'], true, reason: '$customCopy');
+      final cloneId = customCopy['id'] as String;
+      expect(customCopy['title'], 'Experiment Cut');
+
+      final sourceRead = await run('read', {'editing_id': sourceId});
+      final cloneRead = await run('read', {'editing_id': cloneId});
+      expect(cloneRead['tracks'], sourceRead['tracks']);
+      expect(cloneRead['clips'], sourceRead['clips']);
+      expect(cloneRead['total_frames'], sourceRead['total_frames']);
+
+      final mutated = await run('apply', {
+        'editing_id': cloneId,
+        'expected_revision': customCopy['revision'],
+        'commands': [
+          {'op': 'rename', 'title': 'Mutated Experiment'},
+          {'op': 'remove_clip', 'clip_id': 'txt1'},
+        ],
+      });
+      expect(mutated['ok'], true, reason: '$mutated');
+
+      final sourceAfter = await run('read', {'editing_id': sourceId});
+      final cloneAfter = await run('read', {'editing_id': cloneId});
+      expect(sourceAfter['title'], 'Master Cut');
+      expect(
+        (sourceAfter['clips'] as List).map((c) => c['id']),
+        contains('txt1'),
+      );
+      expect(cloneAfter['title'], 'Mutated Experiment');
+      expect(
+        (cloneAfter['clips'] as List).map((c) => c['id']),
+        isNot(contains('txt1')),
+      );
+    },
+  );
+
+  test(
+    'update_clip speed retimes before fades and reports the new range',
+    () async {
+      final engine = EditingAgentCommands((_) async => videoSource);
+      final result = await engine.apply(fixture(), 'A', [
+        {
+          'op': 'update_clip',
+          'clip_id': 'm2',
+          'fields': {'speed': 2, 'fade_out_frames': 30},
+        },
+      ]);
+      expect(mainLayout(result.document), [
+        ('m1', 0, 96),
+        ('m2', 96, 60),
+        ('m3', 156, 120),
+      ]);
+      final m2 = result.document.clips.singleWhere((c) => c.id == 'm2');
+      expect((m2.media!.speed, m2.media!.fadeOutFrames), (2.0, 30));
+      final change = (result.result.single['changes'] as List).singleWhere(
+        (c) => c['clip_id'] == 'm2',
+      );
+      expect(change['after']['speed'], 2.0);
+      expect(change['after']['duration_frames'], 60);
+      for (final command in [
+        {
+          'op': 'update_clip',
+          'clip_id': 'm2',
+          'fields': {'speed': 5},
+        },
+        {
+          'op': 'update_clip',
+          'clip_id': 'sub',
+          'fields': {'speed': 2},
+        },
+      ]) {
+        await expectLater(
+          engine.apply(fixture(), 'A', [command]),
+          throwsFormatException,
+        );
+      }
+    },
+  );
+}
+
+class _StagingContent extends NovelContentService {
+  _StagingContent(super.db);
+
+  late final _staging = StagingEditService(
+    database,
+    previewRenderer: _DirectorFrames.new,
+  );
+
+  @override
+  StagingEditService get stagingEditService => _staging;
+}
+
+class _DirectorFrames implements FrameRenderer {
+  @override
+  Future<Uint8List> capture(
+    DirectorDocument document,
+    int frame,
+    String cameraId,
+  ) async => Uint8List.fromList([137, 80, 78, 71]);
+
+  @override
+  void dispose() {}
 }
 
 class _Images implements ImageTaskService {

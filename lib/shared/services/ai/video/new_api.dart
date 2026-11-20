@@ -20,7 +20,11 @@ class NewApiVideoClient extends VideoClient {
     required super.endpoint,
     required super.apiKey,
     super.timeout,
+    this.submitTimeout = const Duration(minutes: 3),
   });
+
+  @override
+  final Duration submitTimeout;
 
   @override
   String get createPath => 'videos';
@@ -135,6 +139,117 @@ class NewApiVideoClient extends VideoClient {
         },
       };
     }
+    if (catalogId.toLowerCase().startsWith('minimax-h3')) {
+      return {
+        'model': request.modelId,
+        'prompt': request.prompt,
+        'seconds': request.durationSeconds.toString(),
+        'metadata': {
+          'content': videoContent(request, references),
+          'resolution': request.resolution,
+          'ratio': request.ratio,
+        },
+      };
+    }
+    if (catalogId.startsWith('wan3')) {
+      return {
+        'model': request.modelId,
+        'prompt': request.prompt,
+        'seconds': request.durationSeconds.toString(),
+        'metadata': {
+          'input': {
+            'prompt': request.prompt,
+            if (references.isNotEmpty)
+              'media': [
+                for (final ref in references)
+                  {'type': ref.role.name, 'url': ref.url},
+              ],
+          },
+          'parameters': {
+            'resolution': request.resolution,
+            'ratio': request.ratio,
+            'duration': request.durationSeconds,
+            if (request.audio != null) 'audio': request.audio,
+            if (request.promptExtend != null)
+              'prompt_extend': request.promptExtend,
+          },
+        },
+      };
+    }
+    if (catalogId.startsWith('vidu')) {
+      final images = request.mode == VideoMode.first_last_frame
+          ? [
+              references
+                  .singleWhere((r) => r.role == VideoInputRole.first_frame)
+                  .url,
+              references
+                  .singleWhere((r) => r.role == VideoInputRole.last_frame)
+                  .url,
+            ]
+          : [
+              for (final ref in references.where(
+                (r) => r.role.kind == VideoMediaKind.image,
+              ))
+                ref.url,
+            ];
+      return {
+        'model': request.modelId,
+        'prompt': request.prompt,
+        'seconds': request.durationSeconds.toString(),
+        'resolution': request.resolution,
+        if (request.mode != VideoMode.reference && images.isNotEmpty)
+          'images': images,
+        'metadata': {
+          'action': switch (request.mode) {
+            VideoMode.text => 'text_to_video',
+            VideoMode.first_frame => 'image_to_video',
+            VideoMode.first_last_frame => 'first_tail_to_video',
+            VideoMode.reference => 'reference_to_video',
+          },
+          'aspect_ratio': request.ratio,
+          if (request.audio != null) 'audio': request.audio,
+          if (request.mode == VideoMode.reference)
+            'subjects': [
+              for (var i = 0; i < references.length; i++)
+                {
+                  'name': 'subject_${i + 1}',
+                  switch (references[i].role.kind) {
+                    VideoMediaKind.image => 'images',
+                    VideoMediaKind.video => 'videos',
+                    VideoMediaKind.audio => throw const VideoException(
+                      VideoErrorCode.invalid_request,
+                      field: 'audio_reference',
+                    ),
+                  }: [
+                    references[i].url,
+                  ],
+                },
+            ],
+        },
+      };
+    }
+    if (catalogId.contains('grok-imagine-video')) {
+      if (request.mode == VideoMode.first_last_frame ||
+          references.any((r) => r.role.kind != VideoMediaKind.image) ||
+          (request.mode == VideoMode.reference &&
+              request.durationSeconds > 10)) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'references',
+        );
+      }
+      return {
+        'model': request.modelId,
+        'prompt': request.prompt,
+        'seconds': request.durationSeconds.toString(),
+        'resolution': request.resolution,
+        'aspect_ratio': request.ratio,
+        if (request.mode == VideoMode.first_frame)
+          'input_reference': references.single.url,
+        if (request.mode == VideoMode.reference)
+          'reference_images': [for (final ref in references) ref.url],
+      };
+    }
     if ((request.mode != VideoMode.text &&
             request.mode != VideoMode.first_frame) ||
         references.length > 1 ||
@@ -195,6 +310,43 @@ class NewApiVideoClient extends VideoClient {
   }
 
   @override
+  Future<VideoTaskResult> queryNative(VideoSubmission task) async {
+    final expected = queryUrl(task.taskId, task.modelId);
+    if (task.pollingUrl == expected) {
+      return super.queryNative(task);
+    }
+    final root = endpoint.replace(
+      path: endpoint.path.replaceFirst(RegExp(r'/v1/?$'), ''),
+    );
+    final id = Uri.encodeComponent(task.taskId);
+    final knownPaths = {
+      '/doubao/api/v3/contents/generations/tasks/$id',
+      '/api/v3/contents/generations/tasks/$id',
+      '/ali/api/v1/tasks/$id',
+      '/api/v1/tasks/$id',
+      '/v2/query/video_generation/$id',
+      '/hailuo/v2/query/video_generation/$id',
+      '/v1/ent/v2/tasks/$id/creations',
+      '/vidu/ent/v2/tasks/$id/creations',
+      '/ent/v2/tasks/$id/creations',
+      '/v1/video/generations/$id',
+    };
+    if (!knownPaths.any(
+      (path) => root.replace(path: '${root.path}$path') == task.pollingUrl,
+    )) {
+      throw const VideoException(VideoErrorCode.configuration_required);
+    }
+    // Resume an existing native receipt through the unified query; never resubmit it.
+    return super.queryNative(
+      VideoSubmission(
+        taskId: task.taskId,
+        modelId: task.modelId,
+        pollingUrl: expected,
+      ),
+    );
+  }
+
+  @override
   VideoTaskResult decodeResult(Map<String, dynamic> json) {
     final status = json['status'] as String;
     return videoResult(
@@ -209,6 +361,17 @@ class NewApiVideoClient extends VideoClient {
             ).toString()
           : null,
     );
+  }
+
+  @override
+  Map<String, String> outputHeaders(Uri url, VideoSubmission task) {
+    final expected = this.url(
+      'videos/${Uri.encodeComponent(task.taskId)}/content',
+    );
+    if (url != expected || apiKey.trim().isEmpty) {
+      throw const VideoException(VideoErrorCode.configuration_required);
+    }
+    return {'Authorization': 'Bearer $apiKey'};
   }
 
   @override

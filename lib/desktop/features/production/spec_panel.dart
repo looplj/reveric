@@ -14,6 +14,7 @@
 // 遵循的 Rules:
 //   .agents/rules/design-system.md
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/components/reveric_popover.dart';
 import '../../../shared/components/reveric_switch.dart';
@@ -22,7 +23,7 @@ import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/image/channels.dart';
 import '../../../shared/models/production/settings.dart';
 import '../../../shared/providers/storyboard.dart';
-import '../../../shared/services/ai/video/draft.dart';
+import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/theme/theme.dart';
 import 'popover.dart';
 import 'support.dart';
@@ -368,7 +369,7 @@ class ProductionSpecPanel extends StatelessWidget {
 }
 
 /// 节点输入框底栏的「比例 · 分辨率」pill；可选项来自当前模型的能力。
-/// [sample] 不为 null 时可选样片，选中后 pill 写「480P 样片」，和实际提交的一致。
+/// [sample] 不为 null 时可选样片，选中后显示模型声明的样片分辨率。
 class ProductionSpecPill extends StatelessWidget {
   const ProductionSpecPill({
     super.key,
@@ -381,9 +382,10 @@ class ProductionSpecPill extends StatelessWidget {
     this.complexity,
     this.onComplexity,
     this.sample,
+    this.sampleResolution,
     this.audio,
     this.onAudio,
-  });
+  }) : assert(sample == null || sampleResolution != null);
   final List<String> ratios;
   final List<String> resolutions;
   final String ratio;
@@ -395,6 +397,7 @@ class ProductionSpecPill extends StatelessWidget {
   final bool? audio;
   final ValueChanged<bool>? onAudio;
   final ValueNotifier<bool>? sample;
+  final String? sampleResolution;
   @override
   Widget build(BuildContext context) {
     final sample = this.sample;
@@ -422,7 +425,7 @@ class ProductionSpecPill extends StatelessWidget {
           children: [
             Text(
               '${productionRatioLabel(context, ratio)} · '
-              '${sampleOn == true ? context.t(LocaleKeys.productionSampleSpec, namedArgs: {'resolution': productionResolutionLabel(videoDraftResolution)}) : productionResolutionLabel(resolution)}'
+              '${sampleOn == true ? context.t(LocaleKeys.productionSampleSpec, namedArgs: {'resolution': productionResolutionLabel(sampleResolution!)}) : productionResolutionLabel(resolution)}'
               '${complexity == null ? '' : ' · ${productionComplexityLabel(context, complexity!)}'}'
               '${audio == null ? '' : ' · '}',
               style: typo.uiSmall.copyWith(
@@ -466,6 +469,51 @@ class ProductionSpecPill extends StatelessWidget {
   }
 }
 
+class _SpecChipContent extends StatelessWidget {
+  const _SpecChipContent({
+    required this.ratio,
+    required this.resolution,
+    this.open = false,
+    this.showCaret = true,
+  });
+  final String ratio;
+  final String resolution;
+  final bool open;
+  final bool showCaret;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox.square(
+          dimension: 22,
+          child: Center(
+            child: DefaultTextStyle.merge(
+              style: TextStyle(color: colors.textSecondary),
+              child: ProductionRatioBox(ratio: ratio, scale: .7),
+            ),
+          ),
+        ),
+        const SizedBox(width: RevericSpacing.sm),
+        Text(
+          '$ratio · ${productionResolutionLabel(resolution)}',
+          style: typo.uiSmall.copyWith(
+            color: colors.textPrimary,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+        if (showCaret) ...[
+          const SizedBox(width: RevericSpacing.sm),
+          ProductionCaret(open: open, size: 11),
+        ],
+      ],
+    );
+  }
+}
+
 /// 顶栏的剧本制作设置：比例框 + 「9:16 · 720p」▾，整部剧共用，不受某个模型限制。
 class ProductionSpecChip extends ConsumerWidget {
   const ProductionSpecChip({
@@ -477,8 +525,6 @@ class ProductionSpecChip extends ConsumerWidget {
   final String episodeId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
     final settings = ref
         .watch(episodeProductionProvider(path, episodeId))
         .value;
@@ -504,30 +550,10 @@ class ProductionSpecChip extends ConsumerWidget {
           0,
         ),
         onTap: toggle,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox.square(
-              dimension: 22,
-              child: Center(
-                child: DefaultTextStyle.merge(
-                  style: TextStyle(color: colors.textSecondary),
-                  child: ProductionRatioBox(ratio: settings.ratio, scale: .7),
-                ),
-              ),
-            ),
-            const SizedBox(width: RevericSpacing.sm),
-            Text(
-              '${settings.ratio} · '
-              '${productionResolutionLabel(settings.resolution)}',
-              style: typo.uiSmall.copyWith(
-                color: colors.textPrimary,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-            const SizedBox(width: RevericSpacing.sm),
-            ProductionCaret(open: open, size: 11),
-          ],
+        child: _SpecChipContent(
+          ratio: settings.ratio,
+          resolution: settings.resolution,
+          open: open,
         ),
       ),
       panel: (context, close) => ProductionSpecPanel(
@@ -537,6 +563,37 @@ class ProductionSpecChip extends ConsumerWidget {
         resolution: settings.resolution,
         onChanged: change,
         note: context.t(LocaleKeys.productionSpecNote),
+      ),
+    );
+  }
+}
+
+/// 只读画布顶栏的默认画幅与分辨率，直接读取当前沙盒服务而不依赖全局作品库。
+class ProductionReadOnlySpecChip extends HookWidget {
+  const ProductionReadOnlySpecChip({super.key, required this.service});
+  final ProductionCanvasService service;
+
+  @override
+  Widget build(BuildContext context) {
+    final root = useStream(
+      useMemoized(() => service.db.screenplayDao.watchRoot(), [service]),
+    ).data;
+    if (root == null) {
+      return const SizedBox.shrink();
+    }
+    return ProductionPill(
+      onTap: null,
+      tooltip: context.t(LocaleKeys.productionSpecTooltip),
+      padding: const EdgeInsets.fromLTRB(
+        RevericSpacing.xs,
+        0,
+        RevericSpacing.sm,
+        0,
+      ),
+      child: _SpecChipContent(
+        ratio: root.ratio,
+        resolution: root.resolution,
+        showCaret: false,
       ),
     );
   }

@@ -16,6 +16,57 @@ import 'package:reveric/shared/services/ai/context_message_matcher.dart';
 import 'package:reveric/shared/services/ai/tool_result_payloads.dart';
 
 void main() {
+  test('operation control receipts retain their own call lifecycle', () {
+    for (final subcommand in ['wait', 'read', 'cancel']) {
+      for (final taskStatus in ['queued', 'running', 'cancelling']) {
+        final block = AiToolCallBlock(
+          id: 'control',
+          callId: 'call-control',
+          toolName: 'Run',
+          arguments: {
+            'command': 'operations',
+            'subcommand': subcommand,
+            'options': {'run_id': 'run-image'},
+          },
+          status: AiToolCallStatus.success,
+          result: {
+            'ok': true,
+            'run_id': 'run-image',
+            'status': taskStatus,
+            if (subcommand == 'wait') 'timed_out': true,
+          },
+        );
+        final display = aiToolOperationDisplayBlock(block);
+        expect(display.status, AiToolCallStatus.success);
+        expect(display.result, block.result);
+        expect(
+          aiToolOperationDisplayBlock(
+            block.copyWith(status: AiToolCallStatus.cancelled),
+          ).status,
+          AiToolCallStatus.cancelled,
+        );
+        expect(
+          aiToolOperationDisplayBlock(
+            block.copyWith(status: AiToolCallStatus.running),
+          ).status,
+          AiToolCallStatus.running,
+        );
+      }
+    }
+  });
+
+  test('background submission receipts still follow the task lifecycle', () {
+    final block = AiToolCallBlock(
+      id: 'submit',
+      callId: 'call-submit',
+      toolName: 'Run',
+      arguments: const {'command': 'canvas', 'subcommand': 'generate'},
+      status: AiToolCallStatus.success,
+      result: const {'ok': true, 'run_id': 'run-image', 'status': 'running'},
+    );
+    expect(aiToolOperationDisplayBlock(block).status, AiToolCallStatus.running);
+  });
+
   test(
     'operation state supersedes a successful submission in UI and history',
     () {

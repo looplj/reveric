@@ -1,0 +1,24 @@
+{
+  "ZhuqueDetect": {
+    "name": "ZhuqueDetect",
+    "description": "使用腾讯朱雀模型判断文本是否由 AI 生成。返回人工、AI、疑似 AI 三类占比（0 到 1）和各段标签。softmax_confidence 越大越可能是 AI 内容；ratio_confidence 是疑似风险内容占比。只检测文本。需要逐段置信度时把 is_merge 设为 false。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000,
+          "description": "待检测文本，1 到 20000 个 Unicode 字符，不能全为空白。"
+        },
+        "is_merge": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否合并段落。默认 true。设为 false 时每个段落单独给出置信度。"
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    }
+  }
+}

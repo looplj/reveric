@@ -49,5 +49,8 @@
   "home.nav_works": "Works",
   "home.resume_eyebrow": "Continue writing",
   "home.resume_recent": "Recent",
-  "home.resume_last_written": "Last written {time}"
+  "home.resume_last_written": "Last written {time}",
+  "home.resume_eyebrow_canvas": "Continue creating",
+  "home.resume_open_canvas": "Open canvas",
+  "home.resume_last_edited": "Last edited {time}"
 }

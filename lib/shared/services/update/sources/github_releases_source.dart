@@ -22,6 +22,29 @@ import '../update_source.dart';
 
 final _log = AppLogger.forModule('GitHubReleases');
 
+const releaseDownloadMirrorOrigin = 'https://downloads.reveric.app';
+
+/// 把 GitHub Release 资源地址换成 R2 上的同名对象。无法识别时返回 null。
+String? githubReleaseMirrorUrl(String downloadUrl) {
+  final uri = Uri.tryParse(downloadUrl);
+  if (uri == null || uri.host != 'github.com') {
+    return null;
+  }
+  final segments = uri.pathSegments;
+  final downloadIndex = segments.indexOf('download');
+  if (downloadIndex < 2 ||
+      segments[downloadIndex - 1] != 'releases' ||
+      downloadIndex + 2 >= segments.length) {
+    return null;
+  }
+  final tag = segments[downloadIndex + 1];
+  final name = segments.sublist(downloadIndex + 2).join('/');
+  if (!tag.startsWith('v') || name.isEmpty || name.contains('..')) {
+    return null;
+  }
+  return '$releaseDownloadMirrorOrigin/releases/$tag/$name';
+}
+
 /// GitHub Releases 更新源
 class GitHubReleasesSource implements UpdateSource {
   final FutureOr<http.Client> Function() createClient;
@@ -88,10 +111,12 @@ class GitHubReleasesSource implements UpdateSource {
         return const UpdateCheckFailed(LocaleKeys.settingsAboutCheckFailed);
       }
 
+      final downloadUrl = asset['browser_download_url'] as String;
       return UpdateAvailable(
         UpdateInfo(
           version: latestVersion,
-          downloadUrl: asset['browser_download_url'] as String,
+          downloadUrl: downloadUrl,
+          fallbackDownloadUrl: githubReleaseMirrorUrl(downloadUrl),
           fileSize: asset['size'] as int?,
           releaseNotes: body['body'] as String?,
         ),

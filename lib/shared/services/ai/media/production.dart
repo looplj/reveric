@@ -8,14 +8,17 @@
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:easy_localization/easy_localization.dart';
 import '../../../localization/locale_keys.dart';
+import '../../../models/content_kind.dart';
 import '../../../models/video/task_result.dart';
 import '../assets/certification.dart';
 import '../video/draft.dart';
 import 'nodes.dart';
 import 'image_nodes.dart';
 import 'panorama_nodes.dart';
+import '../../production/canvas_preview.dart';
 import '../../production/panorama_service.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'package:path/path.dart' as p;
@@ -97,8 +100,9 @@ class ProductionToolHost {
       );
     }
     await canvas.shots.requireEpisode(clip.episodeId);
-    final episode = (await canvas.db.screenplayDao.getEpisode(clip.episodeId))!;
-    final canvasId = episode.canvasId;
+    final canvasId = clip.episodeId.isEmpty
+        ? (await canvas.ensureCanvas('')).id
+        : (await canvas.db.screenplayDao.getEpisode(clip.episodeId))!.canvasId;
     if (canvasId == null) {
       throw const ToolOperationException(
         'failed_precondition',
@@ -294,6 +298,8 @@ class ProductionToolHost {
         error.field ?? error.code.name,
         [error.toString(), ?error.detail].join('\n'),
       );
+    } on StoryboardException catch (error) {
+      throw ToolOperationException(error.code, error.toString());
     }
   }
 
@@ -375,13 +381,13 @@ class ProductionToolHost {
       'draft_task_id': task.draftTaskId,
       if (task.kind == app.GenerationKind.video) ...{
         'draft_expires_at': task.draft
-            ? task.draftExpiresAt?.toIso8601String()
+            ? task.draftExpiresAt?.toUtc().toIso8601String()
             : null,
         'can_complete_draft': draftBlockedReason == null,
         'draft_completion_blocked_reason': draftBlockedReason,
       },
       if (task.status == app.GenerationTaskStatus.cancelled) 'cancelled': true,
-      'cancel_requested_at': task.cancelRequestedAt?.toIso8601String(),
+      'cancel_requested_at': task.cancelRequestedAt?.toUtc().toIso8601String(),
       'result_asset_id': task.resultAssetId,
       'result_file_path': task.path,
       'result_applied': clip?.lastAppliedGenerationTaskId == task.id,
@@ -398,6 +404,9 @@ class ProductionToolHost {
     ToolOperationManager operations,
     String callId,
   ) async {
+    if (spec.subcommand == 'canvas-preview') {
+      return _previewCanvas(options, context);
+    }
     if (spec.subcommand == 'capture-panorama') {
       return ProductionPanoramaCommands(
         this,
@@ -446,7 +455,8 @@ class ProductionToolHost {
       );
     }
     final kind = spec.subcommand.substring('generate-'.length);
-    final target = '/clips/$clipId';
+    final target =
+        '${await canvas.shots.isCanvasWork ? '/production' : ''}/clips/$clipId';
     final node = await nodeForClip(clipId);
     final clip = (await canvas.shots.getShot(clipId))!;
     if (clip.kind != kind) {
@@ -531,6 +541,9 @@ class ProductionToolHost {
           return;
         }
         final decision = await results.requestCancellation(task.id);
+        if (task.kind == app.GenerationKind.image) {
+          await images.cancel(task.id);
+        }
         final current = (await database.generationTaskDao.getById(task.id))!;
         if (!decision.accepted && !current.status.isTerminal) {
           return;
@@ -562,6 +575,9 @@ class ProductionToolHost {
       operation.report(taskId: id);
       if (operation.cancellation.isCancellationRequested) {
         await results.requestCancellation(id);
+        if (frozen is ProductionImagePreview) {
+          await images.cancel(id);
+        }
       }
     }
 
@@ -648,10 +664,181 @@ class ProductionToolHost {
     } on StoryboardException catch (error) {
       throw ToolOperationException(
         error.code == 'request_conflict' ? 'conflict' : 'failed_precondition',
-        'The production request could not be completed (${error.code}).',
+        'The production request could not be completed (${error.reason}).',
       );
     } finally {
       unlink();
     }
   }
+
+  Future<Map<String, dynamic>> _previewCanvas(
+    Map<String, dynamic> rawOptions,
+    ToolExecutionContext context,
+  ) async {
+    final options = freezeToolArguments(rawOptions);
+    const allowedKeys = {'episode_id', 'scope', 'node_ids', 'bounds'};
+    for (final key in options.keys) {
+      if (!allowedKeys.contains(key)) {
+        throw FormatException('Unknown canvas-preview option: $key');
+      }
+    }
+    final session = context.sessionId?.trim();
+    if (session == null || session.isEmpty) {
+      throw const ToolOperationException(
+        'unavailable',
+        'Canvas preview requires an active conversation session.',
+      );
+    }
+
+    final selectorCount =
+        (options.containsKey('scope') ? 1 : 0) +
+        (options.containsKey('node_ids') ? 1 : 0) +
+        (options.containsKey('bounds') ? 1 : 0);
+    if (selectorCount > 1) {
+      throw const FormatException(
+        'Specify at most one of scope, node_ids, or bounds.',
+      );
+    }
+
+    final scope = _parsePreviewScope(options['scope']);
+    final nodeIds = _parsePreviewNodeIds(options['node_ids']);
+    final bounds = _parsePreviewBounds(options['bounds']);
+
+    final isCanvasWork = canvas.shots.contentKind == contentKindCanvas;
+    final String canvasId;
+    if (isCanvasWork) {
+      if (options.containsKey('episode_id')) {
+        throw const FormatException(
+          'episode_id is not supported in canvas-work projects.',
+        );
+      }
+      final entry = await canvas.ensureCanvas('');
+      canvasId = entry.id;
+    } else {
+      final rawEpisodeId = options['episode_id'];
+      if (rawEpisodeId is! String || rawEpisodeId.trim().isEmpty) {
+        throw const FormatException('episode_id must be a non-empty string.');
+      }
+      final episodeId = rawEpisodeId.trim();
+      try {
+        await canvas.shots.requireEpisode(episodeId);
+      } on StoryboardException catch (error) {
+        throw ToolOperationException(
+          error.code == 'not_found' ? 'not_found' : 'failed_precondition',
+          'Episode not found or invalid (${error.reason}).',
+        );
+      }
+      final episode = await canvas.db.screenplayDao.getEpisode(episodeId);
+      final entry = episode?.canvasId == null
+          ? null
+          : await canvas.db.canvasDao.getCanvasById(episode!.canvasId!);
+      if (entry == null) {
+        throw const ToolOperationException(
+          'not_found',
+          'Production canvas has not been created for this episode.',
+        );
+      }
+      if (entry.kind != canvasKindProduction) {
+        throw const ToolOperationException(
+          'failed_precondition',
+          'Target canvas is not a production canvas.',
+        );
+      }
+      canvasId = entry.id;
+    }
+
+    final rendered = await renderProductionCanvasPreview(
+      canvas: canvas,
+      canvasId: canvasId,
+      scope: scope,
+      nodeIds: nodeIds,
+      bounds: bounds,
+    );
+    final files = SessionFiles(
+      root: canvas.library.root.path,
+      novelId: canvas.novelId,
+    );
+    final file = await files.allocate(session, '.jpg');
+    await file.writeAsBytes(rendered.jpeg, flush: true);
+    final path = files.reference(file);
+    return commandFileResult({
+      'ok': true,
+      'width': rendered.width,
+      'height': rendered.height,
+      'bounds': {
+        'x': rendered.bounds.left,
+        'y': rendered.bounds.top,
+        'width': rendered.bounds.width,
+        'height': rendered.bounds.height,
+      },
+      'content_format': 'session_files_v1',
+      'file_path': path,
+      'content': [
+        {'type': 'image', 'file_path': path, 'mime_type': 'image/jpeg'},
+      ],
+    }, files);
+  }
+}
+
+String _parsePreviewScope(Object? raw) {
+  if (raw == null) {
+    return 'main';
+  }
+  if (raw is! String || (raw != 'main' && raw != 'all')) {
+    throw const FormatException('scope must be "main" or "all".');
+  }
+  return raw;
+}
+
+List<String>? _parsePreviewNodeIds(Object? raw) {
+  if (raw == null) {
+    return null;
+  }
+  if (raw is! List || raw.isEmpty) {
+    throw const FormatException(
+      'node_ids must be a non-empty list of strings.',
+    );
+  }
+  final ids = <String>[];
+  for (final item in raw) {
+    if (item is! String || item.trim().isEmpty) {
+      throw const FormatException('node_ids must contain non-empty strings.');
+    }
+    ids.add(item.trim());
+  }
+  return ids;
+}
+
+ui.Rect? _parsePreviewBounds(Object? raw) {
+  if (raw == null) {
+    return null;
+  }
+  if (raw is! Map) {
+    throw const FormatException(
+      'bounds must be an object with x, y, width, height.',
+    );
+  }
+  const requiredKeys = {'x', 'y', 'width', 'height'};
+  if (raw.keys.any((key) => !requiredKeys.contains(key)) ||
+      !requiredKeys.every(raw.containsKey)) {
+    throw const FormatException(
+      'bounds must contain exact keys x, y, width, height.',
+    );
+  }
+  double readFinite(String key) {
+    final value = raw[key];
+    if (value is! num || !value.isFinite) {
+      throw FormatException('bounds.$key must be a finite number.');
+    }
+    return value.toDouble();
+  }
+
+  final x = readFinite('x');
+  final y = readFinite('y');
+  final width = readFinite('width');
+  final height = readFinite('height');
+  if (width <= 0 || height <= 0) {
+    throw const FormatException('bounds.width and bounds.height must be > 0.');
+  }
+  return ui.Rect.fromLTWH(x, y, width, height);
 }

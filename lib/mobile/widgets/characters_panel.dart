@@ -42,12 +42,14 @@ class MobileCharactersPanel extends ConsumerWidget {
   const MobileCharactersPanel({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.onCreate,
     this.onOpenGraph,
     this.isScreenplay = false,
   });
 
   final String databasePath;
+  final String novelId;
 
   /// 新建入口由标题栏右上角承载；空状态引导按钮复用同一回调。
   final VoidCallback onCreate;
@@ -72,6 +74,7 @@ class MobileCharactersPanel extends ConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileCharacterEditorPage(
+            novelId: novelId,
             databasePath: databasePath,
             characterId: c.id,
             onOpenGraph: onOpenGraph,

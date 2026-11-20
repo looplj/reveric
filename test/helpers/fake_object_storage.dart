@@ -3,6 +3,7 @@
 //   lib/shared/services/object_storage/service.dart
 //   lib/shared/services/ai/video/reference_storage_service.dart
 import 'dart:io';
+import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/object_storage_config.dart';
@@ -37,6 +38,7 @@ class FakeObjectStorage extends ObjectStorageService {
     required String sha256,
     required String mimeType,
     required int fileSize,
+    AgentCancellationToken? cancellation,
   }) async {
     final result = await _upload!(
       file: file,

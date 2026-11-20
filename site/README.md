@@ -41,7 +41,7 @@ python3 -m http.server 4312 --directory site/dist
 - **改文案或补打平台后**：在 Actions 页面手动运行 `Website` workflow，版本号取最新正式 tag。推送代码不会触发部署。
 - **本地上传**：`make site-deploy`，依次裁剪字体、构建、上传。只构建不上传用 `make site-build`。
 
-下载链接按 `distribute_options.yaml` 与 `build-android.sh` 的产物命名拼出，两边改名时要同步修改 `build.mjs` 的 `assetUrls`。
+下载链接指向 `https://downloads.reveric.app/releases/v<版本>/<文件名>`，文件名按 `distribute_options.yaml` 与 `build-android.sh` 的产物命名拼出，两边改名时要同步修改 `build.mjs` 的 `assetUrls`。更新日志仍指向 GitHub Release。
 
 ### 首次配置
 

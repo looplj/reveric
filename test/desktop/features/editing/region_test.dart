@@ -78,7 +78,51 @@ void main() {
         await db.customStatement(
           "INSERT INTO screenplay_episodes(id,screenplay_id,season_id,episode_number,title,created_at,updated_at) VALUES('episode','script','season',1,'First Dawn',100,200)",
         );
-        await db.editingDao.create('editing', 'Independent', fixture());
+        final initialDoc = fixture();
+        await db.editingDao.create(
+          'editing',
+          'Independent',
+          initialDoc.copyWith(
+            clips: [
+              ...initialDoc.clips,
+              const EditingClip(
+                id: 'short_v',
+                trackId: 'V2',
+                startFrame: 0,
+                durationFrames: 8,
+                content: EditingVideoContent(
+                  source: EditingSource(
+                    assetId: 'media/video.mp4',
+                    mediaType: 'video',
+                    durationUs: 10000000,
+                    hasAudio: true,
+                  ),
+                  opacity: 0.5,
+                ),
+              ),
+              const EditingClip(
+                id: 'still_img',
+                trackId: 'V2',
+                startFrame: 24,
+                durationFrames: 30,
+                content: EditingVideoContent(
+                  source: EditingSource(
+                    assetId: 'media/still.png',
+                    mediaType: 'image',
+                    durationUs: 0,
+                  ),
+                ),
+              ),
+              const EditingClip(
+                id: 'short_title',
+                trackId: 'T1',
+                startFrame: 0,
+                durationFrames: 8,
+                content: EditingTextContent(text: '标题', style: 'title'),
+              ),
+            ],
+          ),
+        );
         Future<void> Function()? flush;
         final boundary = GlobalKey();
         await tester.pumpWidget(
@@ -87,8 +131,14 @@ void main() {
               appDatabaseProvider.overrideWithValue(app),
               appBackgroundActiveProvider.overrideWithValue(false),
               novelContentDatabaseProvider('test').overrideWithValue(db),
-              editingServiceProvider('test').overrideWithValue(projects),
-              editingRenderServiceProvider('test').overrideWithValue(renderer),
+              editingServiceProvider((
+                path: 'test',
+                novelId: 'work',
+              )).overrideWithValue(projects),
+              editingRenderServiceProvider((
+                path: 'test',
+                novelId: 'work',
+              )).overrideWithValue(renderer),
             ],
             child: EasyLocalization(
               supportedLocales: const [Locale('en')],
@@ -267,6 +317,15 @@ void main() {
           });
         }
         tester.view.physicalSize = const Size(700, 600);
+        await app.assetDao.insertAsset(
+          AssetsCompanion.insert(
+            id: 'media/still.png',
+            type: 'image',
+            purpose: 'general',
+            path: const Value('file_workspaces/work/still.png'),
+            content: const Value(ImageAssetContent(mimeType: 'image/png')),
+          ),
+        );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         expect(tester.getTopLeft(find.byTooltip('Close')).dy, titleTop);

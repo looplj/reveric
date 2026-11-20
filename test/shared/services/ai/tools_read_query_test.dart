@@ -14,6 +14,8 @@ import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
+import '../../../helpers/resource_contract.dart';
+
 String encodeQuery(String key, String value) =>
     Uri(queryParameters: {key: value}).query;
 
@@ -379,10 +381,7 @@ void main() {
           expect(empty['error'], isNull);
           expect(empty['entries'], isEmpty);
         }
-        final contract = await toolManager.executeTool(
-          name: 'Read',
-          input: {'path': '/_schema/locations'},
-        );
+        final contract = resourceContractTreeForTesting('/_schema/locations');
         expect(contract['error'], isNull);
         expect(contract['query'], contains('parent_id'));
         expect(contract['query_contracts']['parent_id']['match'], 'exact');

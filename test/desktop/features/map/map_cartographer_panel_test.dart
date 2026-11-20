@@ -9,6 +9,7 @@
 //   .agents/rules/testing.md
 //   .agents/rules/i18n.md
 
+import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -143,7 +144,7 @@ void main() {
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
-      startsWith('绘制一张地图，横版。'),
+      startsWith('绘制一张地图。'),
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
@@ -164,7 +165,7 @@ void main() {
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
-      startsWith('绘制一张地图，横版。'),
+      startsWith('绘制一张地图。'),
     );
     expect(
       tester.widget<EditableText>(promptEditor).controller.text,
@@ -210,6 +211,10 @@ void main() {
     await tester.enterText(promptEditor, '用户修改后的地图要求');
     await tester.drag(cartographerScrollable, const Offset(0, 1000));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('map_studio_style_inkmap')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('map_studio_style_inkmap')).hitTestable(),
     );
@@ -225,6 +230,10 @@ void main() {
     );
 
     await tester.drag(cartographerScrollable, const Offset(0, 1000));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('map_studio_style_custom')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('map_studio_style_custom')).hitTestable(),
@@ -327,6 +336,7 @@ class _CartographerFixture extends StatelessWidget {
 Widget _wrap(Widget child) {
   return ProviderScope(
     overrides: [
+      aiSettingsProvider.overrideWithValue(AiSettings(providers: const [])),
       mapStudioImageModelSelectionProvider.overrideWithValue(
         MapStudioImageModelSelection(
           config: aiProviderBuiltinById(

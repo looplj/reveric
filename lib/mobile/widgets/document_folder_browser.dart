@@ -108,11 +108,13 @@ class MobileDocumentFolderBrowser extends HookConsumerWidget {
   const MobileDocumentFolderBrowser({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.section,
     this.onRegisterCreate,
   });
 
   final String databasePath;
+  final String novelId;
   final MobileEditorSection section;
   final ValueChanged<Future<void> Function()?>? onRegisterCreate;
 
@@ -172,6 +174,7 @@ class MobileDocumentFolderBrowser extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileEntryEditorPage(
+            novelId: novelId,
             databasePath: databasePath,
             section: section,
             entryId: id,
@@ -255,6 +258,7 @@ class MobileDocumentFolderBrowser extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileEntryEditorPage(
+            novelId: novelId,
             databasePath: databasePath,
             section: section,
             entryId: document.id,

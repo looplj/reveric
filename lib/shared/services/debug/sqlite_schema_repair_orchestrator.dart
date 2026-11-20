@@ -17,6 +17,7 @@ import 'package:sqlite3/sqlite3.dart';
 import '../../database/app_database.dart';
 import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
+import '../../utils/storage_paths.dart';
 import '../../utils/windows_safe_path.dart';
 
 final _log = AppLogger.forModule('SqliteSchemaRepair');
@@ -152,14 +153,29 @@ Future<Set<String>> _collectNovelContentDatabasePaths(
   );
   try {
     final rows = appDatabase.select(
-      'SELECT content_database_path FROM novels '
+      'SELECT id, content_database_path FROM novels '
       'WHERE content_database_path IS NOT NULL '
       "AND content_database_path != ''",
     );
     for (final row in rows) {
-      final path = row['content_database_path'];
-      if (path is String && await File(path).exists()) {
-        paths.add(p.normalize(path));
+      final registeredPath = row['content_database_path'];
+      if (registeredPath is! String) {
+        continue;
+      }
+      try {
+        final path = RevericPaths.resolveDatabasePath(
+          registeredPath,
+          support: appSupportDir.path,
+        );
+        if (await File(path).exists()) {
+          paths.add(p.normalize(path));
+        }
+      } on FormatException catch (error, stackTrace) {
+        _log.error(
+          'invalid registered content path novel=${row['id']}',
+          error: error,
+          stackTrace: stackTrace,
+        );
       }
     }
   } finally {

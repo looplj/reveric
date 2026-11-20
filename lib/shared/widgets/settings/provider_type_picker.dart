@@ -1,4 +1,4 @@
-// 职责: 添加自定义供应商时选择接口格式 — 按能力筛选并展示各类型的能力与固定地址标记。
+// 职责: 添加供应商时按预设平台、通用接口、插件分组，并按模型能力筛选。
 // 关联文件:
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/widgets/settings/ai_providers_section.dart
@@ -21,11 +21,25 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../mobile/widgets/sheet.dart';
 import '../../components/reveric_filter_chip.dart';
+import '../../components/reveric_placeholder.dart';
+import '../../components/reveric_segmented_control.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../models/ai_provider.dart';
 import '../../theme/theme.dart';
 import 'ai_providers_section.dart' show localizedProviderTypeName;
+import 'provider_logo.dart';
+
+enum _ProviderGroup { presets, protocols, plugins }
+
+_ProviderGroup _groupFor(String type) {
+  if (type.startsWith('plugin:')) {
+    return _ProviderGroup.plugins;
+  }
+  return aiProviderTypeConfigs[type]!.fixedBaseUrl
+      ? _ProviderGroup.presets
+      : _ProviderGroup.protocols;
+}
 
 const _pickerKinds = [
   AiModelKind.chat,
@@ -34,25 +48,29 @@ const _pickerKinds = [
   AiModelKind.audio,
 ];
 
-/// 可新建的类型：OpenAI 兼容最常用放首位，固定地址的平台排在可改地址的格式之后。
 /// Codex 依赖桌面登录，移动端不提供。
-List<AiProviderType> providerTypePickerTypes() {
+List<String> providerTypePickerTypes() {
   final mobile =
       defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
   final types = [
     for (final type in customAiProviderTypes)
-      if (!mobile || type != AiProviderType.codex) type,
+      if (!mobile || type != 'codex') type,
   ];
-  bool fixed(AiProviderType type) =>
-      aiProviderTypeConfigs[type]?.fixedBaseUrl ?? false;
-  int rank(AiProviderType type) => type == AiProviderType.openai_compatible
-      ? 0
-      : fixed(type)
-      ? 2
-      : 1;
+  const trailingPlatforms = ['moss', 'atlascloud', 'agnes', 'openrouter'];
+  bool fixed(String type) => aiProviderTypeConfigs[type]?.fixedBaseUrl ?? false;
+  int rank(String type) {
+    final trailingIndex = trailingPlatforms.indexOf(type);
+    if (trailingIndex >= 0) {
+      return 2 + trailingIndex;
+    }
+    return fixed(type)
+        ? (type == 'codex' ? 1 : 0)
+        : (type == 'openai_compatible' ? 6 : 7);
+  }
+
   return [
-    for (final r in [0, 1, 2])
+    for (var r = 0; r < 8; r++)
       for (final type in types)
         if (rank(type) == r) type,
   ];
@@ -67,7 +85,7 @@ String providerKindLabel(BuildContext context, AiModelKind kind) =>
     });
 
 /// 类型的可选能力。
-List<AiModelKind> providerTypePickerKinds(AiProviderType type) {
+List<AiModelKind> providerTypePickerKinds(String type) {
   final kinds = aiProviderTypeConfigs[type]?.supportedModelKinds ?? const {};
   return [
     for (final kind in _pickerKinds)
@@ -83,8 +101,8 @@ class ProviderTypePickerPanel extends StatelessWidget {
     this.selected,
   });
 
-  final ValueChanged<AiProviderType> onPick;
-  final AiProviderType? selected;
+  final ValueChanged<String> onPick;
+  final String? selected;
 
   @override
   Widget build(BuildContext context) {
@@ -114,11 +132,11 @@ class ProviderTypePickerPanel extends StatelessWidget {
 }
 
 /// 移动端底部弹层；返回选中的类型，取消返回 null。
-Future<AiProviderType?> showProviderTypeSheet(
+Future<String?> showProviderTypeSheet(
   BuildContext context, {
-  AiProviderType? selected,
+  String? selected,
 }) {
-  return showMobileSheet<AiProviderType>(
+  return showMobileSheet<String>(
     context: context,
     builder: (sheetContext) => MobileSheetScaffold(
       expand: true,
@@ -144,19 +162,32 @@ class ProviderTypePicker extends HookWidget {
     this.selected,
   });
 
-  final ValueChanged<AiProviderType> onPick;
+  final ValueChanged<String> onPick;
   final bool showHeader;
-  final AiProviderType? selected;
+  final String? selected;
 
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final filter = useState<AiModelKind?>(null);
-    final types = [
+    final group = useState(
+      selected == null ? _ProviderGroup.presets : _groupFor(selected!),
+    );
+    final segmentTypes = [
       for (final type in providerTypePickerTypes())
-        if (filter.value == null ||
-            providerTypePickerKinds(type).contains(filter.value))
+        if (_groupFor(type) == group.value) type,
+    ];
+    int countOf(AiModelKind kind) => segmentTypes
+        .where((type) => providerTypePickerKinds(type).contains(kind))
+        .length;
+    // 切换分段后，若原能力在新分段下无结果，回落到「全部」而不是展示空列表。
+    final kind = filter.value;
+    final activeFilter = kind != null && countOf(kind) > 0 ? kind : null;
+    final types = [
+      for (final type in segmentTypes)
+        if (activeFilter == null ||
+            providerTypePickerKinds(type).contains(activeFilter))
           type,
     ];
 
@@ -178,6 +209,32 @@ class ProviderTypePicker extends HookWidget {
             ),
           ),
         Padding(
+          padding: const EdgeInsets.fromLTRB(
+            RevericSpacing.md,
+            RevericSpacing.sm,
+            RevericSpacing.md,
+            RevericSpacing.xxs,
+          ),
+          child: RevericSegmentedControl<_ProviderGroup>(
+            selected: group.value,
+            onChanged: (value) => group.value = value,
+            segments: [
+              RevericSegment(
+                value: _ProviderGroup.presets,
+                label: context.t(LocaleKeys.providerTypePresets),
+              ),
+              RevericSegment(
+                value: _ProviderGroup.protocols,
+                label: context.t(LocaleKeys.providerTypeProtocols),
+              ),
+              RevericSegment(
+                value: _ProviderGroup.plugins,
+                label: context.t(LocaleKeys.providerTypePlugins),
+              ),
+            ],
+          ),
+        ),
+        Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: RevericSpacing.md,
             vertical: RevericSpacing.sm,
@@ -188,14 +245,14 @@ class ProviderTypePicker extends HookWidget {
             children: [
               RevericFilterChip(
                 label: context.t(LocaleKeys.commonFilterAll),
-                selected: filter.value == null,
+                selected: activeFilter == null,
                 onTap: () => filter.value = null,
               ),
               for (final kind in _pickerKinds)
                 RevericFilterChip(
                   label: providerKindLabel(context, kind),
-                  selected: filter.value == kind,
-                  onTap: () => filter.value = kind,
+                  selected: activeFilter == kind,
+                  onTap: countOf(kind) == 0 ? null : () => filter.value = kind,
                 ),
             ],
           ),
@@ -205,17 +262,26 @@ class ProviderTypePicker extends HookWidget {
           color: colors.borderSubtle,
         ),
         Flexible(
-          child: ListView.builder(
-            shrinkWrap: true,
-            padding: const EdgeInsets.all(RevericSpacing.xs),
-            itemCount: types.length,
-            itemBuilder: (context, i) => _TypeRow(
-              type: types[i],
-              highlight: filter.value,
-              selected: types[i] == selected,
-              onTap: () => onPick(types[i]),
-            ),
-          ),
+          child: types.isEmpty && group.value == _ProviderGroup.plugins
+              ? SingleChildScrollView(
+                  child: RevericPlaceholder.empty(
+                    icon: RevericIcons.stack,
+                    compact: true,
+                    description: context.t(LocaleKeys.providerTypePluginsEmpty),
+                  ),
+                )
+              : ListView.builder(
+                  key: ValueKey((group.value, activeFilter)),
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.all(RevericSpacing.xs),
+                  itemCount: types.length,
+                  itemBuilder: (context, i) => _TypeRow(
+                    type: types[i],
+                    highlight: activeFilter,
+                    selected: types[i] == selected,
+                    onTap: () => onPick(types[i]),
+                  ),
+                ),
         ),
       ],
     );
@@ -230,7 +296,7 @@ class _TypeRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final AiProviderType type;
+  final String type;
   final AiModelKind? highlight;
   final bool selected;
   final VoidCallback onTap;
@@ -239,12 +305,10 @@ class _TypeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final fixed = aiProviderTypeConfigs[type]?.fixedBaseUrl ?? false;
     final noteKey = switch (type) {
-      AiProviderType.openai_compatible =>
-        LocaleKeys.providerTypeNoteOpenaiCompatible,
-      AiProviderType.minimax => LocaleKeys.providerTypeNoteMinimax,
-      AiProviderType.doubao => LocaleKeys.providerTypeNoteDoubao,
+      'openai_compatible' => LocaleKeys.providerTypeNoteOpenaiCompatible,
+      'minimax' => LocaleKeys.providerTypeNoteMinimax,
+      'doubao' => LocaleKeys.providerTypeNoteDoubao,
       _ => null,
     };
 
@@ -260,49 +324,38 @@ class _TypeRow extends StatelessWidget {
             horizontal: RevericSpacing.md,
             vertical: RevericSpacing.sm,
           ),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Wrap(
-                spacing: RevericSpacing.sm,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    localizedProviderTypeName(context, type),
-                    style: typo.uiSmall.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: colors.textPrimary,
+              ProviderLogo(type: type),
+              const SizedBox(width: RevericSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      localizedProviderTypeName(context, type),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: typo.uiSmall.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: colors.textPrimary,
+                      ),
                     ),
-                  ),
-                  if (fixed)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        RevericIcon(
-                          RevericIcons.lock_outline,
-                          size: 12,
-                          color: colors.textSubtle,
-                        ),
-                        const SizedBox(width: RevericSpacing.xxs),
-                        Text(
-                          context.t(LocaleKeys.providerTypeFixedUrl),
-                          style: typo.uiTiny.copyWith(color: colors.textSubtle),
-                        ),
-                      ],
+                    if (noteKey != null) ...[
+                      const SizedBox(height: RevericSpacing.xxs),
+                      Text(
+                        context.t(noteKey),
+                        style: typo.uiTiny.copyWith(color: colors.textMuted),
+                      ),
+                    ],
+                    const SizedBox(height: RevericSpacing.xs),
+                    ProviderKindTags(
+                      kinds: providerTypePickerKinds(type),
+                      highlight: highlight,
                     ),
-                ],
-              ),
-              if (noteKey != null) ...[
-                const SizedBox(height: RevericSpacing.xxs),
-                Text(
-                  context.t(noteKey),
-                  style: typo.uiTiny.copyWith(color: colors.textMuted),
+                  ],
                 ),
-              ],
-              const SizedBox(height: RevericSpacing.xs),
-              ProviderKindTags(
-                kinds: providerTypePickerKinds(type),
-                highlight: highlight,
               ),
             ],
           ),

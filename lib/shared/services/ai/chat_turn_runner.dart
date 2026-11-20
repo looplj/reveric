@@ -32,6 +32,7 @@ import 'dart:math';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../providers/async_read.dart';
@@ -60,7 +61,6 @@ import '../../models/ai_run_failure.dart';
 import '../../models/novel_agent_skill.dart';
 import '../../models/ai_provider.dart';
 import '../../models/ai_session_mode.dart';
-import '../../models/content_kind.dart';
 import '../../models/models_catalog.dart';
 import '../../models/queued_chat_message.dart';
 import '../../utils/storage_paths.dart';
@@ -178,6 +178,8 @@ Map<String, dynamic> _novelToolSnapshot(Novel n) {
     'description': n.description,
     'category': n.category,
     'status': n.status,
+    'source_novel_id': ?n.sourceNovelId,
+    'draft': n.draft,
     'word_count': n.wordCount,
     'tags': n.tags,
   };
@@ -511,7 +513,7 @@ class ChatTurnRunner {
   /// 建议开关等环境事实，由宿主（面板）解析后注入；只用于决定是否下发工具。
   final ChatNextActionEnvironment nextActionEnvironment;
 
-  /// 宿主是否提供跳转能力。false（后台会话 等无 UI 场景）时工具不下发。
+  /// 是否在聊天界面展示下一步建议。无界面的会话不下发此工具。
   final bool supportsNextActionSuggestions;
   late final Future<List<SubAgent>> _availableSubAgents =
       loadRuntimeChatSubAgents(container);
@@ -521,6 +523,7 @@ class ChatTurnRunner {
   Future<AiImageGenerationResult> _generateImage(
     String prompt, {
     String? model,
+    ImageInvocationOptions? options,
     String? size,
     String? quality,
     String? complexity,
@@ -533,6 +536,7 @@ class ChatTurnRunner {
     return callback(
       prompt,
       model: model,
+      options: options,
       size: size,
       quality: quality,
       complexity: complexity,
@@ -543,13 +547,19 @@ class ChatTurnRunner {
     String prompt, {
     required String imageData,
     String? model,
+    ImageInvocationOptions? options,
   }) => container.withProvider(imageEditCallbackProvider(novel.id), (
     callback,
   ) async {
     if (callback == null) {
       throw AiImageGenerationException(tr(LocaleKeys.aiNoImageModelConfigured));
     }
-    return callback(prompt, imageData: imageData, model: model);
+    return callback(
+      prompt,
+      imageData: imageData,
+      model: model,
+      options: options,
+    );
   });
 
   Future<AskUserResult> _askUser(
@@ -623,6 +633,7 @@ class ChatTurnRunner {
   }
 
   void _configureChatToolCallbacks({required AiToolManager toolManager}) {
+    toolManager.workCreationService = container.read(novelActionsProvider);
     final operationRuntime = container.read(
       aiChatRuntimeProvider(
         toolManager.sourceSessionId ?? toolManager.sessionId,
@@ -636,6 +647,7 @@ class ChatTurnRunner {
               container
                   .read(novelContentServiceProvider(operationDatabasePath))
                   .database,
+              contentKind: novel.contentKind,
             ),
             container.read(mediaLibraryServiceProvider),
             novel.id,
@@ -762,6 +774,18 @@ class ChatTurnRunner {
     };
   }
 
+  @visibleForTesting
+  Future<
+    ({List<String> names, Future<AgentSkillLoadResult?> Function(String)? load})
+  >
+  skillContextForTest() async {
+    final context = await _loadCurrentSkillContext(promptContext.contentKind);
+    return (
+      names: context.summaries.map((skill) => skill.name).toList(),
+      load: context.loader,
+    );
+  }
+
   Future<_ChatSkillContext> _loadCurrentSkillContext(String contentKind) async {
     // 技能应用全局：读取全局可执行 NovelAgentSkill；未命中 name 且该 name ∈
     // bundledControlCallNames 时回落到 Bundled Control Skills。同名
@@ -782,18 +806,13 @@ class ChatTurnRunner {
     // 不在此处捕获（遵循 .agents/rules/error-handling.md 不静默降级）。
     final bundledFallback = <BundledControlSkill>[];
     for (final callName in bundledControlCallNames) {
-      if (contentKind == contentKindScreenplay && callName == '创作向导') {
-        continue;
-      }
-      if (contentKind != contentKindScreenplay && callName == '剧本工具使用规范') {
-        continue;
-      }
       if (installedNames.contains(callName)) {
         continue;
       }
       final bundled = await const BundledControlSkillsLoader().findByCallName(
         rootBundle,
         callName,
+        contentKind: contentKind,
       );
       if (bundled != null) {
         bundledFallback.add(bundled);
@@ -829,6 +848,7 @@ class ChatTurnRunner {
         final bundled = await const BundledControlSkillsLoader().findByCallName(
           rootBundle,
           name,
+          contentKind: contentKind,
         );
         if (bundled == null) {
           return null;
@@ -1001,10 +1021,14 @@ class ChatTurnRunner {
     final path = databasePath;
     final contentService = path == null || path.isEmpty
         ? null
-        : container.read(novelContentServiceProvider(path));
+        : container.read(
+            workContentServiceProvider((path: path, novelId: novel.id)),
+          );
     final workingOverlay = path == null || path.isEmpty
         ? null
-        : container.read(workingOverlayServiceProvider(path));
+        : container.read(
+            workOverlayServiceProvider((path: path, novelId: novel.id)),
+          );
     final locationsService = path == null || path.isEmpty
         ? null
         : container.read(locationsServiceProvider(path));
@@ -1013,7 +1037,6 @@ class ChatTurnRunner {
         ? null
         : CrossWorkResolver(
             appDatabase: container.read(appDatabaseProvider),
-            currentDatabasePath: path,
             currentContentService: contentService,
             currentWorkId: novel.id,
           );
@@ -1073,9 +1096,6 @@ class ChatTurnRunner {
         return _novelToolSnapshot(n);
       },
       novelWriter: (fields) async {
-        // 封面不在工具字段里（AI 读不到也写不了），封面只由 UI 的
-        // 「设为封面」落库。Metadata writes patch only supplied fields,
-        // so consecutive tool calls cannot overwrite siblings from a stale snapshot.
         final actions = container.read(novelActionsProvider);
         await actions.updateNovelMetadata(
           novelId: novel.id,
@@ -1084,16 +1104,10 @@ class ChatTurnRunner {
           description: fields['description'] as String?,
           category: fields['category'] as String?,
           tags: _coerceNovelTagsField(fields['tags']),
+          status: fields['status'] as String?,
+          draft: fields['draft'] as bool?,
         );
-        // status 不属于 metadata patch，novelDao 是分开的 updateStatus；
-        // 漏掉它会让 profile/status 报成功却不落库。
-        final status = fields['status'] as String?;
-        if (status != null) {
-          await actions.updateNovelStatus(novelId: novel.id, status: status);
-        }
       },
-      novelDraftClearer: () =>
-          container.read(novelActionsProvider).clearNovelDraft(novel.id),
 
       shouldExecuteTool: () {
         final currentRequestId = requestId;
@@ -1207,8 +1221,10 @@ class ChatTurnRunner {
           : _editImage,
       subAgentListProvider: () => availableSubAgents,
       skillLoader: (slug) async => null,
-      agentSkillsCommandCallback: (command) =>
-          AgentSkillsRunCommandHandler(container: container).run(command),
+      agentSkillsCommandCallback: (command) => AgentSkillsRunCommandHandler(
+        container: container,
+        contentKind: novel.contentKind,
+      ).run(command),
       themesCommandCallback: (command) => container
           .read(appSettingsNotifierProvider.notifier)
           .runThemeCommand(command),
@@ -1217,7 +1233,7 @@ class ChatTurnRunner {
 
       notifyCallback: notifyCallback,
       askUserCallback: (request) => _askUser(sessionId, request),
-      // 宿主不支持跳转，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
+      // 宿主不展示建议，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
       suggestNextActionCallback:
           (supportsNextActionSuggestions &&
               nextActionEnvironment.suggestionsEnabled)
@@ -1275,10 +1291,14 @@ class ChatTurnRunner {
     final path = databasePath;
     final contentService = path == null || path.isEmpty
         ? null
-        : container.read(novelContentServiceProvider(path));
+        : container.read(
+            workContentServiceProvider((path: path, novelId: novel.id)),
+          );
     final workingOverlay = path == null || path.isEmpty
         ? null
-        : container.read(workingOverlayServiceProvider(path));
+        : container.read(
+            workOverlayServiceProvider((path: path, novelId: novel.id)),
+          );
     final locationsService = path == null || path.isEmpty
         ? null
         : container.read(locationsServiceProvider(path));
@@ -1287,7 +1307,6 @@ class ChatTurnRunner {
         ? null
         : CrossWorkResolver(
             appDatabase: container.read(appDatabaseProvider),
-            currentDatabasePath: path,
             currentContentService: contentService,
             currentWorkId: novel.id,
           );
@@ -1357,15 +1376,10 @@ class ChatTurnRunner {
           description: fields['description'] as String?,
           category: fields['category'] as String?,
           tags: _coerceNovelTagsField(fields['tags']),
+          status: fields['status'] as String?,
+          draft: fields['draft'] as bool?,
         );
-        // 同上：status 走 novelDao 的 updateStatus，不在 metadata patch 里。
-        final status = fields['status'] as String?;
-        if (status != null) {
-          await actions.updateNovelStatus(novelId: novel.id, status: status);
-        }
       },
-      novelDraftClearer: () =>
-          container.read(novelActionsProvider).clearNovelDraft(novel.id),
       onToolCallRequested: (callId, toolName, args) {
         _syncRunToolCallBlock(
           sessionNotifier,
@@ -1448,7 +1462,7 @@ class ChatTurnRunner {
         );
       },
       askUserCallback: (request) => _askUser(sessionId, request),
-      // 宿主不支持跳转，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
+      // 宿主不展示建议，或用户关掉了建议时保持 null：工具既不注册也不下发 schema。
       suggestNextActionCallback:
           (supportsNextActionSuggestions &&
               nextActionEnvironment.suggestionsEnabled)
@@ -1456,8 +1470,10 @@ class ChatTurnRunner {
                 _suggestNextAction(sessionId, callId, suggestions)
           : null,
       skillLoader: (slug) async => null,
-      agentSkillsCommandCallback: (command) =>
-          AgentSkillsRunCommandHandler(container: container).run(command),
+      agentSkillsCommandCallback: (command) => AgentSkillsRunCommandHandler(
+        container: container,
+        contentKind: novel.contentKind,
+      ).run(command),
       themesCommandCallback: (command) => container
           .read(appSettingsNotifierProvider.notifier)
           .runThemeCommand(command),
@@ -2464,6 +2480,11 @@ class ChatTurnRunner {
               }
               toolExecutionContext.sourceTurnId = queuedUserMessage.id;
               processingCompletion = false;
+              // 新占位从空内容开始。下一次 AgentMessageStart 应复用它，
+              // 避免用上一轮的正文状态把它当作已完成消息落库。
+              currentMessageHasVisibleText = false;
+              currentMessageHasVisibleBlock = false;
+              currentMessageHasToolCall = false;
               startUiAssistantMessage();
               // 排队消息开启的新一轮同样先进入等待态，与 AgentMessageStart 语义一致。
               sessionNotifier.setWaitingForResponse(true);
@@ -2821,7 +2842,9 @@ class ChatTurnRunner {
       return;
     }
     try {
-      final overlay = container.read(workingOverlayServiceProvider(dbPath));
+      final overlay = container.read(
+        workOverlayServiceProvider((path: dbPath, novelId: novel.id)),
+      );
       if (sourceTurnIds != null) {
         final ids = (await overlay.getWorkingChanges())
             .where(

@@ -1,4 +1,4 @@
-// 职责: 串行投递匿名用量和诊断事件 的本地持久化 Outbox。
+// 职责: 持久化并串行投递匿名 Agent 诊断事件。
 // 关联文件:
 //   lib/shared/database/daos/anonymous_outbox_dao.dart
 //   lib/shared/services/ai/trace_reporter_service.dart
@@ -9,10 +9,9 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
-import '../app_config.dart';
 import '../database/app_database.dart';
 import '../logger/app_logger.dart';
 
@@ -34,16 +33,18 @@ enum AnonymousOutboxChannel {
 }
 
 enum AnonymousOutboxEndpoint {
-  // Endpoint paths are relative to the configured anonymous reporting URL.
-  usage(''),
-  trace(''),
-  toolError(''),
-  requestError('');
+  // 旧队列可能含用量事件，Reveric 只发送诊断事件。
+  usage(null),
+  trace('/v1/analysis/traces/events'),
+  toolError('/v1/analysis/tool-call-errors'),
+  requestError('/v1/analysis/request-errors');
 
   const AnonymousOutboxEndpoint(this.path);
 
-  final String path;
+  final String? path;
 }
+
+enum _DeliveryResult { accepted, rejected, retry }
 
 class AnonymousOutboxEventInput {
   const AnonymousOutboxEventInput({
@@ -71,23 +72,31 @@ class AnonymousOutboxService {
     required this._getBaseUrl,
     required this._getEnabled,
     this._autoFlush = true,
-  }) : _dispatchZone = Zone.current;
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now,
+       _dispatchZone = Zone.current;
+
+  static const _batchSize = 100;
+  static const _requestTimeout = Duration(seconds: 8);
+  static const _retryDelays = [Duration(seconds: 30), Duration(minutes: 2)];
 
   final AppDatabase _database;
   final http.Client _httpClient;
   final String? Function() _getBaseUrl;
   final bool Function() _getEnabled;
   final bool _autoFlush;
+  final DateTime Function() _now;
   // 服务在事务外创建；后台投递不得继承 enqueue 调用方的 Drift 事务，
   // 否则可能在业务提交前发出事件，或在事务结束后继续使用已关闭事务。
   final Zone _dispatchZone;
 
   Future<void>? _activeFlush;
   Timer? _retryTimer;
+  DateTime? _retryNotBefore;
   bool _flushRequested = false;
   bool _disposed = false;
 
-  int get _batchSize => kDebugMode ? 1 : 100;
+  bool get canEnqueue => !_disposed && _getEnabled();
 
   /// 写入成功后触发后台 flush；调用方不必等待网络完成。
   Future<void> enqueue(AnonymousOutboxEventInput input) async {
@@ -108,13 +117,13 @@ class AnonymousOutboxService {
       return;
     }
 
+    final eventId = input.eventId ?? const Uuid().v4();
     try {
       await _database.anonymousOutboxDao.enqueue(
-        eventId: input.eventId,
+        eventId: eventId,
         channel: input.channel.name,
         priority: input.channel.priority,
         endpoint: input.endpoint.name,
-        productCode: revericProductCode,
         deviceId: input.deviceId,
         payloadJson: jsonEncode(input.payload),
         occurredAt: input.occurredAt,
@@ -129,7 +138,7 @@ class AnonymousOutboxService {
     } catch (error, stackTrace) {
       _log.warning(
         '[DB] table=anonymous_outbox_events operation=ENQUEUE '
-        'eventId=${input.eventId} error=$error\n$stackTrace',
+        'eventId=$eventId error=$error\n$stackTrace',
       );
       return;
     }
@@ -177,11 +186,18 @@ class AnonymousOutboxService {
       return;
     }
 
-    while (!_disposed) {
+    while (!_disposed && _getEnabled()) {
+      final now = _now().toUtc();
+      final retryNotBefore = _retryNotBefore;
+      if (retryNotBefore != null && now.isBefore(retryNotBefore)) {
+        _scheduleFlushAt(retryNotBefore);
+        return;
+      }
+
       late final List<AnonymousOutboxEvent> batch;
       try {
         batch = await _database.anonymousOutboxDao.nextReadyBatch(
-          now: DateTime.now().toUtc(),
+          now: now,
           limit: _batchSize,
         );
       } catch (error, stackTrace) {
@@ -191,47 +207,59 @@ class AnonymousOutboxService {
         );
         return;
       }
+      if (_disposed || !_getEnabled()) {
+        return;
+      }
       if (batch.isEmpty) {
         await _scheduleNextFlush();
         return;
       }
 
-      final accepted = await _sendBatch(baseUrl, batch);
       final ids = batch.map((event) => event.id).toList(growable: false);
-      if (accepted) {
-        try {
-          await _database.anonymousOutboxDao.deleteBatch(ids);
-        } catch (error, stackTrace) {
-          _log.warning(
-            '[DB] table=anonymous_outbox_events operation=DELETE_BATCH '
-            'ids=$ids error=$error\n$stackTrace',
-          );
+      final attemptCount = batch.first.attemptCount;
+      final result = attemptCount > _retryDelays.length
+          ? _DeliveryResult.rejected
+          : await _sendBatch(baseUrl, batch);
+      if (result == _DeliveryResult.retry) {
+        if (_disposed) {
           return;
         }
-        continue;
-      }
-      if (_disposed) {
-        return;
-      }
-
-      final maxAttempts = batch.fold<int>(
-        0,
-        (value, event) =>
-            event.attemptCount > value ? event.attemptCount : value,
-      );
-      final delaySeconds = 1 << maxAttempts.clamp(0, 8);
-      try {
-        await _database.anonymousOutboxDao.scheduleRetry(
-          ids: ids,
-          nextRetryAt: DateTime.now().toUtc().add(
-            Duration(seconds: delaySeconds),
-          ),
+        // 同一个接收服务的退避也约束新入队事件和恢复前台触发的 flush。
+        final delay =
+            _retryDelays[attemptCount.clamp(0, _retryDelays.length - 1)];
+        final retryAt = _now().toUtc().add(delay);
+        _retryNotBefore = retryAt;
+        if (attemptCount < _retryDelays.length) {
+          try {
+            await _database.anonymousOutboxDao.scheduleRetry(
+              ids: ids,
+              nextRetryAt: retryAt,
+            );
+          } catch (error, stackTrace) {
+            _log.warning(
+              '[DB] table=anonymous_outbox_events operation=SCHEDULE_RETRY '
+              'ids=$ids error=$error\n$stackTrace',
+            );
+            return;
+          }
+          _scheduleFlushAt(retryAt);
+          return;
+        }
+        _log.warning(
+          'retry limit reached endpoint=${batch.first.endpoint} count=${batch.length}',
         );
+      }
+      try {
+        await _database.anonymousOutboxDao.deleteBatch(ids);
       } catch (error, stackTrace) {
         _log.warning(
-          '[DB] table=anonymous_outbox_events operation=SCHEDULE_RETRY '
+          '[DB] table=anonymous_outbox_events operation=DELETE_BATCH '
           'ids=$ids error=$error\n$stackTrace',
         );
+        return;
+      }
+      if (result == _DeliveryResult.retry) {
+        await _scheduleNextFlush();
         return;
       }
     }
@@ -253,12 +281,22 @@ class AnonymousOutboxService {
       _retryTimer = null;
       return;
     }
-    if (nextRetryAt == null) {
-      _retryTimer = null;
+    if (nextRetryAt != null) {
+      final retryNotBefore = _retryNotBefore;
+      _scheduleFlushAt(
+        retryNotBefore != null && retryNotBefore.isAfter(nextRetryAt)
+            ? retryNotBefore
+            : nextRetryAt,
+      );
+    }
+  }
+
+  void _scheduleFlushAt(DateTime nextRetryAt) {
+    if (_disposed || !_getEnabled()) {
       return;
     }
-
-    final delay = nextRetryAt.difference(DateTime.now().toUtc());
+    _retryTimer?.cancel();
+    final delay = nextRetryAt.difference(_now().toUtc());
     _retryTimer = Timer(delay.isNegative ? Duration.zero : delay, () {
       if (_disposed) {
         return;
@@ -268,43 +306,74 @@ class AnonymousOutboxService {
     });
   }
 
-  Future<bool> _sendBatch(
+  Future<_DeliveryResult> _sendBatch(
     String baseUrl,
     List<AnonymousOutboxEvent> batch,
   ) async {
     final first = batch.first;
     final endpoint = AnonymousOutboxEndpoint.values.byName(first.endpoint);
+    final path = endpoint.path;
+    if (path == null) {
+      return _DeliveryResult.rejected;
+    }
     final events = [
       for (final event in batch)
-        jsonDecode(event.payloadJson) as Map<String, dynamic>,
+        {
+          ...jsonDecode(event.payloadJson) as Map<String, dynamic>,
+          // 旧队列的 event_id 可能为空，同一行重传时也需要稳定键。
+          'event_id':
+              event.eventId ??
+              'outbox-${event.id}-${event.createdAt.millisecondsSinceEpoch}',
+        },
     ];
-    final body = jsonEncode({'events': events});
-    final headers = Map<String, String>.from(revericApiHeaders);
-
-    final url = '${baseUrl.replaceFirst(RegExp(r'/$'), '')}${endpoint.path}';
+    final url = '${baseUrl.replaceFirst(RegExp(r'/$'), '')}$path';
+    final abort = Completer<void>();
     try {
+      final request =
+          http.AbortableRequest(
+              'POST',
+              Uri.parse(url),
+              abortTrigger: abort.future,
+            )
+            ..followRedirects = false
+            ..headers['Content-Type'] = 'application/json'
+            ..bodyBytes = utf8.encode(jsonEncode({'events': events}));
       final response = await _httpClient
-          .post(Uri.parse(url), headers: headers, body: body)
-          .timeout(const Duration(seconds: 10));
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(
+            _requestTimeout,
+            onTimeout: () {
+              abort.complete();
+              throw TimeoutException(
+                'Anonymous report timed out',
+                _requestTimeout,
+              );
+            },
+          );
       if (response.statusCode == 204) {
         if (_log.isDebugEnabled) {
           _log.debug(
             'flush accepted endpoint=${endpoint.name} count=${batch.length}',
           );
         }
-        return true;
+        return _DeliveryResult.accepted;
       }
       _log.warning(
-        'flush rejected endpoint=${endpoint.name} count=${batch.length} '
+        'flush rejected url=$url count=${batch.length} '
         'status=${response.statusCode} body=${response.body}',
       );
+      return switch (response.statusCode) {
+        408 || 429 || (>= 500 && < 600) => _DeliveryResult.retry,
+        _ => _DeliveryResult.rejected,
+      };
     } catch (error, stackTrace) {
       _log.warning(
-        'flush failed endpoint=${endpoint.name} count=${batch.length} '
+        'flush failed url=$url count=${batch.length} '
         'error=$error\n$stackTrace',
       );
     }
-    return false;
+    return _DeliveryResult.retry;
   }
 
   void dispose() {

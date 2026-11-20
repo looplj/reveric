@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/database/novel_content_database.dart';
+import '../../../shared/models/generation/task.dart';
 import '../../../shared/database/daos/generation_task_dao.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
@@ -57,11 +58,15 @@ class ProductionAudioSubmit extends HookConsumerWidget {
     if (active != null) {
       final canCancel = GenerationTaskDao.canRequestCancellation(active);
       return ProductionSendButton(
-        icon: canCancel ? RevericIcons.stop_rounded : RevericIcons.download,
+        icon: canCancel
+            ? RevericIcons.stop_rounded
+            : active.status == GenerationTaskStatus.saving
+            ? RevericIcons.download
+            : RevericIcons.clock,
         tooltip: context.t(
           canCancel
               ? LocaleKeys.commonCancel
-              : productionTaskLabelKey('saving'),
+              : productionTaskLabelKey(active.status.name),
         ),
         onPressed: canCancel
             ? () => productionRun(context, () => jobs.cancel(active.id))

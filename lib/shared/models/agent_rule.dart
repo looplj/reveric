@@ -46,14 +46,22 @@ extension AgentRuleListX on List<AgentRule> {
 
   List<AgentRule> get enabled => where((r) => r.enabled).toList();
 
-  /// 启用规则按 sortOrder 格式化为 prompt 用的多行文本；无启用规则时返回 null。
+  /// 启用规则按 sortOrder 格式化为 Markdown 列表，每条规则保留自身的段落；无启用规则时返回 null。
   String? formatForPrompt() {
     final rules = enabled.sorted;
     if (rules.isEmpty) {
       return null;
     }
     return rules
-        .map((rule) => '${rule.name}：${rule.content.trim()}')
+        .map((rule) {
+          final lines = '${rule.name}：${rule.content.trim()}'.split(
+            RegExp(r'\r?\n'),
+          );
+          return [
+            '- ${lines.first}',
+            for (final line in lines.skip(1)) line.isEmpty ? '' : '  $line',
+          ].join('\n');
+        })
         .join('\n');
   }
 }

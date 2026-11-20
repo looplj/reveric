@@ -24,6 +24,7 @@ class PendingChangesSummaryCard extends ConsumerStatefulWidget {
   const PendingChangesSummaryCard({
     super.key,
     required this.databasePath,
+    required this.novelId,
     required this.changes,
     this.onClose,
     this.initialExpanded = false,
@@ -36,6 +37,7 @@ class PendingChangesSummaryCard extends ConsumerStatefulWidget {
   });
 
   final String databasePath;
+  final String novelId;
   final List<WorkingChange> changes;
   final VoidCallback? onClose;
   final bool initialExpanded;
@@ -136,6 +138,7 @@ class _PendingChangesSummaryCardState
                             PendingChangesDetailDialog.showFromChanges(
                               context,
                               databasePath: widget.databasePath,
+                              novelId: widget.novelId,
                               changes: widget.changes,
                             ),
                       ),
@@ -175,6 +178,7 @@ class _PendingChangesSummaryCardState
                 RevericSpacing.lg,
               ),
               child: RecentChangesLog(
+                novelId: widget.novelId,
                 databasePath: widget.databasePath,
                 changes: widget.changes,
                 enableNavigation: true,

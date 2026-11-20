@@ -157,7 +157,7 @@ void main() {
         };
         const input = {
           'path': '/',
-          'glob': '{seasons,episodes,beats,scenes}/**',
+          'glob': '{seasons,episodes,scenes}/**',
           'pattern': '线索',
           'replacement': '新词',
         };
@@ -165,9 +165,9 @@ void main() {
           name: 'Replace',
           input: input,
         );
-        expect(preview['matched_fields'], 10, reason: '$preview');
-        expect(preview['total_matches'], 10);
-        expect(preview['skipped_fields'], {'not_editable': 6});
+        expect(preview['matched_fields'], 9, reason: '$preview');
+        expect(preview['total_matches'], 9);
+        expect(preview['skipped_fields'], {'not_editable': 5});
         expect((await db.screenplayDao.getEpisode(episodeId))!.outline, '线索大纲');
         expect((await db.screenplayDao.getBeat(beatId))!.description, '线索说明');
         expect(await overlay.getWorkingChanges(), isEmpty);
@@ -178,10 +178,10 @@ void main() {
           name: 'Replace',
           input: {...input, 'dry_run': false},
         );
-        expect(result['applied_fields'], 10, reason: '$result');
-        expect(result['total_replacements'], 10);
+        expect(result['applied_fields'], 9, reason: '$result');
+        expect(result['total_replacements'], 9);
         expect((await db.screenplayDao.getEpisode(episodeId))!.outline, '新词大纲');
-        expect((await db.screenplayDao.getBeat(beatId))!.description, '新词说明');
+        expect((await db.screenplayDao.getBeat(beatId))!.description, '线索说明');
         expect(result['failed'], isNull);
         expect(result['skipped_fields'], preview['skipped_fields']);
         for (final scene in scenes) {
@@ -237,8 +237,8 @@ void main() {
           await overlay.rejectWorkingChange(change.id);
         }
         expect((await db.screenplayDao.getEpisode(episodeId))!.outline, '线索大纲');
-        // 节拍说明直接写入，不属于待审阅变更，驳回不会撤销它。
-        expect((await db.screenplayDao.getBeat(beatId))!.description, '新词说明');
+        // 旧节拍不再暴露给 AI 资源树，替换和驳回都不应修改它。
+        expect((await db.screenplayDao.getBeat(beatId))!.description, '线索说明');
         for (final scene in scenes) {
           expect(
             (await db.screenplayDao.getElementRows(

@@ -16,6 +16,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/ai_message_block.dart';
+import '../models/ai_provider_config.dart';
 import '../models/tool_permission.dart';
 import '../models/provider_asset.dart';
 import '../models/collections/filter.dart';
@@ -105,7 +106,7 @@ class Novels extends Table {
   IntColumn get wordCount => integer().withDefault(const Constant(0))();
 
   /// 快速开书草稿标记：true = 尚未「加入书架」，书库不显示。
-  /// 仅由显式动作清除（编辑器「加入书架」按钮 / Run novel add-to-library），不自动清。
+  /// 由「加入书架」或显式写入作品草稿状态修改。
   BoolColumn get draft => boolean().withDefault(const Constant(false))();
 
   TextColumn get category => text().withDefault(const Constant(''))();
@@ -138,7 +139,7 @@ class NovelCollections extends Table {
   TextColumn get filter =>
       text().nullable().map(const CollectionFilterConverter())();
 
-  /// 集合所属的作品类型；null 表示小说库和剧本库共用（只有默认集合）。
+  /// 集合所属的作品类型。null 只留给各库共用的内置「全部」。
   /// 取值由 Dart 侧 [validateContentKind] 校验。
   TextColumn get contentKind => text().nullable()();
   DateTimeColumn get createdAt =>
@@ -211,8 +212,6 @@ class AnonymousOutboxEvents extends Table {
   IntColumn get priority => integer()();
 
   TextColumn get endpoint => text()();
-
-  TextColumn get productCode => text()();
 
   TextColumn get deviceId => text()();
 
@@ -394,6 +393,10 @@ class AiProviders extends Table {
 
   RealColumn get temperature => real().withDefault(const Constant(0.7))();
 
+  /// 扩展配置。空值用默认：enableTemperature 为 false，请求不带温度。
+  TextColumn get config =>
+      text().map(const AiProviderConfigConverter()).nullable()();
+
   IntColumn get maxTurns => integer().withDefault(const Constant(512))();
 
   TextColumn get reasoningEffort => text().nullable()();
@@ -470,6 +473,10 @@ class ProviderAssets extends Table {
 }
 
 class GenerationTasks extends Table {
+  TextColumn get providerState =>
+      text().map(const ProviderStateConverter()).nullable()();
+  TextColumn get imageOutputs =>
+      text().map(const ImageTaskOutputsConverter()).nullable()();
   TextColumn get kind => textEnum<GenerationKind>()();
   TextColumn get id => text()();
 
@@ -1275,9 +1282,12 @@ class AppDatabase extends _$AppDatabase {
   /// 供受控维护操作在内存库中生成当前 schema 参考。
   AppDatabase.forSchemaRepair(super.executor);
 
+  /// 供画廊只读预览等短期沙箱使用的临时内存库，不参与全局单例缓存。
+  AppDatabase.ephemeral(super.executor);
+
   static _CachedAppDatabase? _cachedDatabase;
 
-  static const currentSchemaVersion = 5;
+  static const currentSchemaVersion = 9;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1334,6 +1344,54 @@ class AppDatabase extends _$AppDatabase {
           rethrow;
         }
       }
+      if (from < 6) {
+        try {
+          await migrations.migrateToV6(migrator);
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER generation_tasks ADD image_outputs schema=6',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 7) {
+        try {
+          await migrations.migrateToV7(migrator);
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER generation_tasks ADD provider_state schema=7',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 8) {
+        try {
+          await migrations.migrateToV8(migrator);
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER ai_providers ADD config schema=8',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 9) {
+        try {
+          await migrations.migrateToV9();
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER anonymous_outbox_events schema=9',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
     },
     onCreate: (migrator) async {
       // checkpoint 立即落盘：原生崩溃（sqlite3.dll）会绕过 catch，
@@ -1356,7 +1414,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   Future<void> close() async {
     final cachedDatabase = _cachedDatabase;
-    if (cachedDatabase == null) {
+    if (cachedDatabase == null || !identical(cachedDatabase.database, this)) {
       return super.close();
     }
 
@@ -1496,6 +1554,10 @@ extension AssetMediaSummary on AssetRow {
 }
 
 extension GenerationTaskRequest on GenerationTask {
+  List<String> get resultAssetIds => imageOutputs == null
+      ? [?resultAssetId]
+      : [for (final item in imageOutputs!.items) ?item.assetId];
+
   AudioRequest get audioRequest =>
       (requestJson as AudioGenerationRequest).request;
   VideoRequest get videoRequest =>

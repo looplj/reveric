@@ -134,6 +134,7 @@ void main() {
               ).overrideWith((ref) => Stream.value(documents)),
             ],
             child: const MobileDocumentFolderBrowser(
+              novelId: 'work',
               databasePath: 'test.db',
               section: MobileEditorSection.lore,
             ),
@@ -183,6 +184,7 @@ void main() {
               ).overrideWith((ref) => Stream.value(const <Document>[])),
             ],
             child: const MobileDocumentFolderBrowser(
+              novelId: 'work',
               databasePath: 'empty.db',
               section: MobileEditorSection.lore,
             ),
@@ -234,10 +236,8 @@ Widget _wrap(Widget child) {
           supportedLocales: context.supportedLocales,
           locale: context.locale,
           theme: RevericThemeData.reveric.toThemeData(),
-          builder: (_, routeChild) => RevericTheme(
-            data: RevericThemeData.reveric,
-            child: routeChild!,
-          ),
+          builder: (_, routeChild) =>
+              RevericTheme(data: RevericThemeData.reveric, child: routeChild!),
           home: Scaffold(body: child),
         );
       },

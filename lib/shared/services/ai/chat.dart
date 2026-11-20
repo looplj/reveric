@@ -55,7 +55,6 @@ class AiClient {
       sessionContext: c.sessionContext,
       novelReader: c.novelReader,
       novelWriter: c.novelWriter,
-      novelDraftClearer: c.novelDraftClearer,
       crossWorkAccess: c.crossWorkAccess,
       providerReader: c.providerReader,
       onToolCallRequested: c.onToolCallRequested,
@@ -100,7 +99,6 @@ class AiClient {
     this._sessionContext,
     this._novelReader,
     this._novelWriter,
-    this._novelDraftClearer,
     this._crossWorkAccess,
     this._providerReader,
     this._onToolCallRequested,
@@ -143,7 +141,6 @@ class AiClient {
   final AiSessionContext? _sessionContext;
   final AiNovelReader? _novelReader;
   final AiNovelWriter? _novelWriter;
-  final AiNovelDraftClearer? _novelDraftClearer;
   final CrossWorkAccess? _crossWorkAccess;
   final Future<List<AiProvider>> Function()? _providerReader;
   final AiToolCallRequestedCallback? _onToolCallRequested;
@@ -254,7 +251,6 @@ class AiClient {
       workingOverlayService: _workingOverlayService!,
       novelReader: _novelReader,
       novelWriter: _novelWriter,
-      novelDraftClearer: _novelDraftClearer,
       crossWorkAccess: _crossWorkAccess,
       providerReader: _providerReader,
 
@@ -316,7 +312,8 @@ class AiClient {
         sourceSessionId: sourceSessionId,
         bindParentCallbacks: false,
       );
-      // 这些回调由 chat 组装后安装；每个管理器独立存储其引用。
+      // 这些宿主依赖在 chat 组装后注入，各工具管理器分别持有引用。
+      manager.workCreationService = _toolManager!.workCreationService;
       manager.operationHost = _toolManager!.operationHost;
       manager.productionStyleServiceBuilder =
           _toolManager!.productionStyleServiceBuilder;
@@ -329,6 +326,8 @@ class AiClient {
       return SpawnAgentResources(
         client: client,
         toolManager: ownedManager,
+        temperature: config.temperature,
+        enableTemperature: config.providerConfig.enableTemperature,
         release: () {
           try {
             ownedManager.dispose();
@@ -430,6 +429,7 @@ class AiClient {
     );
     return AgentConfig(
       temperature: _config.temperature,
+      enableTemperature: _config.providerConfig.enableTemperature,
       maxTokens: resolveAgentMaxTokens(_chatModel),
       reasoningEffort: resolvedEffort,
       reasoningBudget: resolveReasoningBudget(_chatModel, resolvedEffort),

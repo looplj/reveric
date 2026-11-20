@@ -18,8 +18,9 @@ class AgnesImageClient extends ImageClient {
   AgnesImageClient(super.config);
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request);
     final Map<String, String> sizeParameters;
@@ -33,13 +34,8 @@ class AgnesImageClient extends ImageClient {
     }
     final apiKey = requireApiKey();
     final references = <String>[];
-    for (final input in request.images) {
-      final value = input.trim();
-      references.add(
-        value.startsWith('https://') || value.startsWith('http://')
-            ? value
-            : await imageInputAsDataUri(value),
-      );
+    for (final input in request.references) {
+      references.add(await imageInputAsUrlOrDataUri(input, outputs));
     }
     final baseUrl = config.effectiveBaseUrl.replaceFirst(RegExp(r'/+$'), '');
     final uri = Uri.parse('$baseUrl/images/generations');
@@ -52,7 +48,7 @@ class AgnesImageClient extends ImageClient {
           'prompt': request.prompt,
           ...sizeParameters,
           'extra_body': {
-            'response_format': ?channel?.requestDefaults.responseFormat,
+            'response_format': ?request.nativeDefaults.responseFormat,
             if (references.isNotEmpty) 'image': references,
           },
         },
@@ -79,6 +75,7 @@ class AgnesImageClient extends ImageClient {
       );
       return await parseImageResponse(
         response.data ?? {},
+        outputs,
         emptyMessage: tr(LocaleKeys.aiImageNoResult),
       );
     } finally {
@@ -93,7 +90,7 @@ Map<String, String> agnesSizeParameters(
   ImageChannelModel? channel,
   String? requestedSize,
 ) {
-  final value = requestedSize ?? channel?.requestDefaults.size;
+  final value = requestedSize;
   if (value == null) {
     return {};
   }

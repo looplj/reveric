@@ -73,11 +73,12 @@ class PathViewport extends HookWidget {
           },
           child: Listener(
             key: const ValueKey('director-path-viewport'),
-            behavior: editor.active
+            behavior: !session.readOnly && editor.active
                 ? HitTestBehavior.opaque
                 : HitTestBehavior.translucent,
             onPointerDown: (event) {
-              if (!editor.active ||
+              if (session.readOnly ||
+                  !editor.active ||
                   event.buttons != kPrimaryMouseButton ||
                   session.hasPendingInput) {
                 return;
@@ -129,6 +130,7 @@ class PathViewport extends HookWidget {
                 editor,
                 colors.accent,
                 colors.textMuted,
+                showHandles: !session.readOnly,
               ),
             ),
           ),
@@ -143,13 +145,15 @@ class _PathPainter extends CustomPainter {
   final List<Json> paths;
   final PathEditSession editor;
   final Color selectedColor, color;
+  final bool showHandles;
   _PathPainter(
     this.camera,
     this.paths,
     this.editor,
     this.selectedColor,
-    this.color,
-  );
+    this.color, {
+    required this.showHandles,
+  });
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
@@ -204,7 +208,7 @@ class _PathPainter extends CustomPainter {
           canvas.drawLine(a, b, pen);
         }
       }
-      if (selected) {
+      if (selected && showHandles) {
         for (final handle in editor.handles(path)) {
           final p = project(handle.position);
           if (p == null) {

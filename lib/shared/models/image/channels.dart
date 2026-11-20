@@ -9,7 +9,9 @@
 //   assets/translations/zh-CN/common.json
 
 import '../../localization/locale_keys.dart';
-import '../ai_provider.dart' show ModelIdSource, aiProviderTypeConfigFor;
+import '../ai_provider.dart'
+    show AiProvider, AiProviderX, ModelIdSource, aiProviderTypeConfigFor;
+import '../provider_model.dart';
 import 'catalog.dart';
 export 'catalog.dart';
 
@@ -25,11 +27,22 @@ enum ImageProtocol {
   codex_image,
   gemini_image,
   purefox_media,
+  minimax_image,
 }
 
 /// 只有对应协议才读取的渠道选项，每个协议一种类型。
 sealed class ImageProtocolOptions {
   const ImageProtocolOptions();
+}
+
+enum MidjourneyProtocol { proxy, images, atlascloud }
+
+class MidjourneyImageOptions extends ImageProtocolOptions {
+  const MidjourneyImageOptions(this.protocol, {this.editModel});
+  final MidjourneyProtocol protocol;
+
+  /// 带参考图时改用的模型路由。只在 Atlas 登记。
+  final String? editModel;
 }
 
 class AgnesImageOptions extends ImageProtocolOptions {
@@ -102,11 +115,28 @@ final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
       id: ImageChannelModel(catalogId: id),
   },
   ImageProtocol.new_api_images: {
+    'mj_imagine': ImageChannelModel(
+      catalogId: 'midjourney',
+      protocolOptions: MidjourneyImageOptions(MidjourneyProtocol.proxy),
+    ),
+    for (final id in [
+      'midjourney-v8.2',
+      'midjourney-v8.2-fast',
+      'midjourney-v8.2-turbo',
+    ])
+      id: ImageChannelModel(
+        catalogId: 'midjourney-v8.2',
+        protocolOptions: MidjourneyImageOptions(MidjourneyProtocol.images),
+      ),
     ..._pixelSizeChannels,
     for (final id in imageModelsCatalog.keys.where(
       (id) => id.startsWith('gemini-'),
     ))
       id: ImageChannelModel(catalogId: id, includedInPresets: false),
+    'doubao-seedream-5-5': ImageChannelModel(
+      catalogId: 'seedream-5.5',
+      includedInPresets: false,
+    ),
     'doubao-seedream-5-0-pro': ImageChannelModel(
       catalogId: 'seedream-5.0-pro',
       includedInPresets: false,
@@ -116,6 +146,11 @@ final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
   ImageProtocol.codex_image: _pixelSizeChannels,
   ImageProtocol.gemini_image: _geminiChannels,
   ImageProtocol.purefox_media: purefoxMediaImageModels,
+  // https://platform.minimax.io/docs/api-reference/image-generation-h3-generations
+  ImageProtocol.minimax_image: {
+    for (final id in ['MiniMax-H3-Image', 'MiniMax-H3-Image-Highspeed'])
+      id: ImageChannelModel(catalogId: id),
+  },
 };
 
 /// PureFox 媒体网关的图片型号目录：不预置，填 key 后按站点 `/v1/models`
@@ -125,6 +160,31 @@ final purefoxMediaImageModels = <String, ImageChannelModel>{};
 const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
   // https://www.atlascloud.ai/docs/openapi-index
   ImageProtocol.atlascloud_image: {
+    // https://static.atlascloud.ai/model/schema/youchuan-v8.2-text-to-image.json
+    // https://static.atlascloud.ai/model/schema/youchuan-v8.2-image-to-image.json
+    'youchuan/v8.2/text-to-image': ImageChannelModel(
+      catalogId: 'midjourney-v8.2',
+      capabilities: ImageModelCapabilities(
+        maxReferences: 1,
+        resolutions: {'auto', '2K'},
+        ratios: {
+          'auto',
+          '1:1',
+          '16:9',
+          '9:16',
+          '4:3',
+          '3:4',
+          '3:2',
+          '2:3',
+          '21:9',
+          '9:21',
+        },
+      ),
+      protocolOptions: MidjourneyImageOptions(
+        MidjourneyProtocol.atlascloud,
+        editModel: 'youchuan/v8.2/image-to-image',
+      ),
+    ),
     // https://static.atlascloud.ai/model/schema/openai-gpt-image-2.6-sunburst-text-to-image.json
     'openai/gpt-image-2.6-sunburst/text-to-image': ImageChannelModel(
       catalogId: 'gpt-image-2.6-sunburst',
@@ -301,6 +361,7 @@ const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
     'wan2.7-image-pro': ImageChannelModel(catalogId: 'wan2.7-image-pro'),
   },
   ImageProtocol.ark_image: {
+    'doubao-seedream-5-5-261028': ImageChannelModel(catalogId: 'seedream-5.5'),
     'doubao-seedream-5-0-pro-260628': ImageChannelModel(
       catalogId: 'seedream-5.0-pro',
     ),
@@ -836,13 +897,16 @@ ImageChannelModel? lookupImageChannelModel(
 }
 
 ({ImageModelCapabilities capabilities, ImageRequestDefaults defaults})?
-_imageSpec(String providerType, String? modelId) {
-  final channel = lookupImageChannelModel(providerType, modelId);
+_imageSpec(AiProvider provider, String? modelId) {
+  final channel = resolveImageModel(provider, modelId);
   if (channel != null) {
     return (
       capabilities: channel.capabilities,
       defaults: channel.requestDefaults,
     );
+  }
+  if (provider.isPluginProvider) {
+    return null;
   }
   final entry = lookupImageModel(modelId);
   if (entry == null) {
@@ -851,17 +915,16 @@ _imageSpec(String providerType, String? modelId) {
   return (capabilities: entry.capabilities, defaults: entry.requestDefaults);
 }
 
-Set<String> imageComplexityLevels(String providerType, String? modelId) =>
-    _imageSpec(providerType, modelId)?.capabilities.complexityLevels ??
-    const {};
+Set<String> imageComplexityLevels(AiProvider provider, String? modelId) =>
+    _imageSpec(provider, modelId)?.capabilities.complexityLevels ?? const {};
 
 /// 型号没有复杂度档位时返回 null。有档位但没选中、或选中值不在目录里时，用目录默认值。
 String? imageComplexityFor(
-  String providerType,
+  AiProvider provider,
   String? modelId,
   String? selected,
 ) {
-  final spec = _imageSpec(providerType, modelId);
+  final spec = _imageSpec(provider, modelId);
   if (spec == null || spec.capabilities.complexityLevels.isEmpty) {
     return null;
   }
@@ -893,8 +956,19 @@ List<String> imageModelsForProvider(String providerType) =>
         .toList(growable: false) ??
     const [];
 
-// OpenAI Images 与 Codex 按像素尺寸编码，只能承载登记了尺寸表的目录型号。
+// OpenAI Images 与 Codex 按像素尺寸编码；渠道为自动尺寸目录补充像素规格。
 final _pixelSizeChannels = {
+  'image-advance': ImageChannelModel(
+    catalogId: 'gpt-image-2',
+    includedInPresets: false,
+  ),
+  for (final id in ['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'])
+    id: ImageChannelModel(
+      catalogId: id,
+      includedInPresets: false,
+      capabilities: _atlasGptImage25Capabilities,
+      requestDefaults: _atlasGptImage25Defaults,
+    ),
   for (final entry in imageModelsCatalog.entries)
     if (entry.value.capabilities.sizes.isNotEmpty)
       entry.key: ImageChannelModel(

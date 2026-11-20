@@ -143,18 +143,18 @@ String buildMapImagePrompt({
   final lines = <String>[
     ...switch (mapType) {
       mapTypeWorld => [
-        '绘制一张地图，横版。',
+        '绘制一张地图。',
         if (regionText.isNotEmpty)
           '大陆上划分出这些势力疆域：$regionText，疆域之间以山脉、河流或海岸自然分界。',
         if (placeText.isNotEmpty) '在合理的位置标出这些城市与地标：$placeText。',
       ],
       mapTypeRegion => [
-        '绘制一张区域地图，横版。',
+        '绘制一张区域地图。',
         if (regionText.isNotEmpty) '区域内划分出这些势力范围：$regionText，以山脉、河流或道路自然分界。',
         if (placeText.isNotEmpty) '在合理的位置标出这些城镇与地标：$placeText。',
       ],
       _ => [
-        '绘制一张城镇平面地图，俯视视角，横版。',
+        '绘制一张城镇平面地图，俯视视角。',
         if (regionText.isNotEmpty) '划分出这些片区：$regionText。',
         if (placeText.isNotEmpty) '在合理的位置标出这些街区、建筑与地标：$placeText。',
       ],

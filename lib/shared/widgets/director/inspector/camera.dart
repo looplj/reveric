@@ -62,6 +62,7 @@ class CameraInspector extends HookWidget {
     void execute(void Function(Map<String, dynamic>) edit) =>
         session.history.execute(edit);
     bool enabled(String property) =>
+        !session.readOnly &&
         !session.playing &&
         session.history.editBlock(id, property, frame) == null;
     const animatedLens = {
@@ -189,20 +190,26 @@ class CameraInspector extends HookWidget {
                 : '${tr(context, 'move_${current['kind']}')}  ${seconds(session, current['start_frame'])}–${seconds(session, current['end_frame'])}s',
             icon: RevericIcons.alt_route_outlined,
             size: RevericButtonSize.compact,
-            onPressed: () {
-              if (current != null) {
-                session.setRange(current['start_frame'], current['end_frame']);
-              }
-              session.setPanel('moves');
-            },
+            onPressed: session.readOnly
+                ? null
+                : () {
+                    if (current != null) {
+                      session.setRange(
+                        current['start_frame'],
+                        current['end_frame'],
+                      );
+                    }
+                    session.setPanel('moves');
+                  },
           ),
         ),
-        RevericButton.secondary(
-          label: tr(context, 'set_camera'),
-          icon: RevericIcons.video_camera,
-          size: RevericButtonSize.compact,
-          onPressed: session.playing ? null : onAlignToView,
-        ),
+        if (!session.readOnly)
+          RevericButton.secondary(
+            label: tr(context, 'set_camera'),
+            icon: RevericIcons.video_camera,
+            size: RevericButtonSize.compact,
+            onPressed: session.playing ? null : onAlignToView,
+          ),
         if (versions.data?.isNotEmpty ?? false) ...[
           SectionTitle(tr(context, 'export_versions')),
           for (final v in versions.data!.reversed)

@@ -6,6 +6,7 @@
 //   assets/translations/zh-CN/common.json
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
@@ -132,6 +133,48 @@ void main() {
       expect(tester.takeException(), isNull);
     },
     timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  testWidgets(
+    'headings and inline code follow the body color, not the Material theme',
+    (tester) async {
+      const bodyColor = Color(0xFFFFFFFF);
+      await tester.pumpWidget(
+        MaterialApp(
+          // Material Theme 刻意用浅色，正文颜色用白色，模拟两者不一致。
+          theme: RevericThemeData.reveric.toThemeData(),
+          home: const Scaffold(
+            body: AiMarkdownText(
+              '# Title\n\nbody `code` end',
+              style: TextStyle(color: bodyColor),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final colors = <String, Color?>{};
+      void walk(InlineSpan span, TextStyle? inherited) {
+        final style = inherited?.merge(span.style) ?? span.style;
+        if (span is TextSpan) {
+          final text = span.text?.trim();
+          if (text != null && text.isNotEmpty) {
+            colors[text] = style?.color;
+          }
+          for (final child in span.children ?? const <InlineSpan>[]) {
+            walk(child, style);
+          }
+        }
+      }
+
+      for (final paragraph in tester.renderObjectList<RenderParagraph>(
+        find.byWidgetPredicate((widget) => widget is RichText),
+      )) {
+        walk(paragraph.text, null);
+      }
+      expect(colors['Title'], bodyColor);
+      expect(colors['code'], bodyColor);
+    },
   );
 }
 

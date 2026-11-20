@@ -53,6 +53,7 @@ import '../../shared/utils/storage_paths.dart';
 import '../../shared/widgets/settings/about_settings_section.dart';
 import '../../shared/widgets/settings/ai_agents_settings_section.dart';
 import '../../shared/widgets/settings/ai_providers_section.dart';
+import 'agent_model_settings_page.dart';
 import '../../shared/widgets/settings/appearance_settings_section.dart';
 import '../../shared/widgets/settings/debug_settings_section.dart';
 import '../../shared/widgets/settings/editor_settings_section.dart';
@@ -755,7 +756,9 @@ class _SettingsDetailPage extends StatelessWidget {
           platform: ReadingSettingsPlatform.mobile,
         ),
         'ai_agents' => const AiAgentsSettingsSection(showPermissions: false),
-        'providers' => const AiProvidersSection(),
+        'providers' => AiProvidersSection(
+          onOpenModelSettings: () => openMobileAgentModelSettingsPage(context),
+        ),
         'usage' => UsageSettingsSection(
           bodyBuilder: () => const UsageView(showHeader: false),
         ),

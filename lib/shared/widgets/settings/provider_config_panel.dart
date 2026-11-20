@@ -22,8 +22,14 @@
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 //   .agents/rules/hooks.md
+//   .agents/rules/text-input-ime.md
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
+import '../../../mobile/widgets/sheet.dart';
+import '../../services/plugins/runtime.dart';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -53,30 +59,50 @@ import '../../agent/client/codex_client.dart';
 import '../../services/ai/codex/credentials.dart';
 import '../../providers/settings_providers.dart';
 import '../../theme/theme.dart';
+import '../../utils/text_input_composing.dart';
 import 'ai_providers_section.dart';
 import 'provider_actions.dart';
 import 'provider_video_models.dart';
 import 'provider_models_editor.dart';
 import 'provider_audio_models.dart';
-import 'provider_draft.dart';
+import 'plugins/config_form.dart';
 import 'proxy_settings_section.dart';
+import 'plugin_provider_fields.dart';
 import 'codex_connection.dart';
 import '../../components/reveric_dialog.dart';
 import '../../components/reveric_button.dart';
 
 final _log = AppLogger.forModule('ProviderModels');
 
+typedef _SaveProviderChange =
+    Future<void> Function(AiProvider Function(AiProvider));
+
+/// 供应商配置面板引导锚点：凭证区（Base URL / API Key）、多模态模型区与启用开关。
+class ProviderConfigGuideKeys {
+  const ProviderConfigGuideKeys({
+    required this.credentials,
+    required this.models,
+    required this.enableSwitch,
+  });
+
+  final GlobalKey credentials;
+  final GlobalKey models;
+  final GlobalKey enableSwitch;
+}
+
 /// 已保存供应商的配置面板：读取持久化配置，修改即时写回，头部提供启用开关与删除。
 class ProviderConfigPanel extends ConsumerWidget {
   final String providerId;
 
   final VoidCallback? onDeleted;
+  final ProviderConfigGuideKeys? guideKeys;
 
   const ProviderConfigPanel({
     super.key,
     required this.providerId,
 
     this.onDeleted,
+    this.guideKeys,
   });
 
   @override
@@ -89,29 +115,53 @@ class ProviderConfigPanel extends ConsumerWidget {
     }
 
     return ProviderConfigForm(
+      key: ValueKey(config.id),
       config: config,
       onChanged: settingsNotifier.setAiProviderConfig,
       badge: StatusBadge(isValid: config.isValid),
+      guideKeys: guideKeys,
       headerActions: [
-        RevericSwitch(
-          value: config.enabled,
-          onChanged: !config.isTypeSupported || !config.isPlatformSupported
-              ? null
-              : (v) {
-                  final validationMessage = config.enableValidationMessage;
-                  if (v && validationMessage != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: DialogToast(
-                          variant: DialogToastVariant.warning,
-                          child: Text(validationMessage),
+        KeyedSubtree(
+          key: guideKeys?.enableSwitch,
+          child: RevericSwitch(
+            value: config.enabled,
+            onChanged:
+                (!config.isTypeSupported && !config.isPluginProvider) ||
+                    !config.isPlatformSupported
+                ? null
+                : (v) async {
+                    final validationMessage = config.enableValidationMessage;
+                    if (v &&
+                        !config.isPluginProvider &&
+                        validationMessage != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: DialogToast(
+                            variant: DialogToastVariant.warning,
+                            child: Text(validationMessage),
+                          ),
                         ),
-                      ),
-                    );
-                    return;
-                  }
-                  settingsNotifier.toggleAiProviderEnabled(config.id, v);
-                },
+                      );
+                      return;
+                    }
+                    try {
+                      await settingsNotifier.toggleAiProviderEnabled(
+                        config.id,
+                        v,
+                      );
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              context.t(LocaleKeys.commonSaveFailed),
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+          ),
         ),
         ProviderActionsMenu(
           config: config,
@@ -140,7 +190,7 @@ class ProviderConfigPanel extends ConsumerWidget {
 
 /// 供应商配置表单：已保存供应商与新建草稿共用，每次修改都交给 [onChanged]。
 ///
-/// [onChangeType] 非空表示草稿：显示「保存后才创建」提示，类型仍可更换。
+/// [isDraft] 表示尚未落库的新建表单；供应商类型始终只读。
 class ProviderConfigForm extends HookWidget {
   const ProviderConfigForm({
     super.key,
@@ -148,14 +198,18 @@ class ProviderConfigForm extends HookWidget {
     required this.onChanged,
     required this.badge,
     required this.headerActions,
-    this.onChangeType,
+    this.isDraft = false,
+    this.pluginDraftController,
+    this.guideKeys,
   });
 
   final AiProvider config;
   final Future<void> Function(AiProvider config) onChanged;
   final Widget badge;
   final List<Widget> headerActions;
-  final ValueChanged<AiProviderType>? onChangeType;
+  final bool isDraft;
+  final PluginConfigDraftController? pluginDraftController;
+  final ProviderConfigGuideKeys? guideKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -163,125 +217,49 @@ class ProviderConfigForm extends HookWidget {
     final typo = RevericTheme.typographyOf(context);
     final config = this.config;
 
-    final hasFixedBaseUrl = config.isTypeSupported && config.hasFixedBaseUrl;
     final providerName = localizedAiProviderName(context, config);
-    final apiKeyController = useTextEditingController(text: config.apiKey);
-    final baseUrlController = useTextEditingController(
-      text: config.isTypeSupported ? config.effectiveBaseUrl : config.baseUrl,
+    final latestConfig = useRef(config);
+    final pendingSave = useRef(Future<void>.value());
+    useEffect(() {
+      latestConfig.value = config;
+      return null;
+    }, [config]);
+
+    Future<void> saveChange(AiProvider Function(AiProvider) change) =>
+        pendingSave.value = pendingSave.value.then((_) async {
+          final previous = latestConfig.value;
+          try {
+            final next = change(previous);
+            await onChanged(next);
+            if (identical(latestConfig.value, previous)) {
+              latestConfig.value = next;
+            }
+          } catch (error) {
+            _log.warning(
+              'Provider configuration save failed id=${previous.id} '
+              'type=${error.runtimeType}',
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                SnackBar(content: Text(context.t(LocaleKeys.commonSaveFailed))),
+              );
+            }
+          }
+        });
+
+    final apiKeyController = _useProviderText(
+      config.apiKey,
+      (value) => saveChange((current) => current.copyWith(apiKey: value)),
     );
-    final nameController = useTextEditingController(text: config.name);
-    final proxyUrlController = useTextEditingController(text: config.proxyUrl);
-    final proxyUsernameController = useTextEditingController(
-      text: config.proxyUsername,
+    final baseUrlController = _useProviderText(
+      config.isTypeSupported ? config.effectiveBaseUrl : config.baseUrl,
+      (value) => saveChange((current) => current.copyWith(baseUrl: value)),
     );
-    final proxyPasswordController = useTextEditingController(
-      text: config.proxyPassword,
+    final nameController = _useProviderText(
+      config.name,
+      (value) => saveChange((current) => current.copyWith(name: value)),
     );
     final builtinBaseUrl = aiProviderBuiltinById(config.id)?.baseUrl;
-
-    useEffect(() {
-      final nextValue = config.apiKey;
-      if (apiKeyController.text != nextValue) {
-        apiKeyController.value = apiKeyController.value.copyWith(
-          text: nextValue,
-          selection: TextSelection.collapsed(offset: nextValue.length),
-          composing: TextRange.empty,
-        );
-      }
-      return null;
-    }, [config.apiKey]);
-
-    useEffect(() {
-      final nextValue = config.isTypeSupported
-          ? config.effectiveBaseUrl
-          : config.baseUrl;
-      if (baseUrlController.text != nextValue) {
-        baseUrlController.value = baseUrlController.value.copyWith(
-          text: nextValue,
-          selection: TextSelection.collapsed(offset: nextValue.length),
-          composing: TextRange.empty,
-        );
-      }
-      return null;
-    }, [config.baseUrl, config.type, hasFixedBaseUrl]);
-
-    useEffect(() {
-      final nextValue = config.name;
-      if (nameController.text != nextValue) {
-        nameController.value = nameController.value.copyWith(
-          text: nextValue,
-          selection: TextSelection.collapsed(offset: nextValue.length),
-          composing: TextRange.empty,
-        );
-      }
-      return null;
-    }, [config.name]);
-
-    useEffect(() {
-      final nextValue = config.proxyUrl;
-      if (proxyUrlController.text != nextValue) {
-        proxyUrlController.value = proxyUrlController.value.copyWith(
-          text: nextValue,
-          selection: TextSelection.collapsed(offset: nextValue.length),
-          composing: TextRange.empty,
-        );
-      }
-      return null;
-    }, [config.proxyUrl]);
-
-    useEffect(() {
-      final nextValue = config.proxyUsername;
-      if (proxyUsernameController.text != nextValue) {
-        proxyUsernameController.value = proxyUsernameController.value.copyWith(
-          text: nextValue,
-          selection: TextSelection.collapsed(offset: nextValue.length),
-          composing: TextRange.empty,
-        );
-      }
-      return null;
-    }, [config.proxyUsername]);
-
-    useEffect(() {
-      final nextValue = config.proxyPassword;
-      if (proxyPasswordController.text != nextValue) {
-        proxyPasswordController.value = proxyPasswordController.value.copyWith(
-          text: nextValue,
-          selection: TextSelection.collapsed(offset: nextValue.length),
-          composing: TextRange.empty,
-        );
-      }
-      return null;
-    }, [config.proxyPassword]);
-
-    Future<void> saveConfig({
-      String? name,
-      String? apiKey,
-      String? baseUrl,
-      List<String>? models,
-      List<String>? imageModels,
-      List<String>? videoModels,
-      List<String>? audioModels,
-      String? proxyUrl,
-      String? proxyUsername,
-      String? proxyPassword,
-    }) async {
-      final nextConfig = config.copyWith(
-        name: name ?? nameController.text,
-        apiKey: apiKey ?? apiKeyController.text,
-        baseUrl: hasFixedBaseUrl
-            ? config.fixedBaseUrl
-            : baseUrl ?? baseUrlController.text,
-        models: models ?? config.availableModels,
-        imageModels: imageModels ?? config.availableImageModels,
-        videoModels: videoModels ?? config.availableVideoModels,
-        audioModels: audioModels ?? config.availableAudioModels,
-        // 代理字段只由 _ProxySection 校验通过后写入，其余字段保存时沿用已存值。
-        proxyUrl: proxyUrl ?? config.proxyUrl,
-        proxyUsername: proxyUsername ?? config.proxyUsername,
-        proxyPassword: proxyPassword ?? config.proxyPassword,
-      );
-      await onChanged(nextConfig);
-    }
 
     return Column(
       children: [
@@ -320,7 +298,7 @@ class ProviderConfigForm extends HookWidget {
                         providerName !=
                             localizedProviderTypeName(
                               context,
-                              config.typeEnum,
+                              config.type,
                             )) ...[
                       const SizedBox(height: RevericSpacing.xxs),
                       Row(
@@ -329,7 +307,7 @@ class ProviderConfigForm extends HookWidget {
                             config.isTypeSupported
                                 ? localizedProviderTypeName(
                                     context,
-                                    config.typeEnum,
+                                    config.type,
                                   )
                                 : config.type,
                             style: typo.uiSmall.copyWith(
@@ -349,7 +327,7 @@ class ProviderConfigForm extends HookWidget {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(RevericSpacing.x4l),
-            child: !config.isTypeSupported
+            child: !config.isTypeSupported && !config.isPluginProvider
                 ? Text(
                     context.t(
                       LocaleKeys.providerTypeUnsupported,
@@ -368,11 +346,8 @@ class ProviderConfigForm extends HookWidget {
                         apiKeyController,
                         baseUrlController,
                         nameController,
-                        proxyUrlController,
-                        proxyUsernameController,
-                        proxyPasswordController,
                         builtinBaseUrl,
-                        saveConfig,
+                        saveChange,
                       ),
                     ],
                   ),
@@ -390,23 +365,8 @@ class ProviderConfigForm extends HookWidget {
     TextEditingController apiKeyController,
     TextEditingController baseUrlController,
     TextEditingController nameController,
-    TextEditingController proxyUrlController,
-    TextEditingController proxyUsernameController,
-    TextEditingController proxyPasswordController,
     String? builtinBaseUrl,
-    void Function({
-      String? name,
-      String? apiKey,
-      String? baseUrl,
-      List<String>? models,
-      List<String>? imageModels,
-      List<String>? videoModels,
-      List<String>? audioModels,
-      String? proxyUrl,
-      String? proxyUsername,
-      String? proxyPassword,
-    })
-    saveConfig,
+    _SaveProviderChange saveChange,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -417,189 +377,214 @@ class ProviderConfigForm extends HookWidget {
             label: context.t(LocaleKeys.providerNameLabel),
             hint: context.t(LocaleKeys.providerNameHint),
             controller: nameController,
-            onChanged: () => saveConfig(name: nameController.text),
           ),
           const SizedBox(height: RevericSpacing.lg),
-          if (onChangeType case final onChangeType?)
-            ProviderDraftTypeField(
-              type: config.typeEnum,
-              onChanged: onChangeType,
-            )
-          else
-            _buildReadOnlyField(
-              context: context,
-              label: context.t(LocaleKeys.providerTypeLabel),
-              value: localizedProviderTypeName(context, config.typeEnum),
-            ),
-          SizedBox(
-            height: onChangeType == null
-                ? RevericSpacing.xs
-                : RevericSpacing.lg,
-          ),
-        ],
-        // 草稿的类型选择框已列出能力标签，概览不再重复能力摘要。
-        ProviderOverview(
-          config: config,
-          showCapabilities: onChangeType == null,
-        ),
-        const SizedBox(height: RevericSpacing.x4l),
-        if (config.hasFixedBaseUrl)
           _buildReadOnlyField(
             context: context,
-            label: context.t(LocaleKeys.settingsAiBaseUrl),
-            value: config.effectiveBaseUrl,
-          )
-        else
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: baseUrlController,
-            builder: (context, value, _) {
-              final suggested = _baseUrlWithoutEndpoint(value.text);
-              return RevericTextField(
-                label: context.t(LocaleKeys.settingsAiBaseUrl),
-                hintText: config.isBuiltin
-                    ? (builtinBaseUrl ?? '')
-                    : 'https://api.example.com/v1',
-                controller: baseUrlController,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                enableSuggestions: false,
-                inputFormatters: const [ProviderBaseUrlInputFormatter()],
-                errorText: suggested == value.text.trim()
-                    ? null
-                    : context.t(
-                        LocaleKeys.providerBaseUrlEndpointHint,
-                        namedArgs: {'url': suggested},
-                      ),
-                errorMaxLines: 4,
-                onChanged: (_) => saveConfig(baseUrl: baseUrlController.text),
-              );
-            },
+            label: context.t(LocaleKeys.providerTypeLabel),
+            value: localizedProviderTypeName(context, config.type),
           ),
-        if (!config.hasBaseUrl) ...[
           const SizedBox(height: RevericSpacing.xs),
-          Text(
-            context.t(LocaleKeys.providerConfigNeedBaseUrl),
-            style: typo.uiSmall.copyWith(color: colors.textMuted),
-          ),
         ],
-        const SizedBox(height: RevericSpacing.lg),
-        if (config.isCodex)
-          CodexConnection(config: config)
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+        if (config.isPluginProvider)
+          PluginProviderFields(
+            config: config,
+            isDraft: isDraft,
+            draftController: pluginDraftController,
+          )
+        else ...[
+          ProviderOverview(config: config),
+          const SizedBox(height: RevericSpacing.x4l),
+          Column(
+            key: guideKeys?.credentials,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _buildTextField(
+              if (config.hasFixedBaseUrl)
+                _buildReadOnlyField(
                   context: context,
-                  label: context.t(LocaleKeys.settingsAiApiKey),
-                  hint: context.t(LocaleKeys.settingsAiApiKeyHint),
-                  controller: apiKeyController,
-                  obscureText: true,
-                  onChanged: () => saveConfig(),
+                  label: context.t(LocaleKeys.settingsAiBaseUrl),
+                  value: config.effectiveBaseUrl,
+                )
+              else
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: baseUrlController,
+                  builder: (context, value, _) {
+                    final suggested = _baseUrlWithoutEndpoint(value.text);
+                    return RevericTextField(
+                      label: context.t(LocaleKeys.settingsAiBaseUrl),
+                      hintText: config.isBuiltin
+                          ? (builtinBaseUrl ?? '')
+                          : 'https://api.example.com/v1',
+                      controller: baseUrlController,
+                      keyboardType: TextInputType.url,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      inputFormatters: const [ProviderBaseUrlInputFormatter()],
+                      errorText: suggested == value.text.trim()
+                          ? null
+                          : context.t(
+                              LocaleKeys.providerBaseUrlEndpointHint,
+                              namedArgs: {'url': suggested},
+                            ),
+                      errorMaxLines: 4,
+                    );
+                  },
                 ),
-              ),
+              if (!config.hasBaseUrl) ...[
+                const SizedBox(height: RevericSpacing.xs),
+                Text(
+                  context.t(LocaleKeys.providerConfigNeedBaseUrl),
+                  style: typo.uiSmall.copyWith(color: colors.textMuted),
+                ),
+              ],
+              const SizedBox(height: RevericSpacing.lg),
+              if (config.isCodex)
+                CodexConnection(config: config)
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
+                        context: context,
+                        label: context.t(LocaleKeys.settingsAiApiKey),
+                        hint: context.t(LocaleKeys.settingsAiApiKeyHint),
+                        controller: apiKeyController,
+                        obscureText: true,
+                      ),
+                    ),
+                  ],
+                ),
+              if (!config.isCodex && !config.hasApiKey) ...[
+                const SizedBox(height: RevericSpacing.xs),
+                Text(
+                  context.t(LocaleKeys.providerConfigNeedApiKey),
+                  style: typo.uiSmall.copyWith(color: colors.textMuted),
+                ),
+              ],
             ],
           ),
-        if (!config.isCodex && !config.hasApiKey) ...[
-          const SizedBox(height: RevericSpacing.xs),
-          Text(
-            context.t(LocaleKeys.providerConfigNeedApiKey),
-            style: typo.uiSmall.copyWith(color: colors.textMuted),
+          const SizedBox(height: RevericSpacing.lg),
+          Column(
+            key: guideKeys?.models,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (config.supportsModelKind(AiModelKind.chat))
+                ProviderModelsEditor(
+                  label: context.t(LocaleKeys.providerChatModelsLabel),
+                  hint: context.t(LocaleKeys.providerChatModelsHint),
+                  models: config.availableModels,
+                  onChanged: (models) =>
+                      saveChange((current) => current.copyWith(models: models)),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableModels,
+                    (models) => saveChange(
+                      (current) => current.copyWith(models: models),
+                    ),
+                  ),
+                ),
+              if (!config.hasModels) ...[
+                const SizedBox(height: RevericSpacing.xs),
+                Text(
+                  context.t(LocaleKeys.providerConfigNeedModels),
+                  style: typo.uiSmall.copyWith(color: colors.textMuted),
+                ),
+              ],
+              if (config.supportsModelKind(AiModelKind.video)) ...[
+                const SizedBox(height: RevericSpacing.lg),
+                ProviderVideoModels(
+                  config: config,
+                  onChanged: (models) => saveChange(
+                    (current) => current.copyWith(videoModels: models),
+                  ),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableVideoModels,
+                    (models) => saveChange(
+                      (current) => current.copyWith(videoModels: models),
+                    ),
+                    kind: AiModelKind.video,
+                  ),
+                ),
+              ],
+              if (config.supportsModelKind(AiModelKind.audio)) ...[
+                const SizedBox(height: RevericSpacing.lg),
+                ProviderAudioModels(
+                  config: config,
+                  onChanged: (models) => saveChange(
+                    (current) => current.copyWith(audioModels: models),
+                  ),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableAudioModels,
+                    (models) => saveChange(
+                      (current) => current.copyWith(audioModels: models),
+                    ),
+                    kind: AiModelKind.audio,
+                  ),
+                ),
+              ],
+              if (config.supportsModelKind(AiModelKind.image)) ...[
+                const SizedBox(height: RevericSpacing.lg),
+                ProviderModelsEditor(
+                  label: context.t(LocaleKeys.providerImageModelsLabel),
+                  hint: context.t(LocaleKeys.providerImageModelsHint),
+                  models: config.availableImageModels,
+                  onChanged: (models) => saveChange(
+                    (current) => current.copyWith(imageModels: models),
+                  ),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableImageModels,
+                    (models) => saveChange(
+                      (current) => current.copyWith(imageModels: models),
+                    ),
+                    kind: AiModelKind.image,
+                  ),
+                ),
+              ],
+            ],
           ),
+          if (!config.isCodex &&
+              config.supportsModelKind(AiModelKind.chat)) ...[
+            const SizedBox(height: RevericSpacing.lg),
+            _EnableTemperatureSwitch(
+              config: config,
+              onChanged: (value) => saveChange(
+                (current) => current.copyWith(
+                  config: Value(
+                    current.providerConfig.copyWith(enableTemperature: value),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: RevericSpacing.sm),
+            _buildSliderField(
+              context: context,
+              label: context.t(LocaleKeys.settingsAiTemperature),
+              value: config.temperature,
+              min: 0.0,
+              max: 2.0,
+              divisions: 20,
+              onChanged: config.providerConfig.enableTemperature
+                  ? (v) => saveChange(
+                      (current) => current.copyWith(temperature: v),
+                    )
+                  : null,
+            ),
+          ],
+          if (config.type == AiProviderType.volcengine.name) ...[
+            const SizedBox(height: RevericSpacing.lg),
+            _AssetCredentialsSection(config: config, saveChange: saveChange),
+          ],
         ],
         const SizedBox(height: RevericSpacing.lg),
-        if (config.supportsModelKind(AiModelKind.chat))
-          ProviderModelsEditor(
-            label: context.t(LocaleKeys.providerChatModelsLabel),
-            hint: context.t(LocaleKeys.providerChatModelsHint),
-            models: config.availableModels,
-            onChanged: (models) => saveConfig(models: models),
-            fetchButton: _buildFetchButton(
-              context,
-              config,
-              config.availableModels,
-              (models) => saveConfig(models: models),
-            ),
-          ),
-        if (!config.hasModels) ...[
-          const SizedBox(height: RevericSpacing.xs),
-          Text(
-            context.t(LocaleKeys.providerConfigNeedModels),
-            style: typo.uiSmall.copyWith(color: colors.textMuted),
-          ),
-        ],
-        if (config.supportsModelKind(AiModelKind.video)) ...[
-          const SizedBox(height: RevericSpacing.lg),
-          ProviderVideoModels(
-            config: config,
-            onChanged: (models) => saveConfig(videoModels: models),
-            fetchButton: _buildFetchButton(
-              context,
-              config,
-              config.availableVideoModels,
-              (models) => saveConfig(videoModels: models),
-              kind: AiModelKind.video,
-            ),
-          ),
-        ],
-        if (config.supportsModelKind(AiModelKind.audio)) ...[
-          const SizedBox(height: RevericSpacing.lg),
-          ProviderAudioModels(
-            config: config,
-            onChanged: (models) => saveConfig(audioModels: models),
-            fetchButton: _buildFetchButton(
-              context,
-              config,
-              config.availableAudioModels,
-              (models) => saveConfig(audioModels: models),
-              kind: AiModelKind.audio,
-            ),
-          ),
-        ],
-        if (config.supportsModelKind(AiModelKind.image)) ...[
-          const SizedBox(height: RevericSpacing.lg),
-          ProviderModelsEditor(
-            label: context.t(LocaleKeys.providerImageModelsLabel),
-            hint: context.t(LocaleKeys.providerImageModelsHint),
-            models: config.availableImageModels,
-            onChanged: (models) => saveConfig(imageModels: models),
-            fetchButton: _buildFetchButton(
-              context,
-              config,
-              config.availableImageModels,
-              (models) => saveConfig(imageModels: models),
-              kind: AiModelKind.image,
-            ),
-          ),
-        ],
-        if (!config.isCodex && config.supportsModelKind(AiModelKind.chat)) ...[
-          const SizedBox(height: RevericSpacing.lg),
-          _buildSliderField(
-            context: context,
-            label: context.t(LocaleKeys.settingsAiTemperature),
-            value: config.temperature,
-            min: 0.0,
-            max: 2.0,
-            divisions: 20,
-            onChanged: (v) => onChanged(config.copyWith(temperature: v)),
-          ),
-        ],
-        if (config.type == AiProviderType.volcengine.name) ...[
-          const SizedBox(height: RevericSpacing.lg),
-          _AssetCredentialsSection(config: config, onChanged: onChanged),
-        ],
-        const SizedBox(height: RevericSpacing.lg),
-        _ProxySection(
-          urlController: proxyUrlController,
-          usernameController: proxyUsernameController,
-          passwordController: proxyPasswordController,
-          onChanged: () => saveConfig(
-            proxyUrl: proxyUrlController.text,
-            proxyUsername: proxyUsernameController.text,
-            proxyPassword: proxyPasswordController.text,
-          ),
-        ),
+        _ProxySection(config: config, saveChange: saveChange),
       ],
     );
   }
@@ -669,14 +654,20 @@ class ProviderConfigForm extends HookWidget {
       onPressed: !ready
           ? null
           : () async {
-              final selected = await showRevericDialog<Set<String>>(
-                context: context,
-                builder: (ctx) => _FetchModelsDialogContent(
-                  config: provider,
-                  kind: kind,
-                  existingModels: currentModels.toSet(),
-                ),
+              Widget builder(BuildContext ctx) => ProviderModelsDialogContent(
+                config: provider,
+                kind: kind,
+                existingModels: currentModels.toSet(),
               );
+              final selected = defaultTargetPlatform == TargetPlatform.android
+                  ? await showMobileSheet<Set<String>>(
+                      context: context,
+                      builder: builder,
+                    )
+                  : await showRevericDialog<Set<String>>(
+                      context: context,
+                      builder: builder,
+                    );
               if (selected != null) {
                 onChanged(selected.toList());
               }
@@ -690,14 +681,12 @@ class ProviderConfigForm extends HookWidget {
     required String hint,
     required TextEditingController controller,
     bool obscureText = false,
-    required VoidCallback onChanged,
   }) {
     return RevericTextField(
       label: label,
       hintText: hint,
       controller: controller,
       obscureText: obscureText,
-      onChanged: (_) => onChanged(),
     );
   }
 
@@ -708,7 +697,7 @@ class ProviderConfigForm extends HookWidget {
     required double min,
     required double max,
     required int divisions,
-    required ValueChanged<double> onChanged,
+    required ValueChanged<double>? onChanged,
   }) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
@@ -738,6 +727,44 @@ class ProviderConfigForm extends HookWidget {
           inactiveColor: colors.border,
           onChanged: onChanged,
         ),
+      ],
+    );
+  }
+}
+
+class _EnableTemperatureSwitch extends StatelessWidget {
+  const _EnableTemperatureSwitch({
+    required this.config,
+    required this.onChanged,
+  });
+
+  final AiProvider config;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final enabled = config.providerConfig.enableTemperature;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.t(LocaleKeys.settingsAiEnableTemperature),
+                style: typo.uiSemibold.copyWith(color: colors.textPrimary),
+              ),
+              const SizedBox(height: RevericSpacing.xs),
+              Text(
+                context.t(LocaleKeys.settingsAiEnableTemperatureDescription),
+                style: typo.ui.copyWith(color: colors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        RevericSwitch(value: enabled, onChanged: onChanged),
       ],
     );
   }
@@ -801,6 +828,28 @@ String modelsFetchErrorKey(int? statusCode) => switch (statusCode) {
   _ => LocaleKeys.providerFetchModelsServerError,
 };
 
+List<String> _atlasCloudImageModelIds(Map<String, dynamic> body) {
+  final data = body['data'];
+  if (data is! List) {
+    return const [];
+  }
+  final ids = <String>[];
+  for (final item in data) {
+    if (item is! Map) {
+      continue;
+    }
+    if (item['type']?.toString().toLowerCase() != 'image' ||
+        item['display_console'] == false) {
+      continue;
+    }
+    final id = item['model'];
+    if (id is String && id.trim().isNotEmpty) {
+      ids.add(id.trim());
+    }
+  }
+  return ids;
+}
+
 class _ModelsFetchHttpException implements Exception {
   const _ModelsFetchHttpException(this.statusCode);
 
@@ -841,8 +890,12 @@ Future<List<String>> fetchProviderModels(
   if (config.typeEnum == AiProviderType.minimax && kind == AiModelKind.chat) {
     return minimaxPresetChatModels;
   }
-  // 有预设清单的渠道直接使用清单；其余渠道从接口拉取。
-  final imagePresets = kind == AiModelKind.image
+  // 有预设清单的渠道直接使用清单。OpenRouter 与 AtlasCloud 图片走各自的
+  // 模型列表，未登记型号仍返回，沿用制作侧已有的通用规格。
+  final imagePresets =
+      kind == AiModelKind.image &&
+          config.typeEnum != AiProviderType.openrouter &&
+          config.typeEnum != AiProviderType.atlascloud
       ? imageModelsForProvider(config.type)
       : const <String>[];
   if (imagePresets.isNotEmpty) {
@@ -882,7 +935,9 @@ Future<List<String>> fetchProviderModels(
         headers = <String, String>{'Content-Type': 'application/json'};
       case AiProviderType.openrouter:
         url = baseUri.replace(
-          path: '$basePath/models',
+          path: kind == AiModelKind.image
+              ? '$basePath/images/models'
+              : '$basePath/models',
           queryParameters: kind == AiModelKind.chat
               ? {'output_modalities': 'text'}
               : kind == AiModelKind.audio
@@ -890,6 +945,16 @@ Future<List<String>> fetchProviderModels(
               : null,
         );
         headers = {'Authorization': 'Bearer ${config.effectiveApiKey}'};
+      case AiProviderType.atlascloud when kind == AiModelKind.image:
+        final rootPath = basePath.replaceFirst(RegExp(r'/v1/?$'), '');
+        url = baseUri.replace(
+          path: '$rootPath/api/v1/models',
+          queryParameters: {'type': 'Image'},
+        );
+        headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${config.effectiveApiKey}',
+        };
       default:
         url = baseUri.replace(path: '$basePath/models');
         headers = <String, String>{
@@ -921,6 +986,8 @@ Future<List<String>> fetchProviderModels(
             )
             .where((name) => !name.contains('/tunedModels/'))
             .toList(),
+      AiProviderType.atlascloud when kind == AiModelKind.image =>
+        _atlasCloudImageModelIds(body),
       _ =>
         (body['data'] as List<dynamic>)
             .where(
@@ -953,28 +1020,34 @@ Future<List<String>> fetchProviderModels(
   }
 }
 
-class _FetchModelsDialogContent extends StatefulWidget {
+class ProviderModelsDialogContent extends StatefulWidget {
   final AiProvider config;
   final AiModelKind kind;
   final Set<String> existingModels;
+  final Future<List<String>> Function()? loadModels;
+  final String Function(String model)? labelForModel;
 
-  const _FetchModelsDialogContent({
+  const ProviderModelsDialogContent({
+    super.key,
     required this.config,
     required this.kind,
     required this.existingModels,
+    this.loadModels,
+    this.labelForModel,
   });
 
   @override
-  State<_FetchModelsDialogContent> createState() =>
-      _FetchModelsDialogContentState();
+  State<ProviderModelsDialogContent> createState() =>
+      _ProviderModelsDialogContentState();
 }
 
 const _fetchModelsDialogWidth = 480.0;
 const _fetchModelsDialogContentHeight = 500.0;
 
-class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
+class _ProviderModelsDialogContentState
+    extends State<ProviderModelsDialogContent> {
   bool _isLoading = true;
-  ({String key, int? statusCode})? _error;
+  ({String key, int? statusCode, String? detail})? _error;
   List<String> _models = [];
   Set<String> _selected = {};
   String _filterQuery = '';
@@ -991,10 +1064,9 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
       _error = null;
     });
     try {
-      final models = await fetchProviderModels(
-        widget.config,
-        kind: widget.kind,
-      );
+      final models = widget.loadModels == null
+          ? await fetchProviderModels(widget.config, kind: widget.kind)
+          : await widget.loadModels!();
 
       if (!mounted) {
         return;
@@ -1007,7 +1079,7 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
             .toSet();
       });
     } catch (e, stack) {
-      _log.error('Fetch failed: type=${e.runtimeType}', stackTrace: stack);
+      _log.error('Fetch models failed', error: e, stackTrace: stack);
 
       if (!mounted) {
         return;
@@ -1021,7 +1093,12 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
           _ => null,
         };
         _error = (
-          key: e is CodexAuthException
+          detail: e is PluginHostError && e.code == 'invalid_models'
+              ? e.message
+              : null,
+          key: e is PluginHostError && e.code == 'invalid_models'
+              ? LocaleKeys.providerPluginModelsInvalid
+              : e is CodexAuthException
               ? codexAuthErrorKey(e)
               : modelsFetchErrorKey(statusCode),
           statusCode: statusCode,
@@ -1035,28 +1112,58 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
 
+    final actions = [
+      RevericButton.secondary(
+        label: context.t(LocaleKeys.commonCancel),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      RevericButton.primary(
+        label: context.t(LocaleKeys.commonConfirm),
+        onPressed: _isLoading || _error != null
+            ? null
+            : () => Navigator.of(context).pop(_selected),
+      ),
+    ];
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return MobileSheetScaffold(
+        expand: true,
+        header: MobileSheetHeader.closable(
+          title: context.t(LocaleKeys.providerFetchModels),
+          onClose: () => Navigator.of(context).pop(),
+        ),
+        footer: Row(
+          children: [
+            for (final action in actions)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: RevericSpacing.xs,
+                  ),
+                  child: action,
+                ),
+              ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(RevericSpacing.lg),
+          child: _buildContent(colors, typo),
+        ),
+      );
+    }
     return RevericDialog.panel(
       title: Text(context.t(LocaleKeys.providerFetchModels)),
       content: SizedBox(
         width: _fetchModelsDialogWidth,
-        height: _fetchModelsDialogContentHeight,
+        height: math.min(
+          _fetchModelsDialogContentHeight,
+          MediaQuery.sizeOf(context).height * 0.6,
+        ),
         child: _buildContent(colors, typo),
       ),
 
       width: _fetchModelsDialogWidth + RevericSpacing.x4l * 2,
 
-      actions: [
-        RevericButton.secondary(
-          label: context.t(LocaleKeys.commonCancel),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        RevericButton.primary(
-          label: context.t(LocaleKeys.commonConfirm),
-          onPressed: _isLoading || _error != null
-              ? null
-              : () => Navigator.of(context).pop(_selected),
-        ),
-      ],
+      actions: actions,
     );
   }
 
@@ -1074,6 +1181,7 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
               context.t(
                 _error!.key,
                 namedArgs: {
+                  if (_error!.detail != null) 'details': _error!.detail!,
                   if (_error!.statusCode != null)
                     'status': _error!.statusCode.toString(),
                 },
@@ -1089,7 +1197,7 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
     if (_models.isEmpty) {
       return Center(
         child: Text(
-          'No models returned by the API.',
+          context.t(LocaleKeys.providerFetchModelsEmpty),
           style: typo.ui.copyWith(color: colors.textMuted),
         ),
       );
@@ -1151,7 +1259,10 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
                   CheckboxListTile(
                     dense: true,
                     visualDensity: VisualDensity.compact,
-                    title: Text(model, style: typo.uiSmall),
+                    title: Text(
+                      widget.labelForModel?.call(model) ?? model,
+                      style: typo.uiSmall,
+                    ),
                     value: _selected.contains(model),
                     onChanged: (checked) {
                       setState(() {
@@ -1177,52 +1288,94 @@ class _FetchModelsDialogContentState extends State<_FetchModelsDialogContent> {
     }
     return [
       for (final model in _models)
-        if (model.toLowerCase().contains(query)) model,
+        if (model.toLowerCase().contains(query) ||
+            (widget.labelForModel?.call(model).toLowerCase().contains(query) ??
+                false))
+          model,
     ];
   }
+}
+
+/// 保存回执只同步尚未编辑的文本，IME 上屏才触发即时保存。
+TextEditingController _useProviderText(
+  String savedText,
+  Future<void> Function(String) onEdited,
+) {
+  final controller = useTextEditingController(text: savedText);
+  final previousSaved = useRef(savedText);
+  final lastCommitted = useRef(savedText);
+  final pendingEdits = useRef(0);
+  final edited = useRef(onEdited)..value = onEdited;
+
+  useEffect(() {
+    final previous = previousSaved.value;
+    previousSaved.value = savedText;
+    if (pendingEdits.value == 0 &&
+        controller.text == previous &&
+        previous != savedText &&
+        !isTextInputComposing(controller)) {
+      lastCommitted.value = savedText;
+      final selection = controller.selection;
+      controller.value = TextEditingValue(
+        text: savedText,
+        selection: selection.copyWith(
+          baseOffset: selection.baseOffset.clamp(0, savedText.length),
+          extentOffset: selection.extentOffset.clamp(0, savedText.length),
+        ),
+      );
+    }
+    return null;
+  }, [controller, savedText]);
+
+  useEffect(() {
+    void onTextChanged() {
+      final text = controller.text;
+      if (!isTextInputComposing(controller) && text != lastCommitted.value) {
+        lastCommitted.value = text;
+        pendingEdits.value++;
+        unawaited(edited.value(text).whenComplete(() => pendingEdits.value--));
+      }
+    }
+
+    controller.addListener(onTextChanged);
+    return () => controller.removeListener(onTextChanged);
+  }, [controller]);
+  return controller;
 }
 
 /// 渠道私域素材库的 AK/SK 与项目名；素材认证（Seedance 合规校验）用。
 class _AssetCredentialsSection extends HookWidget {
   const _AssetCredentialsSection({
     required this.config,
-    required this.onChanged,
+    required this.saveChange,
   });
 
   final AiProvider config;
-  final Future<void> Function(AiProvider) onChanged;
+  final _SaveProviderChange saveChange;
 
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final accessKey = useTextEditingController(text: config.accessKeyId);
-    final secretKey = useTextEditingController(text: config.secretAccessKey);
-    final project = useTextEditingController(text: config.assetProjectName);
-    final expanded = useState((config.accessKeyId ?? '').trim().isNotEmpty);
-    useEffect(() {
-      for (final (controller, value) in [
-        (accessKey, config.accessKeyId ?? ''),
-        (secretKey, config.secretAccessKey ?? ''),
-        (project, config.assetProjectName ?? ''),
-      ]) {
-        if (controller.text != value) {
-          controller.value = controller.value.copyWith(
-            text: value,
-            selection: TextSelection.collapsed(offset: value.length),
-            composing: TextRange.empty,
-          );
-        }
-      }
-      return null;
-    }, [config.accessKeyId, config.secretAccessKey, config.assetProjectName]);
-    void save() => onChanged(
-      config.copyWith(
-        accessKeyId: Value(accessKey.text.trim()),
-        secretAccessKey: Value(secretKey.text.trim()),
-        assetProjectName: Value(project.text.trim()),
+    final accessKey = _useProviderText(
+      config.accessKeyId ?? '',
+      (text) => saveChange(
+        (current) => current.copyWith(accessKeyId: Value(text.trim())),
       ),
     );
+    final secretKey = _useProviderText(
+      config.secretAccessKey ?? '',
+      (text) => saveChange(
+        (current) => current.copyWith(secretAccessKey: Value(text.trim())),
+      ),
+    );
+    final project = _useProviderText(
+      config.assetProjectName ?? '',
+      (text) => saveChange(
+        (current) => current.copyWith(assetProjectName: Value(text.trim())),
+      ),
+    );
+    final expanded = useState((config.accessKeyId ?? '').trim().isNotEmpty);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1256,21 +1409,18 @@ class _AssetCredentialsSection extends HookWidget {
           RevericTextField(
             label: context.t(LocaleKeys.providerAssetAccessKeyLabel),
             controller: accessKey,
-            onChanged: (_) => save(),
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
             label: context.t(LocaleKeys.providerAssetSecretKeyLabel),
             controller: secretKey,
             obscureText: true,
-            onChanged: (_) => save(),
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
             label: context.t(LocaleKeys.providerAssetProjectLabel),
             hintText: context.t(LocaleKeys.providerAssetProjectHint),
             controller: project,
-            onChanged: (_) => save(),
           ),
         ],
       ],
@@ -1282,27 +1432,23 @@ class _AssetCredentialsSection extends HookWidget {
 ///
 /// 输入不合法时只提示错误、不写回配置，避免把无法使用的代理存进 provider。
 class _ProxySection extends HookWidget {
-  const _ProxySection({
-    required this.urlController,
-    required this.usernameController,
-    required this.passwordController,
-    required this.onChanged,
-  });
+  const _ProxySection({required this.config, required this.saveChange});
 
-  final TextEditingController urlController;
-  final TextEditingController usernameController;
-  final TextEditingController passwordController;
-  final VoidCallback onChanged;
+  final AiProvider config;
+  final _SaveProviderChange saveChange;
 
   /// 与 [AiProviderX.createProxyClient] 一致，按去掉首尾空白后的值校验。
   ({String? url, String? username, String? password}) _errors(
     BuildContext context,
+    String url,
+    String username,
+    String password,
   ) {
-    final url = urlController.text.trim();
+    url = url.trim();
     final credentials = NetworkProxy.credentialFieldErrors(
       address: url,
-      username: usernameController.text.trim(),
-      password: passwordController.text.trim(),
+      username: username.trim(),
+      password: password.trim(),
     );
     return (
       url: url.isNotEmpty && NetworkProxy.parseAddress(url) == null
@@ -1325,20 +1471,47 @@ class _ProxySection extends HookWidget {
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    late final TextEditingController urlController;
+    late final TextEditingController usernameController;
+    late final TextEditingController passwordController;
+    Future<void> save(String _) async {
+      if ([
+        urlController,
+        usernameController,
+        passwordController,
+      ].any(isTextInputComposing)) {
+        return;
+      }
+      final url = urlController.text;
+      final username = usernameController.text;
+      final password = passwordController.text;
+      final errors = _errors(context, url, username, password);
+      if (errors.url == null &&
+          errors.username == null &&
+          errors.password == null) {
+        await saveChange(
+          (current) => current.copyWith(
+            proxyUrl: url,
+            proxyUsername: username,
+            proxyPassword: password,
+          ),
+        );
+      }
+    }
+
+    urlController = _useProviderText(config.proxyUrl, save);
+    usernameController = _useProviderText(config.proxyUsername, save);
+    passwordController = _useProviderText(config.proxyPassword, save);
     final expanded = useState(urlController.text.trim().isNotEmpty);
     useListenable(
       Listenable.merge([urlController, usernameController, passwordController]),
     );
-    final errors = _errors(context);
-
-    void save() {
-      final current = _errors(context);
-      if (current.url == null &&
-          current.username == null &&
-          current.password == null) {
-        onChanged();
-      }
-    }
+    final errors = _errors(
+      context,
+      urlController.text,
+      usernameController.text,
+      passwordController.text,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1375,7 +1548,6 @@ class _ProxySection extends HookWidget {
             controller: urlController,
             errorText: errors.url,
             keyboardType: TextInputType.url,
-            onChanged: (_) => save(),
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
@@ -1383,7 +1555,6 @@ class _ProxySection extends HookWidget {
             hintText: context.t(LocaleKeys.providerProxyUsernameHint),
             controller: usernameController,
             errorText: errors.username,
-            onChanged: (_) => save(),
           ),
           const SizedBox(height: RevericSpacing.lg),
           RevericTextField(
@@ -1392,7 +1563,6 @@ class _ProxySection extends HookWidget {
             controller: passwordController,
             obscureText: true,
             errorText: errors.password,
-            onChanged: (_) => save(),
           ),
         ],
       ],

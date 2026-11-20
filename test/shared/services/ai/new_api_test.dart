@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/new_api.dart';
+import 'package:reveric/shared/models/provider_model.dart';
 import 'package:reveric/shared/models/audio/channels.dart';
 import 'package:reveric/shared/models/image/channels.dart';
 import 'package:reveric/shared/models/video/channels.dart';
@@ -24,7 +25,6 @@ AiProvider _provider([String type = 'api88']) =>
       apiKey: 'test-key',
       baseUrl: 'https://gateway.test/prefix/',
     );
-const _allChat = ['openai', 'openai-response', 'anthropic', 'gemini'];
 Map<String, dynamic> _model(String id, List<String> endpoints) => {
   'id': id,
   'supported_endpoint_types': endpoints,
@@ -38,13 +38,118 @@ http.Response _json(Object value) => http.Response(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('OOKiAPI is available only by manual creation without a showcase', () {
-    expect(customAiProviderTypes, contains(AiProviderType.ooki));
+    expect(customAiProviderTypes, contains(AiProviderType.ooki.name));
     expect(aiProviderBuiltinById('ooki'), isNull);
     expect(providerShowcases, isNot(contains('ooki')));
   });
+  test('Infistar is manually added with a sponsor showcase', () {
+    expect(customAiProviderTypes, contains(AiProviderType.infistar.name));
+    expect(aiProviderBuiltinById('infistar'), isNull);
+    expect(providerShowcases, contains('infistar'));
+  });
+  test('91Token is seeded by default with a sponsor showcase', () {
+    expect(customAiProviderTypes, contains(AiProviderType.token91.name));
+    expect(aiProviderBuiltinById('token91'), isNotNull);
+    expect(providerShowcases, contains('token91'));
+  });
+  test(
+    '91Token separates native video families from chat without an exact model whitelist',
+    () async {
+      expect(customAiProviderTypes, contains('token91'));
+      await http.runWithClient(
+        () async {
+          final client = NewApiClient(_provider('token91'));
+          expect(await client.modelIds(AiModelKind.chat), ['claude-opus-5-5']);
+          expect(await client.modelIds(AiModelKind.image), [
+            'gemini-nano-banana-2.1',
+            'gpt-image-2.5-flare',
+          ]);
+          expect(await client.modelIds(AiModelKind.video), [
+            'MiniMax-H3',
+            'doubao-seedance-2-0',
+            'doubao-seedance-2-0-fast',
+            'doubao-seedance-2-0-mini',
+            'doubao-seedance-2-5',
+            'grok-video-3',
+            'viduq3-ad',
+            'viduq3-pro',
+            'viduq3-turbo',
+            'viduq4-preview',
+            'viduq5-future',
+            'wan3.0-video',
+          ]);
+        },
+        () => MockClient((request) async {
+          expect(request.url.toString(), 'https://api.91token.com/v1/models');
+          return _json({
+            'data': [
+              _model('claude-opus-5-5', ['anthropic', 'openai']),
+              _model('gpt-image-2.5-flare', ['image-generation', 'openai']),
+              _model('gemini-nano-banana-2.1', ['gemini', 'openai']),
+              for (final id in [
+                'doubao-seedance-2-0',
+                'doubao-seedance-2-0-fast',
+                'doubao-seedance-2-0-mini',
+                'doubao-seedance-2-5',
+              ])
+                _model(id, ['openai', 'video-generation']),
+              _model('MiniMax-H3', ['openai-video']),
+              _model('wan3.0-video', ['openai']),
+              for (final id in [
+                'grok-video-3',
+                'viduq3-ad',
+                'viduq3-pro',
+                'viduq3-turbo',
+                'viduq4-preview',
+                'viduq5-future',
+              ])
+                _model(id, ['openai']),
+            ],
+          });
+        }),
+      );
+    },
+  );
+  test(
+    'standard model lists without endpoint metadata retain chat models',
+    () async {
+      await http.runWithClient(
+        () async {
+          expect(await fetchProviderModels(_provider('infistar')), [
+            'my-writer',
+            'qwen-plus',
+          ]);
+        },
+        () => MockClient(
+          (request) async => _json({
+            'object': 'list',
+            'data': [
+              for (final id in [
+                'qwen-plus',
+                'my-writer',
+                'gpt-image-2',
+                'gemini-3.1-flash-image',
+                'gemini-3.1-flash-tts',
+                'grok-imagine-video-1.5',
+              ])
+                {
+                  'id': id,
+                  'object': 'model',
+                  'created': 0,
+                  'owned_by': 'system',
+                },
+            ],
+          }),
+        ),
+      );
+    },
+  );
   for (final (type, baseUrl) in [
     ('api88', 'https://api.88api.ai/v1'),
     ('ooki', 'https://api.ookiapi.com/v1'),
+    ('apikey', 'https://api.apikey.fan/v1'),
+    ('infistar', 'https://infistar.cc/v1'),
+    ('token91', 'https://api.91token.com/v1'),
   ]) {
     group(type, () => _testProvider(type, baseUrl));
   }
@@ -52,16 +157,11 @@ void main() {
 
 void _testProvider(String type, String baseUrl) {
   test(
-    'New API provider exposes four kinds while New API stays an internal integration',
+    'New API provider exposes its supported kinds without a separate client type',
     () {
       expect(_provider(type).effectiveBaseUrl, baseUrl);
-      expect(_provider(type).supportedModelKinds, {
-        AiModelKind.chat,
-        AiModelKind.image,
-        AiModelKind.audio,
-        AiModelKind.video,
-      });
-      expect(customAiProviderTypes, contains(AiProviderType.api88));
+      expect(_provider(type).supportedModelKinds, AiModelKind.values.toSet());
+      expect(customAiProviderTypes, contains(AiProviderType.api88.name));
       expect(
         AiProviderType.values.map((type) => type.name),
         isNot(contains('new_api')),
@@ -70,68 +170,125 @@ void _testProvider(String type, String baseUrl) {
     },
   );
 
-  test(
-    'all registered media channel entries resolve to usable capabilities',
-    () {
-      for (final type in ['api88', 'ooki']) {
-        for (final channel
-            in imageChannelModels[ImageProtocol.new_api_images]!.values) {
-          expect(channel.model, isNotNull);
+  {
+    test(
+      'all registered media channel entries resolve to usable capabilities',
+      () {
+        for (final type in ['api88', 'ooki', 'apikey', 'infistar', 'token91']) {
+          for (final channel
+              in imageChannelModels[ImageProtocol.new_api_images]!.values) {
+            expect(channel.model, isNotNull);
+          }
+          for (final id in audioModelsForProvider(type)) {
+            final channel = lookupAudioChannelModel(type, id)!;
+            expect(channel.capabilities.speech, true);
+            expect(channel.requestDefaults.voice, isNotEmpty);
+          }
+          for (final id in videoModelsForProvider(type)) {
+            final channel = lookupVideoChannelModel(type, id)!;
+            expect(channel.resolutions, isNotEmpty);
+            expect(channel.durations, isNotEmpty);
+          }
         }
-        for (final id in audioModelsForProvider(type)) {
-          final channel = lookupAudioChannelModel(type, id)!;
-          expect(channel.capabilities.speech, true);
-          expect(channel.requestDefaults.voice, isNotEmpty);
-        }
-        for (final id in videoModelsForProvider(type)) {
-          final channel = lookupVideoChannelModel(type, id)!;
-          expect(channel.resolutions, isNotEmpty);
-          expect(channel.durations, isNotEmpty);
-        }
-      }
-    },
-  );
+      },
+    );
+
+    test(
+      'fetch all kinds from authenticated models and filter by capabilities',
+      () async {
+        const flash = 'vendor/seedance-2.5-flash-20261115';
+        var requests = 0;
+        await http.runWithClient(
+          () async {
+            expect(await fetchProviderModels(_provider(type)), [
+              'deepseek-v4-flash',
+              'renamed-gemini-model',
+            ]);
+            expect(
+              await fetchProviderModels(
+                _provider(type),
+                kind: AiModelKind.image,
+              ),
+              [
+                'gemini-3.1-flash-image',
+                'gpt-image-2',
+                'new-image-model',
+                'renamed-edit-model',
+                'renamed-gemini-model',
+              ],
+            );
+            expect(
+              await fetchProviderModels(
+                _provider(type),
+                kind: AiModelKind.audio,
+              ),
+              ['gemini-3.1-flash-tts'],
+            );
+            final videos = await fetchProviderModels(
+              _provider(type),
+              kind: AiModelKind.video,
+            );
+            expect(videos, [
+              'seedance-2.0官方版',
+              'unknown-video',
+              flash,
+              'veo-3.1',
+            ]);
+            final provider = _provider(type).copyWith(videoModels: videos);
+            final spec = resolveVideoModel(provider, flash)!;
+            expect(spec.resolutions, {'480p', '720p'});
+            expect(spec.capabilities.maxReferences, 20);
+            expect(resolveVideoModel(provider, 'unknown-video'), isNull);
+          },
+          () => MockClient((request) async {
+            requests++;
+            expect(request.url.toString(), '$baseUrl/models');
+            expect(request.headers['Authorization'], 'Bearer test-key');
+            return _json({
+              'data': [
+                _model('deepseek-v4-flash', ['openai']),
+                _model('gpt-image-2', ['image-generation', 'openai']),
+                _model('new-image-model', ['image-generation']),
+                _model('renamed-edit-model', ['image-edit', 'openai']),
+                _model('renamed-gemini-model', ['gemini']),
+                _model('gemini-3.1-flash-image', ['gemini', 'openai']),
+                _model('gemini-3.1-flash-tts', ['gemini', 'openai']),
+                _model('seedance-2.0官方版', ['openai-video']),
+                _model(flash, ['openai']),
+                _model('veo-3.1', ['openai-video']),
+                _model('unknown-video', ['openai-video']),
+              ],
+            });
+          }),
+        );
+        expect(requests, 4);
+      },
+    );
+  }
 
   test(
-    'fetch all kinds from authenticated models and filter by capabilities',
+    'chat model discovery uses the configured authenticated endpoint',
     () async {
-      var requests = 0;
       await http.runWithClient(
         () async {
           expect(await fetchProviderModels(_provider(type)), [
-            'deepseek-v4-flash',
+            'claude-opus-5-5',
+            'gpt-6.1-sol',
           ]);
-          expect(
-            await fetchProviderModels(_provider(type), kind: AiModelKind.image),
-            ['gemini-3.1-flash-image', 'gpt-image-2'],
-          );
-          expect(
-            await fetchProviderModels(_provider(type), kind: AiModelKind.audio),
-            ['gemini-3.1-flash-tts'],
-          );
-          expect(
-            await fetchProviderModels(_provider(type), kind: AiModelKind.video),
-            ['seedance-2.0官方版', 'veo-3.1'],
-          );
         },
         () => MockClient((request) async {
-          requests++;
           expect(request.url.toString(), '$baseUrl/models');
           expect(request.headers['Authorization'], 'Bearer test-key');
           return _json({
             'data': [
-              _model('deepseek-v4-flash', _allChat),
-              _model('gpt-image-2', ['image-generation', 'openai']),
-              _model('gemini-3.1-flash-image', ['gemini', 'openai']),
-              _model('gemini-3.1-flash-tts', ['gemini', 'openai']),
-              _model('seedance-2.0官方版', ['openai-video']),
-              _model('veo-3.1', ['openai-video']),
-              _model('unknown-video', ['openai-video']),
+              _model('gpt-6.1-sol', ['openai-response']),
+              _model('claude-opus-5-5', ['anthropic']),
+              _model('gpt-image-2', ['image-generation']),
+              _model('grok-imagine-video', ['openai-video']),
             ],
           });
         }),
       );
-      expect(requests, 4);
     },
   );
 
@@ -248,9 +405,9 @@ void _testProvider(String type, String baseUrl) {
         ('vendor/CLAUDE-sonnet-4-6', NewApiChatProtocol.anthropic),
         ('vendor/GEMINI-3.1-pro-preview', NewApiChatProtocol.gemini),
         ('vendor/GPT-5.4', NewApiChatProtocol.responses),
-        ('o1', NewApiChatProtocol.responses),
-        ('o3-mini', NewApiChatProtocol.responses),
-        ('o4-mini', NewApiChatProtocol.responses),
+        ('o1', NewApiChatProtocol.openai),
+        ('o3-mini', NewApiChatProtocol.openai),
+        ('o4-mini', NewApiChatProtocol.openai),
         ('renamed', NewApiChatProtocol.openai),
         ('other-model', NewApiChatProtocol.openai),
       ]) {

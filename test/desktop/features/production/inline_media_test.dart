@@ -35,6 +35,7 @@ import 'package:reveric/shared/services/production/media_service.dart';
 import 'package:reveric/shared/services/production/playback_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
+import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/app_background.dart';
 import 'package:reveric/third/flow/vyuh_node_flow.dart' as flow;
 import '../../director/harness.dart';
@@ -216,6 +217,13 @@ void main() {
               ),
             );
             await tester.pumpAndSettle();
+            expect(
+              find.descendant(
+                of: find.byType(ProductionNodeBar),
+                matching: find.text('Copy'),
+              ),
+              type == 'image' ? findsOneWidget : findsNothing,
+            );
             Future<void> expectPreview() async {
               for (
                 var i = 0;
@@ -371,10 +379,95 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });
+
+  testWidgets(
+    'renders extracted video first frame when idle and falls back cleanly on error',
+    (tester) async {
+      final root = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('inline-thumb-'),
+      ))!;
+      final media = _Media();
+      final localService = ProductionCanvasService(
+        StoryboardService(db),
+        MediaLibraryService(assets, media, root),
+        'work',
+      );
+      try {
+        await tester.runAsync(() async {
+          final first = File('${root.path}/file_workspaces/work/video.mp4');
+          final broken = File('${root.path}/file_workspaces/work/broken.mp4');
+          await first.parent.create(recursive: true);
+          await first.writeAsBytes(const [1, 2, 3, 4]);
+          await broken.writeAsBytes(const [5, 6, 7, 8]);
+        });
+        Widget buildInline(String path) => ProviderScope(
+          overrides: [playbackServiceProvider.overrideWithValue(playback)],
+          child: directorTestApp(
+            Center(
+              child: SizedBox(
+                width: 320,
+                height: 180,
+                child: ProductionInlineVideo(
+                  service: localService,
+                  nodeId: 'node',
+                  filePath: path,
+                  selected: false,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.pumpWidget(buildInline('file_workspaces/work/video.mp4'));
+        final decodedImage = find.byWidgetPredicate(
+          (widget) => widget is RawImage && widget.image != null,
+        );
+        for (var i = 0; i < 50 && decodedImage.evaluate().isEmpty; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+        }
+        expect(decodedImage, findsOneWidget);
+        expect(media.thumbnailCalls, 1);
+        expect(find.byType(ErrorWidget), findsNothing);
+
+        await tester.pumpWidget(buildInline('file_workspaces/work/video.mp4'));
+        await tester.pump();
+        expect(media.thumbnailCalls, 1);
+
+        media.failThumbnail = true;
+        await tester.pumpWidget(buildInline('file_workspaces/work/broken.mp4'));
+        final placeholder = find.byWidgetPredicate(
+          (widget) =>
+              widget is RevericIcon &&
+              widget.assetPath == RevericIcons.movie_outlined,
+        );
+        for (var i = 0; i < 20 && media.thumbnailCalls < 2; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+        }
+        expect(media.thumbnailCalls, 2);
+        expect(placeholder, findsOneWidget);
+        expect(decodedImage, findsNothing);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await tester.runAsync(() => root.delete(recursive: true));
+      }
+    },
+  );
 }
 
 class _Media extends MediaService {
   _Media() : super(FfmpegRunner());
+
+  int thumbnailCalls = 0;
+  bool failThumbnail = false;
 
   @override
   Future<MediaInfo> probe(
@@ -387,6 +480,26 @@ class _Media extends MediaService {
     width: 320,
     height: 180,
   );
+
+  @override
+  Future<void> captureThumbnail(
+    String input,
+    File output, {
+    MediaCancellation? cancellation,
+  }) async {
+    if (cancellation?.cancelled == true) {
+      throw const MediaException(MediaFailure.cancelled);
+    }
+    thumbnailCalls++;
+    if (failThumbnail) {
+      throw const MediaException(MediaFailure.encoding_failed);
+    }
+    await output.writeAsBytes(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ),
+    );
+  }
 }
 
 class _Playback extends PlaybackService {

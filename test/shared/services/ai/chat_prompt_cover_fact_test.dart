@@ -48,6 +48,19 @@ void main() {
   });
 
   group('orchestrator 下一步建议场景指引', () {
+    test('画布提示词保留下步建议并使用画布任务', () {
+      final rendered = const ChatPromptUseCase().system(
+        ChatPanelPromptInput(
+          context: const AiSessionContext(contentKind: contentKindCanvas),
+          systemInstruction: File(
+            'assets/prompts/agent/orchestrator.md',
+          ).readAsStringSync(),
+        ),
+      );
+      expect(rendered, contains('SuggestNextAction'));
+      expect(rendered, contains('在画布中只给 `kind=prompt` 建议'));
+      expect(rendered, isNot(contains('feature=ai_council')));
+    });
     test('调用时机写在 orchestrator.md，不写进工具描述', () {
       final raw = File(
         'assets/prompts/agent/orchestrator.md',
@@ -58,7 +71,9 @@ void main() {
       expect(raw, contains('没有值得推荐的下一步时不要调用'));
       expect(raw, contains('每回合最多调用一次本工具'));
       expect(raw, contains('多步任务执行途中不要挂建议'));
-      expect(raw, contains('圆桌传议题、小剧场传场景、角色扮演传角色名'));
+      expect(raw, contains('seed 传议题'));
+      expect(raw, contains('seed 传场景'));
+      expect(raw, contains('seed 传角色名'));
       expect(raw, contains('一次为限'));
     });
   });

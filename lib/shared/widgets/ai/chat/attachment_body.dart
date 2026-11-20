@@ -3,6 +3,7 @@
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/services/ai/files/session_files.dart
 //   lib/shared/widgets/ai/chat/chat_message_view.dart
+//   lib/shared/widgets/ai/chat/published_chat_image.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
@@ -19,12 +20,20 @@ import '../../../services/ai/files/session_files.dart';
 import '../../../theme/theme.dart';
 import '../../../utils/storage_paths.dart';
 import 'chat_message_parts.dart';
+import 'published_chat_image.dart';
 
 final _log = AppLogger.forModule('ChatAttachment');
 
 class ChatAttachmentBody extends StatelessWidget {
-  const ChatAttachmentBody({super.key, required this.blocks});
+  const ChatAttachmentBody({
+    super.key,
+    required this.blocks,
+    this.readOnly = false,
+  });
   final List<AiMessageBlock> blocks;
+  final bool readOnly;
+
+  static const _publicTextPreviewLimit = 4 * 1024 * 1024;
 
   @override
   Widget build(BuildContext context) {
@@ -99,11 +108,12 @@ class ChatAttachmentBody extends StatelessWidget {
     if (path == null) {
       return unavailable;
     }
-    return Image.file(
-      File(path),
+    return Image(
+      image: readOnly
+          ? PublishedChatImage(path, previewSide: 192)
+          : ResizeImage(FileImage(File(path)), width: 192),
       width: 96,
       height: 72,
-      cacheWidth: 192,
       fit: BoxFit.cover,
       semanticLabel: block.name,
       errorBuilder: (_, _, _) => unavailable,
@@ -113,6 +123,13 @@ class ChatAttachmentBody extends StatelessWidget {
   Future<void> _preview(BuildContext context, AiAttachmentBlock block) async {
     try {
       final file = await SessionFiles().resolve(block.path);
+      if (readOnly &&
+          !block.isImage &&
+          await file.length() > _publicTextPreviewLimit) {
+        throw const FormatException(
+          'Published attachment exceeds the preview limit',
+        );
+      }
       final text = block.isImage ? null : await file.readAsString();
       if (!context.mounted) {
         return;
@@ -126,7 +143,17 @@ class ChatAttachmentBody extends StatelessWidget {
             height: 480,
             child: block.isImage
                 ? InteractiveViewer(
-                    child: Image.file(file, fit: BoxFit.contain),
+                    child: readOnly
+                        ? Image(
+                            image: PublishedChatImage(file.path),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, _, _) => Center(
+                              child: Text(
+                                context.t(LocaleKeys.aiAttachmentUnavailable),
+                              ),
+                            ),
+                          )
+                        : Image.file(file, fit: BoxFit.contain),
                   )
                 : SingleChildScrollView(child: SelectableText(text!)),
           ),

@@ -23,6 +23,7 @@ import 'image_generate_orchestrator.dart';
 import 'view_derive_orchestrator.dart';
 import '../../models/video/request.dart';
 import 'canvas_service.dart';
+import 'canvas_history.dart';
 import 'ffmpeg_runner.dart';
 import 'grid_split.dart';
 import 'grid_stitch.dart';
@@ -91,6 +92,7 @@ class GridOrchestrator {
     MediaCancellation? cancellation,
     void Function(int cell, AssetRow asset)? onImported,
     void Function(CanvasNode group, Map<int, String> members)? onCreated,
+    CanvasHistory? history,
   }) => _create(
     canvas: canvas,
     sourceNodeId: sourceNodeId,
@@ -102,6 +104,7 @@ class GridOrchestrator {
     cancellation: cancellation,
     onImported: onImported,
     onCreated: onCreated,
+    history: history,
   );
 
   Future<GridUpscaleResult> upscale({
@@ -307,6 +310,7 @@ class GridOrchestrator {
     void Function(CanvasNode group, Map<int, String> members)? onCreated,
     ({ProductionImageCapabilities capabilities, int multiplier})? upscale,
     Map<String, _GridSeed>? seeds,
+    CanvasHistory? history,
   }) async {
     final token = cancellation ?? MediaCancellation();
     if (token.cancelled) {
@@ -360,87 +364,93 @@ class GridOrchestrator {
             layout.frameSize,
           );
       final memberMap = <int, String>{};
-      final group = await canvas.write(sourceNodeId, () async {
-        await canvas.moveNodes(source.canvasId, placement.moves);
-        final members = <String>[];
-        for (final (index, asset) in assets.indexed) {
-          if (token.cancelled) {
-            throw const MediaException(MediaFailure.cancelled);
-          }
-          final crop = crops[index];
-          final CanvasNode member;
-          if (upscale == null) {
-            member = await canvas.addMedia(source.canvasId, asset);
-          } else {
-            final config = upscale;
-            final ratio = nearestImageRatio(
-              crop.width,
-              crop.height,
-              config.capabilities.ratios,
-            );
-            final input = ProductionInput.asset(
-              asset,
-              VideoInputRole.reference_image,
-            );
-            const preset = ImageGenerationPreset(
-              method: ImageGenerationMethod.upscale,
-            );
-            config.capabilities.validate(
-              prompt: preset.assemble('', input.id),
-              ratio: ratio,
-              resolution: '${config.multiplier}K',
-              references: 1,
-            );
-            member = await canvas.addImage(source.canvasId);
-            final clip = (await canvas.shots.getShot(member.clipId!))!;
-            await canvas.shots.apply(clip.id, {
-              ...canvas.shots.snapshot(clip),
-              'title': '${source.title} ${crop.row + 1}-${crop.col + 1}',
-              'prompt': '',
-              'provider_id': config.capabilities.provider.id,
-              'model_id': config.capabilities.model,
-              'ratio': ratio,
-              'resolution': '${config.multiplier}K',
-            });
-            await canvas.shots.restoreInputs(clip.id, [input.toJson()]);
+      final group = await withCanvasHistory(
+        history,
+        canvas.shots,
+        'splitGroup',
+        placement.moves.keys,
+        () => canvas.write(sourceNodeId, () async {
+          await canvas.moveNodes(source.canvasId, placement.moves);
+          final members = <String>[];
+          for (final (index, asset) in assets.indexed) {
+            if (token.cancelled) {
+              throw const MediaException(MediaFailure.cancelled);
+            }
+            final crop = crops[index];
+            final CanvasNode member;
+            if (upscale == null) {
+              member = await canvas.addMedia(source.canvasId, asset);
+            } else {
+              final config = upscale;
+              final ratio = nearestImageRatio(
+                crop.width,
+                crop.height,
+                config.capabilities.ratios,
+              );
+              final input = ProductionInput.asset(
+                asset,
+                VideoInputRole.reference_image,
+              );
+              const preset = ImageGenerationPreset(
+                method: ImageGenerationMethod.upscale,
+              );
+              config.capabilities.validate(
+                prompt: preset.assemble('', input.id),
+                ratio: ratio,
+                resolution: '${config.multiplier}K',
+                references: 1,
+              );
+              member = await canvas.addImage(source.canvasId);
+              final clip = (await canvas.shots.getShot(member.clipId!))!;
+              await canvas.shots.apply(clip.id, {
+                ...canvas.shots.snapshot(clip),
+                'title': '${source.title} ${crop.row + 1}-${crop.col + 1}',
+                'prompt': '',
+                'provider_id': config.capabilities.provider.id,
+                'model_id': config.capabilities.model,
+                'ratio': ratio,
+                'resolution': '${config.multiplier}K',
+              });
+              await canvas.shots.restoreInputs(clip.id, [input.toJson()]);
+              await canvas.db.canvasDao.updateActiveNodeFields(
+                member.id,
+                CanvasNodesCompanion(
+                  style: Value({
+                    ...?member.style,
+                    'imageGeneration': preset.toJson(),
+                  }),
+                ),
+              );
+            }
             await canvas.db.canvasDao.updateActiveNodeFields(
               member.id,
               CanvasNodesCompanion(
-                style: Value({
-                  ...?member.style,
-                  'imageGeneration': preset.toJson(),
-                }),
+                title: Value('${source.title} ${crop.row + 1}-${crop.col + 1}'),
               ),
             );
+            if (seeds != null) {
+              // 建组时组装本次执行的各格请求；后续编辑不改写请求，也不再逐格比较旧快照。
+              // 保留请求内容，供提交失败时记录该格的失败历史。
+              seeds[member.id] = (
+                preview: await ProductionImageGenerateOrchestrator().preview(
+                  canvas,
+                  member.id,
+                ),
+                title: '${source.title} ${crop.row + 1}-${crop.col + 1}',
+              );
+            }
+            members.add(member.id);
+            memberMap[crop.index] = member.id;
           }
-          await canvas.db.canvasDao.updateActiveNodeFields(
-            member.id,
-            CanvasNodesCompanion(
-              title: Value('${source.title} ${crop.row + 1}-${crop.col + 1}'),
-            ),
+          return canvas.createStoryboardGroup(
+            source.canvasId,
+            layout: layout,
+            origin: Offset(placement.at.x, placement.at.y),
+            memberIds: members,
+            sourceNodeId: sourceNodeId,
           );
-          if (seeds != null) {
-            // 建组时组装本次执行的各格请求；后续编辑不改写请求，也不再逐格比较旧快照。
-            // 保留请求内容，供提交失败时记录该格的失败历史。
-            seeds[member.id] = (
-              preview: await ProductionImageGenerateOrchestrator().preview(
-                canvas,
-                member.id,
-              ),
-              title: '${source.title} ${crop.row + 1}-${crop.col + 1}',
-            );
-          }
-          members.add(member.id);
-          memberMap[crop.index] = member.id;
-        }
-        return canvas.createStoryboardGroup(
-          source.canvasId,
-          layout: layout,
-          origin: Offset(placement.at.x, placement.at.y),
-          memberIds: members,
-          sourceNodeId: sourceNodeId,
-        );
-      });
+        }),
+      );
       onCreated?.call(group, Map.unmodifiable(memberMap));
       return group;
     } finally {

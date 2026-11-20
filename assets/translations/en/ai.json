@@ -1,4 +1,12 @@
 {
+  "ai.image_model_current_draft": "Applies to this image draft only",
+  "ai.image_submission_unknown": "The submission outcome is unknown. Check the provider before generating again; it may already have accepted the request.",
+  "ai.image_invalid_outputs": "The provider returned an invalid image result. Check the result before generating again.",
+  "ai.image_parameters_unavailable": "These image settings are not supported by the selected model. Choose one of its available options.",
+  "ai.image_reference_upload_unavailable": "This model requires reference uploads, but the provider has no upload method. Choose another model or update the provider plugin.",
+  "ai.image_staged_unconfirmed": "An image was staged before interruption, but the result was not confirmed. Check the provider result before generating again.",
+  "ai.image_reference_unrefreshable": "The image link is no longer available and cannot be refreshed. Generate a new image to continue.",
+  "ai.image_candidates_fetch_failed": "Could not retrieve the generated images. Retry fetching the results.",
   "ai.permission_file_disclosure": "File information or contents will be sent to the current model",
   "ai.permissions_title": "Assistant permissions",
   "ai.permission_allow": "Allow",

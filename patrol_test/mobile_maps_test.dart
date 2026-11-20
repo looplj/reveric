@@ -22,30 +22,57 @@
 //   .agents/rules/state-management.md
 //   .agents/rules/design-system.md
 
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/mobile/pages/location_editor_page.dart';
 import 'package:reveric/mobile/widgets/maps_panel.dart';
+import 'package:reveric/shared/components/reveric_button.dart';
+import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/services/maps_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
+import 'package:reveric/shared/widgets/confirm_dialog.dart';
 import 'package:patrol/patrol.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _testDatabasePath = ':memory:test_maps';
 
 void main() {
+  const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+  late Directory support;
+
   setUpAll(() async {
     // ignore: invalid_use_of_visible_for_testing_member
     SharedPreferences.setMockInitialValues({});
     await EasyLocalization.ensureInitialized();
+    support = await Directory.systemTemp.createTemp('reveric_patrol_support_');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, (call) async {
+          if (call.method == 'getApplicationSupportDirectory' ||
+              call.method == 'getTemporaryDirectory') {
+            return support.path;
+          }
+          return null;
+        });
+    await RevericPaths.initialize();
+  });
+
+  tearDownAll(() async {
+    await AppDatabase.closeCached();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(pathProvider, null);
+    await support.delete(recursive: true);
   });
 
   patrolTest('creates a world, renames it, and adds a sub-location', ($) async {
@@ -155,8 +182,12 @@ void main() {
     await $(find.widgetWithText(CustomSlidableAction, 'Delete')).tap();
     await $.pumpAndSettle();
 
-    // Confirm dialog — tap the "Delete" action inside the TextButton.
-    await $(find.widgetWithText(TextButton, 'Delete')).tap();
+    await $(
+      find.descendant(
+        of: find.byType(ConfirmDialog),
+        matching: find.widgetWithText(RevericButton, 'Delete'),
+      ),
+    ).tap();
     await $.tester.pump(const Duration(milliseconds: 200));
     await $.pumpAndSettle();
 
@@ -209,6 +240,7 @@ class _MobileMapsHarnessState extends State<_MobileMapsHarness> {
     await navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => MobileLocationEditorPage(
+          novelId: 'novel-test',
           databasePath: _testDatabasePath,
           locationId: created.id,
         ),
@@ -245,10 +277,8 @@ class _MobileMapsHarnessState extends State<_MobileMapsHarness> {
               // 经 builder 提供 RevericTheme，让 push 出来的子页面（地点编辑页）
               // 也能拿到 theme —— 真实 app（main.dart）即用 MaterialApp.builder 注入；
               // 放 home 里会让 Navigator 之上的 pushed route 取不到 RevericTheme 触发 assert。
-              builder: (context, child) => RevericTheme(
-                data: RevericThemeData.reveric,
-                child: child!,
-              ),
+              builder: (context, child) =>
+                  RevericTheme(data: RevericThemeData.reveric, child: child!),
               home: Scaffold(
                 body: MobileMapsPanel(
                   novelId: 'novel-test',

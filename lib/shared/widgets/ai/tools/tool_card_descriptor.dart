@@ -122,6 +122,7 @@ String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
 
 const _runActionKeys = <(String, String), String>{
   ('settings', 'open'): LocaleKeys.commonOpen,
+  ('production', 'canvas-preview'): LocaleKeys.toolRunProductionCanvasPreview,
   ('production', 'capture-panorama'):
       LocaleKeys.toolRunProductionCapturePanorama,
   ('production', 'derive-view'): LocaleKeys.toolRunProductionDeriveView,
@@ -140,10 +141,13 @@ const _runActionKeys = <(String, String), String>{
   ('editing', 'list'): LocaleKeys.toolRunEditingList,
   ('editing', 'create'): LocaleKeys.commonCreate,
   ('editing', 'read'): LocaleKeys.toolRunEditingRead,
+  ('editing', 'duplicate'): LocaleKeys.toolRunEditingDuplicate,
   ('editing', 'apply'): LocaleKeys.toolRunEditingApply,
   ('editing', 'undo'): LocaleKeys.commonUndo,
   ('editing', 'redo'): LocaleKeys.commonRedo,
   ('editing', 'preview'): LocaleKeys.toolRunEditingPreview,
+  ('editing', 'frames'): LocaleKeys.toolRunEditingFrames,
+  ('editing', 'inspect_audio'): LocaleKeys.toolRunEditingInspectAudio,
   ('editing', 'cleanup'): LocaleKeys.commonDelete,
   ('editing', 'export'): LocaleKeys.toolRunEditingExport,
   ('operations', 'list'): LocaleKeys.toolRunOperationsList,
@@ -152,6 +156,7 @@ const _runActionKeys = <(String, String), String>{
   ('operations', 'cancel'): LocaleKeys.commonCancel,
   ('ffmpeg', 'capabilities'): LocaleKeys.toolRunFfmpegCapabilities,
   ('ffmpeg', 'probe'): LocaleKeys.toolRunFfmpegProbe,
+  ('ffmpeg', 'inspect_audio'): LocaleKeys.toolRunFfmpegInspectAudio,
   ('ffmpeg', 'frames'): LocaleKeys.toolRunFfmpegFrames,
   ('ffmpeg', 'execute'): LocaleKeys.toolRunFfmpegExecute,
   ('assets', 'list'): LocaleKeys.toolRunAssetsList,
@@ -170,12 +175,14 @@ const _runActionKeys = <(String, String), String>{
   ('stagings', 'list'): LocaleKeys.toolRunDirectorList,
   ('stagings', 'read'): LocaleKeys.toolRunDirectorRead,
   ('stagings', 'create'): LocaleKeys.toolRunDirectorCreate,
+  ('stagings', 'duplicate'): LocaleKeys.toolRunDirectorDuplicate,
   ('stagings', 'apply'): LocaleKeys.toolRunDirectorApply,
   ('stagings', 'write'): LocaleKeys.toolRunDirectorApply,
   ('stagings', 'restore'): LocaleKeys.toolRunDirectorRestore,
   ('stagings', 'remove'): LocaleKeys.toolRunDirectorRemove,
   ('stagings', 'preview'): LocaleKeys.toolRunDirectorPreview,
   ('stagings', 'output'): LocaleKeys.toolRunDirectorOutput,
+  ('stagings', 'export'): LocaleKeys.productionExportMotion,
   ('stagings', 'frames'): LocaleKeys.toolRunDirectorFrames,
 
   ('themes', 'list'): LocaleKeys.toolRunThemesList,
@@ -351,14 +358,6 @@ bool shouldUseResolvedResourceForToolCard(AiToolCallBlock block) {
 
 AiToolCallStatus aiDisplayStatus(AiToolCallBlock block) {
   return aiToolOperationDisplayBlock(block).status;
-}
-
-/// 普通模式不暴露一般工具失败标志；需要用户感知的特例由调用方显式放行。
-bool shouldShowAiToolStatus(
-  AiToolCallStatus status, {
-  required bool debugMode,
-}) {
-  return debugMode || status != AiToolCallStatus.error;
 }
 
 bool isIncompleteAiToolCall(AiToolCallBlock block) {
@@ -1183,6 +1182,14 @@ String? localizedRunHelpTopic(BuildContext context, String? topic) {
   }
   return switch (value) {
     'settings' => context.t(LocaleKeys.settingsTitle),
+    'assets' => context.t(LocaleKeys.toolRunAssets),
+    'stagings' => context.t(LocaleKeys.toolRunDirector),
+    'styles' => context.t(LocaleKeys.toolRunStyles),
+    'editing' => context.t(LocaleKeys.editingTitle),
+    'production' => context.t(LocaleKeys.toolRunProduction),
+    'ffmpeg' => context.t(LocaleKeys.toolRunFfmpeg),
+    'files' => context.t(LocaleKeys.toolRunFiles),
+    'operations' => context.t(LocaleKeys.toolRunOperations),
     'mcp' => context.t(LocaleKeys.toolRunMcp),
     'providers' => context.t(LocaleKeys.toolRunProviders),
     'agent-skills' => context.t(LocaleKeys.toolRunAgentSkills),

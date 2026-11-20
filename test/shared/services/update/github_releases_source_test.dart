@@ -142,6 +142,56 @@ void main() {
     );
   });
 
+  test('GitHub release asset maps to the R2 object for the same tag', () {
+    expect(
+      githubReleaseMirrorUrl(
+        'https://github.com/looplj/reveric/releases/download/v0.8.3/reveric-0.8.3-macos-arm64.zip',
+      ),
+      'https://downloads.reveric.app/releases/v0.8.3/reveric-0.8.3-macos-arm64.zip',
+    );
+    expect(
+      githubReleaseMirrorUrl('https://example.com/releases/download/v1/a.zip'),
+      isNull,
+    );
+    expect(githubReleaseMirrorUrl('https://github.com/looplj/reveric'), isNull);
+  });
+
+  test('available GitHub update keeps the release URL and its R2 mirror', () async {
+    final result = await http.runWithClient(
+      () => GitHubReleasesSource(
+        owner: 'looplj',
+        repo: 'reveric',
+        operatingSystem: 'macos',
+        abi: Abi.macosArm64,
+      ).checkForUpdate('0.8.0'),
+      () => MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'tag_name': 'v0.8.3',
+            'assets': [
+              {
+                'name': 'reveric-0.8.3-macos-arm64.zip',
+                'size': 10,
+                'browser_download_url':
+                    'https://github.com/looplj/reveric/releases/download/v0.8.3/reveric-0.8.3-macos-arm64.zip',
+              },
+            ],
+          }),
+          200,
+        ),
+      ),
+    );
+    final info = (result as UpdateAvailable).info;
+    expect(
+      info.downloadUrl,
+      'https://github.com/looplj/reveric/releases/download/v0.8.3/reveric-0.8.3-macos-arm64.zip',
+    );
+    expect(
+      info.fallbackDownloadUrl,
+      'https://downloads.reveric.app/releases/v0.8.3/reveric-0.8.3-macos-arm64.zip',
+    );
+  });
+
   test('Android still selects the arm64-v8a APK', () async {
     final result = await check(
       [

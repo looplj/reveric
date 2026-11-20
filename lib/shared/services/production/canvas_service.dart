@@ -7,12 +7,15 @@
 //   .agents/rules/service-naming.md
 //   .agents/rules/error-handling.md
 import 'dart:io';
+import 'package:uuid/uuid.dart';
+import '../../models/editing/document.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:ui' show Offset;
 import 'package:drift/drift.dart';
-import '../../database/app_database.dart' show AssetRow, GenerationTask;
+import '../../database/app_database.dart'
+    show AssetRow, GenerationTask, GenerationTaskRequest;
 import '../../models/generation/task.dart';
 import '../../database/novel_content_database.dart';
 import '../../models/video/request.dart';
@@ -35,6 +38,7 @@ import '../../utils/random_id.dart';
 import '../../utils/short_entity_id.dart';
 import '../../utils/short_entity_id_allocator.dart';
 import '../storyboard/service.dart';
+import 'canvas_history.dart';
 import '../storyboard/edit_orchestrator.dart';
 import '../working_overlay.dart';
 import '../novel_content.dart';
@@ -146,7 +150,10 @@ class ProductionCanvasService {
       shots.write('UPDATE production_clips', clipId, () async {
         final clip = await shots.getShot(clipId);
         if (clip == null) {
-          throw const StoryboardException('source_missing');
+          throw StoryboardException(
+            'source_missing',
+            'Clip $clipId was not found.',
+          );
         }
         await shots.requireEpisode(clip.episodeId);
         if (choice case PresetProductionStyle() || CustomProductionStyle()) {
@@ -174,6 +181,9 @@ class ProductionCanvasService {
     episodeId,
     () async {
       final canvas = await shots.ensureCanvas(episodeId);
+      if (episodeId.isEmpty) {
+        return canvas;
+      }
       final scenes = await db.screenplayDao.getSceneRows(episodeId);
       if (scenes.isEmpty) {
         return canvas;
@@ -261,6 +271,14 @@ class ProductionCanvasService {
             updatedAt: Value(DateTime.now()),
           ),
         );
+    for (final node in await db.canvasDao.getNodesByCanvas(canvasId)) {
+      if (node.type == canvasNodeTypeText) {
+        await groups.remove(node);
+      }
+      if (node.type == canvasNodeTypeEditing && node.editingId != null) {
+        await db.editingDao.softDelete(node.editingId!);
+      }
+    }
     await db.canvasDao.softDeleteCanvas(canvasId);
   });
 
@@ -273,19 +291,36 @@ class ProductionCanvasService {
                   t.deletedAt.equals(notDeletedSentinel),
             ))
             .getSingleOrNull();
-    if (canvas == null ||
-        canvas.kind != canvasKindProduction ||
-        settings == null) {
-      throw const StoryboardException('source_missing');
+    if (canvas == null || canvas.kind != canvasKindProduction) {
+      throw StoryboardException(
+        'source_missing',
+        'Production canvas $id was not found.',
+      );
     }
-    await shots.requireEpisode(settings.id);
+    await shots.requireEpisode(settings?.id ?? '');
     return canvas;
+  }
+
+  /// 已校验画布的制作归属；独立画布返回空集，剧本仍返回真实集 ID。
+  Future<String> episodeForCanvas(String canvasId) async {
+    await requireCanvas(canvasId);
+    final episode =
+        await (db.select(db.screenplayEpisodes)..where(
+              (t) =>
+                  t.canvasId.equals(canvasId) &
+                  t.deletedAt.equals(notDeletedSentinel),
+            ))
+            .getSingleOrNull();
+    return episode?.id ?? '';
   }
 
   Future<CanvasNode> requireNode(String id) async {
     final node = await db.canvasDao.getNodeById(id);
     if (node == null) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Canvas node $id was not found.',
+      );
     }
     await requireCanvas(node.canvasId);
     if ((node.isGenerationNode && node.clipId == null) ||
@@ -293,17 +328,27 @@ class ProductionCanvasService {
         (node.type == canvasNodeTypeStaging &&
             (node.stagingId == null ||
                 await db.screenplayDao.getStaging(node.stagingId!) == null))) {
-      throw const StoryboardException('source_missing');
+      throw StoryboardException(
+        'source_missing',
+        'Canvas node $id has no linked clip, media or staging.',
+      );
     }
     if (node.clipId != null) {
       final shot = await shots.getShot(node.clipId!);
       if (shot == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Clip ${node.clipId} of canvas node $id was not found.',
+        );
       }
       await shots.requireEpisode(shot.episodeId);
-      if ((await db.screenplayDao.getEpisode(shot.episodeId))?.canvasId !=
-          node.canvasId) {
-        throw const StoryboardException('source_missing');
+      if (shot.episodeId.isNotEmpty &&
+          (await db.screenplayDao.getEpisode(shot.episodeId))?.canvasId !=
+              node.canvasId) {
+        throw StoryboardException(
+          'source_missing',
+          'Clip ${node.clipId} of canvas node $id belongs to another canvas.',
+        );
       }
     }
     return node;
@@ -312,85 +357,324 @@ class ProductionCanvasService {
   Future<CanvasNode> ensureShotNode(String shotId) =>
       shots.ensureClipNode(shotId);
 
+  /// 画布打开期间新加的场次补上场次节点；打开画布时 [ensureCanvas] 已补过一次。
+  Future<void> ensureSceneNodes(String canvasId) => write(canvasId, () async {
+    final episodeId = await episodeForCanvas(canvasId);
+    if (episodeId.isNotEmpty) {
+      await shots.ensureCanvas(episodeId);
+    }
+  });
+
   /// 画布上「＋」新建的片段 / 视频节点默认时长。
   static const defaultDurationMs = 6000;
 
   Future<CanvasNode> addFree(
     String canvasId, {
     required WorkingOverlayService overlay,
-  }) => write(canvasId, () async {
-    await requireCanvas(canvasId);
-    final defaults =
-        await (db.select(db.screenplayEpisodes)..where(
-              (t) =>
-                  t.canvasId.equals(canvasId) &
-                  t.deletedAt.equals(notDeletedSentinel),
-            ))
-            .getSingle();
-    final clip = await StoryboardEditOrchestrator().create(
-      service: shots,
-      overlay: overlay,
-      episodeId: defaults.id,
-      values: const {'duration_ms': defaultDurationMs},
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'addFree',
+    const [],
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      final episodeId = await episodeForCanvas(canvasId);
+      final clip = await StoryboardEditOrchestrator().create(
+        service: shots,
+        overlay: overlay.forNovel(novelId),
+        episodeId: episodeId,
+        values: const {'duration_ms': defaultDurationMs},
+      );
+      return shots.ensureClipNode(clip.id);
+    }),
+  );
+
+  Future<CanvasNode> addEditing(
+    String canvasId, {
+    required String title,
+    String? ratio,
+    EditingDocument? document,
+    double x = 360,
+    double y = 80,
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'addEditing',
+    const [],
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      if (!await shots.isCanvasWork) {
+        throw const StoryboardException('invalid_config');
+      }
+      final editingId = const Uuid().v4();
+      final settings = await shots.requireSettings();
+      await db.editingDao.create(
+        editingId,
+        title,
+        document ?? EditingDocument.empty(ratio ?? settings.ratio),
+      );
+      return _insertNode(
+        canvasId,
+        canvasNodeTypeEditing,
+        title: title,
+        refType: canvasNodeRefTypeEditing,
+        refId: editingId,
+        x: x,
+        y: y,
+      );
+    }),
+  );
+
+  /// 打开剪辑必须从当前作品的有效节点进入；失效记录仍可通过普通 removeNode 删除。
+  Future<VideoEditingRow> requireEditingNode(String nodeId) async {
+    final node = await requireNode(nodeId);
+    if (!await shots.isCanvasWork ||
+        node.type != canvasNodeTypeEditing ||
+        node.editingId == null) {
+      throw const StoryboardException('invalid_reference');
+    }
+    return await db.editingDao.get(node.editingId!) ??
+        (throw StoryboardException(
+          'source_missing',
+          'Editing project ${node.editingId} of canvas node $nodeId was not found.',
+        ));
+  }
+
+  Future<CanvasNode> addText(
+    String canvasId, {
+    String title = '',
+    String content = '',
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'addText',
+    const [],
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      return _insertNode(
+        canvasId,
+        canvasNodeTypeText,
+        title: title,
+        content: content,
+        refType: null,
+        refId: null,
+      );
+    }),
+  );
+
+  Future<void> updateText(
+    String nodeId, {
+    required String title,
+    required String content,
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'updateText',
+    [nodeId],
+    () => write(nodeId, () async {
+      final node = await requireNode(nodeId);
+      if (node.type != canvasNodeTypeText) {
+        throw const StoryboardException('invalid_config');
+      }
+      await db.canvasDao.updateActiveNodeFields(
+        nodeId,
+        CanvasNodesCompanion(title: Value(title), content: Value(content)),
+      );
+    }),
+  );
+
+  /// 卡片外显示的标题；主体图片节点显示的是角色、场景或道具的名称，不可在画布上改，返回 null。
+  Future<String?> nodeTitle(String nodeId) async {
+    final node = await requireNode(nodeId);
+    if (node.clipId case final clipId?) {
+      final clip = await shots.getShot(clipId);
+      return clip == null || clip.hasSubject ? null : clip.title;
+    }
+    if (node.stagingId case final id?) {
+      return (await db.screenplayDao.getStaging(id))?.title ?? node.title;
+    }
+    if (node.editingId case final id?) {
+      return (await db.editingDao.get(id))?.title ?? node.title;
+    }
+    return node.title;
+  }
+
+  /// 改卡片外显示的标题，写到它的来源：片段、导演文档、剪辑工程或节点自身。
+  /// 画布撤销只还原节点自身的标题；片段、导演文档和剪辑工程的标题不在撤销快照内，
+  /// 这几类改名不记撤销步，免得撤销后节点与来源各显示一个名字。
+  Future<void> renameNode(
+    String nodeId,
+    String title, {
+    CanvasHistory? history,
+  }) async {
+    final target = await requireNode(nodeId);
+    final own =
+        target.clipId == null &&
+        target.stagingId == null &&
+        target.editingId == null;
+    return withCanvasHistory(own ? history : null, shots, 'renameNode', [
+      nodeId,
+    ], () => _renameNode(nodeId, title));
+  }
+
+  Future<void> _renameNode(
+    String nodeId,
+    String title,
+  ) => write(nodeId, () async {
+    final node = await requireNode(nodeId);
+    final now = DateTime.now();
+    if (node.clipId case final clipId?) {
+      final clip = await shots.getShot(clipId);
+      if (clip == null) {
+        throw StoryboardException(
+          'source_missing',
+          'Clip $clipId of canvas node ${node.id} was not found.',
+        );
+      }
+      if (clip.hasSubject) {
+        throw const StoryboardException('invalid_config');
+      }
+      await (db.update(
+        db.productionClips,
+      )..where((t) => t.id.equals(clipId))).write(
+        ProductionClipsCompanion(title: Value(title), updatedAt: Value(now)),
+      );
+    }
+    if (node.stagingId case final id?) {
+      await db.screenplayDao.serializeStaging(id, () async {
+        final row = await db.screenplayDao.getStaging(id);
+        if (row == null) {
+          throw StoryboardException(
+            'source_missing',
+            'Staging $id of canvas node ${node.id} was not found.',
+          );
+        }
+        if (row.document == null) {
+          await (db.update(
+            db.videoStagings,
+          )..where((t) => t.id.equals(id))).write(
+            VideoStagingsCompanion(title: Value(title), updatedAt: Value(now)),
+          );
+          return;
+        }
+        final current = DirectorDocument.fromJson(row.document!);
+        final next = DirectorDocument.fromJson(
+          current.toJson()
+            ..['title'] = title
+            ..['revision'] = current.revision + 1,
+        );
+        await db.screenplayDao.saveStaging(
+          id,
+          next.toJson(),
+          title: title,
+          savedAt: now,
+        );
+      });
+    }
+    if (node.editingId case final id?) {
+      final project = await db.editingDao.get(id);
+      if (project == null) {
+        throw StoryboardException(
+          'source_missing',
+          'Editing project $id of canvas node ${node.id} was not found.',
+        );
+      }
+      await db.editingDao.save(
+        id,
+        expectedRevision: project.revision,
+        title: title,
+      );
+    }
+    await db.canvasDao.updateActiveNodeFields(
+      nodeId,
+      CanvasNodesCompanion(title: Value(title)),
     );
-    return shots.ensureClipNode(clip.id);
   });
 
-  Future<CanvasNode> addImage(String canvasId) => write(canvasId, () async {
-    await requireCanvas(canvasId);
-    final episode = await (db.select(
-      db.screenplayEpisodes,
-    )..where((t) => t.canvasId.equals(canvasId))).getSingle();
-    final clip = await shots.createImage(episode.id);
-    return shots.ensureClipNode(clip.id);
-  });
+  Future<Map<String, String>> promptTexts(List<ProductionInput> inputs) async {
+    final text = <String, String>{};
+    for (final input in inputs.where((input) => input.isPrompt)) {
+      final node = await requireNode(input.refId);
+      if (node.type != canvasNodeTypeText) {
+        throw const StoryboardException('invalid_reference');
+      }
+      text[input.id] = node.content;
+    }
+    return text;
+  }
+
+  Future<CanvasNode> addImage(String canvasId, {CanvasHistory? history}) =>
+      withCanvasHistory(
+        history,
+        shots,
+        'addImage',
+        const [],
+        () => write(canvasId, () async {
+          await requireCanvas(canvasId);
+          final episodeId = await episodeForCanvas(canvasId);
+          final clip = await shots.createImage(episodeId);
+          return shots.ensureClipNode(clip.id);
+        }),
+      );
 
   /// 组级引用按当前格位展开为成员引用；保留已有引用 ID，让提示词引用仍然有效。
   Future<void> attachStoryboardGroup(
     String groupId,
     String targetId, {
     required WorkingOverlayService overlay,
-  }) => write(groupId, () async {
-    final group = await groups.requireGroup(groupId);
-    final target = await requireNode(targetId);
-    final members = await groups.members(groupId);
-    if (ProductionGroupLayout.fromStyle(group.style)
-            is! StoryboardGroupLayout ||
-        members.isEmpty ||
-        target.canvasId != group.canvasId ||
-        (target.type != canvasNodeTypeImage &&
-            target.type != canvasNodeTypeVideo)) {
-      throw const StoryboardException('invalid_reference');
-    }
-    final clip = (await shots.getShot(target.clipId!))!;
-    if (target.type == canvasNodeTypeVideo &&
-        clip.referenceMode != 'reference') {
-      throw const StoryboardException('invalid_reference');
-    }
-    final ids = members.map((n) => n.id).toSet();
-    final existing = clip.inputs;
-    await saveDraft(
-      nodeId: targetId,
-      values: {'prompt': clip.prompt},
-      inputs: [
-        ...existing.where(
-          (i) =>
-              i.refType != ProductionInputType.node || !ids.contains(i.refId),
-        ),
-        for (final member in members)
-          existing
-                  .where(
-                    (i) =>
-                        i.refType == ProductionInputType.node &&
-                        i.refId == member.id &&
-                        i.role == VideoInputRole.reference_image,
-                  )
-                  .firstOrNull ??
-              ProductionInput.node(member.id, VideoInputRole.reference_image),
-      ],
-      overlay: overlay,
-    );
-  });
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'attachStoryboardGroup',
+    [targetId],
+    () => write(groupId, () async {
+      final group = await groups.requireGroup(groupId);
+      final target = await requireNode(targetId);
+      final members = await groups.members(groupId);
+      if (ProductionGroupLayout.fromStyle(group.style)
+              is! StoryboardGroupLayout ||
+          members.isEmpty ||
+          target.canvasId != group.canvasId ||
+          (target.type != canvasNodeTypeImage &&
+              target.type != canvasNodeTypeVideo)) {
+        throw const StoryboardException('invalid_reference');
+      }
+      final clip = (await shots.getShot(target.clipId!))!;
+      if (target.type == canvasNodeTypeVideo &&
+          clip.referenceMode != 'reference') {
+        throw const StoryboardException('invalid_reference');
+      }
+      final ids = members.map((n) => n.id).toSet();
+      final existing = clip.inputs;
+      await saveDraft(
+        nodeId: targetId,
+        values: {'prompt': clip.prompt},
+        inputs: [
+          ...existing.where(
+            (i) =>
+                i.refType != ProductionInputType.node || !ids.contains(i.refId),
+          ),
+          for (final member in members)
+            existing
+                    .where(
+                      (i) =>
+                          i.refType == ProductionInputType.node &&
+                          i.refId == member.id &&
+                          !i.isPrompt &&
+                          i.role == VideoInputRole.reference_image,
+                    )
+                    .firstOrNull ??
+                ProductionInput.node(member.id, VideoInputRole.reference_image),
+        ],
+        overlay: overlay,
+      );
+    }),
+  );
 
   /// 从组的共同出口新建一个多图参考草稿，不自动提交生成任务。
   Future<CanvasNode> addStoryboardReference(
@@ -398,26 +682,33 @@ class ProductionCanvasService {
     required bool video,
     required WorkingOverlayService overlay,
     required ProductionNodePlacement placement,
-  }) => write(groupId, () async {
-    final group = await groups.requireGroup(groupId);
-    final target = video
-        ? await addFree(group.canvasId, overlay: overlay)
-        : await addImage(group.canvasId);
-    if (video) {
-      await saveDraft(
-        nodeId: target.id,
-        values: const {'prompt': '', 'reference_mode': 'reference'},
-        inputs: const [],
-        overlay: overlay,
-      );
-    }
-    await attachStoryboardGroup(groupId, target.id, overlay: overlay);
-    await moveNodes(group.canvasId, {
-      ...placement.moves,
-      target.id: placement.at,
-    });
-    return requireNode(target.id);
-  });
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'addStoryboardReference',
+    placement.moves.keys,
+    () => write(groupId, () async {
+      final group = await groups.requireGroup(groupId);
+      final target = video
+          ? await addFree(group.canvasId, overlay: overlay)
+          : await addImage(group.canvasId);
+      if (video) {
+        await saveDraft(
+          nodeId: target.id,
+          values: const {'prompt': '', 'reference_mode': 'reference'},
+          inputs: const [],
+          overlay: overlay,
+        );
+      }
+      await attachStoryboardGroup(groupId, target.id, overlay: overlay);
+      await moveNodes(group.canvasId, {
+        ...placement.moves,
+        target.id: placement.at,
+      });
+      return requireNode(target.id);
+    }),
+  );
 
   /// 视角不进入撤销历史，只合并节点自身的预览键。
   Future<void> setPanoramaView(
@@ -447,14 +738,19 @@ class ProductionCanvasService {
     );
   });
 
-  Future<CanvasNode> addAudio(String canvasId) => write(canvasId, () async {
-    await requireCanvas(canvasId);
-    final episode = await (db.select(
-      db.screenplayEpisodes,
-    )..where((t) => t.canvasId.equals(canvasId))).getSingle();
-    final clip = await shots.createAudio(episode.id);
-    return shots.ensureClipNode(clip.id);
-  });
+  Future<CanvasNode> addAudio(String canvasId, {CanvasHistory? history}) =>
+      withCanvasHistory(
+        history,
+        shots,
+        'addAudio',
+        const [],
+        () => write(canvasId, () async {
+          await requireCanvas(canvasId);
+          final episodeId = await episodeForCanvas(canvasId);
+          final clip = await shots.createAudio(episodeId);
+          return shots.ensureClipNode(clip.id);
+        }),
+      );
 
   /// 派生草稿、输入与节点一次写入；后续任务提交失败仍保留可编辑草稿。
   Future<CanvasNode> addDerivedImage({
@@ -465,16 +761,15 @@ class ProductionCanvasService {
   }) => write(sourceNodeId, () async {
     final source = await requireNode(sourceNodeId);
     if (input.sourceNodeId != source.id ||
+        input.isPrompt ||
         input.role != VideoInputRole.reference_image ||
         !{canvasNodeTypeImage, canvasNodeTypeMedia}.contains(source.type)) {
       throw const StoryboardException('invalid_reference');
     }
     await inputAsset(input);
-    final episode = await (db.select(
-      db.screenplayEpisodes,
-    )..where((t) => t.canvasId.equals(source.canvasId))).getSingle();
+    final episodeId = await episodeForCanvas(source.canvasId);
     final clip = await shots.createImage(
-      episode.id,
+      episodeId,
       values: {
         'title': draft.title ?? '',
         'prompt': draft.prompt,
@@ -523,64 +818,78 @@ class ProductionCanvasService {
     String? characterId,
     String? locationId,
     String? itemId,
-  }) => write(canvasId, () async {
-    if ([characterId, locationId, itemId].nonNulls.length != 1) {
-      throw const StoryboardException('invalid_config');
-    }
-    await requireCanvas(canvasId);
-    final character = characterId == null
-        ? null
-        : await db.characterProfileDao.getById(characterId);
-    final location = locationId == null
-        ? null
-        : await db.locationDao.getById(locationId);
-    final item = itemId == null ? null : await db.itemDao.getById(itemId);
-    if (character == null && location == null && item == null) {
-      throw const StoryboardException('source_missing');
-    }
-    final episode = await (db.select(
-      db.screenplayEpisodes,
-    )..where((t) => t.canvasId.equals(canvasId))).getSingle();
-    final clip = await shots.createImage(
-      episode.id,
-      values: {
-        'title': character?.name ?? location?.name ?? item!.title,
-        'character_id': characterId,
-        'location_id': locationId,
-        'item_id': itemId,
-      },
-    );
-    final first =
-        (character?.photos ?? location?.photos ?? item?.photos)?.firstOrNull;
-    if (first != null) {
-      await (db.update(
-        db.productionClips,
-      )..where((t) => t.id.equals(clip.id))).write(
-        ProductionClipsCompanion(adoptedAssetId: Value(first.assetId)),
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'addSubject',
+    const <String>[],
+    () => write(canvasId, () async {
+      if ([characterId, locationId, itemId].nonNulls.length != 1) {
+        throw const StoryboardException('invalid_config');
+      }
+      await requireCanvas(canvasId);
+      final character = characterId == null
+          ? null
+          : await db.characterProfileDao.getById(characterId);
+      final location = locationId == null
+          ? null
+          : await db.locationDao.getById(locationId);
+      final item = itemId == null ? null : await db.itemDao.getById(itemId);
+      if (character == null && location == null && item == null) {
+        throw StoryboardException(
+          'source_missing',
+          'No character, location or item matches the subject.',
+        );
+      }
+      final episodeId = await episodeForCanvas(canvasId);
+      final clip = await shots.createImage(
+        episodeId,
+        values: {
+          'title': character?.name ?? location?.name ?? item!.title,
+          'character_id': characterId,
+          'location_id': locationId,
+          'item_id': itemId,
+        },
       );
-    }
-    return shots.ensureClipNode(clip.id);
-  });
+      final first =
+          (character?.photos ?? location?.photos ?? item?.photos)?.firstOrNull;
+      if (first != null) {
+        await (db.update(
+          db.productionClips,
+        )..where((t) => t.id.equals(clip.id))).write(
+          ProductionClipsCompanion(adoptedAssetId: Value(first.assetId)),
+        );
+      }
+      return shots.ensureClipNode(clip.id);
+    }),
+  );
 
   Future<List<SubjectPhoto>> subjectPhotos(ProductionClipRow clip) async {
     if (clip.characterId != null) {
       final character = await db.characterProfileDao.getById(clip.characterId!);
       if (character == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Character ${clip.characterId} was not found.',
+        );
       }
       return character.photos ?? const [];
     }
     if (clip.locationId != null) {
       final location = await db.locationDao.getById(clip.locationId!);
       if (location == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException(
+          'source_missing',
+          'Location ${clip.locationId} was not found.',
+        );
       }
       return location.photos ?? const [];
     }
     if (clip.itemId case final id?) {
       final item = await db.itemDao.getById(id);
       if (item == null) {
-        throw const StoryboardException('source_missing');
+        throw StoryboardException('source_missing', 'Item $id was not found.');
       }
       return item.photos ?? const [];
     }
@@ -664,77 +973,89 @@ class ProductionCanvasService {
   Future<CanvasNode> copyVideo(
     String nodeId, {
     required WorkingOverlayService overlay,
-  }) => write(nodeId, () async {
-    final node = await requireNode(nodeId);
-    final clip = node.clipId == null ? null : await shots.getShot(node.clipId!);
-    if (clip == null || !{'video', 'image', 'audio'}.contains(clip.kind)) {
-      throw const StoryboardException('invalid_config');
-    }
-    final copy = clip.kind == 'audio'
-        ? await shots.createAudio(clip.episodeId, values: shots.snapshot(clip))
-        : clip.kind == 'image'
-        ? await shots.createImage(clip.episodeId, values: shots.snapshot(clip))
-        : await StoryboardEditOrchestrator().create(
-            service: shots,
-            overlay: overlay,
-            episodeId: clip.episodeId,
-            values: shots.snapshot(clip),
-          );
-    if (clip.hasSubject) {
-      await (db.update(
-        db.productionClips,
-      )..where((t) => t.id.equals(copy.id))).write(
-        ProductionClipsCompanion(adoptedAssetId: Value(clip.adoptedAssetId)),
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'copyVideo',
+    const [],
+    () => write(nodeId, () async {
+      final node = await requireNode(nodeId);
+      final clip = node.clipId == null
+          ? null
+          : await shots.getShot(node.clipId!);
+      if (clip == null || !{'video', 'image', 'audio'}.contains(clip.kind)) {
+        throw const StoryboardException('invalid_config');
+      }
+      final copy = clip.kind == 'audio'
+          ? await shots.createAudio(
+              clip.episodeId,
+              values: shots.snapshot(clip),
+            )
+          : clip.kind == 'image'
+          ? await shots.createImage(
+              clip.episodeId,
+              values: shots.snapshot(clip),
+            )
+          : await StoryboardEditOrchestrator().create(
+              service: shots,
+              overlay: overlay.forNovel(novelId),
+              episodeId: clip.episodeId,
+              values: shots.snapshot(clip),
+            );
+      if (clip.hasSubject) {
+        await (db.update(
+          db.productionClips,
+        )..where((t) => t.id.equals(copy.id))).write(
+          ProductionClipsCompanion(adoptedAssetId: Value(clip.adoptedAssetId)),
+        );
+      }
+      final target = await shots.ensureClipNode(copy.id);
+      final inputs = await draftInputs(nodeId);
+      final copiedInputs = inputs
+          .map(
+            (input) => input.withId(
+              buildShortEntityId(ShortEntityIdType.productionInput),
+            ),
+          )
+          .toList();
+      final copiedIds = {
+        for (var i = 0; i < inputs.length; i++)
+          inputs[i].id: copiedInputs[i].id,
+      };
+      final copiedPrompt = StoryboardPrompt.parse(clip.prompt).parts
+          .map(
+            (part) => part.isReference && copiedIds.containsKey(part.inputId)
+                ? StoryboardPrompt.reference(
+                    copiedIds[part.inputId]!,
+                    part.label!,
+                  )
+                : part.text,
+          )
+          .join();
+      await shots.restoreInputs(
+        copy.id,
+        copiedInputs.map((input) => input.toJson()).toList(),
       );
-    }
-    final target = await shots.ensureClipNode(copy.id);
-    final inputs = await draftInputs(nodeId);
-    final copiedInputs = inputs
-        .map(
-          (input) => ProductionInput(
-            id: buildShortEntityId(ShortEntityIdType.productionInput),
-            refType: input.refType,
-            refId: input.refId,
-            role: input.role,
-            voiceAssetId: input.voiceAssetId,
+      await shots.apply(copy.id, {
+        ...shots.snapshot(copy),
+        'prompt': copiedPrompt,
+      });
+      final settingsKey = clip.kind == 'audio'
+          ? 'audioGeneration'
+          : 'imageGeneration';
+      if ({'image', 'audio'}.contains(clip.kind) &&
+          node.style?[settingsKey] != null) {
+        await db.canvasDao.updateActiveNodeFields(
+          target.id,
+          CanvasNodesCompanion(
+            style: Value({settingsKey: node.style![settingsKey]}),
           ),
-        )
-        .toList();
-    final copiedIds = {
-      for (var i = 0; i < inputs.length; i++) inputs[i].id: copiedInputs[i].id,
-    };
-    final copiedPrompt = StoryboardPrompt.parse(clip.prompt).parts
-        .map(
-          (part) => part.isReference && copiedIds.containsKey(part.inputId)
-              ? StoryboardPrompt.reference(
-                  copiedIds[part.inputId]!,
-                  part.label!,
-                )
-              : part.text,
-        )
-        .join();
-    await shots.restoreInputs(
-      copy.id,
-      copiedInputs.map((input) => input.toJson()).toList(),
-    );
-    await shots.apply(copy.id, {
-      ...shots.snapshot(copy),
-      'prompt': copiedPrompt,
-    });
-    final settingsKey = clip.kind == 'audio'
-        ? 'audioGeneration'
-        : 'imageGeneration';
-    if ({'image', 'audio'}.contains(clip.kind) &&
-        node.style?[settingsKey] != null) {
-      await db.canvasDao.updateActiveNodeFields(
-        target.id,
-        CanvasNodesCompanion(
-          style: Value({settingsKey: node.style![settingsKey]}),
-        ),
-      );
-    }
-    return (await db.canvasDao.getNodeById(target.id))!;
-  });
+        );
+      }
+      return (await db.canvasDao.getNodeById(target.id))!;
+    }),
+  );
 
   Future<AssetRow> requireAsset(String id, {String? type}) async {
     final asset = await library.database.assetDao.getAsset(id);
@@ -756,45 +1077,63 @@ class ProductionCanvasService {
     return asset;
   }
 
-  Future<CanvasNode> addMedia(String canvasId, String assetId) =>
-      write(canvasId, () async {
-        await requireCanvas(canvasId);
-        final asset = await requireAsset(assetId);
-        return _insertNode(
-          canvasId,
-          canvasNodeTypeMedia,
-          title: asset.name,
-          refType: canvasNodeRefTypeAsset,
-          refId: asset.id,
-        );
-      });
+  Future<CanvasNode> addMedia(
+    String canvasId,
+    String assetId, {
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'addMedia',
+    const [],
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      final asset = await requireAsset(assetId);
+      return _insertNode(
+        canvasId,
+        canvasNodeTypeMedia,
+        title: asset.name,
+        refType: canvasNodeRefTypeAsset,
+        refId: asset.id,
+      );
+    }),
+  );
 
   /// 新建一份空调度和指向它的导演台节点。
-  Future<CanvasNode> addDirector(String canvasId, String title) =>
-      write(canvasId, () async {
-        await requireCanvas(canvasId);
-        final stagingId = buildRandomId('staging');
-        final settings = await shots.requireSettings();
-        final document = DirectorDocument.blank(title).toJson();
-        (document['output'] as Map).remove('aspect_mode');
-        document['output']['width'] = settings.width;
-        document['output']['height'] = settings.height;
-        final validated = DirectorDocument.fromJson(document);
-        await db.screenplayDao.createStaging(stagingId, title);
-        await db.screenplayDao.saveStaging(
-          stagingId,
-          validated.toJson(),
-          title: title,
-          savedAt: DateTime.now(),
-        );
-        return _insertNode(
-          canvasId,
-          canvasNodeTypeStaging,
-          title: title,
-          refType: canvasNodeRefTypeStaging,
-          refId: stagingId,
-        );
-      });
+  Future<CanvasNode> addDirector(
+    String canvasId,
+    String title, {
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'addDirector',
+    const [],
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      final stagingId = buildRandomId('staging');
+      final settings = await shots.requireSettings();
+      final document = DirectorDocument.blank(title).toJson();
+      (document['output'] as Map).remove('aspect_mode');
+      document['output']['width'] = settings.width;
+      document['output']['height'] = settings.height;
+      final validated = DirectorDocument.fromJson(document);
+      await db.screenplayDao.createStaging(stagingId, title);
+      await db.screenplayDao.saveStaging(
+        stagingId,
+        validated.toJson(),
+        title: title,
+        savedAt: DateTime.now(),
+      );
+      return _insertNode(
+        canvasId,
+        canvasNodeTypeStaging,
+        title: title,
+        refType: canvasNodeRefTypeStaging,
+        refId: stagingId,
+      );
+    }),
+  );
 
   /// 导演台导出的资产放在导演台节点右侧，并用 staging_output 连线标明来源。
   /// 同一资产已经挂在这个导演台下面时直接返回原节点。
@@ -928,8 +1267,9 @@ class ProductionCanvasService {
     String canvasId,
     String type, {
     String title = '',
-    required String refType,
-    required String refId,
+    required String? refType,
+    required String? refId,
+    String content = '',
     double x = 360,
     double y = 80,
     bool findFree = true,
@@ -962,6 +1302,7 @@ class ProductionCanvasService {
               canvasId: canvasId,
               type: Value(type),
               title: Value(title),
+              content: Value(content),
               refType: Value(refType),
               refId: Value(refId),
               x: Value(x),
@@ -982,19 +1323,36 @@ class ProductionCanvasService {
         insert: (id) => db.into(db.canvasEdges).insert(edge(id)),
       );
 
-  Future<void> move(String nodeId, double x, double y) =>
-      write(nodeId, () async {
-        await groups.move(await requireNode(nodeId), x, y);
-      });
+  Future<void> move(
+    String nodeId,
+    double x,
+    double y, {
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'move',
+    [nodeId],
+    () => write(nodeId, () async {
+      await groups.move(await requireNode(nodeId), x, y);
+    }),
+  );
 
   /// 整组位置在一个事务内保存，避免场次只移动了一部分。
   Future<void> moveNodes(
     String canvasId,
-    Map<String, ({double x, double y})> positions,
-  ) => write(canvasId, () async {
-    await requireCanvas(canvasId);
-    await _moveAll(canvasId, positions);
-  });
+    Map<String, ({double x, double y})> positions, {
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'moveNodes',
+    positions.keys,
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      await _moveAll(canvasId, positions);
+    }),
+  );
 
   Future<void> _moveAll(
     String canvasId,
@@ -1007,28 +1365,44 @@ class ProductionCanvasService {
   }
 
   /// 删除分组时连同成员一起软删除。
-  Future<void> removeNode(String nodeId) => write(nodeId, () async {
-    await groups.remove(await requireNode(nodeId));
-  });
+  Future<void> removeNode(String nodeId, {CanvasHistory? history}) =>
+      withCanvasHistory(
+        history,
+        shots,
+        'removeNode',
+        [nodeId],
+        () => write(nodeId, () async {
+          await groups.remove(await requireNode(nodeId));
+        }),
+      );
 
   /// 选区删除一次事务完成；已选分组的成员由分组级联处理，不重复删除。
-  Future<void> removeNodes(String canvasId, Set<String> nodeIds) =>
-      write(canvasId, () async {
-        await requireCanvas(canvasId);
-        final nodes = [for (final id in nodeIds) await requireNode(id)];
-        if (nodes.any((node) => node.canvasId != canvasId)) {
-          throw const StoryboardException('invalid_reference');
+  Future<void> removeNodes(
+    String canvasId,
+    Set<String> nodeIds, {
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'removeNodes',
+    nodeIds,
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      final nodes = [for (final id in nodeIds) await requireNode(id)];
+      if (nodes.any((node) => node.canvasId != canvasId)) {
+        throw const StoryboardException('invalid_reference');
+      }
+      final groups = nodes
+          .where((node) => node.type == canvasNodeTypeGroup)
+          .map((node) => node.id)
+          .toSet();
+      for (final node in nodes) {
+        if (!groups.contains(node.parentId)) {
+          await removeNode(node.id);
         }
-        final groups = nodes
-            .where((node) => node.type == canvasNodeTypeGroup)
-            .map((node) => node.id)
-            .toSet();
-        for (final node in nodes) {
-          if (!groups.contains(node.parentId)) {
-            await removeNode(node.id);
-          }
-        }
-      });
+      }
+    }),
+  );
 
   /// 宫格切分与高清生成的成员一次挂进新分镜组；素材成员必须是图片资产。
   Future<CanvasNode> createStoryboardGroup(
@@ -1038,51 +1412,65 @@ class ProductionCanvasService {
     required List<String> memberIds,
     String title = '',
     String? sourceNodeId,
-  }) => write(canvasId, () async {
-    await requireCanvas(canvasId);
-    for (final id in memberIds) {
-      final node = await requireNode(id);
-      if (node.mediaAssetId case final assetId?) {
-        await requireAsset(assetId, type: 'image');
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'createStoryboardGroup',
+    memberIds,
+    () => write(canvasId, () async {
+      await requireCanvas(canvasId);
+      for (final id in memberIds) {
+        final node = await requireNode(id);
+        if (node.mediaAssetId case final assetId?) {
+          await requireAsset(assetId, type: 'image');
+        }
       }
-    }
-    final group = await groups.createStoryboard(
-      canvasId,
-      layout: layout,
-      origin: origin,
-      memberIds: memberIds,
-      title: title,
-    );
-    if (sourceNodeId != null) {
-      final source = await requireNode(sourceNodeId);
-      if (source.canvasId != canvasId) {
-        throw const StoryboardException('invalid_reference');
-      }
-      await _insertEdge(
-        (id) => CanvasEdgesCompanion.insert(
-          id: id,
-          canvasId: canvasId,
-          sourceNodeId: sourceNodeId,
-          targetNodeId: group.id,
-          type: const Value(canvasEdgeTypeDerivedOutput),
-        ),
+      final group = await groups.createStoryboard(
+        canvasId,
+        layout: layout,
+        origin: origin,
+        memberIds: memberIds,
+        title: title,
       );
-    }
-    return group;
-  });
+      if (sourceNodeId != null) {
+        final source = await requireNode(sourceNodeId);
+        if (source.canvasId != canvasId) {
+          throw const StoryboardException('invalid_reference');
+        }
+        await _insertEdge(
+          (id) => CanvasEdgesCompanion.insert(
+            id: id,
+            canvasId: canvasId,
+            sourceNodeId: sourceNodeId,
+            targetNodeId: group.id,
+            type: const Value(canvasEdgeTypeDerivedOutput),
+          ),
+        );
+      }
+      return group;
+    }),
+  );
 
   /// 图片选择器在一个事务内创建并挂入空格位；格位已被占用时整笔回滚。
   Future<CanvasNode> fillStoryboardSlot(
     String groupId,
     int slot,
-    String assetId,
-  ) => write(groupId, () async {
-    final group = await groups.requireGroup(groupId);
-    await requireAsset(assetId, type: 'image');
-    final member = await addMedia(group.canvasId, assetId);
-    await groups.attachToSlot(groupId, member.id, slot);
-    return requireNode(member.id);
-  });
+    String assetId, {
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'fillStoryboardSlot',
+    [groupId],
+    () => write(groupId, () async {
+      final group = await groups.requireGroup(groupId);
+      await requireAsset(assetId, type: 'image');
+      final member = await addMedia(group.canvasId, assetId);
+      await groups.attachToSlot(groupId, member.id, slot);
+      return requireNode(member.id);
+    }),
+  );
 
   Future<List<ProductionInput>> inputs(String nodeId) async {
     final node = await requireNode(nodeId);
@@ -1121,7 +1509,7 @@ class ProductionCanvasService {
                     sourceNodeId: input.sourceNodeId!,
                     targetNodeId: node.id,
                     type: canvasEdgeTypeInput,
-                    role: input.role.name,
+                    role: input.roleName,
                     inputId: input.id,
                     middleFrameIndex: input.middleFrameIndex(
                       byId[node.clipId]!.inputs,
@@ -1161,6 +1549,9 @@ class ProductionCanvasService {
   }
 
   Future<AssetRow> inputAsset(ProductionInput input) async {
+    if (input.isPrompt) {
+      throw const StoryboardException('invalid_reference');
+    }
     if (input.refType == ProductionInputType.asset) {
       return requireAsset(input.refId, type: input.role.kind.name);
     }
@@ -1219,8 +1610,8 @@ class ProductionCanvasService {
 
   Future<String> inputName(ProductionInput input) async {
     if (input.refType == ProductionInputType.node) {
-      return (await db.canvasDao.getNodeById(input.refId))?.title ??
-          input.refId;
+      final title = (await db.canvasDao.getNodeById(input.refId))?.title;
+      return title == null || title.trim().isEmpty ? input.refId : title;
     }
     return (await library.database.assetDao.getAsset(input.refId))?.name ??
         input.refId;
@@ -1239,7 +1630,7 @@ class ProductionCanvasService {
     while (pending.isNotEmpty) {
       final current = pending.removeLast();
       if (current == sourceId) {
-        throw const StoryboardException('invalid_reference');
+        throw const StoryboardException.field('invalid_reference', 'cycle');
       }
       if (!visited.add(current)) {
         continue;
@@ -1365,64 +1756,72 @@ class ProductionCanvasService {
     required List<ProductionInput> inputs,
     required WorkingOverlayService overlay,
     ShotEditOrigin origin = const ShotEditOrigin.manual(),
-  }) => write(nodeId, () async {
-    final node = await requireNode(nodeId);
-    final beforeInputs = node.clipId != null
-        ? await shots.inputSnapshot(node.clipId!)
-        : null;
-    if (!origin.isAgent && node.clipId != null) {
-      await StoryboardEditOrchestrator().takeOver(overlay, node.clipId!);
-    }
-    await validateInputs(
-      node: node,
-      values: values,
-      inputs: inputs,
-      origin: origin,
-    );
-    await shots.restoreInputs(
-      node.clipId!,
-      inputs.map((input) => input.toJson()).toList(),
-    );
-    if (node.clipId != null) {
-      String? inputChangeId;
-      if (beforeInputs != null) {
-        final afterInputs = await shots.inputSnapshot(node.clipId!);
-        if (jsonEncode(beforeInputs) != jsonEncode(afterInputs)) {
-          final inputChange = await overlay.stageTextChange(
-            resourcePath: 'clips/${node.clipId}/inputs',
-            resourceType: 'production_clips',
-            resourceId: node.clipId!,
-            field: 'inputs',
-            oldText: jsonEncode(beforeInputs),
-            newText: jsonEncode(afterInputs),
-            source: origin.source,
-            sourceSessionId: origin.sessionId,
-            sourceTurnId: origin.turnId,
-            toolName: origin.tool,
-            summary: 'Production inputs',
+    CanvasHistory? history,
+  }) => withCanvasHistory(
+    history,
+    shots,
+    'saveDraft',
+    [nodeId],
+    () => write(nodeId, () async {
+      final workOverlay = overlay.forNovel(novelId);
+      final node = await requireNode(nodeId);
+      final beforeInputs = node.clipId != null
+          ? await shots.inputSnapshot(node.clipId!)
+          : null;
+      if (!origin.isAgent && node.clipId != null) {
+        await StoryboardEditOrchestrator().takeOver(workOverlay, node.clipId!);
+      }
+      await validateInputs(
+        node: node,
+        values: values,
+        inputs: inputs,
+        origin: origin,
+      );
+      await shots.restoreInputs(
+        node.clipId!,
+        inputs.map((input) => input.toJson()).toList(),
+      );
+      if (node.clipId != null) {
+        String? inputChangeId;
+        if (beforeInputs != null) {
+          final afterInputs = await shots.inputSnapshot(node.clipId!);
+          if (jsonEncode(beforeInputs) != jsonEncode(afterInputs)) {
+            final inputChange = await workOverlay.stageTextChange(
+              resourcePath: 'clips/${node.clipId}/inputs',
+              resourceType: 'production_clips',
+              resourceId: node.clipId!,
+              field: 'inputs',
+              oldText: jsonEncode(beforeInputs),
+              newText: jsonEncode(afterInputs),
+              source: origin.source,
+              sourceSessionId: origin.sessionId,
+              sourceTurnId: origin.turnId,
+              toolName: origin.tool,
+              summary: 'Production inputs',
+            );
+            inputChangeId = inputChange.id;
+          }
+        }
+        await StoryboardEditOrchestrator().save(
+          service: shots,
+          overlay: workOverlay,
+          shotId: node.clipId!,
+          origin: origin,
+          values: {
+            ...values,
+            if (node.type != canvasNodeTypeVideo) 'duration_ms': null,
+          },
+        );
+        if (!origin.isAgent && inputChangeId != null) {
+          await workOverlay.commitManualSave(
+            manualChangeIds: [inputChangeId],
+            resourceScopes: ['clips/${node.clipId}'],
+            manualMessage: 'history.commit_message.manual_storyboard_save',
           );
-          inputChangeId = inputChange.id;
         }
       }
-      await StoryboardEditOrchestrator().save(
-        service: shots,
-        overlay: overlay,
-        shotId: node.clipId!,
-        origin: origin,
-        values: {
-          ...values,
-          if (node.type != canvasNodeTypeVideo) 'duration_ms': null,
-        },
-      );
-      if (!origin.isAgent && inputChangeId != null) {
-        await overlay.commitManualSave(
-          manualChangeIds: [inputChangeId],
-          resourceScopes: ['clips/${node.clipId}'],
-          manualMessage: 'history.commit_message.manual_storyboard_save',
-        );
-      }
-    }
-  });
+    }),
+  );
 
   Future<void> validateInputs({
     required CanvasNode node,
@@ -1430,20 +1829,26 @@ class ProductionCanvasService {
     required List<ProductionInput> inputs,
     required ShotEditOrigin origin,
   }) async {
-    if (!node.isGenerationNode ||
-        inputs.map((e) => e.id).toSet().length != inputs.length) {
+    if (!node.isGenerationNode) {
       throw const StoryboardException('invalid_config');
     }
+    if (inputs.map((e) => e.id).toSet().length != inputs.length) {
+      throw const StoryboardException.field('invalid_config', 'duplicate');
+    }
     if (node.type == canvasNodeTypeImage &&
-        inputs.any((i) => i.role != VideoInputRole.reference_image)) {
-      throw const StoryboardException('invalid_reference');
+        inputs.any(
+          (i) => !i.isPrompt && i.role != VideoInputRole.reference_image,
+        )) {
+      throw const StoryboardException.field('invalid_reference', 'image_only');
     }
     if (node.type == canvasNodeTypeAudio) {
       if (inputs.any(
-        (i) => !{
-          VideoInputRole.reference_audio,
-          VideoInputRole.reference_image,
-        }.contains(i.role),
+        (i) =>
+            !i.isPrompt &&
+            !{
+              VideoInputRole.reference_audio,
+              VideoInputRole.reference_image,
+            }.contains(i.role),
       )) {
         throw const StoryboardException('audio_reference_format');
       }
@@ -1454,12 +1859,11 @@ class ProductionCanvasService {
             ? null
             : await library.database.aiProviderDao.getById(providerId);
         if (provider == null) {
-          throw const StoryboardException('invalid_config');
+          throw const StoryboardException.field('invalid_config', 'model');
         }
-        AudioCapabilities.forProvider(
-          model,
-          provider,
-        ).validateSelection(inputs.map((i) => i.role.kind.name));
+        AudioCapabilities.forProvider(model, provider).validateSelection(
+          inputs.where((i) => !i.isPrompt).map((i) => i.role.kind.name),
+        );
       }
     }
     final prompt = StoryboardPrompt.parse(values['prompt'] as String);
@@ -1469,6 +1873,14 @@ class ProductionCanvasService {
     ProductionInput.validateList(inputs);
     final existing = await this.inputs(node.id);
     for (final input in inputs) {
+      if (input.isPrompt) {
+        final source = await requireNode(input.refId);
+        if (source.type != canvasNodeTypeText ||
+            source.canvasId != node.canvasId) {
+          throw const StoryboardException('invalid_reference');
+        }
+        continue;
+      }
       // 已失效的已存参考保留，允许用户继续编辑并在卡片修复；提交会重新校验。
       final unchanged =
           !origin.isAgent &&
@@ -1526,7 +1938,7 @@ class ProductionCanvasService {
   }) => write(sceneId ?? episodeId ?? '', () async {
     final row = await StoryboardEditOrchestrator().create(
       service: shots,
-      overlay: overlay,
+      overlay: overlay.forNovel(novelId),
       sceneId: sceneId,
       episodeId: episodeId,
       values: values,
@@ -1547,20 +1959,27 @@ class ProductionCanvasService {
     return (await shots.getShot(row.id))!;
   });
 
-  Future<void> adoptGenerated(String nodeId, String taskId) =>
-      write(nodeId, () async {
-        final node = await requireNode(nodeId);
-        final task = await library.database.generationTaskDao.getById(taskId);
-        if (task == null ||
-            !canAdoptProductionTask(task) ||
-            task.novelId != novelId ||
-            task.sourceType != 'production_clip' ||
-            task.sourceId != node.clipId ||
-            task.kind.name != node.type) {
-          throw const StoryboardException('invalid_result');
-        }
-        await adopt(nodeId, task.resultAssetId!);
-      });
+  Future<void> adoptGenerated(
+    String nodeId,
+    String taskId, {
+    String? assetId,
+  }) => write(nodeId, () async {
+    final node = await requireNode(nodeId);
+    final task = await library.database.generationTaskDao.getById(taskId);
+    if (task == null ||
+        !canAdoptProductionTask(task) ||
+        task.novelId != novelId ||
+        task.sourceType != 'production_clip' ||
+        task.sourceId != node.clipId ||
+        task.kind.name != node.type) {
+      throw const StoryboardException('invalid_result');
+    }
+    final selected = assetId ?? task.resultAssetId!;
+    if (!task.resultAssetIds.contains(selected)) {
+      throw const StoryboardException('invalid_result');
+    }
+    await adopt(nodeId, selected);
+  });
 
   /// 外部文件先在导入入口登记成资产，这里只接收资产 id。
   Future<void> adopt(String nodeId, String assetId) => write(nodeId, () async {

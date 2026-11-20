@@ -18,6 +18,9 @@ enum ThinkingLevel {
   /// Allows deep reasoning with more tokens.
   /// Default for Gemini 3 models.
   high,
+
+  /// Extra-high reasoning depth, supported by Gemini 4 Hydrogen.
+  xhigh,
 }
 
 /// Converts string to ThinkingLevel enum.
@@ -27,6 +30,7 @@ ThinkingLevel thinkingLevelFromString(String? value) {
     'LOW' => ThinkingLevel.low,
     'MEDIUM' => ThinkingLevel.medium,
     'HIGH' => ThinkingLevel.high,
+    'XHIGH' => ThinkingLevel.xhigh,
     _ => ThinkingLevel.unspecified,
   };
 }
@@ -38,6 +42,7 @@ String thinkingLevelToString(ThinkingLevel level) {
     ThinkingLevel.low => 'LOW',
     ThinkingLevel.medium => 'MEDIUM',
     ThinkingLevel.high => 'HIGH',
+    ThinkingLevel.xhigh => 'XHIGH',
     ThinkingLevel.unspecified => 'THINKING_LEVEL_UNSPECIFIED',
   };
 }

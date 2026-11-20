@@ -92,7 +92,7 @@ void main() {
     expect(restored.hasFixedBaseUrl, isTrue);
     expect(restored.isValid, isTrue);
     expect(restored.copyWith(apiKey: '').isValid, isFalse);
-    expect(customAiProviderTypes, contains(AiProviderType.openrouter));
+    expect(customAiProviderTypes, contains(AiProviderType.openrouter.name));
     expect(
       AiSettings(
         providers: [provider],

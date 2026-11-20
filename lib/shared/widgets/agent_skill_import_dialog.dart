@@ -48,7 +48,8 @@ bool agentSkillSupportsDirectoryImport() {
   };
 }
 
-/// 弹出导入勾选对话框。取消返回 `null`；确认返回勾选的候选（不含同名冲突项）。
+/// 弹出导入勾选对话框。取消返回 `null`；确认返回勾选的候选。
+/// 同名冲突默认不勾选，勾选后由导入流程先卸载再安装。
 Future<List<AgentSkillImportCandidate>?> showAgentSkillImportDialog(
   BuildContext context, {
   required List<AgentSkillImportCandidate> candidates,
@@ -102,18 +103,24 @@ class _AgentSkillImportDialogState extends State<_AgentSkillImportDialog> {
 
   void _toggleAll() {
     setState(() {
+      final keptConflicts = {
+        for (final candidate in widget.candidates)
+          if (candidate.nameConflict &&
+              _selectedPaths.contains(candidate.filePath))
+            candidate.filePath,
+      };
       if (_allImportableSelected) {
-        _selectedPaths = <String>{};
+        _selectedPaths = keptConflicts;
       } else {
-        _selectedPaths = {for (final c in _importable) c.filePath};
+        _selectedPaths = {
+          ...keptConflicts,
+          for (final candidate in _importable) candidate.filePath,
+        };
       }
     });
   }
 
   void _toggle(AgentSkillImportCandidate candidate) {
-    if (candidate.nameConflict) {
-      return;
-    }
     setState(() {
       final next = Set<String>.from(_selectedPaths);
       if (!next.remove(candidate.filePath)) {
@@ -125,7 +132,7 @@ class _AgentSkillImportDialogState extends State<_AgentSkillImportDialog> {
 
   void _confirm() {
     final selected = widget.candidates
-        .where((c) => !c.nameConflict && _selectedPaths.contains(c.filePath))
+        .where((c) => _selectedPaths.contains(c.filePath))
         .toList(growable: false);
     if (selected.isEmpty) {
       return;
@@ -396,58 +403,54 @@ class _SkillRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final textColor = conflict ? colors.textMuted : colors.textPrimary;
     return InkWell(
-      onTap: conflict ? null : onTap,
-      child: Opacity(
-        opacity: conflict ? 0.55 : 1,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: RevericSpacing.lg,
-            vertical: RevericSpacing.md,
-          ),
-          child: Row(
-            children: [
-              _CheckBox(selected: selected && !conflict),
-              const SizedBox(width: RevericSpacing.md),
-              Expanded(
-                child: Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: typo.uiSmall.copyWith(color: textColor),
-                ),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: RevericSpacing.lg,
+          vertical: RevericSpacing.md,
+        ),
+        child: Row(
+          children: [
+            _CheckBox(selected: selected),
+            const SizedBox(width: RevericSpacing.md),
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: typo.uiSmall.copyWith(color: colors.textPrimary),
               ),
-              if (conflict) ...[
-                const SizedBox(width: RevericSpacing.sm),
-                Text(
-                  context.t(LocaleKeys.agentSkillImportExists),
-                  style: typo.uiTiny.copyWith(color: colors.textMuted),
-                ),
-              ] else if (category.isNotEmpty) ...[
-                const SizedBox(width: RevericSpacing.sm),
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: RevericSpacing.sm,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.surface,
-                      borderRadius: BorderRadius.circular(RevericRadius.medium),
-                      border: Border.all(color: colors.borderSubtle),
-                    ),
-                    child: Text(
-                      category,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: typo.uiTiny.copyWith(color: colors.textMuted),
-                    ),
+            ),
+            if (conflict) ...[
+              const SizedBox(width: RevericSpacing.sm),
+              Text(
+                context.t(LocaleKeys.agentSkillImportExists),
+                style: typo.uiTiny.copyWith(color: colors.textMuted),
+              ),
+            ] else if (category.isNotEmpty) ...[
+              const SizedBox(width: RevericSpacing.sm),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: RevericSpacing.sm,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(RevericRadius.medium),
+                    border: Border.all(color: colors.borderSubtle),
+                  ),
+                  child: Text(
+                    category,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: typo.uiTiny.copyWith(color: colors.textMuted),
                   ),
                 ),
-              ],
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );

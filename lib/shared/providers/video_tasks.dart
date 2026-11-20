@@ -27,6 +27,8 @@ import '../services/ai/video/reference_storage_service.dart';
 import '../services/ai/video/task_service.dart';
 import 'novel_providers.dart';
 import 'object_storage.dart';
+import 'plugin_providers.dart';
+import 'trace_providers.dart';
 
 final _log = AppLogger.forModule('VideoTasks');
 
@@ -38,6 +40,7 @@ final referenceStorageServiceProvider = Provider<ReferenceStorageService>((
     probe: ref.watch(mediaServiceProvider).probe,
     database: ref.watch(appDatabaseProvider),
     storage: storage,
+    pluginHost: ref.watch(pluginHostServiceProvider),
   );
   ref.onDispose(service.dispose);
   return service;
@@ -46,6 +49,7 @@ final referenceStorageServiceProvider = Provider<ReferenceStorageService>((
 /// 渠道私域素材认证；启动时接着轮询上次没出结果的记录。
 final providerAssetServiceProvider = Provider<ProviderAssetService>((ref) {
   final service = ProviderAssetService(
+    pluginHost: ref.watch(pluginHostServiceProvider),
     database: ref.watch(appDatabaseProvider),
     references: ref.watch(referenceStorageServiceProvider),
     probe: ref.watch(mediaServiceProvider).probe,
@@ -73,14 +77,15 @@ final productionResultServiceProvider = Provider<ProductionResultService>((
     if (novel == null || novel.contentDatabasePath == null) {
       return null;
     }
-    final databasePath = RevericPaths.resolveDatabasePath(
-      novel.contentDatabasePath!,
-    );
-    if (!await File(databasePath).exists()) {
+    final databasePath = novel.contentDatabasePath!;
+    if (!await File(RevericPaths.resolveDatabasePath(databasePath)).exists()) {
       throw StateError('Production content database is unavailable');
     }
     return ProductionCanvasService(
-      StoryboardService(NovelContentDatabase(databasePath)),
+      StoryboardService(
+        NovelContentDatabase(databasePath),
+        contentKind: novel.contentKind,
+      ),
       library,
       novelId,
     );
@@ -97,10 +102,14 @@ final videoTaskServiceProvider = FutureProvider<VideoTaskService>((ref) async {
   }
   final results = ref.watch(productionResultServiceProvider);
   final service = VideoTaskService(
+    pluginHost: ref.watch(pluginHostServiceProvider),
     beforeCreate: results.beforeCreate,
     beforeSubmit: results.beforeSubmit,
     recoverSources: results.recover,
     sourceName: results.sourceName,
+    onGenerationAttempt: ref
+        .watch(traceReporterServiceProvider)
+        .onMediaGenerationAttempt,
     database: database,
     probeResult: ref.watch(mediaServiceProvider).probe,
     rootDirectory: root,

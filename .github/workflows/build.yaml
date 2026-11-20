@@ -126,9 +126,43 @@ jobs:
         run: bash third/fjs/tool/build_runtime.sh
       - name: Prepare trimmed MDK for SwiftPM
         run: bash third/fvp/macos/setup.sh
+      - name: Restore macOS ONNX Runtime SDK
+        id: macos-ort-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build/depth-native/ort-reduced-1.31.0/dist
+          key: ${{ runner.os }}-${{ runner.arch }}-onnxruntime-${{ hashFiles('third/depth-native/prepare-product-macos.sh', 'third/depth-native/build-reduced-macos.sh', 'third/depth-native/package_reduced.py', 'third/depth-native/required_operators.config') }}
       - name: Build CPU depth runtime
+        if: steps.macos-ort-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash third/depth-native/prepare-product-macos.sh
+      - name: Verify macOS ONNX Runtime SDK
+        shell: bash
+        run: |
+          sdk=build/depth-native/ort-reduced-1.31.0/dist
+          test -f "$sdk/include/onnxruntime_cxx_api.h"
+          test -f "$sdk/LICENSE"
+          test -f "$sdk/ThirdPartyNotices.txt"
+          test "$(lipo -archs "$sdk/lib/libonnxruntime.dylib")" = arm64
+          codesign --verify --strict "$sdk/lib/libonnxruntime.dylib"
+      - name: Save macOS ONNX Runtime SDK
+        if: steps.macos-ort-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/depth-native/ort-reduced-1.31.0/dist
+          key: ${{ steps.macos-ort-cache.outputs.cache-primary-key }}
+      - name: Archive macOS SDK for default-branch caching
+        if: startsWith(github.ref, 'refs/tags/v') && steps.macos-ort-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: tar -czf build/depth-native/onnxruntime-sdk.tar.gz -C build/depth-native/ort-reduced-1.31.0/dist .
+      - name: Upload macOS SDK for default-branch caching
+        if: startsWith(github.ref, 'refs/tags/v') && steps.macos-ort-cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-sdk-${{ steps.macos-ort-cache.outputs.cache-primary-key }}
+          path: build/depth-native/onnxruntime-sdk.tar.gz
+          if-no-files-found: error
+          retention-days: 1
       - name: Build installer
         run: fastforge release --name release --jobs macos-dmg --skip-clean
       - name: Build archive for auto-update
@@ -139,6 +173,41 @@ jobs:
           files: |
             dist/**/*-macos-arm64.dmg
             dist/**/*-macos-arm64.zip
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: ${tag}"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist -type f \( -name '*-macos-arm64.dmg' -o -name '*-macos-arm64.zip' \) -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found in dist/"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            case "$name" in
+              *.dmg) content_type=application/x-apple-diskimage ;;
+              *.zip) content_type=application/zip ;;
+              *) content_type=application/octet-stream ;;
+            esac
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${tag}/${name}" \
+              --file="$file" \
+              --content-type="$content_type" \
+              --remote \
+              --force
+          done
 
   package-windows:
     if: |
@@ -223,15 +292,69 @@ jobs:
         shell: bash
         run: rm -rf .dart_tool/hooks_runner/sqlite3
       - run: flutter pub get
+      - name: Restore Windows ONNX Runtime SDK
+        id: windows-ort-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build/depth-native/ort-sdk-windows-x64
+          key: ${{ runner.os }}-x64-onnxruntime-${{ hashFiles('third/depth-native/prepare-product-windows.ps1', 'third/depth-native/required_operators.config') }}
+      - name: Build CPU depth runtime
+        run: ./third/depth-native/prepare-product-windows.ps1
+      - name: Save Windows ONNX Runtime SDK
+        if: steps.windows-ort-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/depth-native/ort-sdk-windows-x64
+          key: ${{ steps.windows-ort-cache.outputs.cache-primary-key }}
+      - name: Archive Windows SDK for default-branch caching
+        if: startsWith(github.ref, 'refs/tags/v') && steps.windows-ort-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: tar -czf build/depth-native/onnxruntime-sdk.tar.gz -C build/depth-native/ort-sdk-windows-x64 .
+      - name: Upload Windows SDK for default-branch caching
+        if: startsWith(github.ref, 'refs/tags/v') && steps.windows-ort-cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-sdk-${{ steps.windows-ort-cache.outputs.cache-primary-key }}
+          path: build/depth-native/onnxruntime-sdk.tar.gz
+          if-no-files-found: error
+          retention-days: 1
       - name: Build installer
-        run: |
-          ./third/depth-native/prepare-product-windows.ps1
-          fastforge release --name release --jobs windows-exe --skip-clean
+        run: fastforge release --name release --jobs windows-exe --skip-clean
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             dist/**/*-setup.exe
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: ${tag}"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist -type f -name '*-setup.exe' -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found in dist/"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${tag}/${name}" \
+              --file="$file" \
+              --content-type=application/octet-stream \
+              --remote \
+              --force
+          done
 
   package-android:
     if: |
@@ -304,6 +427,36 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             dist/**/*.apk
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: ${tag}"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist -type f -name '*.apk' -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found in dist/"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${tag}/${name}" \
+              --file="$file" \
+              --content-type=application/vnd.android.package-archive \
+              --remote \
+              --force
+          done
 
   package-linux:
     if: |

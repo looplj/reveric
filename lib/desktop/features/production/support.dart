@@ -7,6 +7,10 @@
 //   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
+import 'dart:io';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -27,8 +31,71 @@ import 'storage_dialog.dart';
 import '../../../shared/services/ai/assets/client.dart'
     show ProviderAssetException;
 import '../../../shared/services/storyboard/service.dart';
+import '../../../shared/services/working_overlay.dart';
 
 final _log = AppLogger.forModule('Production');
+
+/// 保存错误只按已知原因给出操作建议；原始异常和路径留在调用方日志中。
+String productionDraftSaveErrorKey(Object error) => switch (error) {
+  StoryboardException(code: 'invalid_config', field: 'model') =>
+    LocaleKeys.productionDraftSaveModel,
+  StoryboardException(code: 'invalid_config', field: 'ratio') =>
+    LocaleKeys.productionDraftSaveRatio,
+  StoryboardException(code: 'invalid_config', field: 'resolution') =>
+    LocaleKeys.productionDraftSaveResolution,
+  StoryboardException(code: 'invalid_config', field: 'duration') =>
+    LocaleKeys.productionDraftSaveDuration,
+  StoryboardException(code: 'invalid_config', field: 'reference_mode') =>
+    LocaleKeys.productionDraftSaveMode,
+  StoryboardException(code: 'invalid_config', field: 'duplicate') ||
+  FormatException(
+    message: 'Duplicate production input',
+  ) => LocaleKeys.productionDraftSaveDuplicate,
+  StoryboardException(code: 'invalid_config' || 'cross_episode_move') =>
+    LocaleKeys.productionDraftSaveConfig,
+  StoryboardException(code: 'invalid_reference', field: 'cycle') =>
+    LocaleKeys.productionDraftSaveCycle,
+  StoryboardException(code: 'invalid_reference', field: 'image_only') =>
+    LocaleKeys.productionDraftSaveImageOnly,
+  StoryboardException(code: 'invalid_reference') ||
+  FormatException(
+    message: 'Production input identity is required',
+  ) => LocaleKeys.productionDraftSaveReference,
+  StoryboardException(code: 'invalid_asset' || 'media_missing') =>
+    LocaleKeys.productionDraftSaveAsset,
+  StoryboardException(code: 'source_missing') =>
+    LocaleKeys.productionDraftSaveSource,
+  StoryboardException(code: 'audio_reference_format') ||
+  AudioException(
+    code: 'audio_reference_format',
+  ) => LocaleKeys.productionDraftSaveAudioFormat,
+  AudioException(code: 'invalid_config') =>
+    LocaleKeys.productionDraftSaveAudioModel,
+  AudioException(code: 'audio_reference_count') =>
+    LocaleKeys.productionDraftSaveAudioCount,
+  AudioException(code: 'audio_reference_mixed') =>
+    LocaleKeys.productionAudioReferenceMixed,
+  FormatException(message: 'Voice requires a character image input') =>
+    LocaleKeys.productionDraftSaveVoice,
+  FormatException(
+    message: 'Invalid ref tag; use a self-closing ref with input_id, and label.' ||
+        'Invalid or duplicate ref attribute.' ||
+        'A ref requires exactly one input_id, and label.',
+  ) =>
+    LocaleKeys.productionDraftSavePrompt,
+  WorkingOverlayConflictException() => LocaleKeys.productionDraftSaveConflict,
+  FileSystemException() => LocaleKeys.productionDraftSaveFile,
+  SqliteException(resultCode: SqlError.SQLITE_FULL) =>
+    LocaleKeys.productionDraftSaveStorageFull,
+  SqliteException(resultCode: SqlError.SQLITE_BUSY || SqlError.SQLITE_LOCKED) =>
+    LocaleKeys.productionDraftSaveStorageBusy,
+  SqliteException(
+    resultCode: SqlError.SQLITE_READONLY || SqlError.SQLITE_PERM,
+  ) =>
+    LocaleKeys.productionDraftSaveStorageReadOnly,
+  SqliteException() => LocaleKeys.productionDraftSaveStorage,
+  _ => LocaleKeys.productionDraftSaveUnknown,
+};
 
 /// 图片任务上游已受理、结果没取回时的提示与重试文案：有地址时重新下载，
 /// 只有任务 ID 时重新获取；其他错误码返回 null。
@@ -37,6 +104,10 @@ final _log = AppLogger.forModule('Production');
       'download_failed' => (
         error: LocaleKeys.productionImageDownloadFailed,
         action: LocaleKeys.productionRetryDownload,
+      ),
+      'local_wait_cancelled' => (
+        error: LocaleKeys.productionImageWaitCancelled,
+        action: LocaleKeys.productionRetryFetch,
       ),
       'result_fetch_failed' => (
         error: LocaleKeys.productionImageFetchFailed,
@@ -194,6 +265,7 @@ Future<void> previewProductionAsset(
         type: file.type,
         name: file.name,
         autoplay: file.type == 'video',
+        pathResolver: service.library,
       ),
     );
   }

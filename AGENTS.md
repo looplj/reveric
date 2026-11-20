@@ -8,7 +8,15 @@
 
 ## 支持平台
 
-当前支持的平台为 **Windows、macOS、Android**。平台适配、构建、测试与验收以这三个平台为范围。
+当前支持的平台为 **Windows、macOS、Linux、Android**。Windows、macOS、Linux 为桌面端，Android 为移动端。平台适配、构建、测试与验收以这四个平台为范围。
+
+## 插件仓库与维护入口
+
+涉及外部插件、插件市场或 SDK 分发时，先读 `plugins/README.md` 的“外部插件维护”。插件独立仓库名为 `reveric-plugins`，默认与本仓库同级，相对路径为 `../reveric-plugins/`；先确认目录存在，若不存在再询问实际位置，不在本仓库重新创建插件源码。
+
+- 小云雀短片和营销分别维护在插件仓库的 `plugins/xiaoyunque/`、`plugins/xiaoyunque-marketing/`，实现与测试完全独立，不互相引用。
+- SDK 源码仍在本仓库的 `plugins/sdk/`，宿主在 `lib/shared/services/plugins/`。SDK 更新后须同步插件仓库的 `vendor/` 安装包、根 `package.json` 和 `package-lock.json`，并验证全部插件；不要求发布到 npm。
+- 发布流程和索引契约见插件仓库的 `README.md`。文档及依赖配置使用仓库名和相对路径，不写本机绝对路径。
 
 ## 工作契约
 
@@ -44,6 +52,7 @@
 
 | 触发场景 | 必读规则 |
 | --- | --- |
+| 代码审查或按审查意见修改代码 | `.agents/rules/code-review.md` |
 | 新增或修改 Dart 文件、源码注释与文件头 | `.agents/rules/code-style.md` |
 | 新增、移动、重命名文件或调整目录结构 | `.agents/rules/directory-structure.md` |
 | 新增/移动页面、Widget 或 feature | `.agents/rules/directory-structure.md`、`.agents/rules/widget-decomposition.md` |
@@ -54,7 +63,7 @@
 | 新增或修改图标 | `.agents/rules/icons.md` |
 | 新增、修改或删除用户可见文案、AI 提示词 | `.agents/rules/i18n.md` |
 | 搜索、过滤或昂贵 query | `.agents/rules/search-debounce.md` |
-| 文件选择、目录选择、附件、导入、导出、备份、临时文件或移动端路径 | `.agents/rules/file-access.md` |
+| 作品归属与身份、内容库路径、文件选择、目录选择、附件、导入、导出、备份、临时文件或移动端路径 | `.agents/rules/file-access.md` |
 | 错误、fallback、必备依赖或 DB 写日志 | `.agents/rules/error-handling.md` |
 | 第三方 library / SDK 或本地 dependency override | `.agents/rules/local-dependencies.md` |
 | AI 文本生成或 Agent Read field path | `.agents/rules/ai-calling.md`、`.agents/rules/tools_path.md` |

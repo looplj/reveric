@@ -32,11 +32,13 @@ class AiProvidersPage extends StatelessWidget {
     required this.headerGestureExclusionKey,
     this.headerTrailingInset = 0,
     this.headerAction,
+    this.onOpenModelSettings,
   });
 
   final GlobalKey headerGestureExclusionKey;
   final double headerTrailingInset;
   final Widget? headerAction;
+  final VoidCallback? onOpenModelSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +48,7 @@ class AiProvidersPage extends StatelessWidget {
       secondaryAction: headerAction,
       icon: RevericIcons.hub_outlined,
       titleKey: LocaleKeys.providerTitle,
-      child: const AiProvidersSection(),
+      child: AiProvidersSection(onOpenModelSettings: onOpenModelSettings),
     );
   }
 }

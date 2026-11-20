@@ -257,7 +257,7 @@ class _DelayedReadRound extends AgentCouncilOrchestrator {
     final second = await aiServiceResolver!(memberModel);
     final read = await second!.toolManager!.executeTool(
       name: 'Read',
-      input: {'path': 'profile/title'},
+      input: {'path': '/works/${session.novelId}/title'},
       callId: 'after-unmount',
     );
     readTitle = read['value'] as String?;

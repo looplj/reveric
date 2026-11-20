@@ -7,8 +7,11 @@
 import '../model_config.dart';
 export '../model_config.dart' show ConfigValue;
 
+enum ImageReferenceTransport { file, url, uploaded }
+
 class ImageModelCapabilities {
   const ImageModelCapabilities({
+    this._referenceTransport,
     this._ratios,
     this._resolutions,
     this._sizes,
@@ -20,8 +23,12 @@ class ImageModelCapabilities {
     this._maxEditPixels,
     this._maxAspectRatio,
     this._complexityLevels,
+    this._qualityLevels,
   });
 
+  final ImageReferenceTransport? _referenceTransport;
+  ImageReferenceTransport get referenceTransport =>
+      _referenceTransport ?? ImageReferenceTransport.file;
   final Set<String>? _ratios;
   Set<String> get ratios => _ratios ?? const {'auto'};
   final Set<String>? _resolutions;
@@ -48,22 +55,28 @@ class ImageModelCapabilities {
 
   /// 空集表示该型号没有复杂度档位。
   Set<String> get complexityLevels => _complexityLevels ?? const {};
+  final Set<String>? _qualityLevels;
 
-  ImageModelCapabilities merge(ImageModelCapabilities overrides) =>
-      ImageModelCapabilities(
-        ratios: overrides._ratios ?? _ratios,
-        resolutions: overrides._resolutions ?? _resolutions,
-        sizes: overrides._sizes ?? _sizes,
-        minReferences: overrides._minReferences ?? _minReferences,
-        maxReferences: overrides._maxReferences ?? _maxReferences,
-        unlimitedReferences:
-            overrides._unlimitedReferences ?? _unlimitedReferences,
-        minPixels: overrides._minPixels ?? _minPixels,
-        maxPixels: overrides._maxPixels ?? _maxPixels,
-        maxEditPixels: overrides._maxEditPixels ?? _maxEditPixels,
-        maxAspectRatio: overrides._maxAspectRatio ?? _maxAspectRatio,
-        complexityLevels: overrides._complexityLevels ?? _complexityLevels,
-      );
+  /// 空集表示未声明质量档位，只使用请求默认值。
+  Set<String> get qualityLevels => _qualityLevels ?? const {};
+
+  ImageModelCapabilities merge(
+    ImageModelCapabilities overrides,
+  ) => ImageModelCapabilities(
+    referenceTransport: overrides._referenceTransport ?? _referenceTransport,
+    ratios: overrides._ratios ?? _ratios,
+    resolutions: overrides._resolutions ?? _resolutions,
+    sizes: overrides._sizes ?? _sizes,
+    minReferences: overrides._minReferences ?? _minReferences,
+    maxReferences: overrides._maxReferences ?? _maxReferences,
+    unlimitedReferences: overrides._unlimitedReferences ?? _unlimitedReferences,
+    minPixels: overrides._minPixels ?? _minPixels,
+    maxPixels: overrides._maxPixels ?? _maxPixels,
+    maxEditPixels: overrides._maxEditPixels ?? _maxEditPixels,
+    maxAspectRatio: overrides._maxAspectRatio ?? _maxAspectRatio,
+    complexityLevels: overrides._complexityLevels ?? _complexityLevels,
+    qualityLevels: overrides._qualityLevels ?? _qualityLevels,
+  );
 
   String? size(String ratio, String resolution) {
     if (!ratios.contains(ratio) || !resolutions.contains(resolution)) {
@@ -109,6 +122,48 @@ class ImageModelCapabilities {
       throw const FormatException('Unsupported image dimensions');
     }
   }
+
+  Map<String, dynamic> toJson() => {
+    'referenceTransport': referenceTransport.name,
+    'ratios': ratios.toList(),
+    'resolutions': resolutions.toList(),
+    'sizes': sizes,
+    'minReferences': minReferences,
+    'maxReferences': maxReferences,
+    'unlimitedReferences': unlimitedReferences,
+    'minPixels': minPixels,
+    'maxPixels': maxPixels,
+    'maxEditPixels': maxEditPixels,
+    'maxAspectRatio': maxAspectRatio,
+    'complexityLevels': complexityLevels.toList(),
+    'qualityLevels': qualityLevels.toList(),
+  };
+  factory ImageModelCapabilities.fromJson(
+    Map<String, dynamic> json,
+  ) => ImageModelCapabilities(
+    referenceTransport: json['referenceTransport'] == null
+        ? null
+        : ImageReferenceTransport.values.byName(
+            json['referenceTransport'] as String,
+          ),
+    ratios: (json['ratios'] as List?)?.cast<String>().toSet(),
+    resolutions: (json['resolutions'] as List?)?.cast<String>().toSet(),
+    sizes: (json['sizes'] as Map<String, dynamic>?)?.map(
+      (key, value) =>
+          MapEntry(key, (value as Map<String, dynamic>).cast<String, String>()),
+    ),
+    minReferences: json['minReferences'] as int?,
+    maxReferences: json['maxReferences'] as int?,
+    unlimitedReferences: json['unlimitedReferences'] as bool?,
+    minPixels: ConfigValue(json['minPixels'] as int?),
+    maxPixels: ConfigValue(json['maxPixels'] as int?),
+    maxEditPixels: ConfigValue(json['maxEditPixels'] as int?),
+    maxAspectRatio: ConfigValue((json['maxAspectRatio'] as num?)?.toDouble()),
+    complexityLevels: (json['complexityLevels'] as List?)
+        ?.cast<String>()
+        .toSet(),
+    qualityLevels: (json['qualityLevels'] as List?)?.cast<String>().toSet(),
+  );
 }
 
 class ImageRequestDefaults {
@@ -151,5 +206,26 @@ class ImageRequestDefaults {
         promptOptimization:
             overrides._promptOptimization ?? _promptOptimization,
         complexity: overrides._complexity ?? _complexity,
+      );
+  Map<String, dynamic> toJson() => {
+    'size': size,
+    'responseFormat': responseFormat,
+    'outputFormat': outputFormat,
+    'quality': quality,
+    'watermark': watermark,
+    'promptExtend': promptExtend,
+    'promptOptimization': promptOptimization,
+    'complexity': complexity,
+  };
+  factory ImageRequestDefaults.fromJson(Map<String, dynamic> json) =>
+      ImageRequestDefaults(
+        size: ConfigValue(json['size'] as String?),
+        responseFormat: ConfigValue(json['responseFormat'] as String?),
+        outputFormat: ConfigValue(json['outputFormat'] as String?),
+        quality: ConfigValue(json['quality'] as String?),
+        watermark: ConfigValue(json['watermark'] as bool?),
+        promptExtend: ConfigValue(json['promptExtend'] as bool?),
+        promptOptimization: ConfigValue(json['promptOptimization'] as String?),
+        complexity: ConfigValue(json['complexity'] as String?),
       );
 }

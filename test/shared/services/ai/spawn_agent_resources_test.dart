@@ -9,13 +9,17 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
+import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/services/ai/ai_http_client_lease.dart';
 import 'package:reveric/shared/services/ai/ai_service_config.dart';
+import 'package:reveric/shared/services/ai/builtin_agent_tools.dart';
 import 'package:reveric/shared/services/ai/chat.dart';
+import 'package:reveric/shared/services/ai/host_tool_policy.dart';
 import 'package:reveric/shared/services/ai/media/production.dart';
 import 'package:reveric/shared/services/ai/spawn_agent_handler.dart';
 import 'package:reveric/shared/services/ai/tool_operations.dart';
@@ -28,6 +32,7 @@ import 'package:reveric/shared/services/production/media_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
+import 'package:reveric/shared/utils/storage_paths.dart';
 
 void main() {
   late AppDatabase appDb;
@@ -239,13 +244,13 @@ void main() {
         expect(resource.toolManager, isNot(same(client.toolManager)));
         final mainTool = client.toolManager!.executeTool(
           name: 'Read',
-          input: {'path': '/profile/title'},
+          input: {'path': '/works/current/title'},
           callId: 'parent_tool',
         );
         await entered[0].future;
         final childTool = resource.toolManager.executeTool(
           name: 'Read',
-          input: {'path': '/profile/title'},
+          input: {'path': '/works/current/title'},
           callId: 'child_tool',
           emitEvents: false,
         );
@@ -282,7 +287,7 @@ void main() {
       ]) {
         final result = await manager.executeTool(
           name: 'Read',
-          input: {'path': '/works/other/profile/title'},
+          input: {'path': '/works/other/title'},
         );
         expect(result.containsKey('error'), isFalse);
       }
@@ -307,7 +312,7 @@ void main() {
       expect((await content.getChapterById(chapterId))?.title, 'after');
       final read = await first.toolManager.executeTool(
         name: 'Read',
-        input: {'path': '/works/other/profile/title'},
+        input: {'path': '/works/other/title'},
       );
       expect(read.containsKey('error'), isFalse);
       first.release();
@@ -318,7 +323,7 @@ void main() {
       expect(httpClient.closes, 0);
       final siblingRead = await second.toolManager.executeTool(
         name: 'Read',
-        input: {'path': '/works/other/profile/title'},
+        input: {'path': '/works/other/title'},
       );
       expect(siblingRead.containsKey('error'), isFalse);
       second.release();
@@ -326,6 +331,48 @@ void main() {
       expect(access.releases, 3);
       expect(registry.debugRefCountFor(config), 0);
       expect(httpClient.closes, 1);
+    },
+  );
+
+  test(
+    'child work creation inherits the host service and respects tool policy',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final root = await Directory.systemTemp.createTemp('reveric_child_work_');
+      addTearDown(() => root.delete(recursive: true));
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (_) async => root.path);
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      await RevericPaths.initialize();
+
+      final client = await parent();
+      client.toolManager!.workCreationService = NovelActionsService(appDb);
+      final resource = await child(client);
+      const input = {
+        'path': '/works',
+        'fields': {'title': '子代理新书', 'content_kind': contentKindNovel},
+      };
+      final explorer = HostToolPolicyDispatcher(
+        inner: resource.toolManager,
+        disabled: builtinExplorerDisabledToolNames,
+      );
+      final denied = await explorer.executeTool(name: 'Create', input: input);
+      expect(denied['error_code'], 'permission_denied');
+      expect(await appDb.novelDao.getAll(), isEmpty);
+
+      final writer = HostToolPolicyDispatcher(
+        inner: resource.toolManager,
+        disabled: builtinDefaultSubAgentDisabledToolNames,
+      );
+      final created = await writer.executeTool(name: 'Create', input: input);
+      expect(created['ok'], isTrue, reason: '$created');
+      final work = (await appDb.novelDao.getAll()).single;
+      expect(created['id'], work.id);
+      expect(created['path'], '/works/${work.id}');
+      expect(created['hint'], isNull);
+      expect(work.title, '子代理新书');
     },
   );
 

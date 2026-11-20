@@ -90,6 +90,7 @@ class ScreenplayDocumentHeading extends HookWidget {
     Future<void> edit() => showSceneProperties(
       context,
       databasePath: actions.databasePath,
+      novelId: actions.novelId,
       sceneId: element.sceneId!,
       episodeId: element.episodeId!,
       mobile: actions.mobile,

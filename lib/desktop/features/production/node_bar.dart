@@ -8,12 +8,15 @@
 //   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
+//   assets/translations/en/production.json
+//   assets/translations/zh-CN/production.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/design-system.md
 
 import 'package:drift/drift.dart' show BooleanExpressionOperators;
 import 'dart:io';
+import 'text_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -30,6 +33,7 @@ import '../../../shared/providers/video_tasks.dart';
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/services/production/video_tool_orchestrator.dart';
 import '../../../shared/theme/theme.dart';
+import '../../../shared/utils/image_clipboard.dart';
 import '../asset/library_menu_item.dart';
 import '../canvas/widgets/glass.dart';
 import 'certification.dart';
@@ -44,6 +48,9 @@ import 'view/panorama_actions.dart';
 import 'inline_media.dart';
 import 'trim_dialog.dart';
 import 'depth_dialog.dart';
+import 'editing_node.dart'
+    show previewProductionEditing, exportProductionEditing;
+import '../editing/canvas_shell.dart' show CanvasEditingScope;
 import 'image_history.dart';
 import 'audio_history.dart';
 import 'node_card.dart' show ProductionSegmentTag;
@@ -72,6 +79,7 @@ class ProductionNodeBar extends HookConsumerWidget {
     this.placeDerived,
     this.openResults = false,
     this.menuRequest,
+    this.onAttachToChat,
   });
   final ProductionCanvasService service;
   final String path;
@@ -89,6 +97,7 @@ class ProductionNodeBar extends HookConsumerWidget {
   final VoidCallback? onToSegments;
   final VoidCallback? onCopy;
   final VoidCallback onDelete;
+  final ValueChanged<CanvasNode>? onAttachToChat;
 
   /// 打开某个导演台节点对应的调度。
   final ValueChanged<CanvasNode> onOpenDirector;
@@ -114,6 +123,9 @@ class ProductionNodeBar extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ProductionViewNode.maybeOf(context) ?? this.node;
+    final attachToChat = onAttachToChat == null
+        ? null
+        : () => onAttachToChat!(node);
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final video = node.isGenerationNode;
@@ -223,6 +235,20 @@ class ProductionNodeBar extends HookConsumerWidget {
         ? node.mediaAssetId
         : null;
     final libraryAsset = useProductionAsset(service, libraryAssetId);
+    final VoidCallback? copyImage =
+        libraryAsset?.type == 'image' && libraryAsset?.path != null
+        ? () => productionRun(context, () async {
+            await copyImageToClipboard(
+              File(service.library.resolve(libraryAsset!)),
+              name: libraryAsset.name,
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.t(LocaleKeys.commonCopied))),
+              );
+            }
+          })
+        : null;
     final appDatabase = service.library.database;
     final certifyProviders = useCertificationProviders(appDatabase);
     final certifications = useCertifications(
@@ -235,6 +261,18 @@ class ProductionNodeBar extends HookConsumerWidget {
       context: context,
       position: position,
       entries: [
+        if (attachToChat != null)
+          RevericMenuItem(
+            icon: RevericIcons.chat_bubble_outline,
+            label: context.t(LocaleKeys.productionAddToChat),
+            onTap: attachToChat,
+          ),
+        if (copyImage != null)
+          RevericMenuItem(
+            icon: RevericIcons.copy,
+            label: context.t(LocaleKeys.commonCopy),
+            onTap: copyImage,
+          ),
         if (libraryAsset != null)
           assetLibraryMenuItem(
             context,
@@ -260,7 +298,7 @@ class ProductionNodeBar extends HookConsumerWidget {
         if (onCopy != null)
           RevericMenuItem(
             icon: RevericIcons.copy,
-            label: context.t(LocaleKeys.commonCopy),
+            label: context.t(LocaleKeys.commonDuplicate),
             onTap: onCopy,
           ),
         RevericMenuItem(
@@ -373,6 +411,7 @@ class ProductionNodeBar extends HookConsumerWidget {
     );
 
     final image = node.type == canvasNodeTypeImage;
+    final openEditing = CanvasEditingScope.maybeOf(context)?.open;
     final adopted = clip?.adoptedAssetId;
     void upload() => productionRun(
       context,
@@ -416,6 +455,7 @@ class ProductionNodeBar extends HookConsumerWidget {
         service: service,
         node: node,
         onCreated: onSelectNode,
+        onAttachToChat: attachToChat,
         place: placeDerived == null
             ? null
             : (size) => placeDerived!(node.id, audio: false, size: size)!,
@@ -558,7 +598,57 @@ class ProductionNodeBar extends HookConsumerWidget {
                         context.t(LocaleKeys.productionOpenDirector),
                         () => onOpenDirector(node),
                       )
-                    else if (!video && sourceAsset?.type != 'audio')
+                    else if (node.type == canvasNodeTypeText)
+                      // 文本没有媒体可播，「查看」在弹窗里放大编辑正文。
+                      button(
+                        RevericIcons.visibility_outlined,
+                        context.t(LocaleKeys.commonView),
+                        () => productionRun(
+                          context,
+                          () => showProductionTextView(context, service, node),
+                        ),
+                      )
+                    else if (node.type == canvasNodeTypeEditing) ...[
+                      // 剪辑节点没有现成文件：打开进剪辑工程，预览先渲染再弹窗播放。
+                      button(
+                        RevericIcons.arrow_square_out,
+                        context.t(LocaleKeys.commonOpen),
+                        openEditing == null || node.editingId == null
+                            ? null
+                            : () => productionRun(
+                                context,
+                                () => openEditing(node.id),
+                              ),
+                      ),
+                      button(
+                        RevericIcons.play_arrow,
+                        context.t(LocaleKeys.productionPreviewAdopted),
+                        node.editingId == null
+                            ? null
+                            : () => productionRun(
+                                context,
+                                () => previewProductionEditing(
+                                  context,
+                                  service,
+                                  node,
+                                ),
+                              ),
+                      ),
+                      button(
+                        RevericIcons.download_simple,
+                        context.t(LocaleKeys.editingExportNode),
+                        node.editingId == null
+                            ? null
+                            : () => productionRun(
+                                context,
+                                () => exportProductionEditing(
+                                  context,
+                                  service,
+                                  node,
+                                ),
+                              ),
+                      ),
+                    ] else if (!video && sourceAsset?.type != 'audio')
                       button(
                         RevericIcons.play_arrow,
                         context.t(
@@ -571,6 +661,14 @@ class ProductionNodeBar extends HookConsumerWidget {
                         onPreview,
                       ),
                   ],
+                  if (copyImage != null)
+                    [
+                      button(
+                        RevericIcons.copy,
+                        context.t(LocaleKeys.commonCopy),
+                        copyImage,
+                      ),
+                    ],
                   // 基于当前内容再创作。
                   [
                     if (image || sourceAsset?.type == 'image')
@@ -854,6 +952,12 @@ class ProductionNodeBar extends HookConsumerWidget {
                   if (index > 0) separator(),
                   ...group,
                 ],
+              if (attachToChat != null)
+                RevericIconButton(
+                  icon: RevericIcons.chat_bubble_outline,
+                  tooltip: context.t(LocaleKeys.productionAddToChat),
+                  onPressed: attachToChat,
+                ),
               Builder(
                 builder: (context) => RevericIconButton(
                   icon: RevericIcons.more_horiz,

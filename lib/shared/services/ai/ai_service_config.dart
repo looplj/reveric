@@ -28,7 +28,6 @@ class AiServiceConfig {
   final AiSessionContext? sessionContext;
   final AiNovelReader? novelReader;
   final AiNovelWriter? novelWriter;
-  final AiNovelDraftClearer? novelDraftClearer;
   final CrossWorkAccess? crossWorkAccess;
   final Future<List<AiProvider>> Function()? providerReader;
   final AiToolCallRequestedCallback? onToolCallRequested;
@@ -74,7 +73,6 @@ class AiServiceConfig {
     this.sessionContext,
     this.novelReader,
     this.novelWriter,
-    this.novelDraftClearer,
     this.crossWorkAccess,
     this.providerReader,
     this.onToolCallRequested,

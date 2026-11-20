@@ -17,6 +17,7 @@ import '../../models/director/persistence.dart';
 import 'frame_validation.dart';
 
 class DirectorSession extends ChangeNotifier {
+  final bool readOnly;
   final DirectorSave? onSave;
   final ValueChanged<DirectorDocument>? onChanged;
   final DirectorHistory? versions;
@@ -47,16 +48,20 @@ class DirectorSession extends ChangeNotifier {
   bool _disposed = false;
   DirectorSession(
     DirectorDocument document, {
+    this.readOnly = false,
     this.onSave,
     this.onChanged,
     this.versions,
     this.exportVersions,
-  }) : history = CommandHistory(document) {
+  }) : history = CommandHistory(document, readOnly: readOnly) {
     _lastDocument = document;
     history.addListener(_changed);
     history.validateEdit = (next) =>
         validateFrameEdit(history.document, next, frame.value);
     history.beforeEdit = () {
+      if (readOnly) {
+        throw StateError('Director session is read-only');
+      }
       if (hasPendingInput && !_applyingForm) {
         throw const DocumentError('input', 'apply_pending');
       }
@@ -103,6 +108,9 @@ class DirectorSession extends ChangeNotifier {
   }
 
   bool claimEditGesture(Object owner, int pointer) {
+    if (readOnly) {
+      return false;
+    }
     if (_gestureOwner != null) {
       cancelEditGesture();
       return false;
@@ -163,11 +171,17 @@ class DirectorSession extends ChangeNotifier {
   }
 
   void setPanel(String value) {
+    if (readOnly && value != 'objects') {
+      return;
+    }
     panel = value;
     notifyListeners();
   }
 
   void setTool(String value) {
+    if (readOnly) {
+      return;
+    }
     tool = value;
     notifyListeners();
   }
@@ -182,6 +196,9 @@ class DirectorSession extends ChangeNotifier {
   }
 
   void setRange(int start, int end) {
+    if (readOnly) {
+      return;
+    }
     final d = history.document.durationFrames;
     final a = start.clamp(0, d), b = end.clamp(0, d);
     _range = a == b ? null : (a < b ? (a, b) : (b, a));
@@ -206,6 +223,9 @@ class DirectorSession extends ChangeNotifier {
 
   /// 恢复历史是一条可撤销命令；文档归属由调用方保持。
   Future<void> restoreHistory(DirectorRevision entry) async {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     final generation = _generation;
     final before = history.document;
     final snapshot = await versions!.load(entry.id);
@@ -218,6 +238,9 @@ class DirectorSession extends ChangeNotifier {
   }
 
   void restore(DirectorDocument snapshot) {
+    if (readOnly) {
+      throw StateError('Director session is read-only');
+    }
     final id = history.document.id;
     history.execute((j) {
       j.clear();
@@ -281,6 +304,9 @@ class DirectorSession extends ChangeNotifier {
   bool get saving => _saving != null;
 
   Future<void> save() {
+    if (readOnly) {
+      return Future.error(StateError('Director session is read-only'));
+    }
     if (hasPendingInput) {
       return Future.error(const DocumentError('input', 'apply_pending'));
     }

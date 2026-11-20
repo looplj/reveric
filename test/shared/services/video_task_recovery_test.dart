@@ -41,10 +41,15 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/provider_asset.dart';
 import 'package:reveric/shared/models/video/request.dart';
+import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/models/video/task_result.dart';
 import 'package:reveric/shared/services/ai/video/task_service.dart';
 import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
+import 'package:reveric/shared/services/ai/trace_reporter_service.dart';
+import 'package:reveric/shared/services/anonymous_outbox_service.dart';
+import 'package:reveric/shared/services/device_id_service.dart';
 import 'package:reveric/shared/services/object_storage/service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const request = VideoRequest(
   modelId: 'doubao-seedance-2-5-260628',
@@ -89,6 +94,7 @@ void main() {
     Future<http.Response> Function(http.Request)? download,
     Future<void> Function(String, String, String)? beforeCreate,
     Future<void> Function(GenerationTask)? beforeSubmit,
+    Future<void> Function(GenerationTask)? onGenerationAttempt,
     Future<void> Function()? recoverSources,
     DateTime Function()? now,
     bool useDefaultDownloadTransport = false,
@@ -96,6 +102,7 @@ void main() {
     final service = VideoTaskService(
       beforeCreate: beforeCreate,
       beforeSubmit: beforeSubmit,
+      onGenerationAttempt: onGenerationAttempt,
       now: now,
       recoverSources: recoverSources,
       probeResult: (_) async {
@@ -116,7 +123,8 @@ void main() {
       references: ReferenceStorageService(
         database: db,
         storage: ObjectStorageService(database: db),
-        probe: (_) => throw StateError('no references expected'),
+        probe: (_, {cancellation}) =>
+            throw StateError('no references expected'),
         uploadClient: (_) => MockClient((r) async {
           uploads.add(r);
           return http.Response('', 401);
@@ -152,6 +160,72 @@ void main() {
     services.add(service);
     return service;
   }
+
+  test(
+    'rejected video generation records use and a resumed task creates no new trace',
+    () async {
+      SharedPreferences.setMockInitialValues({'device_id': 'test-device'});
+      final sent = <Map<String, dynamic>>[];
+      final client = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        sent.addAll((body['events'] as List).cast<Map<String, dynamic>>());
+        return http.Response('', 204);
+      });
+      final outbox = AnonymousOutboxService(
+        database: db,
+        httpClient: client,
+        getBaseUrl: () => 'https://anonymous.example',
+        getEnabled: () => true,
+        autoFlush: false,
+      );
+      addTearDown(client.close);
+      addTearDown(outbox.dispose);
+      final reporter = TraceReporterService(
+        deviceIdService: DeviceIdService(),
+        outbox: outbox,
+      );
+      final tasks = make(
+        respond: (_) async =>
+            http.Response('{"error":{"message":"Rejected"}}', 400),
+        onGenerationAttempt: reporter.onMediaGenerationAttempt,
+      );
+      final id = await tasks.create(
+        providerId: provider.id,
+        novelId: 'work',
+        sourceType: 'production_clip',
+        sourceId: 'clip',
+        request: request,
+      );
+      expect(await db.select(db.anonymousOutboxEvents).get(), isEmpty);
+
+      final rejection = throwsA(
+        isA<VideoException>().having(
+          (error) => error.code,
+          'code',
+          VideoErrorCode.rejected,
+        ),
+      );
+      await expectLater(tasks.submit(id), rejection);
+      expect(
+        (await tasks.getTask(id))!.status,
+        GenerationTaskStatus.action_required,
+      );
+      await outbox.flush();
+      final event = sent.single;
+      expect(event['event_type'], 'media_generation_attempted');
+      expect(event['model'], request.modelId);
+      expect(event['event_id'], event['session_id']);
+      expect(jsonDecode(event['message'] as String), {
+        'media_kind': 'video',
+        'provider_type': provider.type,
+      });
+
+      await expectLater(tasks.resumeAfterConfigurationFixed(id), rejection);
+      expect(posts, 2);
+      await outbox.flush();
+      expect(sent, hasLength(1));
+    },
+  );
 
   test(
     'video downloads use current provider proxy and authentication',
@@ -820,6 +894,10 @@ void main() {
                     ),
                   ],
                 ),
+                capabilities: lookupVideoChannelModel(
+                  provider.type,
+                  draftRequest.modelId,
+                )!.capabilities,
                 inputs: const [
                   VideoInput(
                     role: VideoInputRole.reference_image,
@@ -958,7 +1036,7 @@ void main() {
         expect(posts, 1);
         final tasks = await db.select(db.generationTasks).get();
         expect(tasks, hasLength(1));
-        expect(tasks.single.id, matches(r'^gen_[A-Z0-9]{6}$'));
+        expect(tasks.single.id, matches(r'^gen_[A-Z0-9]{12}$'));
         expect(
           operations.state.runs.singleWhere((run) => !run.terminal).taskId,
           tasks.single.id,
@@ -991,7 +1069,7 @@ void main() {
         expect(history.map((task) => task.id).toSet(), hasLength(2));
         expect(
           history.map((task) => task.id),
-          everyElement(matches(r'^gen_[A-Z0-9]{6}$')),
+          everyElement(matches(r'^gen_[A-Z0-9]{12}$')),
         );
       } finally {
         if (!response.isCompleted) {
@@ -1548,7 +1626,9 @@ void main() {
       await service.refresh(id);
       expect(
         (await service.getTask(id))!.status,
-        GenerationTaskStatus.reconciliation_required,
+        anomaly.contains('UNKNOWN')
+            ? GenerationTaskStatus.reconciliation_required
+            : GenerationTaskStatus.running,
       );
       anomalous = false;
       await service.refresh(id);
@@ -1610,7 +1690,7 @@ void main() {
   );
 
   test(
-    'query missing result fields pauses reconciliation rather than polling forever',
+    'query missing result fields retains the receipt and schedules a GET retry',
     () async {
       final service = make(
         respond: (r) async => http.Response(
@@ -1629,14 +1709,15 @@ void main() {
       await service.submit(id);
       await service.refresh(id);
       final task = (await service.getTask(id))!;
-      expect(task.status, GenerationTaskStatus.reconciliation_required);
-      expect(task.nextPollAt, isNull);
+      expect(task.status, GenerationTaskStatus.running);
+      expect(task.nextPollAt, isNotNull);
+      expect(task.errorCode, 'invalid_response');
       expect(posts, 1);
     },
   );
 
   test(
-    'Wan UNKNOWN after its documented query window becomes expired',
+    'Wan UNKNOWN after its query window expires without resubmission',
     () async {
       final qwen = provider.copyWith(
         id: 'qwen-test',
@@ -1747,7 +1828,11 @@ void main() {
       expect(task.status, GenerationTaskStatus.failed);
       expect(task.errorCode, 'unavailable');
       expect(
-        lines.where((line) => line.contains('[VideoClient]')),
+        lines.where(
+          (line) =>
+              line.contains('[VideoClient]') &&
+              line.contains('type=VideoException'),
+        ),
         hasLength(1),
       );
       final taskLogs = lines
@@ -1755,8 +1840,8 @@ void main() {
           .toList();
       expect(taskLogs, hasLength(1));
       expect(taskLogs.single, contains('id=$id'));
-      expect(taskLogs.single, contains('[WARN]'));
-      expect(lines.join('\n'), isNot(contains('[ERROR]')));
+      expect(taskLogs.single, contains('status=503'));
+      expect(taskLogs.single, contains('detail=No available channel'));
 
       expect(task.errorMessage, LocaleKeys.aiProviderChannelUnavailable);
       expect(task.errorDetail, contains('No available channel'));
@@ -1775,6 +1860,62 @@ void main() {
       expect(queries, 0);
     },
   );
+  test(
+    'malformed query retries automatically and recovers the same task after restart',
+    () async {
+      var time = DateTime(2026, 11, 14);
+      var broken = true;
+      final service = make(
+        now: () => time,
+        respond: (r) async => http.Response(
+          r.method == 'POST'
+              ? '{"id":"original"}'
+              : broken
+              ? '{"base_resp":{"status_code":1000}}'
+              : '{"status":"running"}',
+          200,
+        ),
+      );
+      final id = await service.create(
+        novelId: 'test-novel',
+        sourceType: 'storyboard_shot',
+        sourceId: 'test-shot',
+        providerId: provider.id,
+        request: request,
+      );
+      await service.submit(id);
+      await service.refresh(id);
+      final failed = (await service.getTask(id))!;
+      expect(failed.status, GenerationTaskStatus.running);
+      expect(failed.errorCode, 'invalid_response');
+      expect(failed.providerTaskId, 'original');
+      broken = false;
+      time = failed.nextPollAt!.add(const Duration(seconds: 1));
+      await service.refreshDue();
+      expect((await service.getTask(id))!.errorCode, isNull);
+      expect(posts, 1);
+      expect(queries, 2);
+      service.dispose();
+      await db.generationTaskDao.transition(
+        id,
+        {GenerationTaskStatus.running},
+        const GenerationTasksCompanion(
+          status: Value(GenerationTaskStatus.reconciliation_required),
+          errorCode: Value('invalid_response'),
+          nextPollAt: Value(null),
+        ),
+      );
+      final resumed = make(now: () => time);
+      await resumed.start();
+      expect(
+        (await resumed.getTask(id))!.status,
+        GenerationTaskStatus.completed,
+      );
+      expect((await resumed.getTask(id))!.providerTaskId, 'original');
+      expect(posts, 1);
+    },
+  );
+
   test(
     'polling HTTP 503 retains the receipt and clears the error after recovery',
     () async {
@@ -2054,7 +2195,11 @@ void main() {
       expect(task.status, GenerationTaskStatus.action_required);
       expect(task.providerTaskId, 'original');
       expect(task.nextPollAt, isNull);
-      expect(task.pollingUrl, contains('ark.cn-beijing.volces.com'));
+      expect(task.pollingUrl, isNull);
+      expect(
+        task.providerState?['queryUrl'],
+        contains('ark.cn-beijing.volces.com'),
+      );
     },
   );
   test(
@@ -2277,7 +2422,7 @@ void main() {
       await service.retryDownload(id);
       final completed = (await service.getTask(id))!;
       final asset = (await db.assetDao.getAsset(completed.resultAssetId!))!;
-      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
       expect(asset.durationMs, 5000);
       expect(posts, 1);
       expect(queries, 1);
@@ -2329,7 +2474,7 @@ void main() {
       await restored.start();
       final result = (await restored.getTask(id))!;
       final asset = (await db.assetDao.getAsset(result.resultAssetId!))!;
-      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{16}$'));
+      expect(asset.id, matches(r'^ast_[A-Za-z0-9]{12}$'));
       expect(asset.type, 'video');
       expect(asset.width, 1280);
       expect(asset.height, 720);

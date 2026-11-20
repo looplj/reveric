@@ -284,7 +284,10 @@ void main() {
   test('missing video node retains the original business error code', () async {
     final response = await run('mute-video', {'node_id': 'missing-node'});
     expect(response['error_code'], 'not_found');
-    expect(response['error'], 'StoryboardException(source_missing)');
+    expect(
+      response['error'],
+      'StoryboardException(source_missing: Canvas node missing-node was not found.)',
+    );
     expect(runner.probes, 0);
   });
 

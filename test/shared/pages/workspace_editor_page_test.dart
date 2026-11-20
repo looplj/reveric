@@ -15,12 +15,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/mobile/features/screenplay/editor_page.dart';
+import 'package:reveric/mobile/pages/novel_chat_page.dart';
 import 'package:reveric/mobile/pages/workspace_editor_page.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/models/content_status.dart';
 import 'package:reveric/shared/models/novel_type.dart';
+import 'package:reveric/shared/models/queued_chat_message.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,7 +37,7 @@ void main() {
   testWidgets('mobile routes screenplay works to the screenplay editor', (
     tester,
   ) async {
-    final screenplay = _screenplay();
+    final screenplay = _work();
     await tester.pumpWidget(
       _wrap(
         ProviderScope(
@@ -61,9 +63,42 @@ void main() {
       screenplay.id,
     );
   });
+
+  testWidgets('mobile opens the target work chat with an unsent handoff', (
+    tester,
+  ) async {
+    final work = _work(kind: contentKindCanvas, path: 'new_work.sqlite');
+    const handoff = PendingChatHandoff(
+      label: '原对话',
+      content: '<user-remind work-id="source"/>',
+      initialText: '根据原作写第一集',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          novelProvider(work.id).overrideWith((ref) => Stream.value(null)),
+        ],
+        child: _wrap(
+          MobileWorkspaceEditorPage(novel: work, initialChatHandoff: handoff),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final chat = tester.widget<MobileNovelChatPage>(
+      find.byType(MobileNovelChatPage),
+    );
+    expect(chat.novelId, work.id);
+    expect(chat.databasePath, work.contentDatabasePath);
+    expect(chat.existingSessionId, isNull);
+    expect(chat.handoff, same(handoff));
+    expect(chat.handoff!.autoSend, isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
 }
 
-Novel _screenplay() {
+Novel _work({String kind = contentKindScreenplay, String? path}) {
   final now = DateTime(2026);
   return Novel(
     id: 'screenplay_test',
@@ -72,7 +107,8 @@ Novel _screenplay() {
     description: '',
     status: contentStatusInProgress,
     type: novelTypeOriginal,
-    contentKind: contentKindScreenplay,
+    contentKind: kind,
+    contentDatabasePath: path,
     wordCount: 0,
     draft: false,
     category: '',

@@ -81,6 +81,7 @@ void main() {
                   data: RevericThemeData.reveric,
                   child: Scaffold(
                     body: AgentRulesGridPage(
+                      novelId: 'target',
                       databasePath: _databasePath,
                       headerGestureExclusionKey: GlobalKey(),
                       onOpen: (_) => didOpenRule = true,

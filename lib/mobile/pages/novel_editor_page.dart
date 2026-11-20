@@ -254,7 +254,9 @@ class _EditorBody extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
 
-    final service = ref.watch(novelContentServiceProvider(databasePath));
+    final service = ref.watch(
+      workContentServiceProvider((path: databasePath, novelId: novel.id)),
+    );
     final chapters =
         ref.watch(chaptersProvider(databasePath)).value ?? const <Chapter>[];
 
@@ -554,6 +556,7 @@ class _EditorBody extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileCharacterEditorPage(
+            novelId: novel.id,
             databasePath: databasePath,
             characterId: id,
           ),
@@ -591,6 +594,7 @@ class _EditorBody extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileLocationEditorPage(
+            novelId: novel.id,
             databasePath: databasePath,
             locationId: id,
           ),
@@ -618,6 +622,7 @@ class _EditorBody extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileEntryEditorPage(
+            novelId: novel.id,
             databasePath: databasePath,
             section: section,
             entryId: id,
@@ -789,6 +794,7 @@ class _EditorBody extends HookConsumerWidget {
       final simpleSection = _supportedSectionForIndex(index);
       if (simpleSection != null) {
         return MobileSectionPanel(
+          novelId: novel.id,
           databasePath: databasePath,
           section: simpleSection,
           onCreate: sectionOnCreate,
@@ -805,6 +811,7 @@ class _EditorBody extends HookConsumerWidget {
       }
       return switch (index) {
         _sectionCompendium => MobileCompendiumPanel(
+          novelId: novel.id,
           databasePath: databasePath,
           onCreate: createSimpleEntry,
         ),
@@ -885,6 +892,7 @@ class _EditorBody extends HookConsumerWidget {
           onDeleteVolume: deleteVolume,
         ),
         _sectionCharacters => MobileCharactersPanel(
+          novelId: novel.id,
           databasePath: databasePath,
           onCreate: sectionOnCreate,
           onOpenGraph: openEntityGraphSection,

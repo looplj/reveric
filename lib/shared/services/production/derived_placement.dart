@@ -157,13 +157,25 @@ Rect? _firstHit(
       : hits.reduce((a, b) => a.bottom > b.bottom ? a : b);
 }
 
+/// 场次色带底部「添加分镜」入口的高度。
+const double productionSceneAddHeight = 36;
+
+/// 场次色带内最后一张卡片下方的留白：间距 + 添加入口 + 底边距。
+const double productionSceneFooterExtent =
+    RevericSpacing.x2l + productionSceneAddHeight + RevericSpacing.lg;
+
 /// 场次色带在共享落点与桌面绘制中使用同一范围。
 Rect productionSceneBand(Rect nodes) => Rect.fromLTRB(
   nodes.left - 28,
   nodes.top - 40 - productionCardHeaderExtent,
   nodes.right + 28,
-  nodes.bottom + 24,
+  nodes.bottom + productionSceneFooterExtent,
 );
+
+/// 场次节点参与布局时的矩形：空场次占一张默认卡片的宽度、高度为 0，色带只剩标题和添加入口；
+/// 有片段时不占面积，范围由片段决定。
+Rect productionSceneAnchorRect(Offset at, {required bool empty}) =>
+    at & (empty ? Size(productionCardSize(16 / 9).width, 0) : Size.zero);
 
 /// 素材入库时记录的宽高是桌面绘制、分组转换和 Agent 落点的共同尺寸来源。
 /// 布局不探测媒体文件；无有效尺寸时沿用 [productionNodeSize] 的默认卡片比例。
@@ -210,24 +222,39 @@ Future<ProductionNodePlacement> defaultProductionDerivedPlacement(
     );
   }
 
-  final episode = await (canvas.db.select(
-    canvas.db.screenplayEpisodes,
-  )..where((t) => t.canvasId.equals(source.canvasId))).getSingle();
-  final positions = productionScenePositions(
-    content.nodes,
-    await canvas.shots.episodeShots(episode.id),
-    sizeOf,
-  );
+  final episodeId = await canvas.episodeForCanvas(source.canvasId);
+  final segments = await canvas.shots.episodeShots(episodeId);
+  // 已删除场次的场次节点不再占位。
+  final liveScenes = episodeId.isEmpty
+      ? const <String>{}
+      : {
+          for (final scene in await canvas.db.screenplayDao.getSceneRows(
+            episodeId,
+          ))
+            scene.id,
+        };
+  final nodes = [
+    for (final n in content.nodes)
+      if (n.sceneId == null || liveScenes.contains(n.sceneId)) n,
+  ];
+  final occupied = {for (final clip in clips.values) ?clip?.sceneId};
+  final positions = productionScenePositions(nodes, segments, sizeOf);
   return productionDerivedPlacement(
     sourceId: sourceId,
     size: size,
     nodes: {
-      for (final n in content.nodes)
-        n.id: (positions[n.id] ?? Offset(n.x, n.y)) & sizeOf(n),
+      for (final n in nodes)
+        n.id: n.sceneId == null
+            ? (positions[n.id] ?? Offset(n.x, n.y)) & sizeOf(n)
+            : productionSceneAnchorRect(
+                positions[n.id] ?? Offset(n.x, n.y),
+                empty: !occupied.contains(n.sceneId),
+              ),
     },
     sceneOf: {
       for (final entry in clips.entries)
         if (entry.value?.sceneId != null) entry.key: entry.value!.sceneId!,
+      for (final n in nodes) n.id: ?n.sceneId,
     },
     groupOf: {
       for (final n in content.nodes)
@@ -269,18 +296,22 @@ Size productionNodeSize(
   }
   return productionCardSize(
     (node.type == canvasNodeTypeStaging ? null : aspect) ??
-        (node.type == canvasNodeTypeImage ? 1.0 : 16 / 9),
+        ({canvasNodeTypeImage, canvasNodeTypeText}.contains(node.type)
+            ? 1.0
+            : 16 / 9),
   );
 }
 
-/// 保留每场左上角，按成片顺序纵向排齐；旧坐标只提供场的位置。
-/// 竖排后的场次压到别的场时整场顺延到其下方，场与场的色带不叠。
+/// 每场从场次节点的位置起按成片顺序纵向排齐；没有场次节点时取场内节点最左、最上的坐标。
+/// [nodes] 里的场次节点只应包含仍存在的场次；空场次也占一列，色带只有标题和添加入口。
+/// 竖排后的场次压到别的场时整场顺延到其下方，场与场的色带不叠。返回片段节点和场次节点的位置。
 Map<String, Offset> productionScenePositions(
   List<CanvasNode> nodes,
   List<ProductionClipRow> segments,
   Size Function(CanvasNode node) sizeOf,
 ) {
   final byClip = {for (final node in nodes) node.clipId: node};
+  final anchors = {for (final node in nodes) ?node.sceneId: node};
   final scenes = <String, List<CanvasNode>>{};
   for (final segment in segments) {
     final node = byClip[segment.id];
@@ -288,18 +319,31 @@ Map<String, Offset> productionScenePositions(
       (scenes[segment.sceneId!] ??= []).add(node);
     }
   }
+  for (final sceneId in anchors.keys) {
+    scenes.putIfAbsent(sceneId, () => []);
+  }
   const gap = RevericSpacing.x4l + productionCardHeaderExtent;
   final columns = [
-    for (final group in scenes.values)
+    for (final MapEntry(key: sceneId, value: group) in scenes.entries)
       (
         group: group,
-        rect: Rect.fromLTWH(
-          group.map((node) => node.x).reduce(math.min),
-          group.map((node) => node.y).reduce(math.min),
-          group.map((node) => sizeOf(node).width).reduce(math.max),
-          group.map((node) => sizeOf(node).height).reduce((a, b) => a + b) +
-              gap * (group.length - 1),
-        ),
+        anchor: anchors[sceneId],
+        rect: group.isEmpty
+            ? productionSceneAnchorRect(
+                Offset(anchors[sceneId]!.x, anchors[sceneId]!.y),
+                empty: true,
+              )
+            : Rect.fromLTWH(
+                anchors[sceneId]?.x ??
+                    group.map((node) => node.x).reduce(math.min),
+                anchors[sceneId]?.y ??
+                    group.map((node) => node.y).reduce(math.min),
+                group.map((node) => sizeOf(node).width).reduce(math.max),
+                group
+                        .map((node) => sizeOf(node).height)
+                        .reduce((a, b) => a + b) +
+                    gap * (group.length - 1),
+              ),
       ),
   ];
   columns.sort((a, b) {
@@ -321,6 +365,9 @@ Map<String, Offset> productionScenePositions(
     placed.add(band);
     final x = column.rect.left;
     var y = column.rect.top + band.top - start.top;
+    if (column.anchor case final anchor?) {
+      positions[anchor.id] = Offset(x, y);
+    }
     for (final node in column.group) {
       positions[node.id] = Offset(x, y);
       y += sizeOf(node).height + gap;

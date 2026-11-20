@@ -138,6 +138,7 @@ void main() {
     Future<void> Function(_Run run) body, {
     AgentCancellationToken? cancellation,
     void Function(AiNestedToolCall)? observe,
+    CodemodeToolRunner? runTool,
   }) => CodemodeOrchestrator()
       .execute(
         input: {'code': 'fixture'},
@@ -149,12 +150,14 @@ void main() {
         ),
         parentToolCallId: 'parent',
         tools: tools,
-        runTool: (call, ctx) => tools.executeTool(
-          name: call.toolName,
-          input: call.arguments,
-          callId: call.callId,
-          context: ctx,
-        ),
+        runTool:
+            runTool ??
+            (call, ctx) => tools.executeTool(
+              name: call.toolName,
+              input: call.arguments,
+              callId: call.callId,
+              context: ctx,
+            ),
         onRecord: (record) {
           records[record.callId] = record;
           observe?.call(record);
@@ -231,63 +234,57 @@ void main() {
     },
   );
 
-  test(
-    'help and error hints expose only permitted actions in scripts',
-    () async {
-      for (final alias in ['help', '--help']) {
-        final help = (await run({'command': alias}))['output'] as String;
-        for (final forbidden in [
-          'account:',
-          'notify:',
-          'map:',
-          'view-image',
-          'frames',
-        ]) {
-          expect(help, isNot(contains(forbidden)));
-        }
-        expect(
-          help,
-          contains(
-            'editing: list, read, create, apply, undo, redo, preview, cleanup',
-          ),
-        );
-        expect(help, contains('read-video-metadata'));
-        expect(help, contains('capture-frame'));
-        for (final group in [
-          'files',
-          'assets',
-          'stagings',
-          'editing',
-          'ffmpeg',
-          'account',
-          'map',
-          'notify',
-        ]) {
-          final text =
-              (await run({'command': alias, 'subcommand': group}))['output']
-                  as String;
-          expect(text, isNot(contains('view-image')));
-          expect(text, isNot(contains('frames')));
-          expect(text, isNot(contains('subcommand=login')));
-        }
+  test('help and error hints expose only permitted actions in scripts', () async {
+    for (final alias in ['help', '--help']) {
+      final help = (await run({'command': alias}))['output'] as String;
+      for (final forbidden in [
+        'account:',
+        'notify:',
+        'map:',
+        'view-image',
+        'frames',
+      ]) {
+        expect(help, isNot(contains(forbidden)));
       }
-      final help =
-          (await run({'command': 'help'}, direct: true))['output'] as String;
-      expect(help, isNot(contains('account')));
-      final schema = tools
-          .allToolDefs()
-          .singleWhere((tool) => tool.name == 'Run')
-          .inputSchema;
-      await run({'command': 'help'});
       expect(
-        tools
-            .allToolDefs()
-            .singleWhere((tool) => tool.name == 'Run')
-            .inputSchema,
-        schema,
+        help,
+        contains(
+          'editing: list, read, create, duplicate, apply, undo, redo, preview, export, cleanup',
+        ),
       );
-    },
-  );
+      expect(help, contains('read-video-metadata'));
+      expect(help, contains('capture-frame'));
+      for (final group in [
+        'files',
+        'assets',
+        'stagings',
+        'editing',
+        'ffmpeg',
+        'account',
+        'map',
+        'notify',
+      ]) {
+        final text =
+            (await run({'command': alias, 'subcommand': group}))['output']
+                as String;
+        expect(text, isNot(contains('view-image')));
+        expect(text, isNot(contains('frames')));
+        expect(text, isNot(contains('subcommand=login')));
+      }
+    }
+    final help =
+        (await run({'command': 'help'}, direct: true))['output'] as String;
+    expect(help, isNot(contains('account')));
+    final schema = tools
+        .allToolDefs()
+        .singleWhere((tool) => tool.name == 'Run')
+        .inputSchema;
+    await run({'command': 'help'});
+    expect(
+      tools.allToolDefs().singleWhere((tool) => tool.name == 'Run').inputSchema,
+      schema,
+    );
+  });
 
   test(
     'Run writes are readable and summarized through the real dispatcher',
@@ -398,16 +395,20 @@ void main() {
   test(
     'cancelling a wait keeps the independent background submission pending',
     () async {
-      final file = File('${root.path}/source.mp4');
-      await file.writeAsString('data');
-      final waiting = approvals.stream.firstWhere((rows) => rows.isNotEmpty);
+      final running = Completer<Map<String, dynamic>>();
       final cancel = AgentCancellationController();
       String? runId;
       var waitEvents = 0;
       final waitStarted = Completer<void>();
       final pending = script(
         (run) async {
-          final receipt = await run(_ffmpegExecute(file.path));
+          final receipt = await run({
+            'command': 'ffmpeg',
+            'subcommand': 'execute',
+            'options': const {
+              'args': ['-i', 'in.mp4', 'videos/out.mp4'],
+            },
+          });
           runId = receipt['run_id'] as String;
           final cancelledWait = await run({
             'command': 'operations',
@@ -417,6 +418,28 @@ void main() {
           expect(cancelledWait['cancelled'], true);
         },
         cancellation: cancel.token,
+        runTool: (call, ctx) {
+          if (call.arguments['command'] == 'ffmpeg') {
+            return operations.start(
+              context: ctx,
+              callId: call.callId,
+              workId: 'work',
+              kind: 'ffmpeg.execute',
+              targetPath: '/files/videos/out.mp4',
+              toolName: 'Run',
+              background: true,
+              input: call.arguments,
+              verifyTarget: () async {},
+              execute: (_) => running.future,
+            );
+          }
+          return tools.executeTool(
+            name: call.toolName,
+            input: call.arguments,
+            callId: call.callId,
+            context: ctx,
+          );
+        },
         observe: (record) {
           if (record.argumentsPreview.contains('"command":"operations"') &&
               record.argumentsPreview.contains('"subcommand":"wait"') &&
@@ -425,16 +448,11 @@ void main() {
           }
         },
       );
-      await waiting;
       await waitStarted.future;
       cancel.cancel();
       final result = await pending;
       expect(registry.records[runId]!.terminal, false);
-      await run({
-        'command': 'operations',
-        'subcommand': 'cancel',
-        'options': {'run_id': runId},
-      }, direct: true);
+      running.complete({'ok': true});
       await run({
         'command': 'operations',
         'subcommand': 'wait',
@@ -457,11 +475,19 @@ void main() {
       final waiting = approvals.stream.firstWhere((rows) => rows.isNotEmpty);
       final pending = script((run) async {
         final receipt = await run(_ffmpegExecute(file.path));
-        final status = await run({
+        var status = await run({
           'command': 'operations',
           'subcommand': 'wait',
           'options': {'run_id': receipt['run_id']},
         });
+        while (status['status'] == 'waiting_approval') {
+          await Future<void>.delayed(Duration.zero);
+          status = await run({
+            'command': 'operations',
+            'subcommand': 'wait',
+            'options': {'run_id': receipt['run_id']},
+          });
+        }
         expect(status['status'], 'failed');
       });
       await approvals.resolve((await waiting).single, allow: false);

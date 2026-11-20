@@ -99,10 +99,12 @@ class ProductionGroupNode extends StatelessWidget {
     required this.group,
     required this.onResize,
     required this.onFill,
+    this.readOnly = false,
   });
   final ProductionFlowGroup group;
   final Future<void> Function(Rect) onResize;
   final ValueChanged<int> onFill;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -132,14 +134,15 @@ class ProductionGroupNode extends StatelessWidget {
                   rect: layout.cellOffset(slot) & layout.cellSize,
                   child: Stack(
                     children: [
-                      Center(
-                        child: RevericIconButton(
-                          key: ValueKey('group-empty/${group.id}/$slot'),
-                          icon: RevericIcons.add,
-                          tooltip: context.t(LocaleKeys.commonAdd),
-                          onPressed: () => onFill(slot),
+                      if (!readOnly)
+                        Center(
+                          child: RevericIconButton(
+                            key: ValueKey('group-empty/${group.id}/$slot'),
+                            icon: RevericIcons.add,
+                            tooltip: context.t(LocaleKeys.commonAdd),
+                            onPressed: () => onFill(slot),
+                          ),
                         ),
-                      ),
                       if (layout.numbered)
                         Positioned(
                           left: RevericSpacing.sm,
@@ -154,7 +157,7 @@ class ProductionGroupNode extends StatelessWidget {
                     ],
                   ),
                 ),
-          if (!storyboard && group.isSelected)
+          if (!readOnly && !storyboard && group.isSelected)
             for (final corner in [
               Alignment.topLeft,
               Alignment.topRight,

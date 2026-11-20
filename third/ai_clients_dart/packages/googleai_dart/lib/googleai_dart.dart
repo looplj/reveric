@@ -19,6 +19,7 @@ export 'src/models/generation/generate_content_response.dart';
 export 'src/models/generation/generation_config.dart';
 export 'src/models/generation/schema.dart';
 export 'src/models/generation/thinking_config.dart';
+export 'src/models/generation/thinking_level.dart';
 export 'src/models/metadata/finish_reason.dart';
 export 'src/models/metadata/usage_metadata.dart';
 export 'src/models/tools/function_call.dart';

@@ -30,7 +30,7 @@ AgentSkill 是应用内全局可复用的 AI 工作流程，不是作品规则�
 
 提问前必须先收集已有信息：
 
-1. 读取当前小说元数据：`Read {"path":"profile"}`（`title`、`description`、`category`、`tags` 等），并读取聊天系统提示「当前作品」段中的 `type`。记下哪些已有、哪些为空或占位，作为后续确认/补全的起点，以读到的实际状态为准。
+1. 从系统提示「当前作品工作路径」取当前作品地址，将下文的 `/works/{work_id}` 换成该地址。读取小说元数据：`Read {"path":"/works/{work_id}"}`（`title`、`description`、`category`、`tags` 等），并读取聊天系统提示「当前作品」段中的 `type`。记下哪些已有、哪些为空或占位，作为后续确认/补全的起点，以读到的实际状态为准。
 2. 调用 `Run {"command":"agent-rules","subcommand":"list","options":{}}` 查看已有 AgentRules。
 3. 调用 `Run {"command":"agent-skills","subcommand":"list","options":{}}` 查看应用内全局已安装的 AgentSkill，识别哪些创作能力已经可用、哪些基础能力或当前缺口对应的能力尚未安装。
 4. 浏览当前小说工作区资料：世界观、角色、势力、大纲、已有章节等，识别哪些故事事实已经存在。
@@ -40,7 +40,7 @@ AgentSkill 是应用内全局可复用的 AI 工作流程，不是作品规则�
 
 ### 2. 选择创作模式与按需附件
 
-先选一个且只读一个创作模式附件。若 `<skill_resources>` 存在，必须复制其中精确的 `Run agent-skills reference-list` 命令列出目录，再从返回的实际 path 中选择并用 `reference-get` 读取；禁止臆造路径或预读全部附件。
+先选一个且只读一个创作模式附件。正文已有准确附件路径时直接用 `reference-get` 读取；未知路径时，再用 `<skill_resources>` 中的 `Run agent-skills reference-list` 列目录并从返回的 path 中选择；禁止臆造路径或预读全部附件。
 
 - 当前作品上下文中的 `type` 为 fanfic：读取同人流程附件。
 - 当前作品上下文中的 `type` 为 sequel：读取续作流程附件。
@@ -50,17 +50,17 @@ AgentSkill 是应用内全局可复用的 AI 工作流程，不是作品规则�
 
 ### 3. 决定问什么
 
-**题材识别**：题材优先看已有 `profile/category`、`profile/tags` 与简介；皆空时再靠用户在根决策中的回答。当前作品上下文中的 `type` 是作品性质，不是题材，不要用它推断题材方向。
+**题材识别**：题材优先看已有 `/works/{work_id}/category`、`/works/{work_id}/tags` 与简介；皆空时再靠用户在根决策中的回答。当前作品上下文中的 `type` 是作品性质，不是题材，不要用它推断题材方向。
 
 按「根决策 → 会进书名的结构项 → 作品元数据 → 其余写作约束」分轮提问：
 
 1. **根决策**：题材与目标读者、故事承诺。先定方向，再定制后续问题。
 2. **会进书名的结构项**：只问会影响书名钩子的世界/舞台、能力或资源钩子、核心对立或卖点。无需等待完整世界观或人设。
 3. **作品元数据**：展示现值，让用户确认保留或修改；空缺则补齐。未经 AskUser 确认不得覆盖已有值。
-   - 分类：从下方分类参考中挑 2–4 个最贴项；确认后写入 `profile/category`。
-   - 书名：占位名必须给 3–5 个候选；已有正式名只问是否调整；确认后写入 `profile/title`。
-   - 标签：从标签参考与当前钩子中挑候选；确认后以逗号分隔写入 `profile/tags`。
-   - 简介：空时可给一句草稿；已有时展示并询问是否修改；确认后写入 `profile/description`。
+   - 分类：从下方分类参考中挑 2–4 个最贴项；确认后写入 `/works/{work_id}/category`。
+   - 书名：占位名必须给 3–5 个候选；已有正式名只问是否调整；确认后写入 `/works/{work_id}/title`。
+   - 标签：从标签参考与当前钩子中挑候选；确认后以逗号分隔写入 `/works/{work_id}/tags`。
+   - 简介：空时可给一句草稿；已有时展示并询问是否修改；确认后写入 `/works/{work_id}/description`。
 4. **其余写作行为约束**：章节字数、文风、叙事视角、节奏、禁忌。
 
 **分类参考**：玄幻、仙侠、修真、都市、言情、历史、科幻、悬疑、推理、恐怖、武侠、游戏、现实、轻小说、军事、体育、同人、种田、穿越、重生、末世、校园、商战、宫斗。
@@ -82,20 +82,20 @@ AgentSkill 是应用内全局可复用的 AI 工作流程，不是作品规则�
 
 收集到的内容必须分流到正确载体，不能混写为 AgentRule：
 
-**作品元数据 → profile 资源**
+**作品元数据**
 
-- 载体是 profile 资源，既不是 AgentRule，也不是世界观 / 角色等工作区资源。
+- 标题、分类、标签和简介直接写入当前作品地址下的字段。
 - 用户确认后分别写入：
-  - `Write {"path":"profile/title","value":"<书名>"}`
-  - `Write {"path":"profile/category","value":"<分类>"}`
-  - `Write {"path":"profile/tags","value":"标签1, 标签2"}`（逗号分隔）
-  - `Write {"path":"profile/description","value":"<简介>"}`
+  - `Write {"path":"/works/{work_id}/title","value":"<书名>"}`
+  - `Write {"path":"/works/{work_id}/category","value":"<分类>"}`
+  - `Write {"path":"/works/{work_id}/tags","value":"标签1, 标签2"}`（逗号分隔）
+  - `Write {"path":"/works/{work_id}/description","value":"<简介>"}`
 - 不要把分类或标签写成 AgentRule。
 
 **加入书架**
 
-- 若上下文提示这本书还是未收入书库的草稿，在书名与方向确认后，用 AskUser 问一次是否现在加入；无此提示则不提。
-- 用户同意后：`Run {"command":"novel","subcommand":"add-to-library"}`。
+- 若 `Read /works/{work_id}/draft` 返回 true，在书名与方向确认后，用 AskUser 问一次是否现在加入。
+- 用户同意后：`Write {"path":"/works/{work_id}/draft","value":false}`。
 - 用户拒绝：不调用，作品继续保留，之后用户可自行加入或再让你执行。
 
 **写作行为约束 → AgentRules**

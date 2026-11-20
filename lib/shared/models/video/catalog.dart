@@ -20,6 +20,14 @@ class VideoModelCatalogEntry {
 }
 
 const _imageFormats = {'image/jpeg', 'image/png', 'image/webp'};
+const _seedanceImageFormats = {
+  ..._imageFormats,
+  'image/bmp',
+  'image/tiff',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+};
 const _videoFormats = {'video/mp4', 'video/quicktime'};
 const _audioFormats = {'audio/mpeg', 'audio/wav', 'audio/x-wav'};
 
@@ -68,7 +76,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       },
       maxMiddleFrames: 8,
       maxReferences: 15,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -85,7 +93,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 12,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -102,7 +110,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 2,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -119,7 +131,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 9,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -136,7 +148,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 10},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -153,7 +169,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 10},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -170,7 +190,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {5, 10, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -187,7 +211,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 10,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -204,7 +228,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 2,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -222,7 +250,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 1,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -240,7 +272,11 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 2,
-      allowsReferenceMode: false,
+      modes: [
+        VideoMode.text,
+        VideoMode.first_frame,
+        VideoMode.first_last_frame,
+      ],
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -257,7 +293,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 7,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -275,7 +311,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
       maxReferences: 7,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -293,7 +329,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       durations: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
       frameRoles: {VideoInputRole.first_frame},
       maxReferences: 7,
-      allowsReferenceMode: true,
+      modes: VideoMode.values,
       supportsAdaptiveTextRatio: false,
       supportsAudioOnlyReference: false,
       references: {
@@ -543,9 +579,7 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
     aliases: {'seedance-2-5'},
     capabilities: VideoModelCapabilities(
       resolutions: {'480p', '720p', '1080p'},
-      // dart format off
-      durations: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30},
-      // dart format on
+      durations: _seedance25Durations,
       maxReferences: 50,
       references: {
         VideoMediaKind.image: VideoReferenceLimits(
@@ -573,6 +607,54 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
         ),
         VideoMediaKind.audio: VideoReferenceLimits(
           maxCount: 10,
+          maxSizeMb: ConfigValue(15),
+          mimeTypes: ConfigValue(_audioFormats),
+          minDurationMs: ConfigValue(2000),
+          maxDurationMs: ConfigValue(30000),
+          maxTotalDurationMs: ConfigValue(30000),
+        ),
+      },
+    ),
+  ),
+  // https://docs.volcengine.com/docs/ark/seedance-2-5
+  'doubao-seedance-2-5-flash-261115': VideoModelCatalogEntry(
+    requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
+    aliases: {'seedance-2-5-flash'},
+    capabilities: VideoModelCapabilities(
+      resolutions: {'480p', '720p'},
+      durations: _seedance25Durations,
+      supportsAdaptiveTextRatio: true,
+      framesRequireAdaptiveRatio: true,
+      maxReferences: 20,
+      references: {
+        VideoMediaKind.image: VideoReferenceLimits(
+          maxCount: 10,
+          maxSizeMb: ConfigValue(30),
+          exclusiveMaxSize: true,
+          mimeTypes: ConfigValue(_seedanceImageFormats),
+          minDimension: ConfigValue(300),
+          maxDimension: ConfigValue(6000),
+          minRatio: ConfigValue(0.4),
+          maxRatio: ConfigValue(2.5),
+        ),
+        VideoMediaKind.video: VideoReferenceLimits(
+          maxCount: 5,
+          maxSizeMb: ConfigValue(200),
+          mimeTypes: ConfigValue(_videoFormats),
+          minDimension: ConfigValue(300),
+          maxDimension: ConfigValue(6000),
+          minRatio: ConfigValue(0.4),
+          maxRatio: ConfigValue(2.5),
+          minPixels: ConfigValue(407696),
+          maxPixels: ConfigValue(8295044),
+          minDurationMs: ConfigValue(2000),
+          maxDurationMs: ConfigValue(30000),
+          maxTotalDurationMs: ConfigValue(30000),
+          minFrameRate: ConfigValue(24),
+          maxFrameRate: ConfigValue(60),
+        ),
+        VideoMediaKind.audio: VideoReferenceLimits(
+          maxCount: 5,
           maxSizeMb: ConfigValue(15),
           mimeTypes: ConfigValue(_audioFormats),
           minDurationMs: ConfigValue(2000),
@@ -667,6 +749,58 @@ final Map<String, VideoModelCatalogEntry> videoModelsCatalog = {
       },
     ),
   ),
+  // https://platform.vidu.com/docs/api-reference/video-models
+  for (final id in ['viduq3-pro', 'viduq3-turbo', 'viduq4-preview'])
+    id: VideoModelCatalogEntry(
+      capabilities: VideoModelCapabilities(
+        resolutions: id == 'viduq4-preview'
+            ? {'540p', '720p', '1080p', '2K', '4K'}
+            : {'540p', '720p', '1080p'},
+        ratios: {'1:1', '9:16', '16:9', '3:4', '4:3'},
+        durations: {
+          for (var i = id == 'viduq4-preview' ? 3 : 1; i <= 16; i++) i,
+        },
+        modes: id == 'viduq4-preview'
+            ? [VideoMode.first_frame, VideoMode.reference]
+            : id == 'viduq3-pro'
+            ? [
+                VideoMode.text,
+                VideoMode.first_frame,
+                VideoMode.first_last_frame,
+              ]
+            : VideoMode.values,
+        frameRoles: {VideoInputRole.first_frame, VideoInputRole.last_frame},
+        maxReferences: 7,
+        supportsAudioOnlyReference: false,
+        references: {
+          VideoMediaKind.image: VideoReferenceLimits(
+            maxCount: 7,
+            maxSizeMb: ConfigValue(50),
+            mimeTypes: ConfigValue(_imageFormats),
+          ),
+          VideoMediaKind.video: VideoReferenceLimits(maxCount: 7),
+        },
+      ),
+      requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
+    ),
+  'viduq3-ad': VideoModelCatalogEntry(
+    capabilities: VideoModelCapabilities(
+      resolutions: {'720p', '1080p'},
+      ratios: {'1:1', '16:9', '9:16'},
+      durations: {for (var i = 3; i <= 15; i++) i},
+      modes: [VideoMode.reference],
+      frameRoles: {VideoInputRole.first_frame},
+      maxReferences: 7,
+      supportsAudioOnlyReference: false,
+      references: {
+        VideoMediaKind.image: VideoReferenceLimits(
+          maxCount: 7,
+          mimeTypes: ConfigValue(_imageFormats),
+        ),
+      },
+    ),
+    requestDefaults: VideoRequestDefaults(audio: ConfigValue(true)),
+  ),
   'wan3.0-video': _wan,
   'wan3.0-video-prime': _wanPrime,
 };
@@ -698,19 +832,16 @@ const _agnesAudio = VideoReferenceLimits(
   maxTotalDurationMs: ConfigValue(12000),
 );
 
+// dart format off
+const _seedance25Durations = {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30};
+// dart format on
+
 const _seedance20References = {
   VideoMediaKind.image: VideoReferenceLimits(
     maxCount: 9,
     maxSizeMb: ConfigValue(30),
     exclusiveMaxSize: true,
-    mimeTypes: ConfigValue({
-      ..._imageFormats,
-      'image/bmp',
-      'image/tiff',
-      'image/gif',
-      'image/heic',
-      'image/heif',
-    }),
+    mimeTypes: ConfigValue(_seedanceImageFormats),
     minDimension: ConfigValue(300),
     maxDimension: ConfigValue(6000),
     minRatio: ConfigValue(0.4),

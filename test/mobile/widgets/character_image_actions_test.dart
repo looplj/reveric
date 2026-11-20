@@ -43,9 +43,9 @@ const _path = 'character-image-actions-test';
 
 class _NovelActions extends Fake implements NovelActionsService {
   @override
-  Future<Novel?> getNovelByContentDatabasePath(String databasePath) async {
-    expect(databasePath, _path);
-    return buildTestNovel(databasePath: databasePath);
+  Future<Novel?> getNovel(String novelId) async {
+    expect(novelId, buildTestNovel().id);
+    return buildTestNovel(databasePath: _path);
   }
 }
 
@@ -124,6 +124,7 @@ void main() {
                 ),
                 home: Scaffold(
                   body: MobileCharacterImageActions(
+                    novelId: buildTestNovel().id,
                     databasePath: _path,
                     characterId: characterId,
                     prepareCharacter: () async {

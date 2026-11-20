@@ -50,6 +50,7 @@ class ToolPermissionGate {
     }
     while (true) {
       checkCancelled();
+      final ruleRevision = approvals.ruleRevisionFor(ownerSessionId);
       final rule = await permissions.resolve(request.action, request.context);
       checkCancelled();
       if (rule.decision == ToolPermissionDecision.deny) {
@@ -79,11 +80,20 @@ class ToolPermissionGate {
         onWaiting?.call(pending);
         final ToolApprovalOutcome outcome;
         try {
+          // Catch a save in this chat between the lookup and enqueueing.
+          // Saves after registration wake this request through the broker.
+          if (ruleRevision != approvals.ruleRevisionFor(ownerSessionId)) {
+            approvals.recheck(pending);
+          }
           outcome = await decision;
         } finally {
           unlink();
+          approvals.cancel(pending);
         }
         checkCancelled();
+        if (outcome == ToolApprovalOutcome.recheck) {
+          continue;
+        }
         if (outcome == ToolApprovalOutcome.cancelled) {
           throw const ToolOperationException(
             'cancelled',

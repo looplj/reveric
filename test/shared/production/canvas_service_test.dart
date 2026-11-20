@@ -17,10 +17,12 @@ import 'package:reveric/shared/models/production/media.dart';
 import 'package:reveric/shared/services/production/image_service.dart';
 import 'package:reveric/shared/services/production/audio_service.dart';
 import 'dart:convert';
+import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/audio/request.dart';
 import 'package:reveric/shared/services/production/audio_generate_orchestrator.dart';
 import 'package:reveric/shared/services/production/voices.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
@@ -53,12 +55,14 @@ import 'package:reveric/shared/services/production/media_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import '../../helpers/media_provider_types.dart';
 
+import '../../helpers/resource_contract.dart';
+
 VideoRequest compileForTest(
   String provider,
   VideoRequest request,
   List<ProductionInput> inputs,
 ) => compileProductionPrompt(
-  provider,
+  aiProviderBuiltinById('openai')!.copyWith(type: provider),
   request,
   inputs.map((input) => ResolvedProductionInput(input, input.refId)).toList(),
 );
@@ -163,6 +167,106 @@ void main() {
     await appDb.close();
     await root.delete(recursive: true);
   });
+
+  test('video preview logs why an 88API model cannot be used', () async {
+    const configuredModel = 'unrecognized-video-model';
+    const availableModel = 'doubao-seedance-2.0';
+    final provider = aiProviderBuiltinById('api88')!.copyWith(
+      enabled: true,
+      apiKey: 'test-api-key',
+      videoModels: const [configuredModel],
+    );
+    await appDb.aiProviderDao.upsert(provider);
+    final node = await service.ensureShotNode(shot.id);
+    final previousDebugPrint = debugPrint;
+    final messages = <String>[];
+    debugPrint = (message, {wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+
+    for (final (modelId, reason) in [
+      (availableModel, 'model_not_configured'),
+      (configuredModel, 'model_not_recognized'),
+    ]) {
+      await (db.update(
+        db.productionClips,
+      )..where((row) => row.id.equals(shot.id))).write(
+        ProductionClipsCompanion(
+          providerId: Value(provider.id),
+          modelId: Value(modelId),
+        ),
+      );
+      messages.clear();
+      await expectLater(
+        ProductionGenerateOrchestrator().preview(service, node.id),
+        throwsA(
+          isA<VideoException>().having(
+            (error) => error.code,
+            'code',
+            VideoErrorCode.configuration_required,
+          ),
+        ),
+      );
+      final diagnostic = messages.singleWhere(
+        (message) => message.contains('code=configuration_required'),
+      );
+      expect(diagnostic, contains('providerId=api88'));
+      expect(diagnostic, contains('modelId=$modelId'));
+      expect(diagnostic, contains('reason=$reason'));
+      expect(diagnostic, isNot(contains(provider.apiKey)));
+    }
+  });
+
+  test(
+    'draft save identifies invalid fields and accepts empty image prompts',
+    () async {
+      final canvas = await service.ensureCanvas(episode);
+      final image = await service.addImage(canvas.id);
+      await service.saveImage(
+        nodeId: image.id,
+        overlay: overlay,
+        inputs: [],
+        draft: const ProductionImageDraft(
+          prompt: '',
+          modelId: '',
+          ratio: 'auto',
+          resolution: '1K',
+        ),
+      );
+      expect((await service.shots.getShot(image.clipId!))!.prompt, isEmpty);
+      final video = await service.ensureShotNode(shot.id);
+      for (final (values, field) in <(Map<String, dynamic>, String)>[
+        ({'provider_id': 'provider', 'model_id': ''}, 'model'),
+        ({'provider_id': null, 'model_id': 'model'}, 'model'),
+        ({'ratio': 'not-a-ratio'}, 'ratio'),
+        ({'resolution': ''}, 'resolution'),
+        ({'duration_ms': 0}, 'duration'),
+        ({'reference_mode': 'invalid'}, 'reference_mode'),
+      ]) {
+        await expectLater(
+          service.saveDraft(
+            nodeId: video.id,
+            values: {...service.shots.snapshot(shot), ...values},
+            inputs: [],
+            overlay: overlay,
+          ),
+          throwsA(
+            isA<StoryboardException>()
+                .having((e) => e.code, 'code', 'invalid_config')
+                .having((e) => e.field, 'field', field),
+          ),
+        );
+        expect(
+          service.shots.snapshot((await service.shots.getShot(shot.id))!),
+          service.shots.snapshot(shot),
+        );
+      }
+    },
+  );
+
   test(
     'video audio choice survives save, copy and request compilation',
     () async {
@@ -482,7 +586,8 @@ void main() {
         },
       );
       expect(created['ok'], isTrue, reason: '$created');
-      expect(created[subject.key], subject.value);
+      expect(created['fields'], contains(subject.key));
+      expect(created['adjusted'], isNull);
       expect(created['ignored_fields'], isNull);
       final clip = (await service.shots.getShot(created['id'] as String))!;
       expect(clip.subjectId, subject.value);
@@ -593,7 +698,10 @@ void main() {
       );
       final place = subjects.singleWhere((clip) => clip.locationId == location);
       expect(place.adoptedAssetId, 'set');
-      final nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+      final all = await db.canvasDao.getNodesByCanvas(canvas.id);
+      // 每个场次各有一个场次节点。
+      expect(all.map((node) => node.sceneId).nonNulls.toSet(), {scene, second});
+      final nodes = all.where((node) => node.sceneId == null).toList();
       expect(nodes, hasLength(3));
       expect(
         nodes.singleWhere((node) => node.clipId == place.id).type,
@@ -620,17 +728,32 @@ void main() {
         )).where((clip) => clip.characterId == added),
         hasLength(1),
       );
-      expect(await db.canvasDao.getNodesByCanvas(canvas.id), hasLength(4));
+      expect(
+        (await db.canvasDao.getNodesByCanvas(
+          canvas.id,
+        )).where((node) => node.sceneId == null),
+        hasLength(4),
+      );
 
       // Manual removal remains removed, including after recreating the canvas.
       final placeNode = nodes.singleWhere((node) => node.clipId == place.id);
       await service.removeNode(manual.id);
       await service.removeNode(placeNode.id);
       await service.ensureCanvas(episode);
-      expect(await db.canvasDao.getNodesByCanvas(canvas.id), hasLength(2));
+      expect(
+        (await db.canvasDao.getNodesByCanvas(
+          canvas.id,
+        )).where((node) => node.sceneId == null),
+        hasLength(2),
+      );
       await service.removeCanvas(canvas.id);
       final rebuilt = await service.ensureCanvas(episode);
-      expect(await db.canvasDao.getNodesByCanvas(rebuilt.id), hasLength(2));
+      expect(
+        (await db.canvasDao.getNodesByCanvas(
+          rebuilt.id,
+        )).where((node) => node.sceneId == null),
+        hasLength(2),
+      );
       final retained = await service.shots.episodeClips(episode);
       expect(retained.where((clip) => clip.characterId == character), isEmpty);
       expect(retained.where((clip) => clip.locationId == location), isEmpty);
@@ -756,9 +879,52 @@ void main() {
         location,
       ]);
       expect(clips.every((clip) => clip.adoptedAssetId == null), isTrue);
-      expect(await db.canvasDao.getNodesByCanvas(canvas.id), hasLength(2));
+      final nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+      expect(nodes.where((node) => node.sceneId == null), hasLength(2));
+      // 只给仍存在的场次建场次节点。
+      expect(nodes.map((node) => node.sceneId).nonNulls, [liveScene]);
     },
   );
+
+  test('scene nodes own the scene position and stay in sync', () async {
+    final screenplay = ScreenplayService(db);
+    final shotNode = await service.ensureShotNode(shot.id);
+    final empty = await screenplay.createScene(
+      screenplayId: (await db.screenplayDao.getRoot())!.id,
+      episodeId: episode,
+    );
+    final canvas = await service.ensureCanvas(episode);
+    CanvasNode anchorOf(List<CanvasNode> nodes, String sceneId) =>
+        nodes.singleWhere((n) => n.sceneId == sceneId);
+    var nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+    // 有片段的场次取片段位置；空场次也有场次节点，且不能删除。
+    expect(anchorOf(nodes, scene).x, shotNode.x);
+    expect(anchorOf(nodes, scene).y, shotNode.y);
+    final emptyAnchor = anchorOf(nodes, empty);
+    await expectLater(
+      service.removeNode(emptyAnchor.id),
+      throwsA(isA<StoryboardException>()),
+    );
+
+    // 空场次的第一段落在场次节点原位。
+    final first = await service.ensureShotNode(
+      (await service.shots.create(empty, values: {'title': 'first'})).id,
+    );
+    expect((first.x, first.y), (emptyAnchor.x, emptyAnchor.y));
+
+    // 只移动场次节点：场内片段一起平移。
+    await service.moveNodes(canvas.id, {
+      emptyAnchor.id: (x: emptyAnchor.x + 100, y: emptyAnchor.y + 50),
+    });
+    final moved = await service.requireNode(first.id);
+    expect((moved.x, moved.y), (first.x + 100, first.y + 50));
+
+    // 只移动片段：场次节点跟到片段最左、最上的位置。
+    await service.moveNodes(canvas.id, {shotNode.id: (x: -300, y: -200)});
+    nodes = await db.canvasDao.getNodesByCanvas(canvas.id);
+    expect(anchorOf(nodes, scene).x, -300);
+    expect(anchorOf(nodes, scene).y, -200);
+  });
 
   test(
     'deleted assets invalidate media references even while their files remain',
@@ -1858,7 +2024,7 @@ void main() {
         },
       );
       expect(bound['updated'], isTrue, reason: '$bound');
-      expect(bound['inputs'], hasLength(1));
+      expect(bound['input_ids'], ['ref-image']);
       final listing = await tools.executeTool(
         name: 'Run',
         input: {
@@ -2000,6 +2166,29 @@ void main() {
         (await run('assets', 'list', {'path': '/other'}))['error_code'],
         'invalid_argument',
       );
+      final allClips = await tools.executeTool(
+        name: 'Read',
+        input: {'path': '/clips?scene_id=$scene'},
+      );
+      final summaryClips = await tools.executeTool(
+        name: 'Read',
+        input: {'path': '/clips?scene_id=$scene&view=summary'},
+      );
+      expect(summaryClips['ok'], true, reason: '$summaryClips');
+      expect(
+        (summaryClips['entries'] as List).map((e) => e['id']),
+        (allClips['entries'] as List).map((e) => e['id']),
+      );
+      for (final entry in summaryClips['entries'] as List) {
+        expect(entry, isNot(contains('prompt')));
+      }
+      expect(
+        await tools.executeTool(
+          name: 'Read',
+          input: {'path': '/clips?scene_id=$scene&view=full'},
+        ),
+        allClips,
+      );
       final generation = await task('history', 'result');
       final history = await tools.executeTool(
         name: 'Read',
@@ -2007,6 +2196,18 @@ void main() {
       );
       expect((history['entries'] as List).single['id'], generation.id);
       expect((history['entries'] as List).single['result_applied'], false);
+      final entry = (history['entries'] as List).single as Map;
+      expect(entry, isNot(contains('request')));
+      final generationDetail = await tools.executeTool(
+        name: 'Read',
+        input: {'path': entry['path'] as String},
+      );
+      expect(generationDetail['request'], generation.requestJson.toJson());
+      final snapshot = await tools.executeTool(
+        name: 'Read',
+        input: {'path': '${entry['path']}/request'},
+      );
+      expect(snapshot['value'], generation.requestJson.toJson());
     },
   );
 
@@ -2086,10 +2287,7 @@ void main() {
         const prompt =
             'Use <ref input_id="node-ref" label="Scene" /> and '
             '<ref input_id="asset-ref" label="Person" />.';
-        final schema = await tools.executeTool(
-          name: 'Read',
-          input: {'path': '/_schema/clips'},
-        );
+        final schema = resourceContractTreeForTesting('/_schema/clips');
         expect((schema['fields'] as Map)['inputs']['create'], isTrue);
         for (final kind in ['video', 'image', 'audio']) {
           final created = await create({
@@ -2100,8 +2298,8 @@ void main() {
           });
           expect(created['created'], isTrue, reason: '$created');
           expect(created['ignored_fields'], isNull);
-          expect(created['prompt'], prompt);
-          expect(created['inputs'], bindings);
+          expect(created.containsKey('prompt'), isFalse);
+          expect(created['input_ids'], ['node-ref', 'asset-ref']);
           final id = created['id'] as String;
           final creation = (await overlay.getWorkingChanges())
               .where((change) => change.resourceId == id)
@@ -2313,7 +2511,7 @@ void main() {
           },
         );
         expect(result['created'], isTrue, reason: '$result');
-        expect(result['prompt'], 'Plain');
+        expect(result['input_ids'], isEmpty);
         final id = result['id'] as String;
         expect(await service.shots.inputSnapshot(id), isEmpty);
         expect(
@@ -2483,7 +2681,9 @@ void main() {
       expect(inputs.single.sourceNodeId, isNull);
       expect((await service.shots.getShot(shot.id))!.prompt, prompt);
       expect(
-        (await db.canvasDao.getNodesByCanvas(node.canvasId)),
+        (await db.canvasDao.getNodesByCanvas(
+          node.canvasId,
+        )).where((n) => n.sceneId == null),
         hasLength(1),
       );
       await expectLater(
@@ -2821,7 +3021,9 @@ void main() {
       await asset('second', type: 'video');
       await service.adopt(source.id, 'first');
       final frozen = compileProductionPrompt(
-        videoProviderType(VideoProtocol.wan_video),
+        aiProviderBuiltinById(
+          'openai',
+        )!.copyWith(type: videoProviderType(VideoProtocol.wan_video)),
         request(prompt),
         [ResolvedProductionInput(input, 'first')],
       );
@@ -3462,7 +3664,12 @@ void main() {
         overlay: overlay,
       );
       await save([direct, linked]);
-      expect((await service.content(target.canvasId)).nodes, hasLength(2));
+      expect(
+        (await service.content(
+          target.canvasId,
+        )).nodes.where((n) => n.sceneId == null),
+        hasLength(2),
+      );
       expect((await db.select(db.canvasEdges).get()), isEmpty);
       final edge = (await service.content(target.canvasId)).edges.single;
       expect(edge.id, '${target.id}:${linked.id}');

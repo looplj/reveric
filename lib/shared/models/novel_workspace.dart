@@ -42,7 +42,10 @@ extension NovelWorkspaceSectionX on NovelWorkspaceSection {
 
   String? aiResourcePath({String? itemId, String? title}) {
     if (this == NovelWorkspaceSection.novel_description) {
-      return '/profile';
+      final id = itemId?.trim();
+      return id == null || id.isEmpty
+          ? null
+          : '/works/${_escapeAiResourcePathSegment(id)}/description';
     }
 
     final screenplayItemId = itemId?.trim();

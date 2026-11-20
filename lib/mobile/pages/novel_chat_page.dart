@@ -48,6 +48,8 @@
 //   assets/translations/zh-CN/ai.json
 //   assets/translations/en/editor.json
 //   assets/translations/zh-CN/editor.json
+//   assets/translations/en/library.json
+//   assets/translations/zh-CN/library.json
 //   assets/translations/en/mobile.json
 //   assets/translations/zh-CN/mobile.json
 //   assets/translations/en/agent_skill.json
@@ -72,12 +74,12 @@ import '../../shared/agent/agent.dart';
 import '../../shared/components/reveric_search_field.dart';
 import '../../shared/components/reveric_surfaces.dart';
 import '../../shared/database/app_database.dart' show AiChatSession, Novel;
-import '../../shared/database/novel_content_database.dart'
-    show AgentRule, WorkingChange;
+import '../../shared/database/novel_content_database.dart' show WorkingChange;
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
 import '../../shared/logger/app_logger.dart';
 import '../../shared/models/agent_profile.dart';
+import '../../shared/models/agent_rule.dart' show AgentRule, AgentRuleListX;
 import '../../shared/models/ai_provider.dart';
 import '../../shared/models/ai_chat_models.dart';
 import '../../shared/models/ai_session_mode.dart';
@@ -97,6 +99,7 @@ import '../../shared/providers/subagent_providers.dart';
 import '../../shared/providers/prompt_template_provider.dart';
 import '../../shared/services/ai/chat_session_controller.dart';
 import '../../shared/services/ai/handoff_service.dart';
+import 'workspace_editor_page.dart';
 import '../../shared/widgets/ai/chat/chat_message_parts.dart';
 import '../../shared/widgets/ai/chat/attachment_input.dart';
 import '../../shared/widgets/ai/chat/composer_controller.dart';
@@ -117,6 +120,7 @@ import 'package:reveric/shared/widgets/ai/chat/tool_operation_strip.dart';
 import 'package:reveric/shared/widgets/ai/tool_permission_editor.dart';
 import 'package:reveric/shared/models/tool_permission.dart';
 import 'package:reveric/shared/widgets/ai/chat/auto_scroll_hook.dart';
+import 'package:reveric/shared/widgets/ai/tool_approval_card.dart';
 import 'package:reveric/shared/widgets/ai/chat/chat_send_completion_guard.dart';
 import 'package:reveric/shared/widgets/ai/chat/feedback_dialog.dart';
 import 'package:reveric/shared/widgets/ai/chat/message_action_confirm_dialog.dart';
@@ -569,7 +573,6 @@ class _MobileNovelChatBody extends HookConsumerWidget {
     final pendingAutoSend = useState(false);
 
     // 页面卸载时：若普通排队尚未 stage 且 agent 仍在跑，提升为下一轮（与桌面面板卸载一致）。
-    // 「后台运行」路径通常已在 handleProcessingExit 里 sendQueuedMessageNow；此处作兜底。
     useEffect(() {
       final queuedNotifier = queuedMessage;
       final providerContainer = ProviderScope.containerOf(
@@ -853,7 +856,7 @@ class _MobileNovelChatBody extends HookConsumerWidget {
               workspaceTitle: chapterTitle,
               workspaceContent: promptBuilder.buildWorkspaceSeedContent(),
               username: settings?.username ?? '',
-              userRules: _formatMobileAgentRules(agentRules),
+              userRules: agentRules.formatForPrompt(),
               novelChatSessionCount: novelChatSessionCount,
             );
     final container = ProviderScope.containerOf(context, listen: false);
@@ -986,11 +989,22 @@ class _MobileNovelChatBody extends HookConsumerWidget {
       final source = await ref
           .read(appDatabaseProvider)
           .aiChatSessionDao
-          .getById(sourceId, novelId: novelId);
+          .getById(sourceId);
       if (!context.mounted) {
         return;
       }
-      if (source == null) {
+      final sourcePath = switch (source) {
+        null => null,
+        AiChatSession(novelId: final id) when id == novelId => databasePath,
+        AiChatSession(novelId: final id, mode: 'chat') =>
+          (await ref.read(novelActionsProvider).getNovel(id))
+              ?.contentDatabasePath,
+        _ => null,
+      };
+      if (!context.mounted) {
+        return;
+      }
+      if (source == null || sourcePath == null || sourcePath.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.t(LocaleKeys.aiChatSourceUnavailable)),
@@ -1014,8 +1028,8 @@ class _MobileNovelChatBody extends HookConsumerWidget {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => MobileNovelChatPage(
-            novelId: novelId,
-            databasePath: databasePath,
+            novelId: source.novelId,
+            databasePath: sourcePath,
             existingSessionId: sourceId,
           ),
         ),
@@ -1113,6 +1127,22 @@ class _MobileNovelChatBody extends HookConsumerWidget {
     /// 封面在移动端没有独立工作台，沿用 novel_editor_page 的 cover handoff prompt。
     void handleNextAction(ChatNextAction action) {
       switch (action.target) {
+        case final WorkActionTarget target:
+          final session = ref.read(aiChatSessionProvider(sessionId));
+          unawaited(
+            _openNextActionWork(
+              context,
+              ref,
+              target,
+              buildWorkActionHandoff(
+                target,
+                sourceWorkId: novelId,
+                sourceSessionId: session.sessionId ?? sessionId,
+                sourceTitle: session.title,
+                sourceMode: session.sessionMode,
+              ),
+            ),
+          );
         case PromptActionTarget(:final prompt, :final intent):
           if (intent == ChatNextActionIntent.new_chat ||
               intent == ChatNextActionIntent.continue_in_new_chat) {
@@ -1374,10 +1404,6 @@ class _MobileNovelChatBody extends HookConsumerWidget {
         await ref
             .read(aiChatRuntimeProvider(sessionId).notifier)
             .stopAll(source: AiChatCancelSource.exitPause);
-      } else if (queuedMessage.value != null) {
-        // 后台继续运行 AI：把排队消息交给仍存活（processing 期间 keepAlive）的 agent，
-        // 由下一轮消费，避免离页后排队内容既不发送也不恢复而静默丢失。
-        await buildController().sendQueuedMessageNow();
       }
       allowLeaveWithRunningAgent.value = true;
       await Future<void>.delayed(Duration.zero);
@@ -1402,6 +1428,7 @@ class _MobileNovelChatBody extends HookConsumerWidget {
         backgroundColor: RevericTheme.colorsOf(context).surface,
         showDragHandle: true,
         builder: (sheetContext) => _RecentChangesSheet(
+          novelId: novelId,
           databasePath: databasePath,
           sessionId: sessionId,
         ),
@@ -1664,6 +1691,11 @@ class _MobileChatMessageList extends HookConsumerWidget {
       sessionId: sessionId,
       hasTrailingActivity: isCompacting || isWaitingForResponse,
     );
+    final revealSlot = useApprovalReveal(
+      locator: ref.watch(toolApprovalLocatorProvider),
+      controller: scrollController,
+      uiMessages: uiMessages,
+    );
 
     if (messages.isEmpty) {
       return AssistantEmptyState(
@@ -1687,47 +1719,54 @@ class _MobileChatMessageList extends HookConsumerWidget {
         separatorBuilder: (_, _) => const SizedBox(height: RevericSpacing.lg),
         itemBuilder: (context, index) {
           final msg = uiMessages[index];
-          return ChatMessageView(
-            message: msg,
-            activeSessionId: sessionId,
-            onConfigureImageModel: () =>
-                openMobileAgentModelSettingsPage(context),
-            onSetAsAvatar: (assetId, characterId) => setGeneratedImageAsAvatar(
-              context,
-              ref,
+          return revealSlot(
+            index,
+            ChatMessageView(
+              message: msg,
+              activeSessionId: sessionId,
+              onConfigureImageModel: () =>
+                  openMobileAgentModelSettingsPage(context),
+              onSetAsAvatar: (assetId, characterId) =>
+                  setGeneratedImageAsAvatar(
+                    context,
+                    ref,
+                    databasePath: databasePath,
+                    assetId: assetId,
+                    characterId: characterId,
+                  ),
+              onAddPhoto: (assetId, {characterId, itemId}) =>
+                  addGeneratedImageAsPhoto(
+                    context,
+                    ref,
+                    databasePath: databasePath,
+                    assetId: assetId,
+                    characterId: characterId,
+                    itemId: itemId,
+                  ),
+              onOpenSessionReference: onOpenSessionReference,
               databasePath: databasePath,
-              assetId: assetId,
-              characterId: characterId,
-            ),
-            onAddPhoto: (assetId, {characterId, itemId}) =>
-                addGeneratedImageAsPhoto(
-                  context,
-                  ref,
-                  databasePath: databasePath,
-                  assetId: assetId,
-                  characterId: characterId,
-                  itemId: itemId,
-                ),
-            onOpenSessionReference: onOpenSessionReference,
-            databasePath: databasePath,
-            novelId: novelId,
-            isCompactingContext: isCompacting && index == uiMessages.length - 1,
-            isWaitingForResponse:
-                isWaitingForResponse && index == uiMessages.length - 1,
-            retryProgress: index == uiMessages.length - 1 ? retryProgress : '',
-            // 事件回调按需 read 全量会话态，不在 build 期订阅。
-            onFeedback: () => showAiChatFeedbackDialog(
-              context: context,
-              ref: ref,
-              sessionState: ref.read(aiChatSessionProvider(sessionId)),
               novelId: novelId,
-              databasePath: databasePath,
+              isCompactingContext:
+                  isCompacting && index == uiMessages.length - 1,
+              isWaitingForResponse:
+                  isWaitingForResponse && index == uiMessages.length - 1,
+              retryProgress: index == uiMessages.length - 1
+                  ? retryProgress
+                  : '',
+              // 事件回调按需 read 全量会话态，不在 build 期订阅。
+              onFeedback: () => showAiChatFeedbackDialog(
+                context: context,
+                ref: ref,
+                sessionState: ref.read(aiChatSessionProvider(sessionId)),
+                novelId: novelId,
+                databasePath: databasePath,
+              ),
+              onFork: () => onFork(msg.sourceIds.last),
+              onRollbackTurn: (id) async {
+                await onRollbackTurn(id);
+                return null;
+              },
             ),
-            onFork: () => onFork(msg.sourceIds.last),
-            onRollbackTurn: (id) async {
-              await onRollbackTurn(id);
-              return null;
-            },
           );
         },
       ),
@@ -1854,10 +1893,12 @@ class _RecentChangesBar extends StatelessWidget {
 class _RecentChangesSheet extends ConsumerWidget {
   const _RecentChangesSheet({
     required this.databasePath,
+    required this.novelId,
     required this.sessionId,
   });
 
   final String databasePath;
+  final String novelId;
   final String sessionId;
 
   @override
@@ -1909,6 +1950,7 @@ class _RecentChangesSheet extends ConsumerWidget {
                 )
               else
                 RecentChangesLog(
+                  novelId: novelId,
                   databasePath: databasePath,
                   changes: changes,
                   bounded: false,
@@ -2551,6 +2593,40 @@ Future<PendingChatModelSelection?> _showModelSelector(
   return pendingSelection;
 }
 
+Future<void> _openNextActionWork(
+  BuildContext context,
+  WidgetRef ref,
+  WorkActionTarget target,
+  PendingChatHandoff? handoff,
+) async {
+  Novel? novel;
+  try {
+    novel = await ref.read(novelActionsProvider).getNovel(target.workId);
+  } catch (error, stackTrace) {
+    _log.error(
+      'Failed to open work id=${target.workId}',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+  if (!context.mounted || ModalRoute.of(context)?.isCurrent == false) {
+    return;
+  }
+  if (novel == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.t(LocaleKeys.libraryWorkspaceLoadFailed))),
+    );
+    return;
+  }
+  final work = novel;
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) =>
+          MobileWorkspaceEditorPage(novel: work, initialChatHandoff: handoff),
+    ),
+  );
+}
+
 /// 「最近改动」点击条目后的工作区跳转：关掉 sheet，按 section push 对应 id 化编辑页。
 /// push 在本聊天页之上，返回即回到聊天页。移动端无落点的 section（作品简介/地图等）忽略。
 Future<void> _openWorkspaceResource(
@@ -2591,6 +2667,7 @@ Future<void> _openWorkspaceResource(
         return;
       }
       page = MobileCharacterEditorPage(
+        novelId: novelId,
         databasePath: databasePath,
         characterId: id,
       );
@@ -2614,6 +2691,7 @@ Future<void> _openWorkspaceResource(
         return;
       }
       page = MobileEntryEditorPage(
+        novelId: novelId,
         databasePath: databasePath,
         section: section,
         entryId: id,
@@ -2686,22 +2764,6 @@ Future<void> _openWorkspaceResource(
     return;
   }
   await navigator.push(MaterialPageRoute<void>(builder: (_) => page!));
-}
-
-String? _formatMobileAgentRules(List<AgentRule> rules) {
-  final enabled = <AgentRule>[];
-  for (final rule in rules) {
-    if (rule.enabled) {
-      enabled.add(rule);
-    }
-  }
-  enabled.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-  if (enabled.isEmpty) {
-    return null;
-  }
-  return enabled
-      .map((rule) => '${rule.name}：${rule.content.trim()}')
-      .join('\n');
 }
 
 /// resourceType 已被还原为 [NovelWorkspaceSection]，此处再映射到移动端 entry 分区。

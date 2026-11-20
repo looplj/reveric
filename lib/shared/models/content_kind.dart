@@ -6,10 +6,12 @@
 
 const String contentKindNovel = 'novel';
 const String contentKindScreenplay = 'screenplay';
+const String contentKindCanvas = 'canvas';
 
 const Set<String> contentKinds = <String>{
   contentKindNovel,
   contentKindScreenplay,
+  contentKindCanvas,
 };
 
 bool isValidContentKind(String value) => contentKinds.contains(value);

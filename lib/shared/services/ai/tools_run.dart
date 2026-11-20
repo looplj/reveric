@@ -180,11 +180,13 @@ mixin _AiToolManagerRunMixin
         'list': _RunCodemodeAccess.read(),
         'read': _RunCodemodeAccess.read(),
         'create': _RunCodemodeAccess.write(),
+        'duplicate': _RunCodemodeAccess.write(),
         'apply': _RunCodemodeAccess.write(),
         'write': _RunCodemodeAccess.write(),
         'restore': _RunCodemodeAccess.write(),
         'remove': _RunCodemodeAccess.write(),
         'preview': _RunCodemodeAccess.write(),
+        'export': _RunCodemodeAccess.write(),
         'frames': _RunCodemodeAccess.denied(
           'Frame images must be viewed through a direct Run call.',
         ),
@@ -197,12 +199,14 @@ mixin _AiToolManagerRunMixin
         'frames': RunPermission.none(),
         'list': RunPermission.none(),
         'create': RunPermission.none(),
+        'duplicate': RunPermission.none(),
         'read': RunPermission.none(),
         'apply': RunPermission.none(),
         'write': RunPermission.none(),
         'restore': RunPermission.none(),
         'remove': RunPermission.none(),
         'preview': RunPermission.none(),
+        'export': RunPermission.none(),
       },
       (spec, options, _) => _runStagingsCommand(spec.subcommand, options),
     ),
@@ -287,6 +291,7 @@ mixin _AiToolManagerRunMixin
         'capabilities': _RunCodemodeAccess.read(),
         'probe': _RunCodemodeAccess.read(),
         'execute': _RunCodemodeAccess.write(),
+        'inspect_audio': _RunCodemodeAccess.read(),
         'frames': _RunCodemodeAccess.denied(
           'Frame images must be viewed through a direct Run call.',
         ),
@@ -295,6 +300,7 @@ mixin _AiToolManagerRunMixin
       subcommands: const {
         'capabilities': RunPermission.none(),
         'probe': RunPermission.required('files.read'),
+        'inspect_audio': RunPermission.required('files.read'),
         'frames': RunPermission.required('files.read'),
         'execute': RunPermission.required('files.read'),
       },
@@ -302,6 +308,9 @@ mixin _AiToolManagerRunMixin
     ),
     'production': _RunCommandDefinition(
       codemode: const {
+        'canvas-preview': _RunCodemodeAccess.denied(
+          'Canvas preview images must be viewed through a direct Run call.',
+        ),
         'image-preset': _RunCodemodeAccess.read(),
         'capture-panorama': _RunCodemodeAccess.write(),
         'derive-view': _RunCodemodeAccess.write(),
@@ -316,6 +325,7 @@ mixin _AiToolManagerRunMixin
       },
       media: true,
       subcommands: const {
+        'canvas-preview': RunPermission.none(),
         'capture-panorama': RunPermission.none(),
         'derive-view': RunPermission.required('generation.image'),
         'image-preset': RunPermission.none(),
@@ -336,11 +346,14 @@ mixin _AiToolManagerRunMixin
         'list': _RunCodemodeAccess.read(),
         'read': _RunCodemodeAccess.read(),
         'create': _RunCodemodeAccess.write(),
+        'duplicate': _RunCodemodeAccess.write(),
         'apply': _RunCodemodeAccess.write(),
         'undo': _RunCodemodeAccess.write(),
         'redo': _RunCodemodeAccess.write(),
         'preview': _RunCodemodeAccess.write(),
+        'export': _RunCodemodeAccess.write(),
         'cleanup': _RunCodemodeAccess.write(),
+        'inspect_audio': _RunCodemodeAccess.read(),
         'frames': _RunCodemodeAccess.denied(
           'Frame images must be viewed through a direct Run call.',
         ),
@@ -349,11 +362,14 @@ mixin _AiToolManagerRunMixin
       subcommands: const {
         'list': RunPermission.none(),
         'create': RunPermission.none(),
+        'duplicate': RunPermission.none(),
         'read': RunPermission.none(),
         'apply': RunPermission.none(),
         'undo': RunPermission.none(),
         'redo': RunPermission.none(),
         'preview': RunPermission.none(),
+        'export': RunPermission.none(),
+        'inspect_audio': RunPermission.none(),
         'frames': RunPermission.none(),
         'cleanup': RunPermission.none(),
       },
@@ -417,10 +433,6 @@ mixin _AiToolManagerRunMixin
           _runSubagentsCommand(spec.subcommand, options, startedAt),
     ),
 
-    'novel': _RunCommandDefinition(
-      codemode: const {'add-to-library': _RunCodemodeAccess.write()},
-      (spec, _, startedAt) => _runNovelCommand(spec.subcommand, startedAt),
-    ),
     'agent-rules': _RunCommandDefinition(
       codemode: const {
         'list': _RunCodemodeAccess.read(),
@@ -478,7 +490,7 @@ mixin _AiToolManagerRunMixin
     var options =
         _parseMapArgument(input['options']) ?? const <String, dynamic>{};
     // 防呆：模型偶尔把 command/subcommand 误嵌进 options（实测出现过
-    // {"options":{"command":"novel","subcommand":"add-to-library"}}），导致顶层
+    // {"options":{"command":"providers","subcommand":"list"}}），导致顶层
     // command 为空、被误判成「Run requires command」而回退到通用 help。
     // 顶层缺失但 options 里有时，从 options 回捞，并把这两个键从 options 剥离，
     // 避免它们被后续 handler 当成真正的命令参数。
@@ -549,16 +561,22 @@ mixin _AiToolManagerRunMixin
         // Skill-owned commands keep their usage in the bundled skill only.
         if (bundledControlRunCommandToCallName.containsKey(command)) {
           if (subcommand.isEmpty || subcommand == '--help') {
-            return _missingBundledSkillSubcommand(command, startedAt);
+            return _missingBundledSkillSubcommand(
+              command,
+              startedAt,
+              contentKind: contentKind,
+            );
           }
           throw _RunCommandException(
             '[error] unknown $command command: $subcommand\n'
-            '${_bundledSkillCommandGuidance(command)}',
+            '${_bundledSkillCommandGuidance(command, contentKind: contentKind)}'
+            '${_otherCommandHint(command, subcommand)}',
             exitCode: 127,
           );
         }
         throw FormatException(
-          '$command requires ${definition.subcommands!.keys.join(', ')}',
+          '$command requires ${definition.subcommands!.keys.join(', ')}.'
+          '${_otherCommandHint(command, subcommand)}',
         );
       }
       return await definition.run(
@@ -607,6 +625,31 @@ mixin _AiToolManagerRunMixin
     }
   }
 
+  /// Points a misrouted action at the command group that owns it.
+  String _otherCommandHint(String command, String subcommand) {
+    if (subcommand.isEmpty) {
+      return '';
+    }
+    final owners = [
+      for (final entry in _runCommands.entries)
+        if (entry.key != command &&
+            !(entry.value.media && !_mediaOperations) &&
+            !(entry.value.session && !_sessionOperations) &&
+            entry.value.codemode.containsKey(subcommand))
+          entry.key,
+    ];
+    // Generic actions such as list/read exist in many groups and give no signal.
+    if (owners.isEmpty || owners.length > 2) {
+      return '';
+    }
+    if (owners.contains('providers') && subcommand == 'models') {
+      return '\n[hint] Use Run providers models '
+          'provider_id=<id from providers list> kind=chat|image|video|audio.';
+    }
+    final calls = owners.map((owner) => 'Run $owner $subcommand').join(' or ');
+    return '\n[hint] "$subcommand" belongs to $calls.';
+  }
+
   String _runContextHelp(String? command) {
     if (mcpRunHandler != null &&
         mcpAllowed?.call() == true &&
@@ -614,7 +657,7 @@ mixin _AiToolManagerRunMixin
       return mcpRunHelp;
     }
     if (_currentToolExecutionContext?.parentToolCallId == null) {
-      return '${mcpRunHandler != null && mcpAllowed?.call() == true && (command == null || command.isEmpty) ? 'mcp: discover and call enabled MCP tools. Use Run help mcp.\n' : ''}${_helpFor(command, operations: _mediaOperations, sessionOperations: _sessionOperations)}';
+      return '${mcpRunHandler != null && mcpAllowed?.call() == true && (command == null || command.isEmpty) ? 'mcp: discover and call enabled MCP tools. Use Run help mcp.\n' : ''}${_helpFor(command, operations: _mediaOperations, sessionOperations: _sessionOperations, contentKind: contentKind)}';
     }
     final lines = <String>[];
     for (final entry in _runCommands.entries) {
@@ -642,6 +685,7 @@ mixin _AiToolManagerRunMixin
           lines.add(
             _helpFor(
               entry.key,
+              contentKind: contentKind,
               operations: _mediaOperations,
               sessionOperations: _sessionOperations,
             ),
@@ -746,17 +790,23 @@ mixin _AiToolManagerRunMixin
       }
     }
     final extracting = subcommand == 'frames';
-    final allowed = extracting ? {'path', 'timestamps_ms'} : {'args'};
+    final inspectingAudio = subcommand == 'inspect_audio';
+    final fileInput = extracting || inspectingAudio;
+    final allowed = switch (subcommand) {
+      'frames' => {'path', 'timestamps_ms'},
+      'inspect_audio' => {'path', 'start_ms', 'end_ms', 'window_ms'},
+      _ => {'args'},
+    };
     if (options.keys.any((key) => !allowed.contains(key))) {
       throw const FormatException('Unsupported FFmpeg option');
     }
     final timestamps = extracting
         ? contactSheetPositions(options['timestamps_ms'], 'timestamps_ms')
         : null;
-    final source = extracting ? _productionCommandText(options, 'path') : null;
+    final source = fileInput ? _productionCommandText(options, 'path') : null;
     final parsed = FfmpegArguments.parse(
-      extracting ? [source!] : options['args'],
-      probe: extracting || subcommand == 'probe',
+      fileInput ? [source!] : options['args'],
+      probe: fileInput || subcommand == 'probe',
     );
     final context = _currentToolExecutionContext;
     final manager = operationHost?.operations;
@@ -814,6 +864,12 @@ mixin _AiToolManagerRunMixin
           );
           await plan.verify();
           operation.checkCancelled();
+          if (inspectingAudio) {
+            return commandFileResult(
+              await command.inspectAudio(source!, options, cancellation),
+              command.files,
+            );
+          }
           return extracting
               ? commandFileResult(
                   await command.frames(id, source!, timestamps!, cancellation),
@@ -825,8 +881,10 @@ mixin _AiToolManagerRunMixin
             'file_unavailable',
             error.toString(),
             hint:
-                'Use Run files list to find the exact input path, then retry. '
-                'Do not construct filenames from asset IDs.',
+                'Relative paths resolve from the work files directory; use Run '
+                'files list to find the exact path. Absolute paths must exist on '
+                'this device. Omit drawtext fontfile to use the built-in CJK '
+                'font. Do not construct filenames from asset IDs.',
           );
         } on UnsupportedError {
           throw const ToolOperationException(
@@ -1228,20 +1286,12 @@ mixin _AiToolManagerRunMixin
         '[error] map custom style requires option "custom_style"\n$usage',
       );
     }
-    final resolutionId = _validatedMapOption(
-      options,
-      name: 'resolution',
-      supported: mapDesignResolutionIds,
-      defaultValue: mapDesignDefaultResolutionId,
-      usage: usage,
-    );
-    final qualityId = _validatedMapOption(
-      options,
-      name: 'quality',
-      supported: mapDesignQualityIds,
-      defaultValue: mapDesignDefaultQualityId,
-      usage: usage,
-    );
+    final resolutionId = options.containsKey('resolution')
+        ? _requiredOption(options, 'resolution', usage: usage)
+        : mapDesignDefaultResolutionId;
+    final qualityId = options.containsKey('quality')
+        ? _requiredOption(options, 'quality', usage: usage)
+        : mapDesignDefaultQualityId;
     final includeLocations = _strictOptionalBool(
       options,
       name: 'include_locations',
@@ -1337,75 +1387,6 @@ mixin _AiToolManagerRunMixin
     throw _RunCommandException(
       '[error] map option "$name" must be true or false\n$usage',
     );
-  }
-
-  /// `command=novel subcommand=add-to-library`：把当前「快速开书」占位作品正式加入书架
-  /// （清除 draft 标记）。仅供创作向导在与用户确认后调用，不耦合任何写入动作。
-  Future<Map<String, dynamic>> _runNovelCommand(
-    String subcommand,
-    DateTime startedAt,
-  ) async {
-    if (subcommand.isEmpty || subcommand == '--help') {
-      return _runTextResult(
-        stdout: _novelHelpText(),
-        exitCode: 0,
-        startedAt: startedAt,
-      );
-    }
-    if (subcommand != 'add-to-library') {
-      return _runTextResult(
-        stdout:
-            'Unknown novel command: $subcommand\n'
-            'Usage: command=novel subcommand=add-to-library',
-        exitCode: 127,
-        startedAt: startedAt,
-        error: 'unknown novel command: $subcommand',
-        errorCode: ToolErrorCode.invalid_argument.name,
-      );
-    }
-
-    final clearDraft = novelDraftClearer;
-    if (clearDraft == null) {
-      return _runTextResult(
-        stdout: '[error] Novel info is unavailable in this session',
-        exitCode: 1,
-        startedAt: startedAt,
-        error: 'novel unavailable',
-        errorCode: ToolErrorCode.unavailable.name,
-      );
-    }
-
-    try {
-      await clearDraft();
-      return _runTextResult(
-        stdout: 'Added to library.',
-        exitCode: 0,
-        startedAt: startedAt,
-      );
-    } on NovelTitleConflictException catch (error) {
-      return _runTextResult(
-        stdout:
-            '[error] A library novel named "${error.title}" already exists. '
-            'Rename this draft before adding it to the library.',
-        exitCode: 1,
-        startedAt: startedAt,
-        error: 'library title conflict',
-        errorCode: ToolErrorCode.already_exists.name,
-      );
-    } catch (error, stackTrace) {
-      _log.error(
-        'Run novel add-to-library failed',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      return _runTextResult(
-        stdout: '[error] Failed to add novel to library',
-        exitCode: 1,
-        startedAt: startedAt,
-        error: error.toString(),
-        errorCode: ToolErrorCode.internal.name,
-      );
-    }
   }
 
   Future<Map<String, dynamic>> _runNotifyCommand(
@@ -1766,6 +1747,12 @@ mixin _AiToolManagerRunMixin
     Map<String, dynamic> options,
     DateTime startedAt,
   ) async {
+    if (contentKind == contentKindCanvas) {
+      throw const ToolOperationException(
+        'unsupported',
+        'Canvas works do not expose subjects. Use production clips.',
+      );
+    }
     final usage = _usageForSubjectImage(spec.operation);
     final prompt = _requiredOption(options, 'prompt', usage: usage);
     final subjectKey = spec.command == 'item' ? 'item' : 'character';
@@ -1823,7 +1810,7 @@ mixin _AiToolManagerRunMixin
         targetPath: target,
         targetLabel: subjectName,
         summary: {
-          'size': avatar ? _avatarImageSize : _photoImageSize,
+          'preferred_ratio': avatar ? '1:1' : '9:16',
           'prompt': prompt,
           if (source != null) 'asset_id': assetId,
         },
@@ -2010,11 +1997,13 @@ Map<String, dynamic> _runTextResult({
 
 String _helpFor(
   String? command, {
+  String contentKind = contentKindNovel,
   required bool operations,
   required bool sessionOperations,
 }) {
   if (command == null || command.isEmpty) {
     return _runHelpText(
+      contentKind: contentKind,
       operations: operations,
       sessionOperations: sessionOperations,
     );
@@ -2030,10 +2019,7 @@ String _helpFor(
     return ProvidersRunCommandHandler.helpText;
   }
   if (bundledControlRunCommandToCallName.containsKey(command)) {
-    return _bundledSkillCommandGuidance(command);
-  }
-  if (command == 'novel') {
-    return _novelHelpText();
+    return _bundledSkillCommandGuidance(command, contentKind: contentKind);
   }
   if (command == 'sessions') {
     return _sessionsHelpText();
@@ -2065,12 +2051,12 @@ const _operationRunCommands = {
 
 const _sessionRunCommands = {'files', 'operations', 'settings'};
 
-String get _operationHelpLines =>
+String _operationHelpLines(String contentKind) =>
     '''  assets          List, read, view and certify this work's media assets.
-  stagings        Read and edit staging documents, inspect frames and refresh previews. Load AgentSkill "${bundledControlRunCommandToCallName['stagings']}".
-  styles          Query visual styles; create and edit custom styles. Load AgentSkill "${bundledControlRunCommandToCallName['styles']}".
+  stagings        Read and edit staging documents, inspect frames and refresh previews. Load AgentSkill "${bundledControlSkillForRun('stagings', contentKind: contentKind)}".
+  styles          Query visual styles; create and edit custom styles. Load AgentSkill "${bundledControlSkillForRun('styles', contentKind: contentKind)}".
   editing         Read and edit shared timelines, undo, preview and clean up previews. Load AgentSkill "${bundledControlRunCommandToCallName['editing']}".
-  production      Generate saved clips or derive media from production nodes. Load AgentSkill "${bundledControlRunCommandToCallName['production']}".
+  production      Generate saved clips or derive media from production nodes. Load AgentSkill "${bundledControlSkillForRun('production', contentKind: contentKind)}".
   ffmpeg          Inspect or process local media with explicit input/output arguments. Load AgentSkill "${bundledControlRunCommandToCallName['ffmpeg']}".
 ''';
 
@@ -2081,12 +2067,12 @@ String get _sessionHelpLines =>
 ''';
 
 String _runHelpText({
+  String contentKind = contentKindNovel,
   required bool operations,
   required bool sessionOperations,
 }) {
   return '''Available commands:
-${operations ? _operationHelpLines : ''}${sessionOperations ? _sessionHelpLines : ''}  providers       List configured providers and inspect chat, image, video and audio models.
-  novel           Add the current quick-start draft novel to the library after user confirmation.
+${operations ? _operationHelpLines(contentKind) : ''}${sessionOperations ? _sessionHelpLines : ''}  providers       List configured providers and inspect chat, image, video and audio models.
   sessions        List, read, and search saved AI conversations.
   map             Submit a map design draft for review in Cartographer.
   notify          Notify the Assistant with progress/question/complete/error.
@@ -2100,8 +2086,11 @@ ${operations ? _operationHelpLines : ''}${sessionOperations ? _sessionHelpLines 
 For usage, load the indicated AgentSkill; otherwise use command=help subcommand=<command>.''';
 }
 
-String _bundledSkillCommandGuidance(String command) {
-  final callName = bundledControlRunCommandToCallName[command];
+String _bundledSkillCommandGuidance(
+  String command, {
+  String contentKind = contentKindNovel,
+}) {
+  final callName = bundledControlSkillForRun(command, contentKind: contentKind);
   if (callName == null) {
     throw StateError('Run command has no bundled skill mapping: $command');
   }
@@ -2111,12 +2100,13 @@ String _bundledSkillCommandGuidance(String command) {
 
 Map<String, dynamic> _missingBundledSkillSubcommand(
   String command,
-  DateTime startedAt,
-) {
+  DateTime startedAt, {
+  String contentKind = contentKindNovel,
+}) {
   return _runTextResult(
     stdout:
         '[error] command "$command" requires a subcommand\n'
-        '${_bundledSkillCommandGuidance(command)}',
+        '${_bundledSkillCommandGuidance(command, contentKind: contentKind)}',
     exitCode: 1,
     startedAt: startedAt,
     error: '$command requires subcommand',
@@ -2134,8 +2124,8 @@ prompt must be a complete map-content prompt written in Chinese; it replaces the
 Submit the visual style separately with style; Cartographer appends the current selection when generating.
 style: parchment | inkmap | engraving | realistic | woodcut | watercolor | atlas | custom (default: parchment)
 custom_style is required when style=custom and contains the free-form visual style.
-resolution: 1k | 2k | 4k (default: 2k)
-quality: low | medium | high (default: medium)
+resolution: a value supported by the selected image model (default: 2k; legacy k spelling is accepted)
+quality: a value supported by the selected image model (default: medium)
 include_locations (boolean, default: true): false only drops ordinary location candidates; territories still apply, and names already written in prompt stay.
 reference_current_image (boolean, default: false): true attaches the current map image so its layout is kept; state the changes and what must stay in prompt.
 No other options are accepted; Cartographer chooses any parent-map reference itself.''';
@@ -2157,7 +2147,7 @@ String _characterHelpText() {
   command=character subcommand=generate-avatar options={character, prompt, asset_id?}
   command=character subcommand=generate-photo options={character, prompt, asset_id?}
 
-generate-avatar creates a 1:1 avatar; generate-photo creates a 9:16 portrait photo or illustration.
+generate-avatar creates an avatar, preferring 1:1 when supported by the selected model; generate-photo creates a portrait photo or illustration, preferring 9:16 when supported.
 character is the character id copied from Read; never invent ids.
 Read the character profile before writing prompt, and keep its appearance anchors (hair, outfit, signature accessories) across images.
 To reference the character avatar, pass its avatar_asset_id as asset_id.
@@ -2168,7 +2158,7 @@ String _itemHelpText() {
   return '''Item commands:
   command=item subcommand=generate-photo options={item, prompt, asset_id?}
 
-generate-photo creates a 9:16 portrait photo or illustration of the item.
+generate-photo creates a portrait photo or illustration of the item, preferring 9:16 when supported by the selected model.
 item is the item id copied from Read; never invent ids. Read the item before writing prompt.
 asset_id is an optional reference image asset ID belonging to this work.''';
 }
@@ -2177,14 +2167,6 @@ String _usageForMapDraft() {
   return 'Usage: command=map subcommand=draft '
       'options={location, prompt, style?, custom_style?, resolution?, quality?, '
       'include_locations?, reference_current_image?}';
-}
-
-String _novelHelpText() {
-  return '''Novel commands:
-  command=novel subcommand=add-to-library options={}
-
-add-to-library: add the current quick-start draft novel to the library
-(clears the draft placeholder so it shows up on the shelf).''';
 }
 
 String _usageForAgentSkills(String subcommand) {

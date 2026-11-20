@@ -34,11 +34,15 @@ import '../../../shared/database/app_database.dart' show AssetRow;
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
+import '../../../shared/logger/app_logger.dart';
+import '../../../shared/models/director/document.dart';
 export '../../../shared/models/production/group_layout.dart'
     show productionAspect;
 import '../../../shared/models/storyboard/prompt.dart';
 import '../../../shared/providers/production_media.dart';
 import '../../../shared/services/director/file_output.dart';
+import '../../../shared/services/director/preview.dart';
+import '../../../shared/services/director/storage.dart';
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/theme/canvas_colors.dart';
 import '../../../shared/theme/theme.dart';
@@ -54,6 +58,12 @@ import 'audio_node.dart';
 import 'upload.dart';
 import 'certification.dart';
 import 'support.dart';
+import 'node_title.dart';
+import 'text_node.dart';
+import 'editing_node.dart';
+import 'video_thumb.dart';
+
+final _log = AppLogger.forModule('ProductionNodeCard');
 
 /// 节点有哪些连线口；flow 端口和卡片上的悬停提示点共用这一份判断。
 /// [derived]：有来源连线的产物节点（导演台导出、视频处理结果），左侧带一个只接来源连线的入口。
@@ -66,7 +76,8 @@ import 'support.dart';
       node.isGenerationNode ||
       node.mediaAssetId != null ||
       node.type == canvasNodeTypeStaging ||
-      node.type == canvasNodeTypeGroup,
+      node.type == canvasNodeTypeGroup ||
+      node.type == canvasNodeTypeText,
 );
 
 /// 端口直径；端口由 flow 画在卡片左右边上。
@@ -119,7 +130,10 @@ class ProductionNodeCard extends HookWidget {
     this.storyboardCell = false,
     this.storyboardNumber,
     this.onOpenDirector,
+    this.onPreviewText,
     this.taskActions,
+    this.textTitle,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
@@ -139,10 +153,15 @@ class ProductionNodeCard extends HookWidget {
   final bool storyboardCell;
   final int? storyboardNumber;
   final VoidCallback? onOpenDirector;
+  final VoidCallback? onPreviewText;
   final ProductionTaskActions? taskActions;
+
+  /// 卡片外标题的改名状态，由画布持有；正在改这个节点的标题时卡片收起自己的标题。
+  final ProductionNodeTitle? textTitle;
 
   /// 片段节点的「段 x-y」；null 表示自由视频节点。
   final String? segmentLabel;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -186,6 +205,23 @@ class ProductionNodeCard extends HookWidget {
         [service, node.mediaAssetId],
       ),
     ).data;
+    final titleEditing = useListenableSelector(
+      textTitle?.editing,
+      () => textTitle?.editing.value == node.id,
+    );
+    final editing = useStream(
+      useMemoized(
+        () => node.editingId == null
+            ? const Stream<VideoEditingRow?>.empty()
+            : (service.db.select(service.db.videoEditings)..where(
+                    (t) =>
+                        t.id.equals(node.editingId!) &
+                        t.deletedAt.equals(notDeletedSentinel),
+                  ))
+                  .watchSingleOrNull(),
+        [service, node.editingId],
+      ),
+    );
     final ports = productionNodePorts(node, derived: fromDirector || derived);
     final radius = BorderRadius.circular(
       storyboardCell ? 0 : RevericRadius.canvasNode,
@@ -193,12 +229,26 @@ class ProductionNodeCard extends HookWidget {
     final lit = hovered.value || selected;
     final ring = canvasNodeSelectionRing(colors, colors.accent);
     final body = switch (node.type) {
+      canvasNodeTypeEditing => ProductionEditingNode(
+        service: service,
+        node: node,
+        editing: editing,
+      ),
+      canvasNodeTypeText => ProductionTextNode(
+        service: service,
+        node: node,
+        selected: selected,
+        title: textTitle,
+        readOnly: readOnly,
+        onPreview: onPreviewText,
+      ),
       canvasNodeTypeAudio => ProductionAudioNode(
         service: service,
         node: node,
         clip: clip,
         selected: selected,
         taskActions: taskActions,
+        readOnly: readOnly,
       ),
       canvasNodeTypeImage => ProductionImageNode(
         selected: selected,
@@ -206,6 +256,7 @@ class ProductionNodeCard extends HookWidget {
         node: node,
         clip: clip,
         taskActions: taskActions,
+        readOnly: readOnly,
       ),
       canvasNodeTypeVideo => _VideoBody(
         service: service,
@@ -214,14 +265,22 @@ class ProductionNodeCard extends HookWidget {
         segment: segmentLabel != null,
         selected: selected,
         taskActions: taskActions,
+        readOnly: readOnly,
       ),
       canvasNodeTypeStaging => _DirectorBody(
-        novelId: service.novelId,
+        service: service,
         node: node,
+        staging: staging,
+        readOnly: readOnly,
         showOpen: hovered.value || selected,
         onOpen: onOpenDirector,
       ),
-      _ => _MediaBody(service: service, node: node, selected: selected),
+      _ => _MediaBody(
+        service: service,
+        node: node,
+        selected: selected,
+        readOnly: readOnly,
+      ),
     };
     // 卡片是浮在点阵上的半透明层：悬停时底色变实、描边变亮，选中时外加强调色环，
     // 全部做成短过渡，不硬切。
@@ -300,12 +359,18 @@ class ProductionNodeCard extends HookWidget {
                   scale: headerScale,
                   lifted: lit,
                   child: _NodeHeader(
-                    node: (row: node, mediaType: media),
+                    node: (
+                      row: editing.data == null
+                          ? node
+                          : node.copyWith(title: editing.data!.title),
+                      mediaType: media,
+                    ),
                     clip: clip,
                     staging: staging,
                     segmentLabel: segmentLabel,
                     fromDirector: fromDirector,
                     lit: lit,
+                    editing: titleEditing,
                     certification: switch ((node.type, media)) {
                       (canvasNodeTypeImage, _) ||
                       (
@@ -325,7 +390,7 @@ class ProductionNodeCard extends HookWidget {
             (ports.input, Alignment.centerLeft, -productionPortSize / 2),
             (ports.output, Alignment.centerRight, productionPortSize / 2),
           ])
-            if (enabled && !storyboardCell)
+            if (enabled && !storyboardCell && !readOnly)
               Positioned.fill(
                 child: IgnorePointer(
                   child: Align(
@@ -440,6 +505,7 @@ class _NodeHeader extends StatelessWidget {
     required this.segmentLabel,
     required this.fromDirector,
     required this.lit,
+    this.editing = false,
     this.certification,
   });
   final ({CanvasNode row, String? mediaType}) node;
@@ -453,6 +519,9 @@ class _NodeHeader extends StatelessWidget {
 
   /// 卡片悬停或选中时名字提亮一级。
   final bool lit;
+
+  /// 正在改标题：输入框叠在名字原位（画布之上的浮层），这里只留类型图标。
+  final bool editing;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
@@ -469,6 +538,11 @@ class _NodeHeader extends StatelessWidget {
       canvasNodeTypeImage when clip?.itemId != null => (
         RevericIcons.inventory_2,
         LocaleKeys.workspaceSidebarCompendium,
+      ),
+      canvasNodeTypeText => (RevericIcons.file_text, LocaleKeys.productionText),
+      canvasNodeTypeEditing => (
+        RevericIcons.movie_outlined,
+        LocaleKeys.editingTitle,
       ),
       canvasNodeTypeImage => (RevericIcons.image, LocaleKeys.productionImage),
       canvasNodeTypeAudio => (RevericIcons.waveform, LocaleKeys.mediaAudio),
@@ -511,24 +585,28 @@ class _NodeHeader extends StatelessWidget {
         children: [
           RevericIcon(icon, size: 12, color: colors.textMuted),
           const SizedBox(width: RevericSpacing.xxs),
-          if (segmentLabel != null) ...[
-            Text(segmentLabel!, maxLines: 1, style: muted),
-            if (name.isNotEmpty) const SizedBox(width: RevericSpacing.xs),
-          ],
-          if (name.isNotEmpty)
-            Flexible(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: typo.uiSmall.copyWith(
-                  color: lit ? colors.textPrimary : colors.textSecondary,
+          if (editing)
+            const SizedBox.shrink()
+          else ...[
+            if (segmentLabel != null) ...[
+              Text(segmentLabel!, maxLines: 1, style: muted),
+              if (name.isNotEmpty) const SizedBox(width: RevericSpacing.xs),
+            ],
+            if (name.isNotEmpty)
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: typo.uiSmall.copyWith(
+                    color: lit ? colors.textPrimary : colors.textSecondary,
+                  ),
                 ),
-              ),
-            )
-          else if (segmentLabel == null)
-            Text(context.t(type), maxLines: 1, style: muted),
-          ?certification,
+              )
+            else if (segmentLabel == null)
+              Text(context.t(type), maxLines: 1, style: muted),
+            ?certification,
+          ],
         ],
       ),
     );
@@ -543,6 +621,7 @@ class _VideoBody extends StatelessWidget {
     required this.segment,
     required this.selected,
     required this.taskActions,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
@@ -550,6 +629,7 @@ class _VideoBody extends StatelessWidget {
   final bool segment;
   final bool selected;
   final ProductionTaskActions? taskActions;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) {
     final prompt = StoryboardPrompt.parse(clip?.prompt ?? '').plainText.trim();
@@ -564,6 +644,7 @@ class _VideoBody extends StatelessWidget {
         borderRadius: 0,
         well: true,
         playing: selected,
+        readOnly: readOnly,
         emptyIcon: segment
             ? RevericIcons.movie_outlined
             : RevericIcons.video_camera,
@@ -669,6 +750,7 @@ class ProductionAdoptedFrame extends HookWidget {
     this.borderRadius = RevericRadius.medium,
     this.well = false,
     this.playing,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
 
@@ -691,6 +773,7 @@ class ProductionAdoptedFrame extends HookWidget {
   /// 空画面里的提示文字，比如已写好的提示词摘要。
   final String? hint;
   final double borderRadius;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
@@ -699,7 +782,7 @@ class ProductionAdoptedFrame extends HookWidget {
     if (filePath == null) {
       final empty = _EmptyFrame(
         service: service,
-        node: node?.isGenerationNode == true ? node : null,
+        node: !readOnly && node?.isGenerationNode == true ? node : null,
         icon:
             emptyIcon ??
             (node?.type == canvasNodeTypeImage
@@ -727,6 +810,7 @@ class ProductionAdoptedFrame extends HookWidget {
               node: node!,
               path: filePath,
               selected: playing ?? false,
+              readOnly: readOnly,
             )
           else if (productionMediaFormat(filePath)?.$1 == 'audio')
             _AudioBody(
@@ -923,7 +1007,7 @@ class _FrameBadge extends StatelessWidget {
   }
 }
 
-/// 资产缩略：图片读文件，视频和音频画类型图标占位。
+/// 资产缩略：图片读文件，视频异步截取首帧，音频画类型图标占位。
 class ProductionAssetThumb extends HookWidget {
   const ProductionAssetThumb({
     super.key,
@@ -957,40 +1041,30 @@ class ProductionAssetThumb extends HookWidget {
       );
     }
     if (type == 'image' && absolute != null) {
-      // 按显示尺寸解码，不把原图整张解成纹理；留出画布最大缩放的余量，放大后仍清晰。
-      return LayoutBuilder(
-        builder: (context, box) {
-          final ImageProvider file = FileImage(File(absolute));
-          final side =
-              math.max(box.maxWidth, box.maxHeight) *
-              productionCanvasMaxZoom *
-              MediaQuery.devicePixelRatioOf(context);
-          return Image(
-            image: side.isFinite && side > 0
-                ? ResizeImage(
-                    file,
-                    width: side.ceil(),
-                    height: side.ceil(),
-                    policy: ResizeImagePolicy.fit,
-                  )
-                : file,
-            fit: BoxFit.cover,
-            errorBuilder: (_, error, stack) => ColoredBox(
-              color: colors.surfaceDim,
-              child: Center(
-                child: RevericIcon(
-                  RevericIcons.broken_image_outlined,
-                  size: 16,
-                  color: colors.error,
-                ),
-              ),
+      return ProductionCoverFileImage(
+        file: File(absolute),
+        maxZoom: productionCanvasMaxZoom,
+        fallback: ColoredBox(
+          color: colors.surfaceDim,
+          child: Center(
+            child: RevericIcon(
+              RevericIcons.broken_image_outlined,
+              size: 16,
+              color: colors.error,
             ),
-          );
-        },
+          ),
+        ),
       );
     }
-    // 视频没有缩略帧，和图片一样用低一级的底色 + 类型图标占位。不能借文字色当底：
-    // 深色主题的 textSecondary 是浅灰，会在画布上亮出一整块。
+    if (type == 'video' && path != null && absolute != null) {
+      return ProductionVideoThumb(
+        service: service,
+        filePath: path,
+        maxZoom: productionCanvasMaxZoom,
+        compact: ProductionCardCompact.of(context),
+      );
+    }
+    // 音频和未识别占位沿用低一级底色 + 类型图标，不借文字色当底避免深色主题发亮。
     return ColoredBox(
       color: colors.surfaceDim,
       child: Center(
@@ -1014,10 +1088,12 @@ class _MediaBody extends HookWidget {
     required this.service,
     required this.node,
     required this.selected,
+    this.readOnly = false,
   });
   final ProductionCanvasService service;
   final CanvasNode node;
   final bool selected;
+  final bool readOnly;
   @override
   Widget build(BuildContext context) {
     final result = useStream(
@@ -1057,6 +1133,7 @@ class _MediaBody extends HookWidget {
         node: node,
         path: asset.path!,
         selected: selected,
+        readOnly: readOnly,
       );
     }
     return ProductionAssetThumb(service: service, filePath: asset.path);
@@ -1143,76 +1220,132 @@ class _AudioBody extends HookConsumerWidget {
   }
 }
 
-/// 导演台节点：画面是调度保存时渲染的预览静帧；悬停或选中时右下角给出「打开导演台」。
+/// 导演台节点：可写模式读调度工作区静帧；只读画廊模式按需渲染第 0 帧到沙箱缓存。
 class _DirectorBody extends HookWidget {
   const _DirectorBody({
+    required this.service,
     required this.node,
-    required this.novelId,
+    required this.staging,
+    required this.readOnly,
     required this.showOpen,
     required this.onOpen,
   });
+  final ProductionCanvasService service;
   final CanvasNode node;
-  final String novelId;
+  final VideoStagingRow? staging;
+  final bool readOnly;
   final bool showOpen;
   final VoidCallback? onOpen;
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final stagingId = node.stagingId!;
+    final enabled = TickerMode.valuesOf(context).enabled;
+    final compact = ProductionCardCompact.of(context);
     final previewUpdate = useStream(
       useMemoized(() => DirectorFileOutput.previewUpdates(stagingId), [
         stagingId,
       ]),
     ).data;
-    // 文档编辑期间保留上次生成的图片，生成完成后再刷新。
+    // 文档编辑期间保留上次生成的图片，生成完成后再刷新；只读沙箱按需在沙箱缓存渲染第 0 帧。
     final preview = useFuture(
       useMemoized(
-        () => DirectorFileOutput.readPreview(stagingId, novelId: novelId),
-        [stagingId, novelId, previewUpdate],
+        () async {
+          if (!readOnly) {
+            return DirectorFileOutput.readPreview(
+              stagingId,
+              novelId: service.novelId,
+              root: service.library.root,
+            );
+          }
+          final cacheDir = DirectorFileOutput.cachedPreviewDirectory(
+            service.library.root,
+            stagingId,
+          );
+          final cached = await DirectorPreview(
+            DirectorStorage(cacheDir, cacheDir),
+          ).read();
+          if (cached != null) {
+            return cached;
+          }
+          final documentJson = staging?.document;
+          if (!enabled || compact || documentJson == null) {
+            return null;
+          }
+          try {
+            return await DirectorFileOutput.readOrRenderCachedPreview(
+              root: service.library.root,
+              scope: stagingId,
+              loadDocument: () async => DirectorDocument.fromJson(documentJson),
+            );
+          } catch (error, stack) {
+            _log.error(
+              'sandbox director preview render failed stagingId=$stagingId',
+              error: error,
+              stackTrace: stack,
+            );
+            return null;
+          }
+        },
+        [
+          stagingId,
+          service.novelId,
+          service.library.root.path,
+          readOnly,
+          enabled,
+          compact,
+          staging?.version,
+          staging?.document != null,
+          previewUpdate,
+        ],
       ),
     ).data;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (preview == null)
-          ProductionNodeWell(
-            child: Center(
-              child: RevericIcon(
-                RevericIcons.cube,
-                size: 22,
-                color: colors.textSubtle,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: onOpen,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (preview == null)
+            ProductionNodeWell(
+              child: Center(
+                child: RevericIcon(
+                  RevericIcons.cube,
+                  size: 22,
+                  color: colors.textSubtle,
+                ),
+              ),
+            )
+          else
+            Image.memory(preview, fit: BoxFit.cover, gaplessPlayback: true),
+          if (onOpen != null)
+            Positioned(
+              right: RevericSpacing.sm,
+              bottom: RevericSpacing.sm,
+              child: AnimatedSwitcher(
+                duration: CanvasMotion.fast,
+                switchInCurve: CanvasMotion.curve,
+                child: showOpen
+                    ? DecoratedBox(
+                        key: const ValueKey(true),
+                        decoration: BoxDecoration(
+                          color: colors.surface,
+                          borderRadius: BorderRadius.circular(
+                            RevericRadius.button,
+                          ),
+                        ),
+                        child: RevericButton.secondary(
+                          label: context.t(LocaleKeys.productionOpenDirector),
+                          icon: RevericIcons.arrow_square_out,
+                          size: RevericButtonSize.compact,
+                          onPressed: onOpen,
+                        ),
+                      )
+                    : const SizedBox.shrink(key: ValueKey(false)),
               ),
             ),
-          )
-        else
-          Image.memory(preview, fit: BoxFit.cover, gaplessPlayback: true),
-        if (onOpen != null)
-          Positioned(
-            right: RevericSpacing.sm,
-            bottom: RevericSpacing.sm,
-            child: AnimatedSwitcher(
-              duration: CanvasMotion.fast,
-              switchInCurve: CanvasMotion.curve,
-              child: showOpen
-                  ? DecoratedBox(
-                      key: const ValueKey(true),
-                      decoration: BoxDecoration(
-                        color: colors.surface,
-                        borderRadius: BorderRadius.circular(
-                          RevericRadius.button,
-                        ),
-                      ),
-                      child: RevericButton.secondary(
-                        label: context.t(LocaleKeys.productionOpenDirector),
-                        icon: RevericIcons.arrow_square_out,
-                        size: RevericButtonSize.compact,
-                        onPressed: onOpen,
-                      ),
-                    )
-                  : const SizedBox.shrink(key: ValueKey(false)),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

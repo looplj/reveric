@@ -1,4 +1,4 @@
-// 职责: 为 A2UI 输入组件提供与 RevericTextField 一致的标签和错误文案排版，并本地化未写 message 的校验提示。
+// 职责: 为 A2UI 输入组件提供与 RevericTextField 一致的标签、辅助说明和错误文案排版，并本地化未写 message 的校验提示。
 // 关联文件:
 //   lib/shared/widgets/a2ui/components/choice_picker.dart
 //   lib/shared/widgets/a2ui/catalog.dart
@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../../localization/app_localization.dart';
 import '../../../localization/locale_keys.dart';
 import '../../../theme/theme.dart';
+import '../component.dart';
 
 /// a2ui_core 在 check 规则未写 message 时使用的固定英文提示。
 const _defaultCheckMessage = 'Validation failed';
@@ -23,6 +24,40 @@ String? a2uiCheckMessage(BuildContext context, String? error) =>
     error == _defaultCheckMessage
     ? context.t(LocaleKeys.a2uiValidationFailed)
     : error;
+
+/// 字段与下方辅助说明的组合：说明紧贴字段（[RevericSpacing.xs]），
+/// 并与后续字段保留轻微分组留白。
+Widget buildFieldGroup(
+  BuildContext context,
+  A2uiNode node,
+  A2uiProps props,
+  A2uiChildBuilder buildChild,
+) {
+  final child = props.child('child');
+  if (child == null) {
+    return const SizedBox.shrink();
+  }
+  final description = props.string('description');
+  final colors = RevericTheme.colorsOf(context);
+  final typo = RevericTheme.typographyOf(context);
+  return Padding(
+    padding: const EdgeInsets.only(bottom: RevericSpacing.xxs),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        buildChild(child),
+        if (description != null && description.isNotEmpty) ...[
+          const SizedBox(height: RevericSpacing.xs),
+          Text(
+            description,
+            style: typo.uiSmall.copyWith(color: colors.textMuted),
+          ),
+        ],
+      ],
+    ),
+  );
+}
 
 class A2uiFieldFrame extends StatelessWidget {
   const A2uiFieldFrame({

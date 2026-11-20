@@ -5,6 +5,63 @@ import XCTest
 
 class RunnerTests: XCTestCase {
 
+  func testUnhandledEscapeDoesNotReenterKeyEquivalentsAsANewEvent() {
+    let window = MainFlutterWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+      styleMask: [.titled], backing: .buffered, defer: false
+    )
+    let view = KeyEquivalentProbeView(frame: window.contentView!.bounds)
+    window.contentView = view
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil) }
+    window.makeFirstResponder(view)
+
+    for _ in 0..<2 {
+      let escape = keyEvent(window: window, keyCode: 53, characters: "\u{1b}")
+      view.unhandledEvent = escape
+      view.events.removeAll()
+
+      // Model Flutter returning an unhandled key to NSWindow asynchronously,
+      // when NSApp.currentEvent no longer refers to that key.
+      window.keyDown(with: escape)
+
+      XCTAssertEqual(view.events.count, 1)
+      XCTAssertTrue(view.events.first === escape)
+    }
+  }
+
+  func testFirstEscapeAndOtherKeyEquivalentsStillReachContent() {
+    let window = MainFlutterWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+      styleMask: [.titled], backing: .buffered, defer: false
+    )
+    let view = KeyEquivalentProbeView(frame: window.contentView!.bounds)
+    window.contentView = view
+    window.makeFirstResponder(view)
+
+    let escape = keyEvent(window: window, keyCode: 53, characters: "\u{1b}")
+    XCTAssertTrue(window.performKeyEquivalent(with: escape))
+    XCTAssertTrue(view.events.last === escape)
+
+    let shortcut = keyEvent(window: window, keyCode: 0, characters: "a", modifiers: .command)
+    XCTAssertTrue(window.performKeyEquivalent(with: shortcut))
+    XCTAssertTrue(view.events.last === shortcut)
+    XCTAssertEqual(view.events.count, 2)
+  }
+
+  private func keyEvent(
+    window: NSWindow, keyCode: UInt16, characters: String,
+    modifiers: NSEvent.ModifierFlags = []
+  ) -> NSEvent {
+    NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: modifiers,
+      timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: window.windowNumber, context: nil,
+      characters: characters, charactersIgnoringModifiers: characters,
+      isARepeat: false, keyCode: keyCode
+    )!
+  }
+
   func testMainViewIsReattachedAfterEnablingMultiView() {
     let flutterViewController = FlutterViewController()
 
@@ -47,6 +104,19 @@ class RunnerTests: XCTestCase {
 
     XCTAssertEqual(origin.x, -1500, accuracy: 0.001)
     XCTAssertEqual(origin.y, 120, accuracy: 0.001)
+  }
+
+}
+
+private final class KeyEquivalentProbeView: NSView {
+  var unhandledEvent: NSEvent?
+  var events: [NSEvent] = []
+
+  override var acceptsFirstResponder: Bool { true }
+
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    events.append(event)
+    return event !== unhandledEvent
   }
 
 }

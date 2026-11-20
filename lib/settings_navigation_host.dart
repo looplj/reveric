@@ -14,6 +14,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'desktop/widgets/agent_management/ai_assistant_page.dart';
 import 'desktop/widgets/agent_management/ai_providers_page.dart';
 import 'desktop/widgets/agent_management/mcp_page.dart';
+import 'desktop/widgets/agent_management/plugins_page.dart';
 import 'desktop/widgets/settings/settings_dialog.dart';
 import 'mobile/pages/settings_page.dart';
 import 'shared/providers/settings_navigation.dart';
@@ -34,10 +35,11 @@ class SettingsNavigationHost extends HookConsumerWidget {
     'ai_agents': showAiAssistantSettingsDialog,
     'providers': showAiProviderSettingsDialog,
     'mcp': showMcpSettingsDialog,
+    'plugins': showPluginsSettingsDialog,
   };
 
   static Set<String> get desktopNavigableSections => {
-    ...SettingsDialog.navigableSections,
+    ...SettingsRegion.navigableSections,
     ..._desktopPageDialogs.keys,
   };
 
@@ -68,10 +70,7 @@ class SettingsNavigationHost extends HookConsumerWidget {
         if (_desktopPageDialogs[section] case final show?) {
           return show(navigator.context);
         }
-        return showDialog<void>(
-          context: navigator.context,
-          builder: (_) => SettingsDialog(initialNavId: section),
-        );
+        return showSettingsSectionDialog(navigator.context, section);
       }
 
       navigation.openSection = open;

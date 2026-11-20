@@ -3,6 +3,7 @@
 //   lib/shared/models/editing/document.dart
 //   lib/desktop/features/editing/session.dart
 import 'dart:math' as math;
+import 'package:collection/collection.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/editing/document.dart';
 
@@ -18,9 +19,15 @@ abstract final class EditingCommands {
     }
     for (final clip in doc.clips) {
       final content = clip.content;
-      if (content is EditingVideoContent &&
-          (content.transform.scale < .2 || content.transform.scale > 1)) {
-        throw const FormatException('Invalid scale');
+      final (scale, max) = switch (content) {
+        EditingVideoContent(:final transform) => (transform.scale, 1),
+        EditingTextContent(:final transform) => (transform.scale, 2),
+        EditingAudioContent() => (1.0, 1),
+      };
+      if (scale < .2 || scale > max) {
+        throw FormatException(
+          'Invalid scale $scale: ${content.kind} scale must be within .2..$max',
+        );
       }
       if (content is EditingSourceContent &&
           (content.gainDb < -60 || content.gainDb > 12)) {
@@ -56,15 +63,25 @@ abstract final class EditingCommands {
     return next;
   }
 
-  static EditingDocument addAudioTrack(EditingDocument doc) {
-    final order = doc.tracks.where((t) => t.kind == 'audio').length;
+  static EditingDocument addAudioTrack(EditingDocument doc) =>
+      _addTrack(doc, 'audio', EditingRole.audio);
+
+  static EditingDocument addTextTrack(EditingDocument doc) =>
+      _addTrack(doc, 'text', EditingRole.text);
+
+  static EditingDocument _addTrack(
+    EditingDocument doc,
+    String kind,
+    String role,
+  ) {
+    final order = doc.tracks.where((t) => t.kind == kind).length;
     final next = doc.copyWith(
       tracks: [
         ...doc.tracks,
         EditingTrack(
           id: const Uuid().v4(),
-          kind: 'audio',
-          role: EditingRole.audio,
+          kind: kind,
+          role: role,
           order: order,
         ),
       ],
@@ -131,6 +148,9 @@ abstract final class EditingCommands {
       doc.clips.singleWhere((c) => c.id == id);
   static bool _onMain(EditingDocument doc, EditingClip clip) =>
       doc.track(clip.trackId).main;
+  static String _occupied(String trackId, EditingClip other) =>
+      'Occupied: track $trackId already has clip ${other.id} at frames '
+      '${other.startFrame}-${other.endFrame}.';
 
   static EditingDocument _change(
     EditingDocument doc,
@@ -292,27 +312,86 @@ abstract final class EditingCommands {
         : _change(doc, [c], []);
   }
 
+  /// 未手动定位的视频画面：满幅居中，缩小后贴右上角留 6% 边距。
+  static EditingTransform autoPlacement(double scale) => scale < 1
+      ? EditingTransform(scale: scale, x: .94, y: .06, anchorX: 1, anchorY: 0)
+      : EditingTransform(scale: scale);
+
+  /// 视频图层框占画面的 scale 比例，锚点写法不同但框重合即视为同一位置。
+  static bool _sameBox(EditingTransform a, EditingTransform b) {
+    bool near(double p, double q) => (p - q).abs() < 1e-9;
+    return near(a.scale, b.scale) &&
+        near(a.x - a.anchorX * a.scale, b.x - b.anchorX * b.scale) &&
+        near(a.y - a.anchorY * a.scale, b.y - b.anchorY * b.scale);
+  }
+
   static EditingDocument update(EditingDocument doc, EditingClip clip) {
     final old = _clip(doc, clip.id);
     final content = clip.content;
     final previous = old.content;
-    if (content is EditingVideoContent &&
-        previous is EditingVideoContent &&
-        content.transform.scale != previous.transform.scale) {
-      final scale = content.transform.scale;
-      clip = clip.copyWith(
-        content: content.copyWith(
-          transform: EditingTransform(
-            scale: scale,
-            x: scale < 1 ? 1 - .06 - scale / 2 : .5,
-            y: scale < 1 ? .06 + scale / 2 : .5,
-          ),
-        ),
-      );
+    if (content is EditingVideoContent && previous is EditingVideoContent) {
+      final next = content.transform;
+      final before = previous.transform;
+      // 只改缩放时，自动摆放的画面跟着重新摆放；手动定位过的保持锚点不动。
+      if (next.scale != before.scale &&
+          next.samePlacement(before) &&
+          _sameBox(before, autoPlacement(before.scale))) {
+        clip = clip.copyWith(
+          content: content.copyWith(transform: autoPlacement(next.scale)),
+        );
+      }
     }
     return _onMain(doc, old)
         ? _layoutMain(doc, _swap(doc.mainClips, clip.id, [clip]))
         : _change(doc, [old], [clip]);
+  }
+
+  /// 改倍速保持源区间：时长按倍速伸缩，主轨后面的片段随之前移或顺延。
+  static EditingDocument retime(EditingDocument doc, String id, double speed) {
+    const min = EditingSourceContent.minSpeed;
+    const max = EditingSourceContent.maxSpeed;
+    if (!(speed >= min && speed <= max)) {
+      throw FormatException('Invalid speed $speed: must be within $min..$max');
+    }
+    final c = _clip(doc, id);
+    final media = c.media;
+    if (media == null) {
+      throw StateError('Text clip');
+    }
+    if (media.source.mediaType == 'image') {
+      throw StateError('Image clips have no speed');
+    }
+    final content = media.copyWith(speed: speed);
+    final duration = math.min(
+      math.max(1, (c.durationFrames * media.speed / speed).round()),
+      content.framesToSourceEnd,
+    );
+    if (duration < 1) {
+      throw StateError('No source left after the clip start');
+    }
+    if (!_onMain(doc, c)) {
+      final blocker = doc.clips.firstWhereOrNull(
+        (o) =>
+            o.trackId == c.trackId &&
+            o.id != c.id &&
+            o.startFrame < c.startFrame + duration &&
+            o.endFrame > c.startFrame,
+      );
+      if (blocker != null) {
+        throw StateError(_occupied(c.trackId, blocker));
+      }
+    }
+    final fadeIn = math.min(media.fadeInFrames, duration);
+    return update(
+      doc,
+      c.copyWith(
+        durationFrames: duration,
+        content: content.copyWith(
+          fadeInFrames: fadeIn,
+          fadeOutFrames: math.min(media.fadeOutFrames, duration - fadeIn),
+        ),
+      ),
+    );
   }
 
   /// 在非主轨的空处放片段，时长截到下一个片段开头。
@@ -322,10 +401,11 @@ abstract final class EditingCommands {
       throw StateError('Use insertMain');
     }
     final others = doc.clips.where((c) => c.trackId == track.id);
-    if (others.any(
+    final blocker = others.firstWhereOrNull(
       (c) => clip.startFrame >= c.startFrame && clip.startFrame < c.endFrame,
-    )) {
-      throw StateError('Occupied');
+    );
+    if (blocker != null) {
+      throw StateError(_occupied(track.id, blocker));
     }
     final next = others
         .where((c) => c.startFrame > clip.startFrame)
@@ -358,7 +438,7 @@ abstract final class EditingCommands {
     ),
   );
 
-  /// 替换素材：从源头开始取，时长不超过原片段和新素材。
+  /// 替换素材：从源头开始取并沿用倍速，时长不超过原片段和新素材。
   static EditingDocument replace(
     EditingDocument doc,
     String id,
@@ -375,6 +455,7 @@ abstract final class EditingCommands {
       sourceInUs: 0,
       fadeInFrames: 0,
       fadeOutFrames: 0,
+      speed: source.mediaType == 'image' ? 1 : null,
     );
     if (content is EditingVideoContent) {
       content = content.copyWith(
@@ -391,7 +472,7 @@ abstract final class EditingCommands {
         origin: origin,
         durationFrames: source.mediaType == 'image'
             ? c.durationFrames
-            : math.min(c.durationFrames, editingFrames(source.durationUs)),
+            : math.min(c.durationFrames, content.framesToSourceEnd),
       ),
     );
   }
@@ -415,12 +496,13 @@ abstract final class EditingCommands {
     if (doc.track(clip.trackId).locked) {
       throw StateError('Track locked');
     }
-    bool free(EditingTrack track) => !doc.clips.any(
+    EditingClip? blocker(EditingTrack track) => doc.clips.firstWhereOrNull(
       (c) =>
           c.trackId == track.id &&
           c.startFrame < clip.endFrame &&
           c.endFrame > clip.startFrame,
     );
+    bool free(EditingTrack track) => blocker(track) == null;
     EditingTrack? target;
     if (trackId != null) {
       target = doc.track(trackId);
@@ -430,8 +512,8 @@ abstract final class EditingCommands {
       if (target.locked) {
         throw StateError('Track locked');
       }
-      if (!free(target)) {
-        throw StateError('Occupied');
+      if (blocker(target) case final other?) {
+        throw StateError(_occupied(target.id, other));
       }
     } else {
       final candidates =
@@ -475,6 +557,7 @@ abstract final class EditingCommands {
             gainDb: content.gainDb,
             fadeInFrames: content.fadeInFrames,
             fadeOutFrames: content.fadeOutFrames,
+            speed: content.speed,
           ),
         ),
       ],

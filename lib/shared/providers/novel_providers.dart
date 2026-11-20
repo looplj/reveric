@@ -8,6 +8,7 @@
 import 'dart:async';
 import 'tool_operations.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart' show Provider;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:drift/drift.dart' show TableInfo;
 import 'package:flutter/foundation.dart' show listEquals;
@@ -92,12 +93,6 @@ Stream<Novel?> novel(Ref ref, String novelId) {
 }
 
 @riverpod
-Stream<Novel?> novelByContentDatabasePath(Ref ref, String databasePath) {
-  final database = ref.watch(appDatabaseProvider);
-  return database.novelDao.watchByContentDatabasePath(databasePath);
-}
-
-@riverpod
 NovelActionsService novelActions(Ref ref) {
   final database = ref.watch(appDatabaseProvider);
   final container = ref.container;
@@ -169,6 +164,20 @@ WorkingOverlayService workingOverlayService(Ref ref, String databasePath) {
     novelActionsService: novelActions,
   );
 }
+
+final workContentServiceProvider = Provider.autoDispose
+    .family<NovelContentService, ({String path, String novelId})>(
+      (ref, work) => ref
+          .watch(novelContentServiceProvider(work.path))
+          .forNovel(work.novelId),
+    );
+
+final workOverlayServiceProvider = Provider.autoDispose
+    .family<WorkingOverlayService, ({String path, String novelId})>(
+      (ref, work) => ref
+          .watch(workingOverlayServiceProvider(work.path))
+          .forNovel(work.novelId),
+    );
 
 @riverpod
 Stream<List<Chapter>> chapters(Ref ref, String databasePath) {
@@ -286,8 +295,13 @@ Stream<List<WorkingFieldReview>> workingFieldReviews(
       _ => [db.items],
     });
   }
-  if (changes.any((row) => row.resourceType == 'novel')) {
-    ref.watch(novelByContentDatabasePathProvider(databasePath));
+  for (final novelId
+      in changes
+          .where((row) => row.resourceType == 'novel')
+          .map((row) => row.resourceId)
+          .nonNulls
+          .toSet()) {
+    ref.watch(novelProvider(novelId));
   }
   return db
       .customSelect('SELECT 1', readsFrom: tables)

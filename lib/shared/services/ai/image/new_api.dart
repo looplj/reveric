@@ -11,43 +11,51 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:http/http.dart' as http;
 import '../../../models/ai_provider.dart';
 import '../../../localization/locale_keys.dart';
-import '../image.dart';
 import 'client.dart';
 import 'gemini.dart';
 
 class NewApiImageClient extends ImageClient {
   NewApiImageClient(super.config);
+  ImageClient? _delegate;
+  @override
+  void cancel() {
+    _delegate?.cancel();
+    super.cancel();
+  }
 
   @override
-  Future<AiImageGenerationResult> generate(
-    ImageGenerationRequest request,
+  Future<ProviderSubmitResult> submit(
+    SubmitImageInput request,
+    ImageOutputContext outputs,
   ) async {
     final channel = validatedChannel(request);
     final catalogId = channel?.catalogId ?? request.model;
     if (catalogId.startsWith('gemini-')) {
-      return GeminiImageClient(config, useGateway: true).generate(request);
+      final delegate = GeminiImageClient(config, useGateway: true);
+      _delegate = delegate;
+      return delegate.submit(request, outputs);
     }
     final fields = <String, dynamic>{
       'model': request.model,
       'prompt': request.prompt,
       'n': 1,
       'response_format': 'b64_json',
-      if (request.size ?? channel?.requestDefaults.size case final String size)
+      if (request.size ?? request.nativeDefaults.size case final String size)
         'size': size,
       if (request.quality case final String quality) 'quality': quality,
       if (request.complexity case final String complexity)
         'complexity': complexity,
     };
     Map<String, dynamic> data;
-    final base = config.effectiveBaseUrl;
-    if (request.images.isEmpty) {
+    final base = config.effectiveImageBaseUrl;
+    if (request.references.isEmpty) {
       data = await postImageJson(Uri.parse('$base/images/generations'), fields);
     } else if (catalogId.startsWith('seedream-')) {
       data = await postImageJson(Uri.parse('$base/images/generations'), {
         ...fields,
         'image': [
-          for (final image in request.images)
-            await imageInputAsUrlOrDataUri(image),
+          for (final image in request.references)
+            await imageInputAsUrlOrDataUri(image, outputs),
         ],
       });
     } else {
@@ -58,8 +66,8 @@ class NewApiImageClient extends ImageClient {
         ..fields.addAll(
           fields.map((key, value) => MapEntry(key, value.toString())),
         );
-      for (final image in request.images) {
-        final input = UriData.parse(await imageInputAsDataUri(image));
+      for (final image in request.references) {
+        final input = UriData.parse(await imageInputAsDataUri(image, outputs));
         final prepared = await prepareMultipartReference(
           input.contentAsBytes(),
           input.mimeType == 'image/jpeg' ? 'jpg' : 'png',
@@ -90,6 +98,7 @@ class NewApiImageClient extends ImageClient {
     }
     return parseImageResponse(
       data,
+      outputs,
       emptyMessage: tr(LocaleKeys.aiImageNoResult),
     );
   }

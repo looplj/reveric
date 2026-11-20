@@ -62,7 +62,7 @@ extension on StorageCleanupService {
       final path = registry[novelId];
       final content =
           shared ??
-          (path != null && path.isNotEmpty && await File(path).exists()
+          (path != null && await _contentDatabaseExists(novelId, path)
               ? NovelContentDatabase(path)
               : null);
       if (content != null) {

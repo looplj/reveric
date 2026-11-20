@@ -108,7 +108,9 @@ class _MobileOutlineDocEditor extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final path = novel.contentDatabasePath!;
-    final overlay = ref.read(workingOverlayServiceProvider(path));
+    final overlay = ref.read(
+      workOverlayServiceProvider((path: path, novelId: novel.id)),
+    );
     final database = ref.read(novelContentDatabaseProvider(path));
     final controller = useTextEditingController(text: episode.outline);
     final focusNode = useFocusNode();

@@ -157,10 +157,8 @@ void main() {
               supportedLocales: context.supportedLocales,
               locale: context.locale,
               theme: RevericThemeData.reveric.toThemeData(),
-              builder: (context, child) => RevericTheme(
-                data: RevericThemeData.reveric,
-                child: child!,
-              ),
+              builder: (context, child) =>
+                  RevericTheme(data: RevericThemeData.reveric, child: child!),
               home: const NovelEditorPage(novelId: 'novel'),
             ),
           ),
@@ -482,7 +480,7 @@ class _ControlledOutlineService extends OutlineService {
 }
 
 class _ControlledContentService extends NovelContentService {
-  _ControlledContentService(super.db);
+  _ControlledContentService(super.db) : super(novelId: 'novel');
   Completer<void>? deleteGate;
   @override
   Future<void> deleteChapter(String chapterId) async {

@@ -89,14 +89,12 @@ class ProductionNodeGrid extends HookWidget {
     required this.canvasId,
     required this.segments,
     required this.onOpen,
-    required this.addControl,
     this.taskActions,
   });
   final ProductionCanvasService service;
   final String canvasId;
   final List<ProductionClipRow> segments;
   final ValueChanged<CanvasNode> onOpen;
-  final Widget addControl;
   final ProductionTaskActions? taskActions;
   @override
   Widget build(BuildContext context) {
@@ -121,7 +119,15 @@ class ProductionNodeGrid extends HookWidget {
     final byId = {
       for (final clip in clips.data ?? <ProductionClipRow>[]) clip.id: clip,
     };
-    final sorted = sortProductionGrid(nodes.data ?? [], byId, segments);
+    // 场次节点只给画布定位场次，不作为列表条目。
+    final sorted = sortProductionGrid(
+      [
+        for (final n in nodes.data ?? <CanvasNode>[])
+          if (n.type != canvasNodeTypeScene) n,
+      ],
+      byId,
+      segments,
+    );
     final visible = sorted
         .where((n) => productionGridKind(n, byId[n.clipId]) == filter.value)
         .toList();
@@ -140,31 +146,27 @@ class ProductionNodeGrid extends HookWidget {
       children: [
         Padding(
           padding: const EdgeInsets.all(RevericSpacing.lg),
-          child: Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: RevericSpacing.sm,
-                  runSpacing: RevericSpacing.sm,
-                  children: [
-                    for (final entry in filters.entries)
-                      RevericFilterChip(
-                        label: context.t(entry.value),
-                        count: sorted
-                            .where(
-                              (n) =>
-                                  productionGridKind(n, byId[n.clipId]) ==
-                                  entry.key,
-                            )
-                            .length,
-                        selected: filter.value == entry.key,
-                        onTap: () => filter.value = entry.key,
-                      ),
-                  ],
-                ),
-              ),
-              addControl,
-            ],
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: RevericSpacing.sm,
+              runSpacing: RevericSpacing.sm,
+              children: [
+                for (final entry in filters.entries)
+                  RevericFilterChip(
+                    label: context.t(entry.value),
+                    count: sorted
+                        .where(
+                          (n) =>
+                              productionGridKind(n, byId[n.clipId]) ==
+                              entry.key,
+                        )
+                        .length,
+                    selected: filter.value == entry.key,
+                    onTap: () => filter.value = entry.key,
+                  ),
+              ],
+            ),
           ),
         ),
         Expanded(

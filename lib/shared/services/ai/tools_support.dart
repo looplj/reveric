@@ -8,7 +8,7 @@
 //   .agents/rules/tools_path.md
 // 注意: 新增资源集合时，只需更新 _resourceDefinitions —— 路径模板与字段表由
 //   pathSchemaFieldNotes() 渲出，hidden 资源由 bundled AgentSkill 按需介绍。
-//   pathSchema 只保留通用寻址、作品边界与契约发现规则。
+//   pathSchema 提供通用寻址、作品边界、契约发现与阅读规则。
 part of 'tools.dart';
 
 Map<String, dynamic> _resourceError(
@@ -112,13 +112,29 @@ String pathSchema({String kind = contentKindNovel}) =>
     '''路径语法：
 ${_buildPathGrammarReference(kind: kind)}
 
-- 相对路径：以当前作品为起点，如 ${kind == contentKindScreenplay ? 'scenes/{scene_id}' : 'chapters/{chapter_id}'}。用户未明确要求引用、比较或改编其他作品时，不要读取 /works，使用相对路径。
-- 绝对路径：以 /works/{work_id} 为起点，如 /works/{work_id}/${kind == contentKindScreenplay ? 'scenes/{scene_id}' : 'chapters/{chapter_id}'}。
-- Read /works 发现本地作品（包括当前作品），每项至少返回 id、title、path；Read、Glob、Grep 跨作品读取时，单次调用必须明确一个 work_id
-- 跨作品只读；Create、Write、Edit、Replace、Remove 只能修改当前作品。读取其他作品不改变写入目标；按读取结果中的作品类型选择资源与契约。
+- 相对路径：以当前作品为起点，如 ${kind == contentKindCanvas
+        ? 'production/clips/{clip_id}'
+        : kind == contentKindScreenplay
+        ? 'scenes/{scene_id}'
+        : 'chapters/{chapter_id}'}。用户未明确要求引用、比较或改编其他作品时，不要读取 /works，使用相对路径。
+- 绝对路径：以 /works/{work_id} 为起点，如 /works/{work_id}/${kind == contentKindCanvas
+        ? 'production/clips/{clip_id}'
+        : kind == contentKindScreenplay
+        ? 'scenes/{scene_id}'
+        : 'chapters/{chapter_id}'}。
+- Read /works 发现书架中可读取的作品，每项至少返回 id、title、path、draft。Read、Glob、Grep 跨作品读取时，单次调用必须明确一个 work_id。
+- 作品元数据用 /works/{work_id} 或 /works/{work_id}/{field} 寻址，字段见 Read /_schema/works。
+- 对已有作品，Create、Write、Edit、Replace、Remove 只能修改当前作品。读取其他作品不改变写入目标；按读取结果中的作品类型选择资源与契约。
 - 已有资源优先使用工具返回的 `path`；引用已有资源的 ID 或定位名称时，从工具结果原样复制，不得自行构造或修改。新建或重命名时填写的新名称不受此限制。
 - 实体自身标识统一为 id（只读），关联字段和查询作用域保留各自名称；允许保留身份的数组整体写入可原样携带已有 id。
-- 契约发现：已有说明足够时直接操作；不确定时用 Read /_schema/{collection} 查询字段与能力，Read /_schema 查询集合索引，Read /_schema/groups/{shared|novel|screenplay} 查询整组契约。''';
+- 契约发现：已有说明足够时直接操作；不确定时用 Read /_schema/{collection}/{子资源层级} 查询目标字段与能力（如 /_schema/production/clips，无需资源 ID）；省略子资源时查询集合本身。返回的 contract 是字段与操作说明，subresources 提供下级契约路径。Read /_schema 查询集合索引，Read /_schema/groups/{shared|novel|screenplay|canvas} 查询该组根资源契约；子资源契约按需沿 subresources[].path 读取。
+
+资源契约通用规则：
+- 字段：未标类型为 string；* 为创建必需；readonly 不可传入写操作；nullable 可传 null。
+- Read 详情返回可读字段及 path；列表返回 entries 和分页信息。标为可选的字段不保证出现。
+- 字段 Read 返回 value；字段 Write 用 value；字段 Edit 用 old_text、new_text，all 默认为 false。
+- 整体 Create/Write 用 fields，仅提交目标字段；未列默认值的字段不承诺默认值，目标缺失默认报错。
+- 列表分页：total、limit、has_more、next_offset；文本分页另有 total_lines、start_line、end_line。''';
 
 /// 单字段 Write 的旧调用适配；类型由值定义生成。
 
@@ -593,6 +609,7 @@ const _collectionGroups = [
   _collectionGroupShared,
   contentKindNovel,
   contentKindScreenplay,
+  contentKindCanvas,
 ];
 
 /// 根和子资源共用唯一声明结构；旧消费者所需的名单全部由字段和操作投影。
@@ -717,8 +734,15 @@ class _ResourceDefinition {
   bool get usesNamePath =>
       address.kind == _AddressKind.name ||
       address.kind == _AddressKind.hierarchical_name;
-  bool supports(String kind) =>
-      group == _collectionGroupShared || group == kind;
+
+  /// 画布作品开放 canvas 组，以及共用的作品元数据和角色资源。
+  bool supports(String kind) {
+    if (kind == contentKindCanvas) {
+      return group == kind || segment == 'works' || segment == 'characters';
+    }
+    return group == _collectionGroupShared || group == kind;
+  }
+
   bool get isItemCollection => itemType != null;
   bool get isDocumentCollection => documentType != null;
   List<_ResourceDefinition> get subResources => children;
@@ -1203,7 +1227,7 @@ Map<String, dynamic>? _validateTargetRequirements(
         parsed.displayPath,
         ToolErrorCode.invalid_argument,
         'This operation requires ${constraint.whenField}=${constraint.whenValues.join(' or ')}.',
-        hint: 'Read /_schema/${parsed.collection}.',
+        hint: 'Read ${_resourceContractPath(parsed)}.',
       );
     }
   }
@@ -1255,7 +1279,7 @@ Map<String, dynamic> _resourceOperationError(
     return _resourceError(
       parsed.displayPath,
       ToolErrorCode.invalid_argument,
-      'Unsupported resource path. Read /_schema/${parsed.collection}.',
+      'Unsupported resource path. Read ${_resourceContractPath(parsed)}.',
     );
   }
   if (target.schema.isSingleton &&
@@ -1949,7 +1973,8 @@ Map<String, dynamic>? _validateResourceQuery(ParsedPath parsed) {
   }
   final resource = parsed._resource;
   final node = resource?.schema;
-  final strict = node?.group == contentKindScreenplay;
+  final strict =
+      node?.group == contentKindScreenplay || node?.group == contentKindCanvas;
   final allowed = node != null && (!strict || resource!.listing)
       ? node.queryFields
       : <String>[];
@@ -2147,6 +2172,9 @@ class ParsedPath {
   /// 是否为本地作品发现入口。
   bool get isWorksListing => collection == 'works' && workId == null;
 
+  bool get _isWorkMetadata =>
+      collection == 'works' && workId != null && _resource != null;
+
   /// 是否包含资源 ID 或名称路径
   bool get hasId => id != null || namePath.isNotEmpty;
 
@@ -2225,8 +2253,12 @@ class ParsedPath {
 
     if (segments.firstOrNull == 'works') {
       if (segments.length == 1) {
+        final schema = schemaLookup('works');
         return ParsedPath._(
           collection: 'works',
+          resource: schema == null
+              ? null
+              : _resolveResourcePath(segments, schema),
           id: null,
           namePath: const [],
           field: null,
@@ -2236,6 +2268,21 @@ class ParsedPath {
       }
 
       final workId = segments[1];
+      if (segments.length == 2 ||
+          (segments.length == 3 &&
+              _worksDefinition.fields.containsKey(segments[2]))) {
+        final resource = _resolveResourcePath(segments, _worksDefinition)!;
+        return ParsedPath._(
+          workId: workId,
+          resource: resource,
+          collection: 'works',
+          id: workId,
+          namePath: const [],
+          field: resource.field,
+          queryParameters: queryParams,
+          originalPath: normalized,
+        );
+      }
       final inner = ParsedPath.parse(
         segments.skip(2).join('/'),
         schemaLookup: schemaLookup,
@@ -2245,7 +2292,7 @@ class ParsedPath {
           : 'works/$workId/${inner.originalPath}';
       return ParsedPath._(
         workId: workId,
-        resource: inner._resource,
+        resource: inner.collection == 'works' ? null : inner._resource,
         collection: inner.collection,
         id: inner.id,
         namePath: inner.namePath,
@@ -2557,9 +2604,9 @@ const _createEnumHiddenCollections = {'relations'};
 String _pathKeyToken(_ResourceDefinition schema) =>
     '{${schema.address.itemToken!}}';
 
-/// 单个资源的路径模板：`profile`、`chapters/{chapter_id}`、`lore/{title}`。
+/// 单个资源的路径模板，如 `chapters/{chapter_id}`、`lore/{title}`。
 String _resourcePathTemplate(_ResourceDefinition schema) {
-  final root = schema.name;
+  final root = canonicalResourcePath(schema.name);
   if (schema.isSingleton) {
     return root;
   }
@@ -2605,8 +2652,9 @@ String _resourceFieldNotes(_ResourceDefinition schema) {
 String _resourceFieldNote(
   _ResourceDefinition schema,
   String field,
-  List<String>? enumValues,
-) {
+  List<String>? enumValues, {
+  bool contract = false,
+}) {
   final spec = schema.fields[field];
   final parameter = schema.operations
       .map((operation) => operation.parameters[field])
@@ -2618,11 +2666,12 @@ String _resourceFieldNote(
     if (schema.readOnlyFields.contains(field)) 'readonly',
     ..._valueFieldNotes(value),
     if (enumValues != null && enumValues.isNotEmpty)
-      '取值 ${enumValues.join(' | ')}',
+      '取值 ${enumValues.toSet().join(' | ')}',
   ];
   final details = [
     if (description.isNotEmpty) description,
     if (value.example != null) '示例 ${jsonEncode(value.example)}',
+    if (contract) ..._contractFieldNotes(schema, field),
   ];
   final star = schema.requiredFields.contains(field) ? '*' : '';
   final marker = markers.isEmpty ? '' : '（${markers.join('，')}）';
@@ -2638,7 +2687,11 @@ String _subSchemaDisplayPath(
 String _buildPathGrammarReference({String kind = contentKindNovel}) {
   return [
     '- Read / Glob / Grep 的集合 listing 路径可带 query 过滤，如 '
-        '${kind == contentKindScreenplay ? 'scenes?episode_id=...' : 'chapters?chapter_num=1'}。'
+        '${kind == contentKindCanvas
+            ? 'production/clips?kind=video'
+            : kind == contentKindScreenplay
+            ? 'scenes?episode_id=...'
+            : 'chapters?chapter_num=1'}。'
         '可用参数见各资源的 query；字段表中未标 query 的资源不支持 query。隐藏资源查询 /_schema 契约。',
     '- search 对 listing 的标题、名称等短文本字段做不区分大小写的包含匹配；'
         '其余 query 精准匹配（字符串不区分大小写）。',
@@ -2999,7 +3052,10 @@ Map<String, dynamic> _attachReadResourcePath(
   }
 
   // 已匹配子资源 schema 的路径不再进入名称文档的字段与标题推断。
-  if (_resourceDefinitions[parsed.collection]?.group == contentKindScreenplay) {
+  if (const {
+    contentKindScreenplay,
+    contentKindCanvas,
+  }.contains(_resourceDefinitions[parsed.collection]?.group)) {
     return _attachResultPath(out, parsed.displayPath);
   }
 

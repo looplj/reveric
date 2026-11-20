@@ -5,10 +5,39 @@
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/heuristic/chat_next_action.dart';
 import 'package:reveric/shared/models/ai_session_mode.dart';
 import 'package:reveric/shared/services/ai/handoff_service.dart';
 
 void main() {
+  test(
+    'work action carries an editable draft and the original work reference',
+    () {
+      const target = WorkActionTarget('new_work', prompt: '写第一集');
+      final handoff = buildWorkActionHandoff(
+        target,
+        sourceWorkId: 'original',
+        sourceSessionId: 'source_session',
+        sourceTitle: '改编讨论',
+        sourceMode: AiSessionMode.chat,
+      )!;
+      expect(handoff.initialText, '写第一集');
+      expect(handoff.autoSend, isFalse);
+      expect(handoff.content, contains('work-id="original"'));
+      expect(handoff.content, contains('path="ai-session:source_session"'));
+      expect(
+        buildWorkActionHandoff(
+          const WorkActionTarget('new_work'),
+          sourceWorkId: 'original',
+          sourceSessionId: 'source_session',
+          sourceTitle: '改编讨论',
+          sourceMode: AiSessionMode.chat,
+        ),
+        isNull,
+      );
+    },
+  );
+
   test(
     'current chat continuation preserves its source and editable prompt without sending',
     () {

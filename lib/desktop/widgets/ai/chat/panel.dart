@@ -55,6 +55,7 @@ import '../../../../shared/agent/agent.dart';
 import '../../../../shared/services/ai/chat_attachments.dart';
 import '../../../../shared/services/ai/chat_session_controller.dart';
 import '../../../../shared/services/ai/handoff_service.dart';
+import '../../../pages/workspace_editor_page.dart';
 import '../../../../shared/services/ai/chat_prompt_builder.dart';
 import '../../../../shared/services/ai/context_message_matcher.dart';
 import '../../../../shared/theme/theme.dart';
@@ -66,6 +67,7 @@ import '../../../../shared/widgets/ai/chat/tool_operation_strip.dart';
 import '../../../../shared/models/tool_permission.dart';
 import '../../../../shared/widgets/ai/tool_permission_editor.dart';
 import 'package:reveric/shared/widgets/ai/chat/auto_scroll_hook.dart';
+import 'package:reveric/shared/widgets/ai/tool_approval_card.dart';
 import 'package:reveric/shared/widgets/ai/chat/chat_send_completion_guard.dart';
 import 'package:reveric/shared/widgets/ai/chat/assistant_empty_state.dart';
 import 'package:reveric/shared/widgets/ai/chat/chat_message_view.dart';
@@ -184,9 +186,11 @@ class AiChatPanel extends HookConsumerWidget {
 
   /// 跳到指定功能（圆桌 / 小剧场 / 封面工作台），`seedText` 预填目标输入框。
   ///
-  /// 为 null 表示宿主不提供跳转能力：SuggestNextAction 不下发，空态目录里的
-  /// 跳转项也会被过滤掉。
+  /// 未提供时只展示提示词建议。
   final void Function(FeatureId feature, String? seedText)? onOpenFeature;
+
+  bool get _supportsNextActionSuggestions =>
+      onRequestHandoff != null && onActiveSessionIdChanged != null;
 
   /// 外部传入的 composer 焦点节点。设置后,外部可通过 `requestFocus()`
   /// 聚焦输入框(如画布页「AI 共创」按钮)。为 null 时面板自建焦点节点。
@@ -980,10 +984,12 @@ class AiChatPanel extends HookConsumerWidget {
             : '$currentText\n\n${draft.text}';
         // 这里保持即时计算：下面 autoSend 分支要用同一个 nextText 发送，发送语义不能变。
         // 仅把「赋值」做成组词安全的，避免清空 composing 触发 discardMarkedText。
-        writeControllerTextAfterComposing(
-          s.composerController,
-          (_) => nextText,
-        );
+        if (nextText != currentText) {
+          writeControllerTextAfterComposing(
+            s.composerController,
+            (_) => nextText,
+          );
+        }
         if (draft.references.isNotEmpty) {
           final references = <AiContextReference>[
             ...s.attachedReferences.value,
@@ -1293,6 +1299,27 @@ class AiChatPanel extends HookConsumerWidget {
             return;
           }
           open(feature, seedText);
+        case final WorkActionTarget target:
+          if (ModalRoute.of(context)?.isCurrent == false) {
+            return;
+          }
+          final handoff = buildWorkActionHandoff(
+            target,
+            sourceWorkId: novelId,
+            sourceSessionId: sessionState.sessionId ?? runtimeSessionId,
+            sourceTitle: sessionState.title,
+            sourceMode: sessionState.sessionMode,
+          );
+          unawaited(
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => WorkspaceEditorPage(
+                  novelId: target.workId,
+                  initialChatHandoff: handoff,
+                ),
+              ),
+            ),
+          );
       }
     }
 
@@ -1413,7 +1440,8 @@ class AiChatPanel extends HookConsumerWidget {
                 // SizedBox.shrink()，这里不留占位。
                 SessionNextActionBar(
                   sessionId: activeSessionId,
-                  enabled: suggestionsEnabled && onOpenFeature != null,
+                  enabled: suggestionsEnabled && _supportsNextActionSuggestions,
+                  showFeatureActions: onOpenFeature != null,
                   onPick: handleNextAction,
                 ),
                 ToolOperationStrip(
@@ -1435,6 +1463,7 @@ class AiChatPanel extends HookConsumerWidget {
                     pendingAiChanges.isNotEmpty &&
                     databasePath != null)
                   PendingChangesSummaryCard(
+                    novelId: novelId,
                     databasePath: databasePath!,
                     changes: pendingAiChanges,
                   ),
@@ -1661,6 +1690,11 @@ class _ChatMessageListArea extends HookConsumerWidget {
       sessionId: runtimeSessionId,
       hasTrailingActivity: isCompacting || isWaitingForResponse,
     );
+    final revealSlot = useApprovalReveal(
+      locator: ref.watch(toolApprovalLocatorProvider),
+      controller: scrollController,
+      uiMessages: uiMessages,
+    );
 
     if (uiMessages.isEmpty) {
       return AssistantEmptyState(
@@ -1680,20 +1714,23 @@ class _ChatMessageListArea extends HookConsumerWidget {
       ),
       itemCount: uiMessages.length,
       itemBuilder: (context, index) {
-        return panel._buildChatMessage(
-          context,
-          ref,
-          colors,
-          uiMessages[index],
-          panelState,
-          promptBuilder,
-          promptContext: promptContext,
-          availableSubAgents: availableSubAgents,
-          isCompactingContext: isCompacting && index == uiMessages.length - 1,
-          isWaitingForResponse:
-              isWaitingForResponse && index == uiMessages.length - 1,
-          retryProgress: index == uiMessages.length - 1 ? retryProgress : '',
-          sessionState: sessionState,
+        return revealSlot(
+          index,
+          panel._buildChatMessage(
+            context,
+            ref,
+            colors,
+            uiMessages[index],
+            panelState,
+            promptBuilder,
+            promptContext: promptContext,
+            availableSubAgents: availableSubAgents,
+            isCompactingContext: isCompacting && index == uiMessages.length - 1,
+            isWaitingForResponse:
+                isWaitingForResponse && index == uiMessages.length - 1,
+            retryProgress: index == uiMessages.length - 1 ? retryProgress : '',
+            sessionState: sessionState,
+          ),
         );
       },
     );

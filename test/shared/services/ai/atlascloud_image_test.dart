@@ -76,7 +76,7 @@ void main() {
             resolution: '2K',
           );
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           expect(jsonDecode(r.body), {
             'model': model,
             'prompt': 'edit',
@@ -179,7 +179,7 @@ void main() {
                 base64Decode(_png),
               );
             },
-            () => MockClient((r) async {
+            () => _ReferenceClient((r) async {
               expect(r.method, 'POST');
               expect(
                 r.url.toString(),
@@ -190,7 +190,7 @@ void main() {
                 'model': editing ? editModel : model,
                 'prompt': 'scene',
                 ...parameters,
-                if (editing) 'images': ['https://reference.test/a.png', _image],
+                if (editing) 'images': [_image, _image],
               });
               return http.Response(
                 jsonEncode({
@@ -223,7 +223,7 @@ void main() {
           ).generateImage('scene');
           expect(result.hasImage, true);
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           if (r.method == 'POST') {
             posts++;
             return http.Response(
@@ -274,7 +274,7 @@ void main() {
           ).generateImage('scene');
           expect(result.hasImage, true);
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           if (r.method == 'POST') {
             if (++posts == 1) {
               throw const HandshakeException('terminated');
@@ -328,7 +328,7 @@ void main() {
             ),
           );
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           posts++;
           throw const HandshakeException('terminated');
         }),
@@ -347,11 +347,12 @@ void main() {
               model: samples.first.$1,
             ).generateImage(
               'scene',
-              onSubmitted: (id) async => events.add('submitted:$id'),
+              onSubmitted: (id) async =>
+                  events.add('submitted:${id.remoteTaskId}'),
             );
         expect(result.hasImage, true);
       },
-      () => MockClient((r) async {
+      () => _ReferenceClient((r) async {
         events.add(r.method);
         return http.Response(
           jsonEncode({
@@ -390,7 +391,7 @@ void main() {
           final result = await service.resumeResult('original');
           expect(result.hasImage, true);
         },
-        () => MockClient((r) async {
+        () => _ReferenceClient((r) async {
           if (r.method == 'POST') {
             posts++;
             return http.Response(
@@ -479,7 +480,7 @@ void main() {
               ),
             );
           },
-          () => MockClient((r) async {
+          () => _ReferenceClient((r) async {
             requests++;
             return http.Response(jsonEncode(payload), 200);
           }),
@@ -512,7 +513,26 @@ void main() {
             throwsA(isA<AiImageGenerationException>()),
           );
         }
-      }, () => MockClient((_) => throw StateError('must not submit')));
+      }, () => _ReferenceClient((_) => throw StateError('must not submit')));
     },
   );
+}
+
+class _ReferenceClient extends MockClient {
+  _ReferenceClient(Future<http.Response> Function(http.Request) handler)
+    : super((request) async {
+        if (request.method == 'GET' &&
+            {
+              'reference.example',
+              'reference.test',
+            }.contains(request.url.host)) {
+          expect(request.headers['Authorization'], isNull);
+          return http.Response.bytes(
+            base64Decode(_png),
+            200,
+            headers: {'content-type': 'image/png'},
+          );
+        }
+        return handler(request);
+      });
 }

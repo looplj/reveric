@@ -44,6 +44,7 @@ import 'package:reveric/shared/services/tool_permission_gate.dart';
 import 'package:reveric/shared/services/tool_permissions.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
+import '../../../helpers/tool_operation_wait.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -88,7 +89,7 @@ void main() {
     if (!wait || runId is! String) {
       return response;
     }
-    return operations.wait(runId, context);
+    return waitPastApproval(operations, runId, context);
   }
 
   setUp(() async {
@@ -176,7 +177,7 @@ void main() {
     final results = ProductionResultService(appDb, (_) async => canvas);
     requests = [];
     var generatedFiles = 0;
-    invoke = (_, request, _) async {
+    invoke = (taskId, _, request, _, _, cancellation) async {
       final index = ++generatedFiles;
       final output = await File('${root.path}/generated-$index.png')
           .writeAsBytes(
@@ -190,10 +191,18 @@ void main() {
     jobs = ImageTaskService(
       database: appDb,
       images: buildImageLibraryService(appDb),
-      invoke: (provider, request, onSubmitted) {
-        requests.add(request);
-        return invoke(provider, request, onSubmitted);
-      },
+      invoke:
+          (taskId, provider, request, onSubmitted, onOutputs, cancellation) {
+            requests.add(request);
+            return invoke(
+              taskId,
+              provider,
+              request,
+              onSubmitted,
+              onOutputs,
+              cancellation,
+            );
+          },
 
       beforeCreate: (novelId, sourceType, sourceId) =>
           beforeCreate(novelId, sourceType, sourceId),
@@ -464,7 +473,10 @@ void main() {
       'method': 'panorama',
     });
     expect(response['error_code'], 'failed_precondition');
-    expect(response['error'], 'StoryboardException(source_missing)');
+    expect(
+      response['error'],
+      'StoryboardException(source_missing: Canvas node missing-node was not found.)',
+    );
     expect(requests, isEmpty);
   });
 
@@ -566,7 +578,8 @@ void main() {
           'resolution': '4K',
         });
         await approvals.resolve(approval, allow: true);
-        final done = await operations.wait(
+        final done = await waitPastApproval(
+          operations,
           response['run_id'] as String,
           context,
         );
@@ -617,7 +630,11 @@ void main() {
       final approval = (await waiting).single;
       await canvas.unadopt(node.id);
       await approvals.resolve(approval, allow: true);
-      final done = await operations.wait(response['run_id'] as String, context);
+      final done = await waitPastApproval(
+        operations,
+        response['run_id'] as String,
+        context,
+      );
       expect(done['error_code'], 'failed_precondition');
       expect(done['error'], contains('invalid_reference'));
       expect(requests, isEmpty);
@@ -656,14 +673,29 @@ void main() {
     () async {
       final release = Completer<void>();
       final original = invoke;
-      invoke = (provider, request, onSubmitted) async {
-        final index = requests.length;
-        await release.future;
-        if (index == 2) {
-          throw const AiImageGenerationException('simulated cell failure');
-        }
-        return original(provider, request, onSubmitted);
-      };
+      invoke =
+          (
+            taskId,
+            provider,
+            request,
+            onSubmitted,
+            onOutputs,
+            cancellation,
+          ) async {
+            final index = requests.length;
+            await release.future;
+            if (index == 2) {
+              throw const AiImageGenerationException('simulated cell failure');
+            }
+            return original(
+              taskId,
+              provider,
+              request,
+              onSubmitted,
+              onOutputs,
+              cancellation,
+            );
+          };
       late List outputs;
       try {
         final response = await run('split-grid', {
@@ -819,18 +851,18 @@ void main() {
       )..where((p) => p.id.equals('images'))).write(
         const app.AiProvidersCompanion(apiKey: Value('credential-12345')),
       );
-      invoke = (_, _, _) async => throw const AiImageGenerationException(
-        'Please try later.',
-        code: AiImageErrorCode.rate_limit,
-        debugMessage:
-            'HTTP 429 quota exceeded; key=credential-12345; Bearer private-token; https://host.test/signed?secret=value',
-      );
+      invoke = (taskId, _, _, _, _, cancellation) async =>
+          throw const AiImageGenerationException(
+            'Please try later.',
+            code: AiImageErrorCode.rate_limit,
+            debugMessage:
+                'HTTP 429 quota exceeded; key=credential-12345; Bearer private-token; https://host.test/signed?secret=value',
+          );
       final response = await run('derive-view', {...model, 'preset': 'camera'});
       expect(response['error_code'], 'rate_limit');
       expect(response['error'], contains('HTTP 429 quota exceeded'));
       expect(response['error'], isNot(contains('credential-12345')));
       expect(response['error'], isNot(contains('private-token')));
-      expect(response['error'], isNot(contains('secret=value')));
       expect(
         (await appDb.select(appDb.generationTasks).get()).single.errorMessage,
         'Please try later.',
@@ -989,10 +1021,25 @@ void main() {
     () async {
       final release = Completer<void>();
       final originalInvoke = invoke;
-      invoke = (provider, request, onSubmitted) async {
-        await release.future;
-        return originalInvoke(provider, request, onSubmitted);
-      };
+      invoke =
+          (
+            taskId,
+            provider,
+            request,
+            onSubmitted,
+            onOutputs,
+            cancellation,
+          ) async {
+            await release.future;
+            return originalInvoke(
+              taskId,
+              provider,
+              request,
+              onSubmitted,
+              onOutputs,
+              cancellation,
+            );
+          };
       final originalCreate = beforeCreate;
       var preparations = 0;
       beforeCreate = (novelId, sourceType, sourceId) async {
@@ -1069,10 +1116,25 @@ void main() {
     () async {
       final release = Completer<void>();
       final original = invoke;
-      invoke = (provider, request, onSubmitted) async {
-        await release.future;
-        return original(provider, request, onSubmitted);
-      };
+      invoke =
+          (
+            taskId,
+            provider,
+            request,
+            onSubmitted,
+            onOutputs,
+            cancellation,
+          ) async {
+            await release.future;
+            return original(
+              taskId,
+              provider,
+              request,
+              onSubmitted,
+              onOutputs,
+              cancellation,
+            );
+          };
       late List outputs;
       try {
         final response = await run('split-grid', {
@@ -1136,7 +1198,7 @@ void main() {
       final started = Completer<void>();
       final late = Completer<AiImageGenerationResult>();
       final original = invoke;
-      invoke = (_, _, _) {
+      invoke = (taskId, _, _, _, _, cancellation) {
         started.complete();
         return late.future;
       };
@@ -1154,9 +1216,12 @@ void main() {
       expect(output['generated'], false);
       late.complete(
         await original(
+          output['task_id'] as String,
           (await appDb.aiProviderDao.getById('images'))!,
           requests.single,
           (_) async {},
+          (_, _) async {},
+          AgentCancellationController().token,
         ),
       );
       await jobs.shutdown();

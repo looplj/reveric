@@ -2190,7 +2190,7 @@ void main() {
         client,
         hooks: [
           _LLMErrorHook(
-            (_, _) => const LLMErrorAction.retry(Duration(milliseconds: 50)),
+            (_, _) => const LLMErrorAction.retry(Duration(seconds: 30)),
           ),
         ],
       );
@@ -2203,7 +2203,7 @@ void main() {
           agent.cancel();
         }
       }, onDone: () => completer.complete());
-      await completer.future;
+      await completer.future.timeout(const Duration(milliseconds: 500));
       await sub.cancel();
 
       expect(client.calls, 1);

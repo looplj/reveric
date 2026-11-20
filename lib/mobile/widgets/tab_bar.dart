@@ -43,10 +43,12 @@ class MobileTabBar extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.tabKeys,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final List<GlobalKey>? tabKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -69,13 +71,18 @@ class MobileTabBar extends StatelessWidget {
         children: [
           for (var i = 0; i < mobileTabItems.length; i++)
             Expanded(
-              child: _buildTab(
-                context,
-                colors,
-                typo,
-                item: mobileTabItems[i],
-                isActive: i == currentIndex,
-                onTap: () => onTap(i),
+              child: KeyedSubtree(
+                key: tabKeys != null && i < tabKeys!.length
+                    ? tabKeys![i]
+                    : null,
+                child: _buildTab(
+                  context,
+                  colors,
+                  typo,
+                  item: mobileTabItems[i],
+                  isActive: i == currentIndex,
+                  onTap: () => onTap(i),
+                ),
               ),
             ),
         ],

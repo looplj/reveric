@@ -38,11 +38,7 @@ Future<void> createAppDatabaseIndexes(GeneratedDatabase database) async {
     'CREATE INDEX IF NOT EXISTS anonymous_outbox_events_by_next_retry_at_priority_id '
     'ON anonymous_outbox_events (next_retry_at, priority, id)',
   );
-  await database.customStatement(
-    'CREATE INDEX IF NOT EXISTS anonymous_outbox_events_by_endpoint_product_code_device_id_next_retry_at_id '
-    'ON anonymous_outbox_events '
-    '(endpoint, product_code, device_id, next_retry_at, id)',
-  );
+  await createAnonymousOutboxBatchIndex(database);
   await database.customStatement(
     'CREATE UNIQUE INDEX IF NOT EXISTS novel_agent_skills_by_name_u '
     'ON novel_agent_skills (name)',
@@ -128,4 +124,11 @@ Future<void> createPluginTaskIndexes(
   GeneratedDatabase database,
 ) => database.customStatement(
   'CREATE INDEX IF NOT EXISTS plugin_tasks_by_enabled_next_due_at ON plugin_tasks(enabled, next_due_at)',
+);
+
+Future<void> createAnonymousOutboxBatchIndex(
+  GeneratedDatabase database,
+) => database.customStatement(
+  'CREATE INDEX IF NOT EXISTS anonymous_outbox_events_by_endpoint_device_id_next_retry_at_id '
+  'ON anonymous_outbox_events (endpoint, device_id, next_retry_at, id)',
 );
