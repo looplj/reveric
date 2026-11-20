@@ -30,6 +30,7 @@
   "editor.cover_generation_failed": "Failed to generate cover: {error}",
   "editor.cover_extra_hint": "Add extra requirements for the cover (optional).",
   "editor.cover_style_card_hint": "Choose this direction to craft a cover candidate prompt.",
+  "editor.cover_style_cg3d": "3D Semi-realistic CG",
   "editor.cover_style_custom_hint": "Enter custom style description...",
   "editor.cover_extra_requirements": "Extra Requirements",
   "editor.cover_start_craft": "Start Crafting",

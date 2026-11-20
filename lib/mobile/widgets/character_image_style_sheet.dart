@@ -20,6 +20,7 @@ import '../../shared/components/reveric_button.dart';
 import '../../shared/form/hooked_text_form_field.dart';
 import '../../shared/localization/app_localization.dart';
 import '../../shared/localization/locale_keys.dart';
+import '../../shared/models/cover_style.dart';
 import '../../shared/theme/theme.dart';
 import '../../third/form/flutter_hook_form.dart';
 import 'sheet.dart';
@@ -40,6 +41,7 @@ const _styleKeys = [
   LocaleKeys.editorCoverStyleIllustration,
   LocaleKeys.editorCoverStyleEastern,
   LocaleKeys.editorCoverStyleMinimal,
+  LocaleKeys.editorCoverStyleCg3d,
   LocaleKeys.agentRoleCustom,
 ];
 
@@ -84,6 +86,8 @@ class MobileCharacterImageStyleSheet extends HookWidget {
                   }
                   final styleText = custom
                       ? form.getValue<String>(_ImageFields.customStyle)!.trim()
+                      : style == LocaleKeys.editorCoverStyleCg3d
+                      ? coverStyleCg3dPrompt
                       : context.t(style);
                   final extra =
                       (form.getValue<String>(_ImageFields.extra) ?? '').trim();
