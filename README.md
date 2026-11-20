@@ -10,7 +10,8 @@
 
 <p align="center">
   <a href="README.md">简体中文</a> •
-  <a href="README.en-US.md">English</a> ｜
+  <a href="README.en-US.md">English</a> •
+  <a href="README.ja-JP.md">日本語</a> ｜
   <a href="#核心特性">核心特性</a> •
   <a href="#全流程展示">全流程展示</a> •
   <a href="#模型支持">模型支持</a> •
