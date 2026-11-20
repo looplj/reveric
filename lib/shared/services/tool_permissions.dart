@@ -15,6 +15,11 @@ class ToolPermissionService {
 
   Future<void> validateScope(ToolPermissionScope scope) async {
     scope.validate();
+    await _validateAppScope(scope);
+    await _validateEpisode(scope);
+  }
+
+  Future<void> _validateAppScope(ToolPermissionScope scope) async {
     if (scope.type == ToolPermissionScopeType.global) {
       return;
     }
@@ -35,6 +40,9 @@ class ToolPermissionService {
         'The session does not belong to this work.',
       );
     }
+  }
+
+  Future<void> _validateEpisode(ToolPermissionScope scope) async {
     if (scope.type == ToolPermissionScopeType.episode &&
         !await episodeExists(scope.workId, scope.id)) {
       throw const ToolPermissionException(
@@ -69,8 +77,15 @@ class ToolPermissionService {
     String action,
     ToolPermissionScope scope,
     ToolPermissionDecision? decision,
-  ) => database.transaction(() async {
-    await validateScope(scope);
-    await database.toolPermissionDao.setRule(action, scope, decision);
-  });
+  ) async {
+    scope.validate();
+    if (scope.type == ToolPermissionScopeType.episode) {
+      await _validateAppScope(scope);
+      await _validateEpisode(scope);
+    }
+    await database.transaction(() async {
+      await _validateAppScope(scope);
+      await database.toolPermissionDao.setRule(action, scope, decision);
+    });
+  }
 }

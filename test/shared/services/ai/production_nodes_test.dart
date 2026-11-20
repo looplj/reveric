@@ -96,6 +96,17 @@ void main() {
     return operations.wait(runId, context);
   }
 
+  Future<Map<String, dynamic>> createMedia(String path, {String? content}) =>
+      tools.executeTool(
+        name: 'Create',
+        callId: 'call-import-media',
+        context: context,
+        input: {
+          'path': 'episodes/$episode/production/canvas/nodes',
+          'fields': {'type': 'media', 'path': path, 'content': ?content},
+        },
+      );
+
   setUp(() async {
     db = NovelContentDatabase.forTest(NativeDatabase.memory());
     appDb = app.AppDatabase.forTest(NativeDatabase.memory());
@@ -185,6 +196,62 @@ void main() {
           null,
         );
   });
+
+  test(
+    'canvas edits can commit while an external media import awaits approval',
+    () async {
+      await permissions.setRule(
+        'files.read',
+        const ToolPermissionScope.global(),
+        ToolPermissionDecision.ask,
+      );
+      final file = File.fromUri(root.uri.resolve('external.mp4'));
+      await file.writeAsString('external video');
+      final waiting = approvals.stream
+          .firstWhere((pending) => pending.isNotEmpty)
+          .timeout(const Duration(seconds: 5));
+      final importing = createMedia(file.path);
+      final approval = (await waiting).single;
+      final editing = canvas.addText(
+        node.canvasId,
+        title: 'While approval is pending',
+      );
+      try {
+        final text = await editing.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => fail('Canvas edit is blocked by file approval'),
+        );
+        expect(await db.canvasDao.getNodeById(text.id), isNotNull);
+        expect(approvals.pending, [approval]);
+      } finally {
+        await approvals.resolve(approval, allow: true);
+        await importing;
+        await editing;
+      }
+      final result = await importing;
+      expect(result['ok'], true, reason: '$result');
+      final media = await canvas.requireNode(result['id'] as String);
+      expect(media.canvasId, node.canvasId);
+      final imported = await canvas.requireAsset(media.mediaAssetId!);
+      expect(
+        await File(canvas.library.resolve(imported)).readAsString(),
+        'external video',
+      );
+    },
+  );
+
+  test(
+    'invalid media node fields are rejected before reading the file',
+    () async {
+      final result = await createMedia(
+        'file_workspaces/work/videos/source.mp4',
+        content: 'Only text nodes accept content',
+      );
+      expect(result['ok'], false, reason: '$result');
+      expect(runner.probes, 0);
+      expect(await db.canvasDao.getNodesByCanvas(node.canvasId), hasLength(1));
+    },
+  );
 
   test(
     'four video commands create persistent nodes and real derived edges without changing the source',

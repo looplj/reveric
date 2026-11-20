@@ -326,6 +326,56 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
             ? {'value': parsed.field == 'data' ? value : value[parsed.field]}
             : value;
       }
+      final newNodeType = segment == 'nodes' && tool == _ResourceTool.create
+          ? fields['type']
+          : null;
+      if (newNodeType != null &&
+          newNodeType != canvasNodeTypeText &&
+          fields.containsKey('content')) {
+        throw const StoryboardException('invalid_config');
+      }
+      ({ProductionCanvasService canvas, String assetId})? media;
+      if (newNodeType == canvasNodeTypeMedia) {
+        final assetId = fields['asset_id'] as String?;
+        final path = fields['path'] as String?;
+        if ((assetId == null) == (path == null) ||
+            fields['ref_id'] != null ||
+            fields['ref_type'] != null) {
+          throw const StoryboardException('invalid_reference');
+        }
+        final build = operationHost?.production;
+        if (build == null) {
+          throw const ToolOperationException(
+            'unavailable',
+            'Production services are unavailable.',
+          );
+        }
+        final host = await build();
+        if (!identical(host.canvas.db, db)) {
+          throw const ToolPermissionException(
+            'permission_denied',
+            'Cross-work media writes are unavailable.',
+          );
+        }
+        // 文件审批期间允许其他操作继续写入作品库。
+        final resolvedAssetId =
+            assetId ??
+            (await host.importPath(
+              path!,
+              _currentToolExecutionContext ??
+                  (throw const ToolOperationException(
+                    'unavailable',
+                    'Media import requires a chat session.',
+                  )),
+              operationHost?.operations ??
+                  (throw const ToolOperationException(
+                    'unavailable',
+                    'Media import requires session operations.',
+                  )),
+              _activeRunCallId ?? '',
+            )).id;
+        media = (canvas: host.canvas, assetId: resolvedAssetId);
+      }
       return await shots.write('AI_PRODUCTION', episodeId, () async {
         final canvas = await shots.ensureCanvas(episodeId);
         Future<CanvasNode> requireNode(String id) async {
@@ -375,10 +425,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
           throw const StoryboardException('invalid_config');
         }
         if (tool == _ResourceTool.create) {
-          final type = fields['type'];
-          if (fields.containsKey('content') && type != canvasNodeTypeText) {
-            throw const StoryboardException('invalid_config');
-          }
+          final type = newNodeType;
           String? refId = fields['ref_id'] as String?;
           final expectedRefType = {'video', 'image', 'audio'}.contains(type)
               ? canvasNodeRefTypeProductionClip
@@ -415,47 +462,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
             }
             node = await shots.ensureClipNode(refId);
           } else if (type == canvasNodeTypeMedia) {
-            if ((fields['asset_id'] == null) == (fields['path'] == null) ||
-                refId != null ||
-                fields['ref_type'] != null) {
-              throw const StoryboardException('invalid_reference');
-            }
-            final build = operationHost?.production;
-            if (build == null) {
-              throw const ToolOperationException(
-                'unavailable',
-                'Production services are unavailable.',
-              );
-            }
-            final host = await build();
-            if (!identical(host.canvas.db, db)) {
-              throw const ToolPermissionException(
-                'permission_denied',
-                'Cross-work media writes are unavailable.',
-              );
-            }
-            node = fields['asset_id'] != null
-                ? await host.canvas.addMedia(
-                    canvas.id,
-                    fields['asset_id'] as String,
-                  )
-                : await host.canvas.addMedia(
-                    canvas.id,
-                    (await host.importPath(
-                      fields['path'] as String,
-                      _currentToolExecutionContext ??
-                          (throw const ToolOperationException(
-                            'unavailable',
-                            'Media import requires a chat session.',
-                          )),
-                      operationHost?.operations ??
-                          (throw const ToolOperationException(
-                            'unavailable',
-                            'Media import requires session operations.',
-                          )),
-                      _activeRunCallId ?? '',
-                    )).id,
-                  );
+            node = await media!.canvas.addMedia(canvas.id, media.assetId);
           } else if (type == canvasNodeTypeText ||
               type == canvasNodeTypeEditing) {
             if (refId != null || fields['ref_type'] != null) {

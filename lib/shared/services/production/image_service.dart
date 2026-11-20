@@ -902,9 +902,10 @@ class ImageTaskService {
           throw const StoryboardException('invalid_result');
         }
       }
+      // 先读来源标题，避免持有任务库事务时等待作品库。
+      final title = await sourceName?.call(task);
       await database.generationTaskDao.completeImageResults(id, () async {
         final assets = <AssetRow>[];
-        final title = await sourceName?.call(task);
         for (final (index, output) in outputs.indexed) {
           if (output.assetId != null) {
             assets.add((await database.assetDao.getAsset(output.assetId!))!);
