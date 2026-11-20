@@ -1,0 +1,71 @@
+name: Windows Test Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read pinned Flutter version
+        id: flutter-version
+        shell: pwsh
+        run: |
+          $version = (Get-Content .fvmrc -Raw | ConvertFrom-Json).flutter
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Enable Git long paths for Flutter SDK checkout
+        shell: pwsh
+        run: git config --system core.longpaths true
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: master
+          flutter-version: ${{ steps.flutter-version.outputs.version }}
+          cache: true
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: dart pub global activate fastforge 0.6.6
+      - name: Install packaging tools
+        shell: bash
+        run: choco install innosetup --no-progress
+      - name: Download Chinese language file for Inno Setup
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl" -OutFile "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl"
+      - name: Download VC++ redistributable
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 -o windows/packaging/exe/vc_redist.x64.exe \
+            "https://aka.ms/vc14/vc_redist.x64.exe"
+      - run: flutter pub get
+      - name: Restore Windows ONNX Runtime SDK
+        id: windows-ort-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build/depth-native/ort-sdk-windows-x64
+          key: ${{ runner.os }}-x64-onnxruntime-${{ hashFiles('third/depth-native/prepare-product-windows.ps1', 'third/depth-native/required_operators.config') }}
+      - name: Build CPU depth runtime
+        run: ./third/depth-native/prepare-product-windows.ps1
+      - name: Save Windows ONNX Runtime SDK
+        if: steps.windows-ort-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/depth-native/ort-sdk-windows-x64
+          key: ${{ steps.windows-ort-cache.outputs.cache-primary-key }}
+      - name: Build installer
+        run: fastforge release --name release --jobs windows-exe --skip-clean
+      - name: Upload Windows test installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: reveric-windows-test-${{ github.run_number }}-${{ github.run_attempt }}
+          path: dist/**/*-setup.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
