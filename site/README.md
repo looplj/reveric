@@ -35,6 +35,23 @@ python3 -m http.server 4312 --directory site/dist
 
 原始截图用 Reveric 深色主题、窗口 1440×900、按 2x 截取，放进本地的 `site/screenshots/`，用其中的 `process_screenshots.py` 打码后输出到 `designs/website/assets/`。
 
+## 画布画廊展映素材（Cloudflare R2）
+
+`SC.05`（`#gallery`）展示的成片 MP4、剧照封面和设定/画布节点图不存进 Git 仓库，统一放在 `reveric-gallery` 桶的 `showcase/` 前缀下，通过 `https://gallery.reveric.app/showcase/` 提供公开读取：
+
+- 视频规格：720p H.264（`yuv420p`）+ AAC，`+faststart` 便于网页分段缓冲。
+- 图片规格：16:9 WebP（`*_poster.webp` 1280×720、`*_thumb.webp` 640×360、`*_board.webp` 1280×720）。
+
+新增或替换展映素材时，用 Wrangler 上传后更新 `designs/website/index.html` 与 `designs/website/landing.js` 的 `WORKS` 配置：
+
+```bash
+npx wrangler r2 object put "reveric-gallery/showcase/<文件名>" \
+  --file="<本地路径>" \
+  --content-type="video/mp4" \
+  --cache-control="public, max-age=604800" \
+  --remote --force
+```
+
 ## 部署
 
 - **发版**：`Package` workflow 的三个平台都打包成功后，`deploy-website` 用本次 tag 的版本构建并部署。手动只打单个平台时会跳过这一步。

@@ -12,6 +12,8 @@
   <a href="README.md">简体中文</a> •
   <a href="README.en-US.md">English</a> •
   <a href="README.ja-JP.md">日本語</a> ｜
+  <a href="https://reveric.app">公式サイト</a> •
+  <a href="https://reveric.app/#gallery">作品ショーケース</a> •
   <a href="#主な機能">機能</a> •
   <a href="#エンドツーエンドのワークフロー">ワークフロー</a> •
   <a href="#対応モデル">モデル</a> •
@@ -82,6 +84,46 @@
 - **ローカルファースト、自分の API キーを使用**: 作品はローカルの SQLite データベースに保存されます。OpenAI、Anthropic、Gemini、DeepSeek、Seedance、H3、またはセルフホストのゲートウェイに直接接続できます。
 
 ![Reveric のホーム画面](.github/images/home.png)
+
+---
+
+## 作品ショーケース · キャンバス ギャラリー
+
+デスクトップ版には**キャンバス ギャラリー**が内蔵されており、脚本・キャラクター設定図・絵コンテ ノード・メディア素材・AI チャット履歴を含むキャンバス全体を投稿したり、ワンクリックで自分の本棚に複製して再利用したりできます。
+
+公式サイト **[reveric.app/#gallery](https://reveric.app/#gallery)** では、厳選された完成映像のオンライン再生と、裏側のキャンバス構成・設定ボードを切り替えながらご覧いただけます：
+
+<table width="100%">
+  <tr>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/duantianhe_poster.webp" alt="断天河" />
+      </a>
+      <br />
+      <strong>断天河（29秒 本編）</strong>
+      <br />
+      <sub>仙侠アクション · 14 ノード · 脚本・四面図・3幕編集</sub>
+    </td>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/shuangshu_board.webp" alt="双姝之战 キャンバス図" />
+      </a>
+      <br />
+      <strong>双姝之战（51秒 本編）</strong>
+      <br />
+      <sub>ゴシックファンタジー · 24 ノード · 全体トポロジーと3幕連戦</sub>
+    </td>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/mori_poster.webp" alt="末日圣母回收指南" />
+      </a>
+      <br />
+      <strong>末日圣母回收指南（81秒 本編）</strong>
+      <br />
+      <sub>終末ショートドラマ · 36 ノード · マルチカメラ絵コンテと本編編集</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
