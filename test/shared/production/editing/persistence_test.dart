@@ -151,11 +151,7 @@ void main() {
       });
       content.close();
       try {
-        final backup = collectSelectedMedia(
-          backup: dir,
-          novelIds: {'novel'},
-          contentPaths: ['${dir.path}/content.sqlite'],
-        );
+        final backup = collectSelectedMedia(backup: dir, novelIds: {'novel'});
         expect(
           backup.rows['assets']!.map((row) => row['id']),
           contains('media/video.mp4'),

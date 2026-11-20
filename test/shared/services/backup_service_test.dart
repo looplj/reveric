@@ -526,6 +526,57 @@ void main() {
     },
   );
 
+  for (final targetExists in [false, true]) {
+    test(
+      'selected restore reads cross-workspace assets from the ZIP with external target exists=$targetExists',
+      () async {
+        _writeLibrary(appSupportDir, {
+          'work': (title: 'Work', marker: 'backup'),
+        });
+        final external = await Directory(
+          p.join(tempRoot.path, 'external'),
+        ).create();
+        await RevericPaths.initialize(fileWorkspaceParent: external.path);
+        const relative = 'file_workspaces/other/images/cross.png';
+        final asset = File(p.join(external.path, relative));
+        await asset.parent.create(recursive: true);
+        await asset.writeAsString('backup asset');
+        final main = sqlite3.open(p.join(appSupportDir.path, 'reveric.sqlite'));
+        insertBackupRow(main, 'assets', {
+          'id': 'cross',
+          'novel_id': 'work',
+          'type': 'image',
+          'purpose': 'reference',
+          'path': relative,
+        });
+        main.close();
+        final service = BackupService();
+        final backup = await service.backupToZip(
+          outputDirectory: outputDir.path,
+        );
+        expect(backup.success, isTrue);
+        if (targetExists) {
+          await asset.writeAsString('current asset');
+        } else {
+          await asset.delete();
+        }
+
+        final restored = await service.restoreFromZip(
+          backup.backupPath!,
+          mode: RestoreMode.selectedNovels,
+          novelIds: {'work'},
+        );
+
+        expect(restored.success, isTrue, reason: '${restored.failureReason}');
+        expect(await asset.readAsString(), 'backup asset');
+        expect(
+          File(p.join(appSupportDir.path, relative)).existsSync(),
+          isFalse,
+        );
+      },
+    );
+  }
+
   test(
     'directory backup includes current media and excludes obsolete roots',
     () async {
@@ -887,13 +938,16 @@ void main() {
 
   for (final mode in RestoreMode.values) {
     for (final main in [true, false]) {
-      for (final delta in [-1, 0, 1]) {
+      for (final delta in [if (!main) -2, -1, 0, 1]) {
         test(
           '$mode checks ${main ? 'main' : 'content'} schema delta $delta before business data',
           () async {
             final source = Directory(p.join(tempRoot.path, 'source'))
               ..createSync();
-            _writeLibrary(source, {'work': (title: 'Work', marker: 'backup')});
+            _writeLibrary(source, {
+              'work': (title: 'Work', marker: 'backup'),
+              'other': (title: 'Other', marker: 'other backup'),
+            });
             final relative = main
                 ? 'reveric.sqlite'
                 : 'novel_workspaces/work.sqlite';
@@ -901,9 +955,24 @@ void main() {
             final supported = main
                 ? AppDatabase.currentSchemaVersion
                 : NovelContentDatabase.currentSchemaVersion;
+            final compatibleContent = !main && delta == -1;
+            final rejected = delta != 0 && !compatibleContent;
+            if (compatibleContent) {
+              db.execute(
+                'ALTER TABLE production_clips DROP COLUMN generate_audio',
+              );
+              final unregistered = _databases.writeContent(
+                p.join(source.path, 'novel_workspaces/unregistered.sqlite'),
+              );
+              unregistered.execute(
+                'ALTER TABLE production_clips DROP COLUMN generate_audio',
+              );
+              unregistered.execute('PRAGMA user_version = 1');
+              unregistered.close();
+            }
             db.execute('PRAGMA user_version = ${supported + delta}');
             db.close();
-            if (delta != 0) {
+            if (rejected) {
               // A different schema must never reach current JSON/table readers.
               final futureDb = sqlite3.open(
                 p.join(source.path, 'reveric.sqlite'),
@@ -931,7 +1000,7 @@ void main() {
                 hookCalled = true;
               },
             );
-            if (delta != 0) {
+            if (rejected) {
               expect(
                 inspection.failureReason,
                 RestoreFailureReason.unsupportedBackup,
@@ -952,6 +1021,38 @@ void main() {
               expect(inspection.success, isTrue);
               expect(restored.success, isTrue);
               expect(hookCalled, isTrue);
+              if (compatibleContent) {
+                final file = File(p.join(appSupportDir.path, relative));
+                final legacy = sqlite3.open(file.path, mode: OpenMode.readOnly);
+                expect(
+                  legacy.select('PRAGMA user_version').single['user_version'],
+                  1,
+                );
+                legacy.close();
+
+                final content = NovelContentDatabase.forTest(
+                  NativeDatabase(file),
+                );
+                try {
+                  expect(
+                    (await content
+                            .customSelect('PRAGMA user_version')
+                            .getSingle())
+                        .read<int>('user_version'),
+                    NovelContentDatabase.currentSchemaVersion,
+                  );
+                  final columns = await content
+                      .customSelect('PRAGMA table_info(production_clips)')
+                      .get();
+                  expect(
+                    columns.map((row) => row.read<String>('name')),
+                    contains('generate_audio'),
+                  );
+                  expect(_readContentMarker(appSupportDir, 'work'), 'backup');
+                } finally {
+                  await content.close();
+                }
+              }
             }
           },
         );
@@ -1147,13 +1248,26 @@ void main() {
   );
 
   test('backs up workspace images, director outputs and user avatars', () async {
-    _createSqlite(p.join(appSupportDir.path, 'reveric.sqlite'));
-
-    final workspacesDir = Directory(
-      p.join(appSupportDir.path, 'novel_workspaces'),
+    _writeLibrary(
+      appSupportDir,
+      {
+        'novel_1': (title: 'Work', marker: 'work'),
+        'draft': (title: 'Draft', marker: 'draft'),
+        'deleted': (title: 'Deleted', marker: 'deleted'),
+      },
+      draftNovelIds: {'draft'},
     );
-    await workspacesDir.create(recursive: true);
-    _createSqlite(p.join(workspacesDir.path, 'novel_1.sqlite'));
+    final main = sqlite3.open(p.join(appSupportDir.path, 'reveric.sqlite'));
+    main.execute("UPDATE novels SET deleted_at = 1 WHERE id = 'deleted'");
+    main.execute(
+      "UPDATE novels SET content_database_path = ? WHERE id = 'draft'",
+      [r'novel_workspaces\draft.sqlite'],
+    );
+    main.close();
+    final unregistered = File(
+      p.join(appSupportDir.path, 'novel_workspaces/unregistered.sqlite'),
+    );
+    _writeContentDatabase(unregistered.path, 'unregistered');
     final imagesDir = Directory(
       p.join(appSupportDir.path, 'file_workspaces/novel_1/images'),
     );
@@ -1201,6 +1315,16 @@ void main() {
       await File(result.backupPath!).readAsBytes(),
     );
     final names = archive.files.map((file) => file.name).toSet();
+    expect(
+      names,
+      containsAll([
+        'novel_workspaces/novel_1.sqlite',
+        'novel_workspaces/draft.sqlite',
+        'novel_workspaces/deleted.sqlite',
+      ]),
+    );
+    expect(names, isNot(contains('novel_workspaces/unregistered.sqlite')));
+    expect(unregistered.existsSync(), isTrue);
     expect(names, contains('file_workspaces/novel_1/images/avatar.png'));
     expect(names, contains('avatars/me.png'));
     expect(names, contains('plugins/example.search/1.0.0/dist/index.js'));
@@ -1619,7 +1743,7 @@ void main() {
     }
 
     test(
-      '$mode restores current asset references, task records and media',
+      '$mode restores selected and shared assets, task records and media',
       () async {
         _writeLibrary(appSupportDir, {
           'work': (title: 'Work', marker: 'backup'),
@@ -1640,13 +1764,23 @@ void main() {
           'task-input',
           'map',
         };
-        for (final id in [...expectedIds, 'unrelated']) {
-          final path = 'file_workspaces/shared/images/$id.png';
+        String mediaPath(String id) => switch (id) {
+          'clip' || 'other-owned' => 'file_workspaces/other/images/$id.png',
+          _ => 'file_workspaces/shared/images/$id.png',
+        };
+        for (final id in [...expectedIds, 'unrelated-shared', 'other-owned']) {
+          final owner = switch (id) {
+            'clip' => 'work',
+            'other-owned' => 'other',
+            _ => null,
+          };
+          final path = mediaPath(id);
           insertBackupRow(main, 'assets', {
             'id': id,
             'type': 'image',
             'purpose': 'reference',
             'path': path,
+            'novel_id': owner,
           });
           final file = File(p.join(appSupportDir.path, path));
           await file.parent.create(recursive: true);
@@ -1772,9 +1906,11 @@ void main() {
               .select('SELECT id FROM assets')
               .map((row) => row['id'])
               .toSet(),
-          mode == RestoreMode.fullReplacement
-              ? {...expectedIds, 'unrelated'}
-              : expectedIds,
+          {
+            ...expectedIds,
+            'unrelated-shared',
+            if (mode == RestoreMode.fullReplacement) 'other-owned',
+          },
         );
         expect(
           restoredMain
@@ -1789,17 +1925,20 @@ void main() {
           'previous',
         );
         restoredMain.close();
-        for (final id in expectedIds) {
+        for (final id in [...expectedIds, 'unrelated-shared']) {
           expect(
             await File(
-              p.join(
-                appSupportDir.path,
-                'file_workspaces/shared/images/$id.png',
-              ),
+              p.join(appSupportDir.path, mediaPath(id)),
             ).readAsString(),
             'backup-$id',
           );
         }
+        expect(
+          File(
+            p.join(appSupportDir.path, mediaPath('other-owned')),
+          ).existsSync(),
+          mode == RestoreMode.fullReplacement,
+        );
         final restoredContent = sqlite3.open(
           p.join(appSupportDir.path, 'novel_workspaces/work.sqlite'),
         );
@@ -1818,44 +1957,6 @@ void main() {
           ]),
         );
         restoredContent.close();
-      },
-    );
-  }
-
-  for (final photo in [
-    'file_workspaces/work/images/photo.png',
-    {'path': 'file_workspaces/work/images/photo.png', 'name': 'Old'},
-  ]) {
-    test(
-      'selected restore rejects obsolete photo structure $photo and rolls back',
-      () async {
-        _writeLibrary(appSupportDir, {
-          'work': (title: 'Work', marker: 'backup'),
-        });
-        final db = sqlite3.open(
-          p.join(appSupportDir.path, 'novel_workspaces/work.sqlite'),
-        );
-        insertBackupRow(db, 'locations', {
-          'id': 'location',
-          'name': 'Place',
-          'photos': jsonEncode([photo]),
-        });
-        db.close();
-        final service = BackupService();
-        final backup = await service.backupToZip(
-          outputDirectory: outputDir.path,
-        );
-        expect(backup.success, isTrue);
-        _writeLibrary(appSupportDir, {
-          'work': (title: 'Work', marker: 'current'),
-        });
-        final result = await service.restoreFromZip(
-          backup.backupPath!,
-          mode: RestoreMode.selectedNovels,
-          novelIds: {'work'},
-        );
-        expect(result.success, isFalse);
-        expect(_readContentMarker(appSupportDir, 'work'), 'current');
       },
     );
   }

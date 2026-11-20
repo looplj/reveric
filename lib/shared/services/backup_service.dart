@@ -13,6 +13,7 @@ import 'dart:isolate';
 import 'package:archive/archive_io.dart';
 import '../database/app_database.dart' show AppDatabase;
 import '../database/novel_content_database.dart' show NovelContentDatabase;
+import '../database/type_converters.dart' show SubjectPhotoListConverter;
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -196,7 +197,8 @@ class BackupService {
       _log.info('outputDir=$outputDir');
       await _ensureOutputDirectoryWritable(outputDir);
       _log.info('output directory writable check passed');
-      await _preflightSqliteSnapshots(appSupportDir);
+      final mainPath = p.join(appSupportDir.path, 'reveric.sqlite');
+      await _ensureSqliteReadableIfExists(mainPath);
       _ensurePluginInstallSettled(appSupportDir);
       _log.info('preflight SQLite snapshots passed');
 
@@ -213,10 +215,8 @@ class BackupService {
       try {
         // 1. 复制主数据库快照
         _log.info('Step 1/8: copying main SQLite snapshot');
-        await _copySqliteSnapshotIfExists(
-          p.join(appSupportDir.path, 'reveric.sqlite'),
-          p.join(tempDir.path, 'reveric.sqlite'),
-        );
+        final mainSnapshot = File(p.join(tempDir.path, 'reveric.sqlite'));
+        await _copySqliteSnapshotIfExists(mainPath, mainSnapshot.path);
         _log.info('Step 1/8: done');
 
         // 2. 复制小说工作区数据库快照
@@ -224,6 +224,7 @@ class BackupService {
         await _copyNovelWorkspaceDatabasesIfExists(
           p.join(appSupportDir.path, 'novel_workspaces'),
           p.join(tempDir.path, 'novel_workspaces'),
+          registeredNames: _registeredContentDatabaseNames(mainSnapshot),
         );
         _log.info('Step 2/8: done');
 
@@ -428,6 +429,7 @@ class BackupService {
           failureReason: RestoreFailureReason.noNovelsSelected,
         );
       }
+      final selectedContentPaths = <String>{};
       for (final novelId in selectedIds) {
         final summary = backup.preview.novels
             .where((novel) => novel.id == novelId)
@@ -443,12 +445,22 @@ class BackupService {
             failureReason: RestoreFailureReason.novelTitleConflict,
           );
         }
-        if (mode == RestoreMode.selectedNovels && !summary.hasContentDatabase) {
-          return const RestoreResult(
-            success: false,
-            failureReason: RestoreFailureReason.invalidBackup,
+        if (mode == RestoreMode.selectedNovels) {
+          if (!summary.hasContentDatabase) {
+            return const RestoreResult(
+              success: false,
+              failureReason: RestoreFailureReason.invalidBackup,
+            );
+          }
+          final storedPath =
+              backup.novelRows[novelId]!['content_database_path'] as String;
+          selectedContentPaths.add(
+            p.join(extractDir.path, _backupRelativePath(storedPath)!),
           );
         }
+      }
+      if (selectedContentPaths.isNotEmpty) {
+        await _validateSelectedContentPhotos(selectedContentPaths);
       }
 
       safetyBackupPath = await _createRestoreSafetyBackup(appSupportDir);
@@ -574,9 +586,9 @@ Future<Directory> _createRestoreExtractDirectory() async {
   return directory;
 }
 
-/// 在读取业务表和 JSON 前检查所有快照，只接受当前数据库版本。
+/// 在读取业务表和 JSON 前检查所有快照。旧内容库在首次打开时迁移。
 void _validateBackupSchemas(Directory sourceDir) {
-  void check(File file, int supported) {
+  void check(File file, int supported, {int? oldestSupported}) {
     final database = sqlite3.open(
       toWindowsSafePath(file.path),
       mode: OpenMode.readOnly,
@@ -584,7 +596,7 @@ void _validateBackupSchemas(Directory sourceDir) {
     try {
       final version =
           database.select('PRAGMA user_version').single['user_version'] as int;
-      if (version != supported) {
+      if (version < (oldestSupported ?? supported) || version > supported) {
         throw _RestoreValidationFailure(
           RestoreFailureReason.unsupportedBackup,
           details:
@@ -608,11 +620,45 @@ void _validateBackupSchemas(Directory sourceDir) {
       followLinks: false,
     )) {
       if (file is File && p.extension(file.path) == '.sqlite') {
-        check(file, NovelContentDatabase.currentSchemaVersion);
+        check(
+          file,
+          NovelContentDatabase.currentSchemaVersion,
+          oldestSupported: 1,
+        );
       }
     }
   }
 }
+
+Future<void> _validateSelectedContentPhotos(
+  Set<String> paths,
+) => Isolate.run(() {
+  const converter = SubjectPhotoListConverter();
+  for (final path in paths) {
+    final db = sqlite3.open(toWindowsSafePath(path), mode: OpenMode.readOnly);
+    try {
+      for (final table in ['character_profiles', 'locations', 'items']) {
+        for (final row in db.select(
+          'SELECT photos FROM "$table" WHERE photos IS NOT NULL',
+        )) {
+          try {
+            converter.fromSql(row['photos'] as String);
+          } catch (error) {
+            if (error is! FormatException && error is! TypeError) {
+              rethrow;
+            }
+            throw _RestoreValidationFailure(
+              RestoreFailureReason.invalidBackup,
+              details: 'Unreadable photos in ${p.basename(path)} table=$table',
+            );
+          }
+        }
+      }
+    } finally {
+      db.close();
+    }
+  }
+});
 
 // 单独建立闭包作用域，只传路径和版本，避免捕获恢复回调及其 UI/数据库状态。
 // SQLite 连接在工作 isolate 内打开并关闭，返回的只有校验后的普通数据。
@@ -858,20 +904,19 @@ Future<void> _replaceSelectedNovels({
       await _copySqliteSnapshotIfExists(sourceContentPath, targetContentPath);
     }
 
-    await _restoreSelectedMediaDirectories(
-      sourceDir,
-      appSupportDir,
-      selectedIds,
-      ledger,
-    );
-
     final media = collectSelectedMedia(
       backup: sourceDir,
       novelIds: selectedIds,
-      contentPaths: plans.map((plan) => plan.sourceContentPath),
-      coverAssetIds: plans
-          .map((plan) => plan.row['cover_asset_id'])
-          .whereType<String>(),
+    );
+    await _restoreSelectedMediaFiles(
+      sourceDir,
+      appSupportDir,
+      selectedIds,
+      media.rows['assets']!
+          .map((row) => row['path'])
+          .whereType<String>()
+          .toSet(),
+      ledger,
     );
     _upsertSelectedNovelRows(
       currentDatabasePath: currentDatabasePath,
@@ -1352,27 +1397,31 @@ Future<void> _copyPluginDatabaseSnapshots(
   }
 }
 
-Future<void> _preflightSqliteSnapshots(Directory appSupportDir) async {
-  await _ensureSqliteReadableIfExists(
-    p.join(appSupportDir.path, 'reveric.sqlite'),
-  );
-
-  final novelsDir = Directory(p.join(appSupportDir.path, 'novel_workspaces'));
-  if (!await novelsDir.exists()) {
-    return;
+Set<String> _registeredContentDatabaseNames(File mainSnapshot) {
+  if (!mainSnapshot.existsSync()) {
+    return {};
   }
-
-  final entities = await novelsDir.list().toList();
-  for (final entity in entities) {
-    if (entity is Link) {
-      throw const FormatException('Symbolic links are not allowed in backups');
+  final db = sqlite3.open(
+    toWindowsSafePath(mainSnapshot.path),
+    mode: OpenMode.readOnly,
+  );
+  try {
+    final names = <String>{};
+    for (final row in db.select(
+      'SELECT DISTINCT content_database_path FROM novels '
+      'WHERE content_database_path IS NOT NULL',
+    )) {
+      final relative = _backupRelativePath(
+        row['content_database_path'] as String,
+      );
+      if (relative != null) {
+        final name = p.basename(relative);
+        names.add(Platform.isWindows ? name.toLowerCase() : name);
+      }
     }
-    if (_uncommittedBackupPath(entity.path, root: novelsDir)) {
-      continue;
-    }
-    if (entity is File && p.extension(entity.path) == '.sqlite') {
-      await _ensureSqliteReadableIfExists(entity.path);
-    }
+    return names;
+  } finally {
+    db.close();
   }
 }
 
@@ -1459,8 +1508,9 @@ Future<void> _copySqliteSnapshotIfExists(String source, String dest) async {
 
 Future<void> _copyNovelWorkspaceDatabasesIfExists(
   String source,
-  String dest,
-) async {
+  String dest, {
+  Set<String>? registeredNames,
+}) async {
   final sourceDir = Directory(source);
   if (await FileSystemEntity.type(source, followLinks: false) ==
       FileSystemEntityType.link) {
@@ -1477,6 +1527,14 @@ Future<void> _copyNovelWorkspaceDatabasesIfExists(
 
   final entities = await sourceDir.list(followLinks: false).toList();
   for (final entity in entities) {
+    if (registeredNames != null) {
+      final name = p.basename(entity.path);
+      if (!registeredNames.contains(
+        Platform.isWindows ? name.toLowerCase() : name,
+      )) {
+        continue;
+      }
+    }
     if (entity is Link) {
       throw const FormatException('Symbolic links are not allowed in backups');
     }
@@ -1484,6 +1542,9 @@ Future<void> _copyNovelWorkspaceDatabasesIfExists(
       continue;
     }
     if (entity is File && p.extension(entity.path) == '.sqlite') {
+      if (registeredNames != null) {
+        await _ensureSqliteReadableIfExists(entity.path);
+      }
       await _copySqliteSnapshotIfExists(
         entity.path,
         p.join(targetDir.path, p.basename(entity.path)),
@@ -1669,12 +1730,29 @@ bool _uncommittedBackupPath(String path, {required Directory root}) => p
           part.startsWith('.reveric_restore_rollback_'),
     );
 
-Future<void> _restoreSelectedMediaDirectories(
+Future<void> _restoreSelectedMediaFiles(
   Directory source,
   Directory target,
   Set<String> novelIds,
+  Set<String> assetPaths,
   _RollbackLedger ledger,
 ) async {
+  final mediaRoot = Directory(
+    RevericPaths.resolveRelative('file_workspaces', support: target.path),
+  );
+  Future<void> mergeFile(File input) async {
+    final output = File(
+      RevericPaths.resolveRelative(
+        p.relative(input.path, from: source.path),
+        support: target.path,
+      ),
+    );
+    await RevericPaths.requireNoLinks(mediaRoot, output.path);
+    await ledger.moveAside(output.path);
+    await output.parent.create(recursive: true);
+    await input.copy(output.path);
+  }
+
   final exclusive = <String>[for (final id in novelIds) 'file_workspaces/$id'];
   for (final id in novelIds) {
     RevericPaths.mediaDirectory(id, 'file');
@@ -1689,12 +1767,7 @@ Future<void> _restoreSelectedMediaDirectories(
       RevericPaths.resolveRelative(relative, support: target.path),
     );
     await RevericPaths.requireNoLinks(source, input.path);
-    await RevericPaths.requireNoLinks(
-      Directory(
-        RevericPaths.resolveRelative('file_workspaces', support: target.path),
-      ),
-      output.path,
-    );
+    await RevericPaths.requireNoLinks(mediaRoot, output.path);
     await ledger.moveAside(output.path);
     await _copyDirContents(input, output);
   }
@@ -1714,21 +1787,22 @@ Future<void> _restoreSelectedMediaDirectories(
       if (entity is! File || _uncommittedBackupPath(entity.path, root: input)) {
         continue;
       }
-      final output = File(
-        RevericPaths.resolveRelative(
-          p.relative(entity.path, from: source.path),
-          support: target.path,
-        ),
-      );
-      await RevericPaths.requireNoLinks(
-        Directory(
-          RevericPaths.resolveRelative('file_workspaces', support: target.path),
-        ),
-        output.path,
-      );
-      await ledger.moveAside(output.path);
-      await output.parent.create(recursive: true);
-      await entity.copy(output.path);
+      await mergeFile(entity);
+    }
+  }
+
+  // 历史素材的登记归属与目录可能不同。按主库登记补拷单个文件。
+  for (final relative in assetPaths) {
+    final workspace = p.posix.split(relative)[1];
+    if (p.equals(workspace, 'shared') ||
+        novelIds.any((id) => p.equals(workspace, id))) {
+      continue;
+    }
+    final input = File(p.join(source.path, relative));
+    if (await input.exists() &&
+        !_uncommittedBackupPath(input.path, root: source)) {
+      await RevericPaths.requireNoLinks(source, input.path);
+      await mergeFile(input);
     }
   }
 }
