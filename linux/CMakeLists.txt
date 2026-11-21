@@ -16,14 +16,18 @@ cmake_policy(SET CMP0063 NEW)
 # Load bundled libraries from the lib/ directory relative to the binary.
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 
-# Encoding and probing use the pinned FFmpeg CLI. Playback uses MDK's libraries.
+# Encoding uses the FFmpegKit libraries. Playback keeps MDK's own libffmpeg.
+set(FFMPEG_KIT_BUNDLE "${CMAKE_BINARY_DIR}/ffmpeg-kit-linux")
 execute_process(
-  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/prepare.sh"
-  RESULT_VARIABLE FFMPEG_PREPARE_RESULT
+  COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/complete_kit.py"
+          --output "${FFMPEG_KIT_BUNDLE}"
+          --cache "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/.cache"
+  RESULT_VARIABLE FFMPEG_KIT_RESULT
 )
-if(NOT FFMPEG_PREPARE_RESULT EQUAL 0)
-  message(FATAL_ERROR "linux/ffmpeg/prepare.sh failed (${FFMPEG_PREPARE_RESULT})")
+if(NOT FFMPEG_KIT_RESULT EQUAL 0)
+  message(FATAL_ERROR "linux/ffmpeg/complete_kit.py failed (${FFMPEG_KIT_RESULT})")
 endif()
+set(ENV{FFMPEGKIT_LOCAL_DIR} "${FFMPEG_KIT_BUNDLE}")
 
 # Root filesystem for cross-building.
 if(FLUTTER_TARGET_PLATFORM_SYSROOT)
@@ -110,15 +114,24 @@ install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
 foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
-  install(FILES "${bundled_library}"
-    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-    COMPONENT Runtime)
+  # install(FILES) follows symlinks. The FFmpeg soname links must stay links,
+  # or each library is written out once per name.
+  if(IS_SYMLINK "${bundled_library}")
+    get_filename_component(bundled_library_name "${bundled_library}" NAME)
+    file(READ_SYMLINK "${bundled_library}" bundled_library_target)
+    install(CODE "
+      file(MAKE_DIRECTORY \"${INSTALL_BUNDLE_LIB_DIR}\")
+      execute_process(COMMAND ln -sfn \"${bundled_library_target}\" \"${INSTALL_BUNDLE_LIB_DIR}/${bundled_library_name}\")
+    " COMPONENT Runtime)
+  else()
+    install(FILES "${bundled_library}"
+      DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+      COMPONENT Runtime)
+  endif()
 endforeach(bundled_library)
 
-# ffmpeg/bin finds ffmpeg/lib through its own RPATH and must stay out of lib/.
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/bundle/"
-  DESTINATION "${CMAKE_INSTALL_PREFIX}/ffmpeg"
-  USE_SOURCE_PERMISSIONS
+install(DIRECTORY "${FFMPEG_KIT_BUNDLE}/LICENSES/"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/licenses/ffmpeg_kit_flutter_new"
   COMPONENT Runtime)
 
 # Copy the native assets provided by the build.dart from all packages.

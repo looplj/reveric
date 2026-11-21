@@ -234,7 +234,6 @@ package-windows-release: ## 使用 fastforge 打包 Windows release (EXE)
 
 package-linux-release: ## 使用 fastforge 打包 Linux release (zip)
 	@echo "🐧 打包 Linux release (zip)..."
-	@bash linux/ffmpeg/prepare.sh
 	@fvm exec fastforge release --name release --jobs linux-zip
 	@echo "✅ Linux zip 打包完成"
 

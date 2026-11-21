@@ -11,6 +11,15 @@ import 'package:path/path.dart' as p;
 
 Future<void>? _initialization;
 
+const _ffmpegAbi = {
+  'avutil': 60,
+  'swresample': 6,
+  'swscale': 9,
+  'avcodec': 62,
+  'avformat': 62,
+  'avfilter': 11,
+};
+
 Future<void> initializeMediaRuntime() => _initialization ??= _initialize();
 
 Future<void> _initialize() async {
@@ -19,60 +28,29 @@ Future<void> _initialize() async {
     return;
   }
   if (!Platform.isMacOS && !Platform.isWindows) {
-    throw UnsupportedError('Production playback requires Windows or macOS');
+    throw UnsupportedError(
+      'Production playback requires Windows, macOS, or Linux',
+    );
   }
   final directory = p.dirname(Platform.resolvedExecutable);
-  const versions = {
-    'avutil': 60,
-    'swresample': 6,
-    'swscale': 9,
-    'avcodec': 62,
-    'avformat': 62,
-    'avfilter': 11,
-  };
-  final libraries = <String, Object>{};
-  for (final entry in versions.entries) {
-    final name = entry.key;
-    final path = Platform.isMacOS
-        ? p.normalize(
-            p.join(
-              directory,
-              '..',
-              'Frameworks',
-              'lib$name.framework',
-              'lib$name',
-            ),
-          )
-        : p.join(directory, '$name-${entry.value}.dll');
-    // Fail before creating a player if packaging or ABI does not match FFmpegKit.
-    final library = DynamicLibrary.open(path);
-    final version = library.lookupFunction<Uint32 Function(), int Function()>(
-      '${name}_version',
-    )();
-    if (version >> 16 != entry.value) {
-      throw StateError('Unexpected FFmpeg ABI for $name: ${version >> 16}');
+  final libraries = _openFfmpegAbi((name, version) {
+    if (Platform.isMacOS) {
+      return p.normalize(
+        p.join(directory, '..', 'Frameworks', 'lib$name.framework', 'lib$name'),
+      );
     }
-    libraries[name] = path;
-  }
+    return p.join(directory, '$name-$version.dll');
+  });
   await fvp.registerWith(
     options: <String, dynamic>{
       'platforms': <String>['macos', 'windows'],
       'global': libraries,
     },
   );
-  await FFmpegKitConfig.init();
-  // Session results are read from the native history, which keeps 10 sessions
-  // by default and evicts in creation order; an editing render plus a burst of
-  // probes exceeds that. The native hard limit rejects 1000 or more.
-  await FFmpegKitConfig.setSessionHistorySize(500);
-  // Sessions keep their logs for probe output and failure details; without a
-  // callback the plugin would otherwise print every av_log line to the console.
-  FFmpegKitConfig.setLogRedirectionStrategy(
-    LogRedirectionStrategy.neverPrintLogs,
-  );
-  // av_log has one process-wide callback. MDK installs its own while binding
-  // FFmpeg; FFmpegKit must own it so FFprobe JSON and session logs are retained.
-  // All playback/encoding entry points await this initialization before work.
+  await _startFfmpegKit();
+  // av_log has one callback inside each loaded FFmpeg. MDK binds the copy it
+  // opens; FFmpegKit must own the copy it encodes with so FFprobe JSON and
+  // session logs are retained.
   if (Platform.isWindows) {
     // The Windows 8.1.2 wrapper joins its callback thread on disable. Rebind
     // through its public API; the callback function is not exported by the DLL.
@@ -80,22 +58,16 @@ Future<void> _initialize() async {
     await FFmpegKitConfig.enableRedirection();
     return;
   }
-  final kitPath = p.normalize(
-    p.join(directory, '..', 'Frameworks', 'ffmpegkit.framework', 'ffmpegkit'),
-  );
-  // Apple's disable does not join the consumer, so keep that thread running.
-  final callback = DynamicLibrary.open(
-    kitPath,
-  ).lookup<Void>('ffmpegkit_log_callback_function');
-  DynamicLibrary.open(
+  _bindLogCallback(
+    p.normalize(
+      p.join(directory, '..', 'Frameworks', 'ffmpegkit.framework', 'ffmpegkit'),
+    ),
     libraries['avutil']! as String,
-  ).lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
-    'av_log_set_callback',
-  )(callback);
+  );
 }
 
-/// Linux 由 FVP 插件自带 MDK 运行库与 FFmpeg 共享库，直接使用，不经过 FFmpegKit。
-/// 编码和探测使用应用包内的 ffmpeg / ffprobe，不依赖系统安装。
+/// Linux 播放用 FVP 自带的 MDK 和 libffmpeg.so.9。编码和探测用旁边的
+/// FFmpegKit 共享库，不启动独立的 ffmpeg 进程。
 Future<void> _initializeLinux() async {
   final directory = p.dirname(Platform.resolvedExecutable);
   final runtime = <String>['libmdk.so.0', 'libffmpeg.so.9', 'libc++.so.1'];
@@ -106,9 +78,65 @@ Future<void> _initializeLinux() async {
       throw StateError('Missing Linux playback runtime: $path');
     }
   }
+  final libraries = _openFfmpegAbi(
+    (name, version) => p.join(directory, 'lib', 'lib$name.so.$version'),
+  );
   await fvp.registerWith(
     options: <String, dynamic>{
       'platforms': <String>['linux'],
     },
   );
+  await _startFfmpegKit();
+  // Linux 的 libffmpegkit 导出了和 macOS 相同的回调符号。MDK 用的是另一份
+  // libffmpeg.so.9，这里只把 FFmpegKit 那份 avutil 的日志回调交回去。
+  _bindLogCallback(
+    p.join(directory, 'lib', 'libffmpegkit.so'),
+    libraries['avutil']! as String,
+  );
+}
+
+Map<String, Object> _openFfmpegAbi(
+  String Function(String name, int version) pathFor,
+) {
+  final libraries = <String, Object>{};
+  for (final entry in _ffmpegAbi.entries) {
+    final name = entry.key;
+    final path = pathFor(name, entry.value);
+    // Fail before creating a player if packaging or ABI does not match FFmpegKit.
+    final library = DynamicLibrary.open(path);
+    final version = library.lookupFunction<Uint32 Function(), int Function()>(
+      '${name}_version',
+    )();
+    if (version >> 16 != entry.value) {
+      throw StateError('Unexpected FFmpeg ABI for $name: ${version >> 16}');
+    }
+    libraries[name] = path;
+  }
+  return libraries;
+}
+
+Future<void> _startFfmpegKit() async {
+  await FFmpegKitConfig.init();
+  // Session results are read from the native history, which keeps 10 sessions
+  // by default and evicts in creation order; an editing render plus a burst of
+  // probes exceeds that. The native hard limit rejects 1000 or more.
+  await FFmpegKitConfig.setSessionHistorySize(500);
+  // Sessions keep their logs for probe output and failure details; without a
+  // callback the plugin would otherwise print every av_log line to the console.
+  FFmpegKitConfig.setLogRedirectionStrategy(
+    LogRedirectionStrategy.neverPrintLogs,
+  );
+}
+
+void _bindLogCallback(String kitPath, String avutilPath) {
+  // Apple and Linux disable does not join the consumer, so keep that thread
+  // running and point av_log at the exported callback.
+  final callback = DynamicLibrary.open(
+    kitPath,
+  ).lookup<Void>('ffmpegkit_log_callback_function');
+  DynamicLibrary.open(
+    avutilPath,
+  ).lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
+    'av_log_set_callback',
+  )(callback);
 }

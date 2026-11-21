@@ -483,10 +483,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            clang cmake ninja-build pkg-config \
-            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            clang cmake ninja-build pkg-config patchelf \
+            libgtk-3-dev libjson-glib-dev liblzma-dev libstdc++-12-dev \
             libx11-dev libxi-dev \
-            xz-utils
+            xz-utils zstd
       - run: dart pub global activate fastforge ${{ env.FASTFORGE_VERSION }}
       - name: Update pubspec version from tag
         id: version
@@ -537,10 +537,8 @@ jobs:
       - name: Restore bundled FFmpeg
         uses: actions/cache@v4
         with:
-          path: |
-            linux/ffmpeg/.cache
-            linux/ffmpeg/bundle
-          key: linux-ffmpeg-${{ hashFiles('linux/ffmpeg/prepare.sh') }}
+          path: linux/ffmpeg/.cache
+          key: linux-ffmpeg-kit-${{ hashFiles('linux/ffmpeg/complete_kit.py') }}
       - name: Restore MDK Linux SDK
         uses: actions/cache@v4
         with:
@@ -548,9 +546,6 @@ jobs:
             third/fvp/linux/mdk-sdk
             third/fvp/linux/mdk-sdk-linux-x64.tar.xz
           key: mdk-linux-${{ hashFiles('third/fvp/cmake/deps.cmake') }}
-      - name: Prepare bundled FFmpeg
-        shell: bash
-        run: bash linux/ffmpeg/prepare.sh
       - run: flutter pub get
       - name: Build archive
         run: fastforge release --name release --jobs linux-zip --skip-clean

@@ -5,8 +5,6 @@
 //   lib/shared/services/production/runtime.dart
 
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
@@ -16,7 +14,6 @@ import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new/statistics.dart';
 import 'package:ffmpeg_kit_flutter_new/level.dart';
 import 'package:ffmpeg_kit_flutter_new/log.dart';
-import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../logger/app_logger.dart';
 import '../../models/production/media.dart';
@@ -214,20 +211,6 @@ class FfmpegExecutionResult {
   final String? errorCode, error;
 }
 
-/// Linux ships ffmpeg and ffprobe under `<bundle>/ffmpeg/bin`. Their RPATH
-/// loads `<bundle>/ffmpeg/lib` and does not use the host PATH.
-String linuxBundledMediaExecutable(
-  String executableDirectory, {
-  required bool probe,
-}) {
-  return p.join(
-    executableDirectory,
-    'ffmpeg',
-    'bin',
-    probe ? 'ffprobe' : 'ffmpeg',
-  );
-}
-
 void Function(Statistics) _reportProgress(MediaCancellation cancellation) =>
     (statistics) => cancellation.onProgress?.call(
       Duration(milliseconds: statistics.getTime().round()),
@@ -239,28 +222,9 @@ void Function(Statistics) _reportProgress(MediaCancellation cancellation) =>
 /// order (running sessions included); an evicted session then never completes
 /// and would hold the encoding queue forever.
 class FfmpegRunner {
-  FfmpegRunner({String? ffmpegExecutable, String? ffprobeExecutable})
-    : _ffmpegExecutable = ffmpegExecutable ?? _defaultExecutable(probe: false),
-      _ffprobeExecutable = ffprobeExecutable ?? _defaultExecutable(probe: true);
-
-  static String _defaultExecutable({required bool probe}) {
-    if (!Platform.isLinux) {
-      return probe ? 'ffprobe' : 'ffmpeg';
-    }
-    return linuxBundledMediaExecutable(
-      p.dirname(Platform.resolvedExecutable),
-      probe: probe,
-    );
-  }
+  FfmpegRunner();
 
   static Future<void> _encodingTail = Future.value();
-
-  final String _ffmpegExecutable;
-  final String _ffprobeExecutable;
-
-  /// Linux has no FFmpegKit. Probe and encode run the bundled CLI.
-  /// Windows and macOS keep the native sessions.
-  bool get _usesBundledCli => Platform.isLinux;
 
   Future<FfmpegExecutionResult> executeCommand(
     List<String> arguments, {
@@ -273,9 +237,6 @@ class FfmpegRunner {
   ) async {
     if (cancellation.cancelled) {
       return const FfmpegExecutionResult(exitCode: null, cancelled: true);
-    }
-    if (_usesBundledCli) {
-      return _executeSystemCommand(arguments, cancellation);
     }
     var started = false;
     try {
@@ -386,13 +347,6 @@ class FfmpegRunner {
     if (cancellation.cancelled) {
       throw const MediaException(MediaFailure.cancelled);
     }
-    if (_usesBundledCli) {
-      return _executeSystem(
-        arguments,
-        probe: probe,
-        cancellation: cancellation,
-      );
-    }
     await initializeMediaRuntime();
     if (cancellation.cancelled) {
       throw const MediaException(MediaFailure.cancelled);
@@ -441,162 +395,4 @@ class FfmpegRunner {
       cancellation.unbind();
     }
   }
-
-  Future<FfmpegExecutionResult> _executeSystemCommand(
-    List<String> arguments,
-    MediaCancellation cancellation,
-  ) async {
-    try {
-      final result = await _startSystemProcess(
-        arguments,
-        probe: false,
-        cancellation: cancellation,
-      );
-      final outcome = FfmpegExecutionResult(
-        exitCode: result.exitCode,
-        output: result.log,
-        cancelled: cancellation.cancelled,
-      );
-      if (outcome.exitCode != 0) {
-        _log.error(
-          'bundled command failed code=${outcome.exitCode} '
-          'detail=${ffmpegFailureDetail(result.stderr, arguments)}',
-        );
-      }
-      return outcome;
-    } on ProcessException catch (error) {
-      _log.error('bundled command could not start: $error');
-      return FfmpegExecutionResult(
-        exitCode: null,
-        cancelled: cancellation.cancelled,
-        errorCode: 'start_failed',
-        error: error.toString(),
-      );
-    } catch (error, stack) {
-      _log.error('bundled command failed', error: error, stackTrace: stack);
-      return FfmpegExecutionResult(
-        exitCode: null,
-        cancelled: cancellation.cancelled,
-        errorCode: 'execution_failed',
-        error: error.toString(),
-      );
-    }
-  }
-
-  Future<String> _executeSystem(
-    List<String> arguments, {
-    required bool probe,
-    required MediaCancellation cancellation,
-  }) async {
-    final _SystemProcessResult result;
-    try {
-      result = await _startSystemProcess(
-        arguments,
-        probe: probe,
-        cancellation: cancellation,
-      );
-    } on ProcessException catch (error, stack) {
-      final executable = probe ? _ffprobeExecutable : _ffmpegExecutable;
-      final message = '$executable is not available: ${error.message}';
-      _log.error(
-        'bundled ${probe ? 'probe' : 'encode'} could not start executable=$executable',
-        error: error,
-        stackTrace: stack,
-      );
-      throw MediaException(MediaFailure.tool_unavailable, message: message);
-    }
-    if (cancellation.cancelled) {
-      throw const MediaException(MediaFailure.cancelled);
-    }
-    if (result.exitCode != 0) {
-      final detail = ffmpegFailureDetail(result.log, arguments, limit: 65536);
-      final message = ffmpegFailureDetail(result.stderr, arguments);
-      _log.error(
-        'bundled ${probe ? 'probe' : 'encode'} failed '
-        'code=${result.exitCode} detail=$message',
-      );
-      throw MediaException(
-        probe ? MediaFailure.invalid_media : MediaFailure.encoding_failed,
-        nativeExitCode: result.exitCode,
-        message: message.isEmpty ? null : message,
-        nativeLog: detail,
-      );
-    }
-    return probe ? result.stdout : result.log;
-  }
-
-  Future<_SystemProcessResult> _startSystemProcess(
-    List<String> arguments, {
-    required bool probe,
-    required MediaCancellation cancellation,
-  }) async {
-    final process = await Process.start(
-      probe ? _ffprobeExecutable : _ffmpegExecutable,
-      probe ? arguments : ffmpegSessionArguments(arguments),
-    );
-    final stdout = StringBuffer();
-    final stderr = StringBuffer();
-    final progressTail = StringBuffer();
-    final stdoutDone = process.stdout
-        .transform(const Utf8Decoder(allowMalformed: true))
-        .listen(stdout.write)
-        .asFuture<void>();
-    final stderrDone = process.stderr
-        .transform(const Utf8Decoder(allowMalformed: true))
-        .listen((chunk) {
-          stderr.write(chunk);
-          if (!probe && cancellation.onProgress != null) {
-            progressTail.write(chunk);
-            final text = progressTail.toString();
-            if (text.length > 8192) {
-              progressTail
-                ..clear()
-                ..write(text.substring(text.length - 4096));
-            }
-            final processed = _ffmpegProcessedTime(text);
-            if (processed != null) {
-              cancellation.onProgress!(processed);
-            }
-          }
-        })
-        .asFuture<void>();
-    await cancellation.bind(() async {
-      process.kill();
-    });
-    try {
-      final code = await process.exitCode;
-      await Future.wait([stdoutDone, stderrDone]);
-      return _SystemProcessResult(code, stdout.toString(), stderr.toString());
-    } finally {
-      cancellation.unbind();
-    }
-  }
-
-  /// The stock ffmpeg progress line ends with `time=HH:MM:SS.mm`. Read the last
-  /// one in the accumulated stderr so a chunk split cannot hide the update.
-  static final _timePattern = RegExp(r'time=(\d+):(\d+):(\d+(?:\.\d+)?)');
-
-  static Duration? _ffmpegProcessedTime(String stderr) {
-    final matches = _timePattern.allMatches(stderr);
-    if (matches.isEmpty) {
-      return null;
-    }
-    final match = matches.last;
-    return Duration(
-      hours: int.parse(match.group(1)!),
-      minutes: int.parse(match.group(2)!),
-      microseconds:
-          (double.parse(match.group(3)!) * Duration.microsecondsPerSecond)
-              .round(),
-    );
-  }
-}
-
-class _SystemProcessResult {
-  const _SystemProcessResult(this.exitCode, this.stdout, this.stderr);
-
-  final int exitCode;
-  final String stdout;
-  final String stderr;
-  String get log => '$stdout$stderr';
 }
