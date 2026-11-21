@@ -36,6 +36,18 @@ const _kDefaultMdkKey =
 class MdkVideoPlayer extends mdk.Player {
   final streamCtl = StreamController<VideoEvent>();
   bool _initialized = false;
+  bool _playRequested = false;
+  bool _playingOnRequest = false;
+  bool _atOpenEnd = false;
+
+  @override
+  set state(mdk.PlaybackState value) {
+    _playRequested = value == mdk.PlaybackState.playing;
+    if (!_playRequested) {
+      _playingOnRequest = false;
+    }
+    super.state = value;
+  }
 
   @override
   Future<void> dispose() async {
@@ -44,7 +56,10 @@ class MdkVideoPlayer extends mdk.Player {
     _initialized = false;
   }
 
-  MdkVideoPlayer() : super() {
+  MdkVideoPlayer({bool keepOpenAtEnd = false}) : super() {
+    if (keepOpenAtEnd) {
+      setProperty('keep_open', '1');
+    }
     onMediaStatus.listen((event) {
       final oldValue = event.oldValue;
       final newValue = event.newValue;
@@ -113,8 +128,17 @@ class MdkVideoPlayer extends mdk.Player {
       _log.fine(
         '$hashCode player$nativeHandle onPlaybackStateChanged: ${event.oldValue} => ${event.newValue}',
       );
-      if (event.newValue == mdk.PlaybackState.stopped) {
-        // FIXME: keep_open no stopped
+      final completedWhileOpen = keepOpenAtEnd &&
+          _playingOnRequest &&
+          event.oldValue == mdk.PlaybackState.playing &&
+          event.newValue == mdk.PlaybackState.paused &&
+          mediaStatus.test(mdk.MediaStatus.end);
+      _playingOnRequest =
+          _playRequested && event.newValue == mdk.PlaybackState.playing;
+      if (completedWhileOpen) {
+        _atOpenEnd = true;
+      }
+      if (event.newValue == mdk.PlaybackState.stopped || completedWhileOpen) {
         streamCtl.add(VideoEvent(eventType: VideoEventType.completed));
         return;
       }
@@ -152,7 +176,8 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
   "video.decoders": a list of decoder names. supported decoders: https://github.com/wang-bin/mdk-sdk/wiki/Decoders
   "maxWidth", "maxHeight": texture max size. if not set, video frame size is used. a small value can reduce memory cost, but may result in lower image quality.
  */
-  static Future<void> registerVideoPlayerPlatformsWith({dynamic options}) async {
+  static Future<void> registerVideoPlayerPlatformsWith(
+      {dynamic options}) async {
     _log.fine('registerVideoPlayerPlatformsWith: $options');
     if (options is Map<String, dynamic>) {
       final platforms = options['platforms'];
@@ -191,8 +216,8 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
       final vdLinux = PlatformEx.isRockchip()
           ? vdRk
           : (PlatformEx.isRaspberryPi()
-                ? vdPi
-                : ['VAAPI', 'CUDA', 'VDPAU', 'hap', 'FFmpeg', 'dav1d']);
+              ? vdPi
+              : ['VAAPI', 'CUDA', 'VDPAU', 'hap', 'FFmpeg', 'dav1d']);
       final vd = {
         'windows': [
           'MFT:d3d=11',
@@ -312,10 +337,12 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<int?> _create(DataSource dataSource, VideoViewType viewType) async {
     await _setup;
     final uri = _toUri(dataSource);
-    final player = MdkVideoPlayer();
+    final player = MdkVideoPlayer(
+      keepOpenAtEnd: dataSource.sourceType == DataSourceType.file &&
+          (Platform.isMacOS || Platform.isWindows || Platform.isLinux),
+    );
     _log.fine('$hashCode player${player.nativeHandle} create($uri)');
 
-    //player.setProperty("keep_open", "1");
     player.setProperty('video.decoder', 'shader_resource=0');
     player.setProperty('avformat.strict', 'experimental');
     player.setProperty('avformat.safe', '0');
@@ -501,8 +528,7 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
     player.streamCtl.add(
       VideoEvent(
         eventType: VideoEventType.bufferingUpdate,
-        buffered:
-            ranges +
+        buffered: ranges +
             [
               DurationRange(
                 Duration(milliseconds: pos),
@@ -549,8 +575,8 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
           surfaceFactory: (context, controller) {
             return AndroidViewSurface(
               controller: controller as AndroidViewController,
-              gestureRecognizers:
-                  const <Factory<OneSequenceGestureRecognizer>>{},
+              gestureRecognizers: const <Factory<
+                  OneSequenceGestureRecognizer>>{},
               hitTestBehavior: PlatformViewHitTestBehavior.transparent,
             );
           },
@@ -722,6 +748,12 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
         );
         return;
       }
+    }
+    if (player._atOpenEnd) {
+      if (position.inMilliseconds >= player.mediaInfo.duration) {
+        return;
+      }
+      player._atOpenEnd = false;
     }
     player.seek(position: position.inMilliseconds, flags: flags);
   }

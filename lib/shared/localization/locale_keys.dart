@@ -2355,6 +2355,7 @@ abstract final class LocaleKeys {
   static const mediaImportFailed = 'assets.media_import_failed';
   static const mediaLoadFailed = 'assets.media_load_failed';
   static const mediaPreviewFailed = 'assets.media_preview_failed';
+  static const mediaVideoShortcuts = 'assets.media_video_shortcuts';
   static const mediaExportFailed = 'assets.media_export_failed';
   static const mediaDeleteConfirm = 'assets.media_delete_confirm';
   // Detail page

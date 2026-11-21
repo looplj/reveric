@@ -228,6 +228,16 @@ class ProductionNodeBar extends HookConsumerWidget {
       _ => null,
     });
     final sourceVideo = sourceAsset?.type == 'video' ? sourceAsset : null;
+    final mediaVideoId = node.type == canvasNodeTypeMedia
+        ? sourceVideo?.id
+        : null;
+    final exportAssetId = video ? clip?.adoptedAssetId : mediaVideoId;
+    final VoidCallback? exportAsset = exportAssetId == null
+        ? null
+        : () => productionRun(
+            context,
+            () => exportProductionAsset(service, exportAssetId),
+          );
     // 生成节点的采用结果或素材节点的资产：「…」里可加入或移出资产库。
     final libraryAssetId = node.isGenerationNode
         ? clip?.adoptedAssetId
@@ -272,6 +282,12 @@ class ProductionNodeBar extends HookConsumerWidget {
             icon: RevericIcons.copy,
             label: context.t(LocaleKeys.commonCopy),
             onTap: copyImage,
+          ),
+        if (mediaVideoId != null)
+          RevericMenuItem(
+            icon: RevericIcons.download_simple,
+            label: context.t(LocaleKeys.commonExport),
+            onTap: exportAsset,
           ),
         if (libraryAsset != null)
           assetLibraryMenuItem(
@@ -412,7 +428,6 @@ class ProductionNodeBar extends HookConsumerWidget {
 
     final image = node.type == canvasNodeTypeImage;
     final openEditing = CanvasEditingScope.maybeOf(context)?.open;
-    final adopted = clip?.adoptedAssetId;
     void upload() => productionRun(
       context,
       () => uploadProductionResult(context, service, node),
@@ -919,16 +934,11 @@ class ProductionNodeBar extends HookConsumerWidget {
                   ],
                   // 导出产物。
                   [
-                    if (video)
+                    if (video || mediaVideoId != null)
                       _BarButton(
                         icon: RevericIcons.download_simple,
                         label: context.t(LocaleKeys.commonExport),
-                        onTap: adopted == null
-                            ? null
-                            : () => productionRun(
-                                context,
-                                () => exportProductionAsset(service, adopted),
-                              ),
+                        onTap: exportAsset,
                       ),
                     if (director)
                       for (final still in [true, false])

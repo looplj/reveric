@@ -1,4 +1,4 @@
-// 职责: 将制片导入入口统一导入去重资产库，允许直接采用导入或资产库中的结果，并另存采用的结果。
+// 职责: 导入或采用制作素材，并将已有素材文件另存到用户选定的位置。
 // 关联文件:
 //   lib/shared/services/production/library_service.dart
 //   lib/shared/services/production/canvas_service.dart
@@ -11,6 +11,7 @@
 // 遵循的 Rules:
 //   .agents/rules/file-access.md
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:reveric/shared/models/asset_purpose.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -19,11 +20,14 @@ import '../../../shared/database/app_database.dart';
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
+import '../../../shared/logger/app_logger.dart';
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/services/production/ffmpeg_runner.dart';
 import '../../../shared/theme/theme.dart';
 import 'popover.dart';
 import 'support.dart';
+
+final _log = AppLogger.forModule('ProductionAssetExport');
 
 Future<AssetRow?> uploadProductionAsset(
   BuildContext context,
@@ -123,22 +127,46 @@ class ProductionAddInputButton extends StatelessWidget {
   }
 }
 
-/// 把采用的视频 / 图片另存到用户选的位置。
 Future<void> exportProductionAsset(
   ProductionCanvasService service,
   String assetId,
 ) async {
-  final row = await service.requireAsset(assetId);
-  final asset = await service.requireFile(row.path!, type: row.type);
-  final source = service.library.resolvePath(asset.path);
-  final extension = source.contains('.') ? source.split('.').last : '';
-  final location = await getSaveLocation(
-    suggestedName: extension.isEmpty || asset.name.endsWith('.$extension')
-        ? asset.name
-        : '${asset.name}.$extension',
-  );
-  if (location != null) {
+  final platform = Platform.operatingSystem;
+  var stage = 'read';
+  String? type;
+  try {
+    final row = await service.requireAsset(assetId);
+    type = row.type;
+    final asset = await service.requireFile(row.path!, type: type);
+    final source = service.library.resolvePath(asset.path);
+    final extension = p.extension(source);
+    final name = row.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    stage = 'select';
+    final location = await getSaveLocation(
+      suggestedName: name.isEmpty
+          ? asset.name
+          : name.toLowerCase().endsWith(extension.toLowerCase())
+          ? name
+          : '$name$extension',
+    );
+    if (location == null) {
+      _log.info(
+        'export platform=$platform stage=select type=$type result=cancelled files=0',
+      );
+      return;
+    }
+    stage = 'write';
     await XFile(source).saveTo(location.path);
+    _log.info(
+      'export platform=$platform stage=write type=$type result=success files=1',
+    );
+  } catch (error, stack) {
+    _log.error(
+      'export platform=$platform stage=$stage type=$type result=failed files=0 errorType=${error.runtimeType}',
+      error: error,
+      stackTrace: stack,
+    );
+    rethrow;
   }
 }
 
