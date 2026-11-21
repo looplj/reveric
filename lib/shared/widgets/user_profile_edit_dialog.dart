@@ -8,13 +8,17 @@
 //   lib/shared/utils/avatar_storage.dart
 //   lib/shared/widgets/user_avatar.dart
 
+import 'dart:typed_data';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../localization/app_localization.dart';
 import '../localization/locale_keys.dart';
+import '../logger/app_logger.dart';
 import '../providers/settings_providers.dart';
 import '../theme/theme.dart';
 import '../utils/avatar_storage.dart';
@@ -22,6 +26,8 @@ import '../utils/storage_paths.dart';
 import 'user_avatar.dart';
 import '../components/reveric_dialog.dart';
 import '../components/reveric_button.dart';
+
+final _log = AppLogger.forModule('UserProfileEditDialog');
 
 class UserProfileEditDialog extends HookConsumerWidget {
   const UserProfileEditDialog({super.key});
@@ -36,42 +42,74 @@ class UserProfileEditDialog extends HookConsumerWidget {
     final usernameController = useTextEditingController(
       text: settings?.username ?? '',
     );
-    final avatarPath = useState<String>(settings?.avatarPath ?? '');
+    // 选图后先在内存中预览，点「保存」再落盘，避免取消时覆盖原头像，也绕开同路径 imageCache。
+    final pickedAvatar = useState<({Uint8List bytes, String extension})?>(null);
+    final isPickingRef = useRef(false);
     final isSaving = useState(false);
     // 存储值可能是相对/旧绝对路径；预览统一过 resolveStored 兜底。
-    final resolvedAvatar = RevericPaths.resolveStored(avatarPath.value);
+    final savedAvatarPath = settings?.avatarPath ?? '';
+    final resolvedAvatar = RevericPaths.resolveStored(savedAvatarPath);
 
     Future<void> pickAvatar() async {
-      final result = await openFile(
-        acceptedTypeGroups: [
-          const XTypeGroup(
-            label: 'images',
-            // 桌面端按扩展名过滤；iOS 要求 UTI，public.image 覆盖全部图片类型。
-            extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
-            uniformTypeIdentifiers: ['public.image'],
-          ),
-        ],
-      );
-      if (result != null) {
-        avatarPath.value = await storeAvatarFile(result.path);
+      if (isSaving.value || isPickingRef.value) {
+        return;
+      }
+      isPickingRef.value = true;
+      try {
+        final result = await openFile(
+          acceptedTypeGroups: [
+            const XTypeGroup(
+              label: 'images',
+              // 桌面端按扩展名过滤；iOS 要求 UTI，public.image 覆盖全部图片类型。
+              extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
+              uniformTypeIdentifiers: ['public.image'],
+            ),
+          ],
+        );
+        if (result == null || !context.mounted) {
+          return;
+        }
+        final bytes = await result.readAsBytes();
+        if (!context.mounted || bytes.isEmpty) {
+          return;
+        }
+        final ext = _extensionForPickedFile(result);
+        pickedAvatar.value = (bytes: bytes, extension: ext);
+      } catch (error, stackTrace) {
+        _log.error(
+          'Failed to read selected avatar image',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      } finally {
+        isPickingRef.value = false;
       }
     }
 
     Future<void> save() async {
-      if (isSaving.value) return;
+      if (isSaving.value) {
+        return;
+      }
       isSaving.value = true;
       try {
         final notifier = ref.read(appSettingsProvider.notifier);
         final navigator = Navigator.of(context);
+        final pending = pickedAvatar.value;
+        final nextAvatarPath = pending != null
+            ? await storeAvatarBytes(
+                pending.bytes,
+                extension: pending.extension,
+              )
+            : (RevericPaths.toRelative(savedAvatarPath) ?? savedAvatarPath);
         await notifier.setUsername(usernameController.text.trim());
-        await notifier.setAvatarPath(
-          RevericPaths.toRelative(avatarPath.value) ?? avatarPath.value,
-        );
+        await notifier.setAvatarPath(nextAvatarPath);
         if (navigator.mounted) {
           navigator.pop();
         }
       } finally {
-        isSaving.value = false;
+        if (context.mounted) {
+          isSaving.value = false;
+        }
       }
     }
 
@@ -100,6 +138,7 @@ class UserProfileEditDialog extends HookConsumerWidget {
                     builder: (_, value, _) => UserAvatar(
                       username: value.text,
                       imagePath: resolvedAvatar,
+                      imageBytes: pickedAvatar.value?.bytes,
                       size: 84,
                     ),
                   ),
@@ -163,4 +202,22 @@ class UserProfileEditDialog extends HookConsumerWidget {
       ],
     );
   }
+}
+
+String _extensionForPickedFile(XFile file) {
+  final nameExt = p.extension(file.name);
+  if (nameExt.isNotEmpty) {
+    return nameExt;
+  }
+  final pathExt = p.extension(file.path);
+  if (pathExt.isNotEmpty) {
+    return pathExt;
+  }
+  return switch (file.mimeType?.toLowerCase()) {
+    'image/png' => '.png',
+    'image/jpeg' || 'image/jpg' => '.jpg',
+    'image/webp' => '.webp',
+    'image/gif' => '.gif',
+    _ => '',
+  };
 }

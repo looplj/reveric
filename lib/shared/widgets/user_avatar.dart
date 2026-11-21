@@ -8,42 +8,57 @@
 //   .agents/rules/design-system.md
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
 
-/// 圆形用户头像。[imagePath] 为已解析的本地图片路径，空值时显示首字头像。
+/// 圆形用户头像。[imageBytes] 优先用于未落盘的本地预览；[imagePath] 为已解析的本地图片路径，空值时显示首字头像。
 class UserAvatar extends StatelessWidget {
   const UserAvatar({
     super.key,
     required this.username,
     required this.imagePath,
     required this.size,
+    this.imageBytes,
   });
 
   final String username;
   final String? imagePath;
   final double size;
+  final Uint8List? imageBytes;
 
   @override
   Widget build(BuildContext context) {
+    final bytes = imageBytes;
     final path = imagePath;
+    final Widget content;
+    if (bytes != null) {
+      content = Image.memory(
+        bytes,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: (size * 2).toInt(),
+        errorBuilder: (_, _, _) => _Monogram(username: username, size: size),
+      );
+    } else if (path != null) {
+      content = Image.file(
+        File(path),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: (size * 2).toInt(),
+        errorBuilder: (_, _, _) => _Monogram(username: username, size: size),
+      );
+    } else {
+      content = _Monogram(username: username, size: size);
+    }
+
     return SizedBox.square(
       dimension: size,
-      child: ClipOval(
-        child: path == null
-            ? _Monogram(username: username, size: size)
-            : Image.file(
-                File(path),
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                cacheWidth: (size * 2).toInt(),
-                errorBuilder: (_, _, _) =>
-                    _Monogram(username: username, size: size),
-              ),
-      ),
+      child: ClipOval(child: content),
     );
   }
 }
