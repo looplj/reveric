@@ -1435,7 +1435,7 @@ class NovelHomePage extends HookConsumerWidget {
                 ],
                 // 插件页面：放在对话分区（含最近对话）之后，避免最近对话被归入插件。
                 PluginPageNavigation(
-                  builder: (context, views) => Column(
+                  builder: (context, views, badgeOf) => Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const SizedBox(height: RevericSpacing.md),
@@ -1454,6 +1454,9 @@ class NovelHomePage extends HookConsumerWidget {
                               selection is _HomePluginPageSelection &&
                               selection.view.pluginId == view.pluginId &&
                               selection.view.id == view.id,
+                          trailing: badgeOf(view) == null
+                              ? null
+                              : PluginPageBadgeIndicator(badge: badgeOf(view)!),
                           onTap: () {
                             onContentSelected(_HomePluginPageSelection(view));
                           },
@@ -1534,6 +1537,7 @@ class NovelHomePage extends HookConsumerWidget {
     required String icon,
     required String title,
     bool isSelected = false,
+    Widget? trailing,
     required VoidCallback onTap,
   }) {
     final colors = RevericTheme.colorsOf(context);
@@ -1572,6 +1576,11 @@ class NovelHomePage extends HookConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (trailing != null) ...[
+                  const SizedBox(width: RevericSpacing.xs),
+                  trailing,
+                  const SizedBox(width: RevericSpacing.xs),
+                ],
                 RevericIcon(
                   RevericIcons.keyboard_arrow_right,
                   size: 18,

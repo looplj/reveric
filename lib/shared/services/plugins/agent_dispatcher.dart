@@ -51,10 +51,10 @@ class PluginAgentToolDispatcher
     _snapshot = {
       for (final tool in host.registry.effectiveTools) tool.name: tool,
     };
-    _contexts = const [];
     _context = null;
     if (runStart) {
       _systemPrompt = null;
+      _contexts = const [];
     }
     try {
       final request = await host.requestContext(
@@ -64,11 +64,12 @@ class PluginAgentToolDispatcher
         scope: scope,
       );
       _context = request;
-      // system prompt 只在 run 开头取一次，同一 run 内的工具轮与重试保持前缀不变。
+      // system prompt 与 context 快照只在 run 开头取一次，同一 run 内的工具轮与重试保持稳定，
+      // 避免工具刚写入（如 MemorySave）就在同回合重复注入；若中途触发压缩仍会复用本次快照补注。
       if (runStart) {
         _systemPrompt = await host.requestSystemPrompt(request);
+        _contexts = await host.requestPromptContext(request);
       }
-      _contexts = await host.requestPromptContext(request);
     } catch (error, stack) {
       _log.error(
         'Plugin request scope unavailable session=$sessionId',

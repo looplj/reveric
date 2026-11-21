@@ -212,6 +212,26 @@ void main() {
       expect(await query('SELECT extra FROM notes'), [
         {'extra': 'ready'},
       ]);
+      await db.run('migrate', {
+        'migrations': [
+          migration(1, schema),
+          migration(
+            2,
+            "ALTER TABLE notes ADD COLUMN extra TEXT DEFAULT 'ready';",
+          ),
+          migration(3, '''
+            CREATE TABLE notes_v3(id INTEGER PRIMARY KEY, body TEXT NOT NULL, deleted_at INTEGER);
+            INSERT INTO notes_v3(id, body, deleted_at) SELECT id, text || ':' || extra, deleted_at FROM notes;
+            DROP INDEX IF EXISTS notes_by_deleted_at;
+            DROP TABLE notes;
+            ALTER TABLE notes_v3 RENAME TO notes;
+            CREATE INDEX notes_by_deleted_at ON notes(deleted_at);
+          '''),
+        ],
+      });
+      expect(await query('SELECT body FROM notes'), [
+        {'body': 'original:ready'},
+      ]);
       await expectLater(
         db.run('migrate', {
           'migrations': [migration(1, schema)],
@@ -224,10 +244,10 @@ void main() {
       try {
         expect(
           await backup.run('query', {
-            'statement': statement('SELECT text,extra FROM notes'),
+            'statement': statement('SELECT body FROM notes'),
           }),
           [
-            {'text': 'original', 'extra': 'ready'},
+            {'body': 'original:ready'},
           ],
         );
       } finally {
@@ -242,10 +262,26 @@ void main() {
       'CREATE TABLE x(id INTEGER PRIMARY KEY AUTOINCREMENT)',
       'CREATE VIEW x AS SELECT 1',
       'CREATE TABLE x(v INTEGER REFERENCES notes(id))',
+      'DROP TABLE _reveric_migrations',
+      'DROP INDEX sqlite_autoindex_notes_1',
+      'DROP VIEW v',
+      'ALTER TABLE notes RENAME TO _reveric_hack',
     ]) {
       expect(
         () => validatePluginSql(sql, query: false, migration: true),
         failure('invalid_sql'),
+      );
+    }
+    for (final sql in [
+      'DROP TABLE notes',
+      'DROP TABLE IF EXISTS notes',
+      'DROP INDEX IF EXISTS notes_by_deleted_at',
+      'ALTER TABLE notes RENAME TO notes_v2',
+    ]) {
+      expect(
+        () => validatePluginSql(sql, query: false, migration: true),
+        returnsNormally,
+        reason: sql,
       );
     }
     final valid = {

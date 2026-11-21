@@ -79,6 +79,31 @@ export declare function isHostError(
   code?: string,
 ): error is PluginHostError;
 
+export type PageBadgeTone = "accent" | "warning" | "danger";
+
+/**
+ * Badge shown next to a plugin's page entry in host navigation.
+ * When `count` is a positive integer, the Host renders a count pill (`1`–`99+`);
+ * otherwise when `dot` is true, the Host renders a status dot.
+ */
+export interface PageBadge {
+  count?: number;
+  dot?: boolean;
+  tone?: PageBadgeTone;
+}
+
+/**
+ * Persists and displays a navigation badge for a declared plugin page.
+ * Pass `null` (or an empty badge with no positive `count` and `dot !== true`)
+ * to clear the badge. Works in any phase that provides writable `storage`
+ * (tools, tasks, settings actions, and pages).
+ */
+export declare function setPageBadge(
+  storage: Pick<PluginStorage, "set" | "remove">,
+  pageId: string,
+  badge: PageBadge | null,
+): Promise<void>;
+
 export interface PluginInfo {
   readonly id: string;
   readonly version: string;
@@ -296,8 +321,9 @@ export interface PromptRegistration {
   /** /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/, unique across context and system providers. */
   id: string;
   /**
-   * Runs before every model request, including each round of a tool loop.
-   * The text is added to the conversation as reference data only when it
+   * Runs once at the start of each user turn (and is reused if mid-turn
+   * compaction clears earlier snapshots).
+   * The text is added to the conversation as context only when it
    * differs from the last text of this provider in the conversation, and
    * stays in the history afterwards. Returning null after text was added
    * records that the plugin has no content now.

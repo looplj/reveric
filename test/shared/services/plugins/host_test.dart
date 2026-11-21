@@ -25,6 +25,7 @@ PluginPackage package({
   String id = 'test.web',
   String version = '1.0.0',
   List<String>? platforms,
+  List<String>? permissions,
   Map<String, dynamic>? settings,
   Map<String, dynamic>? actions,
 }) => PluginPackage(
@@ -36,6 +37,7 @@ PluginPackage package({
     'main': 'dist/index.js',
     'pluginApiVersion': '^1',
     'platforms': ?platforms,
+    'permissions': ?permissions,
     'settings': {'fields': ?settings, 'actions': ?actions},
   }),
   '',
@@ -84,7 +86,9 @@ class FakeExecutor implements PluginExecutor {
   Future<List<Map<String, dynamic>>> activate(
     PluginManifest manifest,
     String code,
-  ) async => [definition('WebSearch'), definition('WebFetch')];
+  ) async => manifest.id == 'reveric.memory'
+      ? [definition('MemorySave'), definition('MemoryForget')]
+      : [definition('WebSearch'), definition('WebFetch')];
   @override
   Future<Map<String, dynamic>> invoke(
     PluginManifest manifest,
@@ -263,24 +267,38 @@ void main() {
           {for (final status in host.statuses) status.id: status.enabled},
           {
             'reveric.web': true,
-            'reveric.memory': false,
+            'reveric.memory': true,
             'reveric.deepseek': false,
           },
         );
+        expect(
+          {for (final status in host.statuses) status.id: status.state},
+          {
+            'reveric.web': 'available',
+            'reveric.memory': 'available',
+            'reveric.deepseek': 'disabled',
+          },
+        );
         await host.setEnabled('reveric.web', false);
-        await host.setEnabled('reveric.memory', true);
+        await host.setEnabled('reveric.memory', false);
+        await host.setEnabled('reveric.deepseek', true);
       } finally {
         await host.dispose();
       }
       final restarted = build([
         package(id: 'reveric.web', version: '2.0.0'),
         package(id: 'reveric.memory'),
+        package(id: 'reveric.deepseek'),
       ]);
       try {
         await restarted.start();
         expect(
           {for (final status in restarted.statuses) status.id: status.enabled},
-          {'reveric.web': false, 'reveric.memory': true},
+          {
+            'reveric.web': false,
+            'reveric.memory': false,
+            'reveric.deepseek': true,
+          },
         );
       } finally {
         await restarted.dispose();
@@ -302,6 +320,45 @@ void main() {
       } finally {
         await localHost.dispose();
         await localDb.close();
+      }
+    }
+  });
+  test('bundled permissions stay revoked across restart and upgrade', () async {
+    final db = AppDatabase.forTest(NativeDatabase.memory());
+    addTearDown(db.close);
+    const id = 'reveric.memory';
+    const ai = 'ai.generateText';
+    const added = 'chapters.read';
+    PluginHostService build(PluginPackage memory) => PluginHostService(
+      dao: db.pluginDao,
+      registry: PluginRegistry(hostToolNames: {}),
+      packages: () async => [memory],
+      executorFactory: (call, stop) => FakeExecutor(),
+      platform: 'macos',
+    );
+    final memory = package(id: id, permissions: [ai]);
+    final first = build(memory);
+    try {
+      await first.start();
+      expect(first.statuses.single.state, 'available');
+      expect(await db.pluginDao.grantedPermissions(id), {ai});
+      await first.revokePermissions(id);
+      expect(first.statuses.single.state, 'needs_permission');
+    } finally {
+      await first.dispose();
+    }
+
+    for (final candidate in [
+      memory,
+      package(id: id, version: '2.0.0', permissions: [ai, added]),
+    ]) {
+      final restarted = build(candidate);
+      try {
+        await restarted.start();
+        expect(restarted.statuses.single.state, 'needs_permission');
+        expect(await db.pluginDao.grantedPermissions(id), isEmpty);
+      } finally {
+        await restarted.dispose();
       }
     }
   });

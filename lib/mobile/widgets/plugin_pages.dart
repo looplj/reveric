@@ -23,7 +23,7 @@ class MobilePluginPageShelf extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PluginPageNavigation(
-      builder: (context, views) {
+      builder: (context, views, badgeOf) {
         final colors = RevericTheme.colorsOf(context);
         final typo = RevericTheme.typographyOf(context);
         return Padding(
@@ -46,12 +46,34 @@ class MobilePluginPageShelf extends StatelessWidget {
                 runSpacing: RevericSpacing.sm,
                 children: [
                   for (final view in views)
-                    RevericButton.secondary(
-                      label: view.title.resolve(
-                        Localizations.localeOf(context),
-                      ),
-                      icon: pluginPageIcon,
-                      onPressed: () => openPluginPage(context, view),
+                    Builder(
+                      builder: (context) {
+                        final badge = badgeOf(view);
+                        final button = RevericButton.secondary(
+                          label: view.title.resolve(
+                            Localizations.localeOf(context),
+                          ),
+                          icon: pluginPageIcon,
+                          onPressed: () => openPluginPage(context, view),
+                        );
+                        if (badge == null) {
+                          return button;
+                        }
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            button,
+                            Positioned(
+                              top: -RevericSpacing.xxs,
+                              right: -RevericSpacing.xxs,
+                              child: PluginPageBadgeIndicator(
+                                badge: badge,
+                                mobile: true,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                 ],
               ),

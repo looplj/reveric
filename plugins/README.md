@@ -256,7 +256,7 @@ npm run plan -- --offline
 
 | 目录 | id | 说明 |
 | --- | --- | --- |
-| `memory/` | `reveric.memory` | 示例：记忆系统，演示工具、提示词、定时任务、私有数据库、TSX 管理页 |
+| `memory/` | `reveric.memory` | 创作记忆：跨作品创作偏好与后台梦境整理，含私有数据库、TSX 管理页 |
 | `web/` | `reveric.web` | 联网检索与网页读取 |
 | `deepseek/` | `reveric.deepseek` | DeepSeek 搜索与读取，带设置动作 |
 | `keenable/` | `reveric.keenable` | Keenable 搜索与读取，API Key 可选（不填时使用公共接口），带设置动作 |

@@ -128,12 +128,26 @@ Statement validatePluginSql(
     }
   } else if (migration && root is CreateIndexStatement) {
     _name(root.indexName);
+  } else if (migration && root is DropStatement) {
+    if (root.type != DropType.table && root.type != DropType.$index) {
+      _reject('Only DROP TABLE and DROP INDEX are allowed in migrations');
+    }
+    if (root.schemaName != null) {
+      _reject('Schema-qualified targets are not supported');
+    }
+    _name(root.elementName);
   } else if (migration &&
       root is AlterTableStatement &&
-      root.instruction is AddColumn) {
-    // Additive column migration only.
+      (root.instruction is AddColumn ||
+          root.instruction is RenameTo ||
+          root.instruction is RenameColumnTo ||
+          root.instruction is DropColumn)) {
+    final instruction = root.instruction;
+    if (instruction is RenameTo) {
+      _name(instruction.newTableName);
+    }
   } else {
-    _reject('Only INSERT/UPDATE, or additive migration DDL, are allowed');
+    _reject('Only INSERT/UPDATE, or supported migration DDL, are allowed');
   }
   for (final node in _walk(root)) {
     if (node is TableReference) {
