@@ -86,8 +86,28 @@ class CodexImageGenerationClient extends ImageClient {
           !(error.statusCode != null &&
               error.statusCode! >= 400 &&
               error.statusCode! < 500)) {
+        final status = error.statusCode;
+        final providerMessage = error.providerMessage;
+        if (status != null &&
+            status >= 500 &&
+            providerMessage != null &&
+            providerMessage.isNotEmpty) {
+          throw AiImageSubmissionException(
+            providerMessage,
+            failureCode: 'submission_unknown',
+            debugMessage: '$error',
+          );
+        }
+        final String key;
+        if (error.reason == 'timeout') {
+          key = LocaleKeys.aiRequestTimeout;
+        } else if (status != null && status >= 500) {
+          key = LocaleKeys.aiImageServerError;
+        } else {
+          key = LocaleKeys.aiImageResponseInvalid;
+        }
         throw AiImageSubmissionException(
-          tr(LocaleKeys.aiImageSubmissionUnknown),
+          tr(key),
           failureCode: 'submission_unknown',
           debugMessage: '$error',
         );

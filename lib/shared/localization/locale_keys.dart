@@ -1360,7 +1360,10 @@ abstract final class LocaleKeys {
   static const aiImageCandidatesFetchFailed =
       'ai.image_candidates_fetch_failed';
   static const aiImageStagedUnconfirmed = 'ai.image_staged_unconfirmed';
-  static const aiImageSubmissionUnknown = 'ai.image_submission_unknown';
+  static const aiImageServerError = 'ai.image_server_error';
+  static const aiImageResponseInvalid = 'ai.image_response_invalid';
+  static const aiImagePluginResponseInvalid =
+      'ai.image_plugin_response_invalid';
   static const aiImageInvalidOutputs = 'ai.image_invalid_outputs';
   static const aiImageParametersUnavailable = 'ai.image_parameters_unavailable';
   static const aiImageReferenceUploadUnavailable =

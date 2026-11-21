@@ -1,6 +1,8 @@
 {
   "ai.image_model_current_draft": "仅用于当前出图草稿",
-  "ai.image_submission_unknown": "提交结果不确定，服务商可能已受理。请先核对服务商记录，再决定是否重新生成。",
+  "ai.image_server_error": "服务端错误，请稍后重试。",
+  "ai.image_response_invalid": "响应格式错误，请稍后重试。",
+  "ai.image_plugin_response_invalid": "插件返回格式错误，请稍后重试。",
   "ai.image_invalid_outputs": "服务商返回的图片结果无效。请先核对结果，再决定是否重新生成。",
   "ai.image_parameters_unavailable": "当前图片参数不受所选模型支持，请改选该模型提供的选项。",
   "ai.image_reference_upload_unavailable": "该模型需要先上传参考图，但供应商没有提供上传方法。请选择其他模型，或更新供应商插件。",

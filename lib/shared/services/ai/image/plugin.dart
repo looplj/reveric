@@ -60,7 +60,7 @@ class PluginImageClient extends ImageClient {
         tr(
           value['status'] == 'succeeded'
               ? LocaleKeys.aiImageInvalidOutputs
-              : LocaleKeys.aiImageSubmissionUnknown,
+              : LocaleKeys.aiImagePluginResponseInvalid,
         ),
         failureCode: value['status'] == 'succeeded'
             ? 'invalid_outputs'

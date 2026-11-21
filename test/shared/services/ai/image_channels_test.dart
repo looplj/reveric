@@ -4,6 +4,7 @@
 //   lib/shared/models/image/channels.dart
 //   lib/shared/providers/production_images.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:reveric/shared/models/provider_model.dart';
@@ -21,8 +22,11 @@ import 'package:reveric/shared/models/image/channels.dart';
 import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/production_images.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/services/ai/image.dart';
 import 'package:reveric/shared/services/ai/image/client.dart';
+import 'package:reveric/shared/services/plugins/runtime.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
 
 const _png =
@@ -828,6 +832,90 @@ void main() {
             },
           }),
           400,
+        ),
+      ),
+    );
+  });
+
+  test('HTTP failures name the timeout, server, and response shape', () {
+    expect(
+      imageSubmitFailureMessage(TimeoutException('submit')),
+      tr(LocaleKeys.aiRequestTimeout),
+    );
+    expect(
+      imageSubmitFailureMessage(const SocketException('reset')),
+      tr(LocaleKeys.aiRequestTimeout),
+    );
+    expect(
+      imageSubmitFailureMessage(
+        const ProviderFailure(
+          code: 'submission_unknown',
+          message: 'AtlasCloud returned no task identity',
+        ),
+      ),
+      tr(LocaleKeys.aiImageResponseInvalid),
+    );
+    expect(
+      imageSubmitFailureMessage(
+        PluginHostError('invalid_response', 'not an object'),
+      ),
+      tr(LocaleKeys.aiImagePluginResponseInvalid),
+    );
+    expect(
+      () => throwForImageHttpFailure(
+        uri: Uri.parse('https://api.example/v1/images/generations'),
+        statusCode: 500,
+        data: '{}',
+        providerId: 'custom',
+      ),
+      throwsA(
+        isA<AiImageSubmissionException>()
+            .having(
+              (error) => error.userMessage,
+              'userMessage',
+              tr(LocaleKeys.aiImageServerError),
+            )
+            .having(
+              (error) => error.failureCode,
+              'failureCode',
+              'submission_unknown',
+            ),
+      ),
+    );
+    expect(
+      () => throwForImageHttpFailure(
+        uri: Uri.parse('https://api.example/v1/images/generations'),
+        statusCode: 503,
+        data: {
+          'error': {
+            'code': 'model_not_found',
+            'message':
+                'No available channel for model gpt-image-2.6 under group example',
+            'type': 'new_api_error',
+          },
+        },
+        providerId: 'custom',
+      ),
+      throwsA(
+        isA<AiImageSubmissionException>().having(
+          (error) => error.userMessage,
+          'userMessage',
+          'No available channel for model gpt-image-2.6 under group example',
+        ),
+      ),
+    );
+    expect(
+      () => throwForImageHttpFailure(
+        uri: Uri.parse('https://api.example/v1/images/generations'),
+        statusCode: null,
+        data: 'not-json',
+        providerId: 'custom',
+      ),
+      throwsA(
+        isA<AiImageSubmissionException>().having(
+          (error) => error.userMessage,
+          'userMessage',
+          tr(LocaleKeys.aiImageResponseInvalid),
         ),
       ),
     );
