@@ -37,6 +37,9 @@ class ScreenplayRegionToolbar extends ConsumerWidget {
     this.leading,
     this.trailing = const [],
     this.floating = false,
+    this.leadingInset = 0,
+    this.trailingInset = 0,
+    this.barHeight,
   });
 
   final String? status;
@@ -48,6 +51,13 @@ class ScreenplayRegionToolbar extends ConsumerWidget {
   /// 胶囊样式：不铺底、不画分割线，左右两组各自是一枚毛玻璃胶囊，空白处点击落到下层。
   /// 制作页的画布、分镜、列表三个视图都用它；只用于 [leading] 布局。
   final bool floating;
+
+  /// 画布作品里贴住窗口标题栏时，额外让开红绿灯和系统窗口按钮。
+  final double leadingInset;
+  final double trailingInset;
+
+  /// 非空时盖过默认高度，用来铺满窗口标题栏。
+  final double? barHeight;
 
   /// 浮动时胶囊和上方面包屑分割线之间多留的距离。
   static const double floatingTopGap = RevericSpacing.xxs;
@@ -81,15 +91,20 @@ class ScreenplayRegionToolbar extends ConsumerWidget {
       ],
     );
     return Container(
-      height: floating ? floatingExtent : RevericSizes.screenplayTopBarHeight,
+      height:
+          barHeight ??
+          (floating ? floatingExtent : RevericSizes.screenplayTopBarHeight),
       // 浮动时外边距收窄，抵掉两枚胶囊自身的内边距，窄窗口下可用宽度与铺底时相同。
       padding: floating
-          ? const EdgeInsets.only(
-              left: RevericSpacing.lg,
-              right: RevericSpacing.lg,
+          ? EdgeInsets.only(
+              left: RevericSpacing.lg + leadingInset,
+              right: RevericSpacing.lg + trailingInset,
               top: floatingTopGap,
             )
-          : const EdgeInsets.symmetric(horizontal: RevericSpacing.x3l),
+          : EdgeInsets.only(
+              left: RevericSpacing.x3l + leadingInset,
+              right: RevericSpacing.x3l + trailingInset,
+            ),
       decoration: floating
           ? null
           : BoxDecoration(

@@ -1,6 +1,7 @@
 // 职责: 在制作画布之上承载导演台。
 // 关联文件:
 //   lib/shared/widgets/screenplay/director_host.dart
+//   lib/shared/widgets/production/canvas_overlay.dart
 //   lib/desktop/features/production/region.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
@@ -8,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../services/director/session.dart';
 import '../director/viewport.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import '../production/canvas_overlay.dart';
 import 'director_export.dart';
 import 'director_host.dart';
 import 'director_workspace.dart' show ScreenplayDirectorRecognize;
@@ -47,9 +49,14 @@ class ScreenplayDirectorShell extends HookWidget {
     final opened = useState<({String id, ScreenplayDirectorCanvas? canvas})?>(
       null,
     );
+    final overlay = CanvasWorkOverlayScope.maybeOf(context);
+    final overlayRef = useRef(overlay)..value = overlay;
     useEffect(() {
       // The host commits this navigation identity only after its registered close guard succeeds.
       opened.value = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        overlayRef.value?.uncoverDirector();
+      });
       return null;
     }, [navigationTarget]);
     final documentFlush = useRef<Future<void> Function()?>(null);
@@ -64,6 +71,11 @@ class ScreenplayDirectorShell extends HookWidget {
     }, const []);
     final open = useCallback<ScreenplayDirectorOpen>((id, {canvas}) async {
       FocusManager.instance.primaryFocus?.unfocus();
+      final bus = overlayRef.value;
+      bus?.coverDirector(() async {
+        opened.value = null;
+        bus.uncoverDirector();
+      });
       opened.value = (id: id, canvas: canvas);
     }, const []);
     final current = opened.value;
@@ -87,7 +99,10 @@ class ScreenplayDirectorShell extends HookWidget {
             databasePath: databasePath,
             stagingId: current.id,
             canvas: current.canvas,
-            onClose: () => opened.value = null,
+            onClose: () {
+              opened.value = null;
+              overlayRef.value?.uncoverDirector();
+            },
             registerFlush: (flush) => directorFlush.value = flush,
             recognize: recognize,
             viewportBuilder: viewportBuilder,

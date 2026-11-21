@@ -12,6 +12,8 @@
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/desktop-window-frame.md
+// 注意事项:
+// 剪辑或导演台打开时，这一整行（标题和风格）由画布页卸下，不留空顶栏。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';

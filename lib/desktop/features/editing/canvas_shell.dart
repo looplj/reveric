@@ -3,11 +3,13 @@
 //   lib/desktop/features/editing/region.dart
 //   lib/desktop/features/production/history_region.dart
 //   lib/desktop/features/production/editing_node.dart
+//   lib/shared/widgets/production/canvas_overlay.dart
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../shared/database/app_database.dart' show Novel;
+import '../../../shared/widgets/production/canvas_overlay.dart';
 import '../production/history_region.dart';
 import 'region.dart';
 
@@ -25,6 +27,8 @@ class CanvasEditingShell extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final service = ProductionHistoryScope.of(context).service;
+    final overlay = CanvasWorkOverlayScope.maybeOf(context);
+    final overlayRef = useRef(overlay)..value = overlay;
     final editingId = useState<String?>(null);
     final canvasFlush = useRef<Future<void> Function()?>(null);
     final editingFlush = useRef<Future<void> Function()?>(null);
@@ -44,9 +48,15 @@ class CanvasEditingShell extends HookWidget {
       await canvasFlush.value?.call();
       await editingFlush.value?.call();
       final project = await service.requireEditingNode(nodeId);
-      if (context.mounted) {
-        editingId.value = project.id;
+      if (!context.mounted) {
+        return;
       }
+      final bus = overlayRef.value;
+      bus?.coverEditing(() async {
+        editingId.value = null;
+        bus.uncoverEditing();
+      });
+      editingId.value = project.id;
     }
 
     return CanvasEditingScope(
@@ -70,7 +80,10 @@ class CanvasEditingShell extends HookWidget {
               novelId: novel.id,
               identity: (path: novel.contentDatabasePath!, episodeId: null),
               editingId: id,
-              onClose: () => editingId.value = null,
+              onClose: () {
+                editingId.value = null;
+                overlayRef.value?.uncoverEditing();
+              },
               registerFlush: (flush) => editingFlush.value = flush,
             ),
         ],

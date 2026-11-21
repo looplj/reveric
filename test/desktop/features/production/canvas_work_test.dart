@@ -158,9 +158,15 @@ void main() {
     await tester.tap(find.byType(ProductionEditingNode));
     await tester.pumpAndSettle();
     expect(find.byType(EditingRegion), findsOneWidget);
+    expect(find.byKey(const ValueKey('canvas-work-title-label')), findsNothing);
+    expect(find.byType(ProductionScreenplayStyle), findsNothing);
     await tester.tap(find.byTooltip('Back to canvas'));
     await tester.pumpAndSettle();
     expect(find.byType(EditingRegion), findsNothing);
+    expect(
+      find.byKey(const ValueKey('canvas-work-title-label')),
+      findsOneWidget,
+    );
     expect(tester.element(find.byType(ProductionBoard)), same(boardElement));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -729,10 +735,6 @@ void main() {
               );
         void safe(Finder control) {
           expect(tester.getRect(control).overlaps(blocked), false);
-          expect(
-            tester.getRect(control).top,
-            greaterThanOrEqualTo(DesktopWindowFrame.titleBarHeight),
-          );
         }
 
         try {
@@ -791,7 +793,10 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          final editingBack = find.byTooltip('Back to canvas');
+          final editingBack = find.descendant(
+            of: find.byType(EditingRegion),
+            matching: find.byTooltip('Back to canvas'),
+          );
           final editingExport = find.descendant(
             of: find.byType(EditingRegion),
             matching: find.widgetWithText(RevericButton, 'Export'),
@@ -800,8 +805,9 @@ void main() {
           safe(editingExport);
           expect(
             find.byKey(const ValueKey('canvas-work-title-label')),
-            findsOneWidget,
+            findsNothing,
           );
+          expect(find.byType(ProductionScreenplayStyle), findsNothing);
           await tester.tap(editingExport);
           await tester.pumpAndSettle();
           expect(find.byType(EditingExportDialog), findsOneWidget);
@@ -839,8 +845,9 @@ void main() {
           safe(directorExport);
           expect(
             find.byKey(const ValueKey('canvas-work-title-label')),
-            findsOneWidget,
+            findsNothing,
           );
+          expect(find.byType(ProductionScreenplayStyle), findsNothing);
           await tester.tap(directorExport);
           await tester.pumpAndSettle();
           expect(find.text('Screenshot'), findsOneWidget);
@@ -850,6 +857,10 @@ void main() {
           await tester.tap(directorBack);
           await tester.pumpAndSettle();
           expect(find.byType(DirectorHeader), findsNothing);
+          expect(
+            find.byKey(const ValueKey('canvas-work-title-label')),
+            findsOneWidget,
+          );
           expect(find.byType(ProductionBoard), findsOneWidget);
           expect(tester.takeException(), isNull);
         } finally {
