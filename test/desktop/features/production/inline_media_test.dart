@@ -1,6 +1,7 @@
-// 职责: 验证画布媒体的内联播放、弹窗快捷键和视频文件导出。
+// 职责: 验证画布媒体的内联播放、转录入口、弹窗快捷键和视频文件导出。
 // 关联文件:
 //   lib/desktop/features/production/inline_media.dart
+//   lib/desktop/features/production/transcription_action.dart
 //   lib/shared/services/production/playback_service.dart
 //   test/desktop/director/harness.dart
 
@@ -30,6 +31,7 @@ import 'package:reveric/shared/models/production/media.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/providers/production_media.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/providers/settings_navigation.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
@@ -101,6 +103,109 @@ void main() {
     await mouse.moveTo(tester.getCenter(find.byType(ProductionInlineVideo)));
     await tester.pump();
     return mouse;
+  }
+
+  for (final type in ['audio', 'video']) {
+    testWidgets(
+      'standalone $type transcribe opens provider settings when no ASR model is configured',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final root = (await tester.runAsync(
+          () => Directory.systemTemp.createTemp('production-transcription-'),
+        ))!;
+        try {
+          final path =
+              'file_workspaces/work/source.${type == 'audio' ? 'm4a' : 'mp4'}';
+          await tester.runAsync(() async {
+            final file = File('${root.path}/$path');
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes([1]);
+          });
+          service = ProductionCanvasService(
+            StoryboardService(db),
+            MediaLibraryService(assets, _Media(hasAudio: true), root),
+            'work',
+          );
+          await assets.assetDao.insertAsset(
+            AssetsCompanion.insert(
+              id: 'standalone-asset',
+              type: type,
+              novelId: const Value('work'),
+              path: Value(path),
+              purpose: 'upload',
+              content: Value(
+                type == 'audio'
+                    ? const AudioAssetContent(mimeType: 'audio/mp4')
+                    : const VideoAssetContent(mimeType: 'video/mp4'),
+              ),
+            ),
+          );
+          final episode = (await ScreenplayService(
+            db,
+          ).createInitialStructure()).episodeId;
+          final canvas = await service.ensureCanvas(episode);
+          final node = (await tester.runAsync(
+            () => service.addMedia(canvas.id, 'standalone-asset'),
+          ))!;
+          expect(node.clipId, isNull);
+          final opened = <String>[];
+          final navigation = SettingsNavigation()
+            ..openSection = (section) async => opened.add(section);
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                aiSettingsProvider.overrideWithValue(const AiSettings()),
+                settingsNavigationProvider.overrideWithValue(navigation),
+              ],
+              child: directorTestApp(
+                Center(
+                  child: ProductionNodeBar(
+                    service: service,
+                    path: db.filePath,
+                    node: node,
+                    clip: null,
+                    segmentLabels: const {},
+                    onPreview: null,
+                    onSource: null,
+                    onToSegments: null,
+                    onCopy: null,
+                    onDelete: () {},
+                    onOpenDirector: (_) {},
+                    onSelectNode: (_) {},
+                    onExport: (_) async {},
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.runAsync(() => service.library.probePath(path));
+          await tester.pumpAndSettle();
+
+          const configHint =
+              'Configure a transcription model in AI provider settings';
+          final transcribe = find.text('Transcribe');
+          expect(transcribe, findsOneWidget);
+          final mouse = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: tester.getCenter(transcribe));
+          await tester.pumpAndSettle();
+          expect(find.text(configHint), findsOneWidget);
+          await tester.tap(transcribe);
+          await tester.pumpAndSettle();
+          expect(opened, ['providers']);
+          expect(find.byType(SnackBar), findsNothing);
+          await mouse.removePointer();
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+          await tester.runAsync(() => root.delete(recursive: true));
+        }
+      },
+    );
   }
 
   for (final type in ['image', 'video']) {
@@ -539,7 +644,9 @@ void main() {
 }
 
 class _Media extends MediaService {
-  _Media() : super(FfmpegRunner());
+  _Media({this.hasAudio = false}) : super(FfmpegRunner());
+
+  final bool hasAudio;
 
   int thumbnailCalls = 0;
   bool failThumbnail = false;
@@ -548,9 +655,9 @@ class _Media extends MediaService {
   Future<MediaInfo> probe(
     String path, {
     MediaCancellation? cancellation,
-  }) async => const MediaInfo(
-    duration: Duration(seconds: 5),
-    hasAudio: false,
+  }) async => MediaInfo(
+    duration: const Duration(seconds: 5),
+    hasAudio: hasAudio,
     hasVideo: true,
     width: 320,
     height: 180,

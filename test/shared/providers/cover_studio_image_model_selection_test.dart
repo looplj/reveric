@@ -110,6 +110,7 @@ final _settings = AiSettings(
 );
 
 final _externalImageProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'external',

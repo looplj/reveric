@@ -61,16 +61,40 @@ class VideoToolOrchestrator {
     ProductionNodePlacement? Function()? place,
     VideoToolSource? source,
     MediaCancellation? cancellation,
-  }) => _run(
-    service,
-    nodeId,
-    'audio',
-    (media, path, token) => media.extractAudio(path, cancellation: token),
-    (stem) => '${stem}_audio.m4a',
-    place,
-    source,
-    cancellation,
-  );
+  }) async {
+    final asset = await separateAudioAsset(
+      service,
+      source?.asset ?? await service.videoSource(nodeId),
+      path: source?.path,
+      cancellation: cancellation ?? MediaCancellation(),
+    );
+    source?.onImported(asset);
+    return service.addDerivedOutput(nodeId, asset.id, placement: place?.call());
+  }
+
+  Future<AssetRow> separateAudioAsset(
+    ProductionCanvasService service,
+    AssetRow source, {
+    String? path,
+    required MediaCancellation cancellation,
+  }) async {
+    final library = service.library;
+    final result = await library.media.extractAudio(
+      path ?? library.resolve(source),
+      cancellation: cancellation,
+    );
+    try {
+      return await library.importFile(
+        result.file,
+        name: '${p.basenameWithoutExtension(source.name)}_audio.m4a',
+        novelId: service.novelId,
+        purpose: AssetPurpose.production_video_tool,
+        cancellation: cancellation,
+      );
+    } finally {
+      await result.dispose();
+    }
+  }
 
   Future<CanvasNode> mute(
     ProductionCanvasService service,

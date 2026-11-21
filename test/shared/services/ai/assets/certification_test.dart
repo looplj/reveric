@@ -45,6 +45,7 @@ class _References implements ReferenceStorageService {
 }
 
 AiProvider _provider({String type = 'volcengine'}) => AiProvider(
+  asrModels: const [],
   id: 'volc',
   name: 'Volc',
   builtin: false,

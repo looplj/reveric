@@ -30,6 +30,7 @@ import 'plugins/config_form.dart';
 /// 未落库的新供应商；名称默认取类型名，保存前只存在于编辑界面。
 AiProvider newProviderDraft(BuildContext context, String type) => _applyType(
   AiProvider(
+    asrModels: const [],
     audioModels: const [],
     videoModels: const [],
     id: buildRandomId('prv', length: 6),

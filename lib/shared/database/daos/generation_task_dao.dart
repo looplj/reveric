@@ -60,6 +60,8 @@ class GenerationTaskDao extends DatabaseAccessor<AppDatabase>
           GenerationTaskStatus.prepared,
           GenerationTaskStatus.running,
           GenerationTaskStatus.saving,
+          if (task.kind == GenerationKind.transcription)
+            GenerationTaskStatus.submitting,
         }.contains(task.status)
       : !task.status.isTerminal &&
             task.status != GenerationTaskStatus.submission_unknown &&
@@ -369,6 +371,44 @@ class GenerationTaskDao extends DatabaseAccessor<AppDatabase>
           nextPollAt: const Value(null),
         ),
       );
+    }
+  }
+
+  Future<bool> completeTranscription(
+    String id, {
+    String? nodeId,
+    required int segmentCount,
+  }) async {
+    try {
+      final now = DateTime.now();
+      return await (update(generationTasks)..where(
+                (task) =>
+                    task.id.equals(id) &
+                    task.deletedAt.equals(notDeletedSentinel) &
+                    task.kind.equalsValue(GenerationKind.transcription) &
+                    task.status.equalsValue(GenerationTaskStatus.saving) &
+                    task.path.isNotNull(),
+              ))
+              .write(
+                GenerationTasksCompanion(
+                  status: const Value(GenerationTaskStatus.completed),
+                  completedAt: Value(now),
+                  updatedAt: Value(now),
+                  providerState: Value({
+                    'node_id': ?nodeId,
+                    'segment_count': segmentCount,
+                  }),
+                  errorCode: const Value(null),
+                ),
+              ) ==
+          1;
+    } catch (error, stack) {
+      _log.error(
+        '[DB] generation_tasks UPDATE transcription id=$id',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
     }
   }
 

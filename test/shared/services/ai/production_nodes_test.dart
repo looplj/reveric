@@ -11,6 +11,11 @@ import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/services/object_storage/service.dart';
+import 'package:reveric/shared/services/production/transcription_service.dart';
 import 'package:reveric/shared/agent/tool_approval.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
 import 'package:reveric/shared/database/novel_content_database.dart';
@@ -50,6 +55,9 @@ void main() {
   late ToolPermissionService permissions;
   late AiToolApprovalController approvals;
   late AiToolManager tools;
+  late http.Client Function(AiProvider) transcriptionTransport;
+  late TranscriptionService transcription;
+  String? defaultAsr;
   final context = ToolExecutionContext(
     sessionId: 'owner',
     sourceTurnId: 'turn',
@@ -158,6 +166,18 @@ void main() {
       onChanged: (_) {},
       onRecord: (_) {},
     );
+    transcriptionTransport = (_) =>
+        throw StateError('Unexpected transcription');
+    defaultAsr = null;
+    transcription = TranscriptionService(
+      database: appDb,
+      library: canvas.library,
+      storage: ObjectStorageService(database: appDb),
+      canvasForWork: (_) async => canvas,
+      defaultAsrModelId: () async => defaultAsr,
+      pollDelay: Duration.zero,
+      createClient: (provider) => transcriptionTransport(provider),
+    );
     final content = NovelContentService(db);
     tools = AiToolManager(
       content,
@@ -175,6 +195,7 @@ void main() {
           canvas: canvas,
           images: _Images(),
           audio: _Audio(),
+          transcription: transcription,
           video: () => throw StateError('No remote generation'),
           results: ProductionResultService(appDb, (_) async => canvas),
         ),
@@ -183,6 +204,7 @@ void main() {
   });
 
   tearDown(() async {
+    transcription.dispose();
     tools.dispose();
     operations.dispose();
     registry.dispose();
@@ -299,6 +321,224 @@ void main() {
         ).readAsString(),
         'source',
       );
+    },
+  );
+
+  test(
+    'canvas transcription uploads the temporary audio and restores its video offset',
+    () async {
+      await permissions.setRule(
+        'media.transcribe',
+        const ToolPermissionScope.global(),
+        ToolPermissionDecision.allow,
+      );
+      const modelId = 'sample/transcribe-from-provider';
+      defaultAsr = 'openai::$modelId';
+      await appDb.aiProviderDao.upsert(
+        aiProviderBuiltinById('openai')!.copyWith(
+          type: 'openrouter',
+          enabled: true,
+          apiKey: 'fixture',
+          asrModels: const [modelId],
+        ),
+      );
+      runner.audioOffsetSeconds = 0.25;
+      final calls = <http.Request>[];
+      transcriptionTransport = (_) => MockClient((request) async {
+        calls.add(request);
+        return http.Response(
+          jsonEncode({
+            'text': 'hello',
+            'segments': [
+              {'start': 0.1, 'end': 0.4, 'text': 'hello'},
+            ],
+          }),
+          200,
+        );
+      });
+
+      final answer = await run(
+        'transcribe',
+      ).timeout(const Duration(seconds: 5));
+      expect(answer['ok'], true, reason: '$answer');
+      final result = answer['result'] as Map;
+      expect(calls.single.url.path, '/api/v1/audio/transcriptions');
+      expect(calls.single.body, contains('filename="result.mp3"'));
+      expect(calls.single.body, contains(modelId));
+      expect(calls.single.body, contains('verbose_json'));
+      final document =
+          jsonDecode(
+                await File(
+                  '${root.path}/${result['transcript_path']}',
+                ).readAsString(),
+              )
+              as Map;
+      expect(document['segments'], [
+        {'start_us': 350000, 'end_us': 650000, 'text': 'hello'},
+      ]);
+      final output = await canvas.requireNode(result['node_id'] as String);
+      expect(output.content, contains('00:00:00.350'));
+      expect(output.type, canvasNodeTypeText);
+      final edges = await db.canvasDao.getEdgesByCanvas(node.canvasId);
+      expect(
+        edges.where(
+          (edge) =>
+              edge.sourceNodeId == node.id &&
+              edge.targetNodeId == output.id &&
+              edge.type == canvasEdgeTypeDerivedOutput,
+        ),
+        hasLength(1),
+      );
+      expect(
+        (await appDb.assetDao.watchAssets(novelId: 'work').first).map(
+          (asset) => asset.id,
+        ),
+        ['source'],
+      );
+      expect(
+        (await appDb.generationTaskDao.getById(
+          result['task_id'] as String,
+        ))?.status,
+        app.GenerationTaskStatus.completed,
+      );
+    },
+  );
+
+  test(
+    'asset transcription resumes an Atlas prediction without a second submission',
+    () async {
+      await permissions.setRule(
+        'media.transcribe',
+        const ToolPermissionScope.global(),
+        ToolPermissionDecision.allow,
+      );
+      defaultAsr = 'openai::bytedance/seed-asr-2.0';
+      await appDb.aiProviderDao.upsert(
+        aiProviderBuiltinById('openai')!.copyWith(
+          type: 'atlascloud',
+          enabled: true,
+          apiKey: 'fixture',
+          asrModels: const ['bytedance/seed-asr-2.0'],
+        ),
+      );
+      var submissions = 0;
+      var queries = 0;
+      var available = false;
+      transcriptionTransport = (_) => MockClient((request) async {
+        if (request.method == 'POST') {
+          submissions++;
+          expect(request.url.path, '/api/v1/model/generateAudio');
+          final input = jsonDecode(request.body) as Map;
+          expect(input['show_utterances'], true);
+          return http.Response(
+            '{"code":200,"data":{"id":"prediction-123","status":"processing"}}',
+            200,
+          );
+        }
+        queries++;
+        expect(request.url.path, '/api/v1/model/prediction/prediction-123');
+        if (!available) {
+          return http.Response('{}', 503);
+        }
+        return http.Response(
+          jsonEncode({
+            'code': 200,
+            'data': {
+              'id': 'prediction-123',
+              'status': 'completed',
+              'stt_result': {
+                'text': 'hello',
+                'words': [
+                  {
+                    'type': 'utterance',
+                    'text': 'hello',
+                    'start': 0.1,
+                    'end': 0.5,
+                  },
+                ],
+              },
+            },
+          }),
+          200,
+        );
+      });
+      final submitted = await tools.executeTool(
+        name: 'Run',
+        callId: 'call-asset-transcription',
+        context: context,
+        input: {
+          'command': 'assets',
+          'subcommand': 'transcribe',
+          'options': {'id': 'source'},
+        },
+      );
+      expect(submitted['background'], true, reason: '$submitted');
+      final runId = submitted['run_id'] as String;
+      final interrupted = await operations.wait(runId, context);
+      expect(interrupted['error_code'], 'polling_interrupted');
+      final taskId = interrupted['task_id'] as String;
+      expect(
+        (await appDb.generationTaskDao.getById(taskId))?.providerTaskId,
+        'prediction-123',
+      );
+      expect(queries, 4);
+
+      available = true;
+      await transcription.recover();
+      await appDb.generationTaskDao
+          .watchTask(taskId)
+          .firstWhere(
+            (task) => task?.status == app.GenerationTaskStatus.completed,
+          )
+          .timeout(const Duration(seconds: 5));
+      final response = await tools.executeTool(
+        name: 'Run',
+        callId: 'call-asset-transcription-read',
+        context: context,
+        input: {
+          'command': 'operations',
+          'subcommand': 'read',
+          'options': {'run_id': runId},
+        },
+      );
+      expect(response['status'], 'completed', reason: '$response');
+      final result = response['result'] as Map;
+      expect(result['segment_count'], 1);
+      expect(
+        await File('${root.path}/${result['transcript_path']}').exists(),
+        true,
+      );
+      expect(submissions, 1);
+      expect(queries, 5);
+      expect(await db.canvasDao.getNodesByCanvas(node.canvasId), hasLength(1));
+    },
+  );
+
+  test(
+    'extracting at the asset layer saves audio without adding a canvas node',
+    () async {
+      final submitted = await tools.executeTool(
+        name: 'Run',
+        callId: 'call-asset-extraction',
+        context: context,
+        input: {
+          'command': 'assets',
+          'subcommand': 'separate-audio',
+          'options': {'id': 'source'},
+        },
+      );
+      expect(submitted['background'], true, reason: '$submitted');
+      final done = await operations.wait(
+        submitted['run_id'] as String,
+        context,
+      );
+      expect(done['ok'], true, reason: '$done');
+      final result = done['result'] as Map;
+      expect(
+        (await appDb.assetDao.getAsset(result['asset_id'] as String))?.type,
+        'audio',
+      );
+      expect(await db.canvasDao.getNodesByCanvas(node.canvasId), hasLength(1));
     },
   );
 
@@ -618,6 +858,7 @@ class _Audio implements AudioTaskService {
 class _Runner extends FfmpegRunner {
   int probes = 0, encodes = 0;
   bool audio = true;
+  double audioOffsetSeconds = 0;
   Future<String> Function(List<String>, MediaCancellation)? probing;
   Future<String> Function(List<String>, MediaCancellation)? encode;
   @override
@@ -636,7 +877,11 @@ class _Runner extends FfmpegRunner {
       }
       final audioOnly = args.last.endsWith('.m4a');
       return jsonEncode({
-        'format': {'duration': '1.5', 'format_name': 'mov,mp4,m4a'},
+        'format': {
+          'duration': '1.5',
+          'format_name': 'mov,mp4,m4a',
+          'start_time': '0',
+        },
         'streams': [
           if (!audioOnly)
             {
@@ -646,7 +891,14 @@ class _Runner extends FfmpegRunner {
               'height': 2,
               'avg_frame_rate': '24/1',
             },
-          if (audio) {'codec_type': 'audio', 'codec_name': 'aac'},
+          if (audio)
+            {
+              'codec_type': 'audio',
+              'codec_name': 'aac',
+              'start_time': args.last.endsWith('.mp4')
+                  ? '$audioOffsetSeconds'
+                  : '0',
+            },
         ],
       });
     }

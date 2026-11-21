@@ -49,6 +49,10 @@ class AppDatabaseMigrations {
     await createAnonymousOutboxBatchIndex(db);
   });
 
+  /// v10: 供应商的语音识别模型列表。
+  Future<void> migrateToV10(Migrator m) =>
+      m.addColumnIfMissing(db.aiProviders, db.aiProviders.asrModels);
+
   /// v6: 同次图片任务的有序候选结果。
   Future<void> migrateToV6(Migrator m) =>
       m.addColumnIfMissing(db.generationTasks, db.generationTasks.imageOutputs);

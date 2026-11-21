@@ -17,6 +17,7 @@
 import 'package:drift/drift.dart' show BooleanExpressionOperators;
 import 'dart:io';
 import 'text_view.dart';
+import 'transcription_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -221,13 +222,12 @@ class ProductionNodeBar extends HookConsumerWidget {
         ).data ??
         const <(ProductionConnection, CanvasNode)>[];
 
-    // 视频节点的采用结果或视频素材：能截帧、分离音轨、静音和裁剪。
-    final sourceAsset = useProductionAsset(service, switch (node.type) {
-      canvasNodeTypeVideo => clip?.adoptedAssetId,
-      canvasNodeTypeMedia => node.mediaAssetId,
-      _ => null,
-    });
-    final sourceVideo = sourceAsset?.type == 'video' ? sourceAsset : null;
+    // 独立素材节点直接引用资产，生成节点使用已采用的结果。
+    final libraryAssetId =
+        node.mediaAssetId ??
+        (node.isGenerationNode ? clip?.adoptedAssetId : null);
+    final libraryAsset = useProductionAsset(service, libraryAssetId);
+    final sourceVideo = libraryAsset?.type == 'video' ? libraryAsset : null;
     final mediaVideoId = node.type == canvasNodeTypeMedia
         ? sourceVideo?.id
         : null;
@@ -238,13 +238,6 @@ class ProductionNodeBar extends HookConsumerWidget {
             context,
             () => exportProductionAsset(service, exportAssetId),
           );
-    // 生成节点的采用结果或素材节点的资产：「…」里可加入或移出资产库。
-    final libraryAssetId = node.isGenerationNode
-        ? clip?.adoptedAssetId
-        : node.type == canvasNodeTypeMedia
-        ? node.mediaAssetId
-        : null;
-    final libraryAsset = useProductionAsset(service, libraryAssetId);
     final VoidCallback? copyImage =
         libraryAsset?.type == 'image' && libraryAsset?.path != null
         ? () => productionRun(context, () async {
@@ -663,13 +656,13 @@ class ProductionNodeBar extends HookConsumerWidget {
                                 ),
                               ),
                       ),
-                    ] else if (!video && sourceAsset?.type != 'audio')
+                    ] else if (!video && libraryAsset?.type != 'audio')
                       button(
                         RevericIcons.play_arrow,
                         context.t(
                           node.mediaAssetId == null
                               ? LocaleKeys.productionPreviewAdopted
-                              : sourceAsset?.type == 'video'
+                              : libraryAsset?.type == 'video'
                               ? LocaleKeys.commonPlay
                               : LocaleKeys.commonView,
                         ),
@@ -686,12 +679,21 @@ class ProductionNodeBar extends HookConsumerWidget {
                     ],
                   // 基于当前内容再创作。
                   [
-                    if (image || sourceAsset?.type == 'image')
+                    if (image || libraryAsset?.type == 'image')
                       ProductionViewActions(
                         onCreated: onSelectNode,
                         service: service,
                         node: node,
                         assetId: libraryAsset?.id,
+                      ),
+                    if (libraryAsset != null &&
+                        {'audio', 'video'}.contains(libraryAsset.type))
+                      ProductionTranscriptionAction(
+                        key: ValueKey(node.id),
+                        canvas: service,
+                        nodeId: node.id,
+                        assetId: libraryAsset.id,
+                        hasAudio: sourceVideo == null || hasAudio,
                       ),
                     if (sourceVideo != null) ...[
                       menuButton(

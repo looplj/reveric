@@ -342,6 +342,7 @@ void main() {
 
 AiProvider _openAiCompatibleProvider(String baseUrl) {
   return AiProvider(
+    asrModels: const [],
     audioModels: const [],
     videoModels: const [],
     id: 'openai_compat',

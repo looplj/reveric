@@ -159,5 +159,7 @@
   "provider.plugin_models_invalid": "Invalid model declaration: {details}",
   "provider.plugin_models_refresh_needed": "Get models again to restore their capabilities.",
   "provider.plugin_model_unavailable": "Unavailable",
-  "provider.fetch_models_empty": "No models returned."
+  "provider.fetch_models_empty": "No models returned.",
+  "provider.transcription": "Transcription models",
+  "provider.default_transcription": "Default Agent transcription model"
 }

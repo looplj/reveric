@@ -37,36 +37,42 @@ void main() {
     path: status == GenerationTaskStatus.saving
         ? const Value('images/result.png')
         : const Value.absent(),
-    requestJson: kind == GenerationKind.image
-        ? ImageGenerationRequest(
-            ProductionImageRequest(
-              providerId: 'provider',
-              modelId: 'model',
-              originalPrompt: 'body',
-              prompt: 'body',
-              ratio: '1:1',
-              resolution: '1K',
-              size: null,
-            ),
-          )
-        : kind == GenerationKind.audio
-        ? AudioGenerationRequest(
-            AudioRequest(
-              providerId: 'provider',
-              modelId: 'model',
-              prompt: 'body',
-              originalPrompt: 'body',
-            ),
-          )
-        : VideoGenerationRequest(
-            const VideoRequest(
-              modelId: 'model',
-              prompt: 'body',
-              mode: VideoMode.text,
-              resolution: '720p',
-              ratio: '9:16',
-            ),
-          ),
+    requestJson: switch (kind) {
+      GenerationKind.image => ImageGenerationRequest(
+        ProductionImageRequest(
+          providerId: 'provider',
+          modelId: 'model',
+          originalPrompt: 'body',
+          prompt: 'body',
+          ratio: '1:1',
+          resolution: '1K',
+          size: null,
+        ),
+      ),
+      GenerationKind.audio => AudioGenerationRequest(
+        AudioRequest(
+          providerId: 'provider',
+          modelId: 'model',
+          prompt: 'body',
+          originalPrompt: 'body',
+        ),
+      ),
+      GenerationKind.video => VideoGenerationRequest(
+        const VideoRequest(
+          modelId: 'model',
+          prompt: 'body',
+          mode: VideoMode.text,
+          resolution: '720p',
+          ratio: '9:16',
+        ),
+      ),
+      GenerationKind.transcription => TranscriptionGenerationRequest(
+        modelId: 'model',
+        assetId: sourceId,
+        audioOffsetUs: 0,
+        channelFingerprint: 'fixture',
+      ),
+    },
   );
 
   for (final kind in GenerationKind.values) {

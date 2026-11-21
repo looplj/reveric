@@ -101,8 +101,8 @@ void main() {
       overrides: [
         appDatabaseProvider.overrideWithValue(appDb),
         novelActionsProvider.overrideWithValue(NovelActionsService(appDb)),
-        // fake provider 是自定义 provider，Pro 门禁会在 AiClient.initialize 兜底拦下。
 
+        // fake provider 是自定义 provider，Pro 门禁会在 AiClient.initialize 兜底拦下。
         aiSettingsProvider.overrideWithValue(
           AiSettings(
             providers: [_materializationProvider],
@@ -315,6 +315,7 @@ void main() {
 const _materializationModel = 'fake-chat';
 
 final _materializationProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'fake_provider_materialization',

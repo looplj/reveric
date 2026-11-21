@@ -628,6 +628,10 @@ const _assetsHelp =
     '(processing, active, or failed with error_code). '
     'Video generation on that provider then references the certified asset '
     'instead of uploading the file. '
+    'assets transcribe: id required; audio or video. Uses the configured default '
+    'transcription model. Returns a run_id and delivers a transcript JSON file. '
+    'assets separate-audio: id required; video with an audio track. Returns a run_id '
+    'and delivers an independent M4A asset. '
     'Includes this work’s assets and shared assets, whether or not they are in the asset library. '
     'in_library is true only for assets the user added to the asset library; '
     'pickers in the app list only those, while references by asset id work either way.';
@@ -644,7 +648,14 @@ extension _AssetCommands on _AiToolManagerBase {
         'Asset queries require a screenplay or canvas work.',
       );
     }
-    if (!{'list', 'read', 'view-image', 'certify'}.contains(action)) {
+    if (!{
+      'list',
+      'read',
+      'view-image',
+      'certify',
+      'transcribe',
+      'separate-audio',
+    }.contains(action)) {
       throw const FormatException(
         'Unknown assets action. Use Run help assets.',
       );
@@ -673,6 +684,20 @@ extension _AssetCommands on _AiToolManagerBase {
         'permission_denied',
         'Cross-work asset queries are unavailable.',
       );
+    }
+    if (action == 'transcribe' || action == 'separate-audio') {
+      final manager = operationHost?.operations;
+      final context = _currentToolExecutionContext;
+      if (manager == null || context == null || id == null) {
+        throw const ToolOperationException(
+          'unavailable',
+          'Asset processing requires an active work session.',
+        );
+      }
+      final callId = _activeRunCallId ?? '';
+      return action == 'transcribe'
+          ? host.transcribe(id, context, manager, callId, nodeScope: false)
+          : host.separateAudioAsset(id, context, manager, callId);
     }
     final assets = await host.database.assetDao
         .watchAssets(

@@ -1004,6 +1004,7 @@ void main() {
           await request.response.close();
         });
         final config = AiProvider(
+          asrModels: const [],
           id: 'image-fixture',
           name: 'Fixture',
           builtin: false,

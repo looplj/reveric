@@ -110,6 +110,7 @@ class NewApiClient {
                         : 'openai',
                   ),
             AiModelKind.video => video,
+            AiModelKind.asr => false,
             AiModelKind.chat =>
               !image &&
                   !audio &&

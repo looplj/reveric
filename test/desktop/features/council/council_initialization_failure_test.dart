@@ -40,6 +40,7 @@ class _FixedCouncilParticipants extends AgentCouncilParticipantsNotifier {
 }
 
 final _customProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'custom_test',

@@ -383,6 +383,10 @@ class AiProviders extends Table {
       .map(const StringListConverter())
       .withDefault(const Constant('[]'))();
 
+  TextColumn get asrModels => text()
+      .map(const StringListConverter())
+      .withDefault(const Constant('[]'))();
+
   TextColumn get videoModels => text()
       .map(const StringListConverter())
       .withDefault(const Constant('[]'))();
@@ -1287,7 +1291,7 @@ class AppDatabase extends _$AppDatabase {
 
   static _CachedAppDatabase? _cachedDatabase;
 
-  static const currentSchemaVersion = 9;
+  static const currentSchemaVersion = 10;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1386,6 +1390,18 @@ class AppDatabase extends _$AppDatabase {
         } catch (error, stackTrace) {
           _log.error(
             '[DB] ALTER anonymous_outbox_events schema=9',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+      }
+      if (from < 10) {
+        try {
+          await migrations.migrateToV10(migrator);
+        } catch (error, stackTrace) {
+          _log.error(
+            '[DB] ALTER ai_providers ADD asr_models schema=10',
             error: error,
             stackTrace: stackTrace,
           );

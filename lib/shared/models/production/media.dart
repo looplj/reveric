@@ -17,6 +17,7 @@ class MediaInfo {
     this.formatName,
     this.frameCount,
     this.timeBase,
+    this.audioOffsetUs = 0,
   });
   final Duration duration;
   final bool hasAudio;
@@ -30,6 +31,7 @@ class MediaInfo {
   final String? formatName;
   final int? frameCount;
   final String? timeBase;
+  final int audioOffsetUs;
 
   factory MediaInfo.fromProbe(Map<String, dynamic> json) {
     final streams = (json['streams'] as List).cast<Map<String, dynamic>>();
@@ -55,6 +57,11 @@ class MediaInfo {
           '${format?['duration'] ?? video?['duration'] ?? audio?['duration']}',
         ) ??
         0;
+    final formatStart = double.tryParse('${format?['start_time']}');
+    final audioStart = double.tryParse('${audio?['start_time']}');
+    final offset = audioStart == null || formatStart == null
+        ? 0.0
+        : audioStart - formatStart;
     final rate = '${video?['avg_frame_rate'] ?? ''}'.split('/');
     final numerator = double.tryParse(rate.first);
     final denominator = rate.length == 2 ? double.tryParse(rate.last) : 1.0;
@@ -63,6 +70,9 @@ class MediaInfo {
         microseconds: (seconds * Duration.microsecondsPerSecond).round(),
       ),
       hasAudio: audio != null,
+      audioOffsetUs: offset.isFinite && offset > 0
+          ? (offset * Duration.microsecondsPerSecond).round()
+          : 0,
       hasVideo: video != null,
       width: video?['width'] as int?,
       height: video?['height'] as int?,

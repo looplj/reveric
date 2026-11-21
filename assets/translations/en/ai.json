@@ -436,5 +436,6 @@
   "ai.feedback_upload": "Upload",
   "ai.feedback_uploading": "Uploading...",
   "ai.feedback_success": "Diagnostic info uploaded. Thank you!",
-  "ai.feedback_failed": "Upload failed. Please try again."
+  "ai.feedback_failed": "Upload failed. Please try again.",
+  "ai.permission_media_transcribe": "Transcribe media (upload asset)"
 }

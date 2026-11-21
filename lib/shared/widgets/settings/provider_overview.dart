@@ -33,6 +33,7 @@ String providerCapabilitySummary(BuildContext context, AiProvider config) =>
             AiModelKind.image => LocaleKeys.providerImageModelsLabel,
             AiModelKind.video => LocaleKeys.providerVideoModelsLabel,
             AiModelKind.audio => LocaleKeys.providerAudioModelsLabel,
+            AiModelKind.asr => LocaleKeys.providerTranscription,
           }),
         )
         .join(' · ');

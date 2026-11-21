@@ -168,8 +168,18 @@ mixin _AiToolManagerRunMixin
           'Image content must be viewed through a direct Run call.',
         ),
         'certify': _RunCodemodeAccess.write(),
+        'transcribe': _RunCodemodeAccess.write(),
+        'separate-audio': _RunCodemodeAccess.write(),
       },
       media: true,
+      subcommands: const {
+        'list': RunPermission.none(),
+        'read': RunPermission.none(),
+        'view-image': RunPermission.none(),
+        'certify': RunPermission.none(),
+        'transcribe': RunPermission.required('media.transcribe'),
+        'separate-audio': RunPermission.none(),
+      },
       (spec, options, _) => _runAssetsCommand(spec.subcommand, options),
     ),
     'stagings': _RunCommandDefinition(
@@ -322,6 +332,7 @@ mixin _AiToolManagerRunMixin
         'generate-image': _RunCodemodeAccess.write(),
         'generate-video': _RunCodemodeAccess.write(),
         'generate-audio': _RunCodemodeAccess.write(),
+        'transcribe': _RunCodemodeAccess.write(),
       },
       media: true,
       subcommands: const {
@@ -338,6 +349,7 @@ mixin _AiToolManagerRunMixin
         'generate-image': _generateImage,
         'generate-video': RunPermission.required('generation.video'),
         'generate-audio': RunPermission.required('generation.audio'),
+        'transcribe': RunPermission.required('media.transcribe'),
       },
       (spec, options, _) => _runProductionCommand(spec, options),
     ),
@@ -1211,7 +1223,7 @@ mixin _AiToolManagerRunMixin
       if (id is! String || id.trim().isEmpty) {
         throw const FormatException('run_id is required.');
       }
-      return switch (subcommand) {
+      final response = switch (subcommand) {
         'read' => manager.read(id, context),
         'wait' => await manager.wait(
           id,
@@ -1220,6 +1232,18 @@ mixin _AiToolManagerRunMixin
         ),
         _ => manager.cancel(id, context),
       };
+      final build = operationHost?.production;
+      if (subcommand != 'cancel' &&
+          build != null &&
+          {
+            'assets.transcribe',
+            'production.transcribe',
+          }.contains(response['kind']) &&
+          (response['status'] == 'interrupted' ||
+              response['error_code'] == 'polling_interrupted')) {
+        return await (await build()).transcriptionOperation(response);
+      }
+      return response;
     } on ToolOperationException catch (error) {
       return {'ok': false, 'error_code': error.code, 'error': error.message};
     }

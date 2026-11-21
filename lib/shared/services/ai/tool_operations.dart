@@ -762,6 +762,17 @@ class ToolOperationManager {
       _publish();
       return {...record.response(), 'accepted': false};
     }
+    if ({'assets.transcribe', 'production.transcribe'}.contains(record.kind) &&
+        record.status != ToolOperationStatus.waiting_approval &&
+        record.status != ToolOperationStatus.queued) {
+      return {
+        ...record.response(),
+        'ok': false,
+        'accepted': false,
+        'error_code': 'not_cancellable',
+        'error': 'Transcription cannot be cancelled.',
+      };
+    }
     _cancel(_active[id]!);
     return {...record.response(), 'ok': true, 'accepted': true};
   }

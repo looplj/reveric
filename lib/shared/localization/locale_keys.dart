@@ -317,6 +317,7 @@ abstract final class LocaleKeys {
   static const aiPermissionLoading = 'ai.permission_loading';
   static const aiPermissionGenerationImage = 'ai.permission_generation_image';
   static const aiPermissionGenerationVideo = 'ai.permission_generation_video';
+  static const aiPermissionMediaTranscribe = 'ai.permission_media_transcribe';
   static const aiPermissionGenerationAudio = 'ai.permission_generation_audio';
   static const aiPermissionFilesRead = 'ai.permission_files_read';
   static const aiPermissionFilesRemove = 'ai.permission_files_remove';
@@ -502,6 +503,22 @@ abstract final class LocaleKeys {
   static const productionDepthNoTask = 'screenplay.production.depth.noTask';
   static const productionDepthError = 'screenplay.production.depth.error';
   static const productionTrimRange = 'screenplay.production.trimRange';
+  static const productionTranscribe = 'screenplay.production.transcribe';
+  static const productionTranscribing = 'screenplay.production.transcribing';
+  static const productionTranscriptionReady =
+      'screenplay.production.transcriptionReady';
+  static const productionTranscriptionFailed =
+      'screenplay.production.transcriptionFailed';
+  static const productionTranscriptionConfig =
+      'screenplay.production.transcriptionConfig';
+  static const productionTranscriptionStorage =
+      'screenplay.production.transcriptionStorage';
+  static const productionTranscriptionNoSpeech =
+      'screenplay.production.transcriptionNoSpeech';
+  static const productionTranscriptionLimit =
+      'screenplay.production.transcriptionLimit';
+  static const productionTranscriptionUnknown =
+      'screenplay.production.transcriptionUnknown';
   static const productionSeparateAudio = 'screenplay.production.separateAudio';
   static const productionCaptureFrame = 'screenplay.production.captureFrame';
   static const productionCaptureCurrent =
@@ -3990,6 +4007,8 @@ abstract final class LocaleKeys {
   static const providerDraftBadge = 'provider.draft_badge';
   static const providerNewTitle = 'provider.new_title';
   static const providerTypeOpenaiCompatible = 'provider.type_openai_compatible';
+  static const providerTranscription = 'provider.transcription';
+  static const providerDefaultTranscription = 'provider.default_transcription';
   static const providerAudioModelsLabel = 'provider.audio_models_label';
   static const providerAssetSection = 'provider.asset_section';
   static const providerAssetProjectLabel = 'provider.asset_project_label';

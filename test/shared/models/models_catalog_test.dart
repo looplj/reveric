@@ -13,6 +13,7 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/models_catalog.dart';
 
 final _reasoningProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'test-provider',

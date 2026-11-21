@@ -436,5 +436,6 @@
   "ai.feedback_upload": "上传",
   "ai.feedback_uploading": "正在上传...",
   "ai.feedback_success": "诊断信息已上传，感谢反馈！",
-  "ai.feedback_failed": "上传失败，请重试。"
+  "ai.feedback_failed": "上传失败，请重试。",
+  "ai.permission_media_transcribe": "转录音视频（上传素材）"
 }

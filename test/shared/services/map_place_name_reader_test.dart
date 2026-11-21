@@ -86,6 +86,7 @@ void main() {
 const _visionModel = 'vision-model';
 
 final _provider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'vision-test',

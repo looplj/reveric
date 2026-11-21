@@ -71,6 +71,7 @@ void main() {
 
 AiProvider _provider({String proxyUrl = ''}) {
   return AiProvider(
+    asrModels: const [],
     audioModels: const [],
     videoModels: const [],
     id: 'provider_1',

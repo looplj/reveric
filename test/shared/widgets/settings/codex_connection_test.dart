@@ -18,6 +18,7 @@ import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/settings/codex_connection.dart';
 
 final _codexProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'codex',

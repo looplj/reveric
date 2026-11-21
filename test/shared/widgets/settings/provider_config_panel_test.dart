@@ -23,6 +23,50 @@ import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/widgets/settings/provider_config_panel.dart';
 
 void main() {
+  test(
+    'ASR model picker uses the timestamped channel catalog without credentials',
+    () async {
+      final provider = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(type: 'volcengine');
+      final models = await fetchProviderModels(provider, kind: AiModelKind.asr);
+      expect(models, const ['volc.bigasr.auc_turbo']);
+      expect(
+        await fetchProviderModels(
+          provider.copyWith(type: 'openai'),
+          kind: AiModelKind.asr,
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test('OpenRouter fetches ASR models from its live catalog endpoint', () async {
+    final provider = aiProviderBuiltinById(
+      'openai',
+    )!.copyWith(type: 'openrouter', apiKey: '');
+    final models = await http.runWithClient(
+      () => fetchProviderModels(provider, kind: AiModelKind.asr),
+      () => MockClient((request) async {
+        expect(
+          request.url.toString(),
+          'https://openrouter.ai/api/v1/models?output_modalities=transcription',
+        );
+        expect(request.headers['authorization'], isNull);
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'id': 'sample/transcribe-b'},
+              {'id': 'sample/transcribe-a'},
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+    expect(models, ['sample/transcribe-a', 'sample/transcribe-b']);
+  });
+
   test('unsupported provider cannot fetch models or issue a request', () async {
     final provider = aiProviderBuiltinById(
       'openai',

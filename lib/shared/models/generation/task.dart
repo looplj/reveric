@@ -9,7 +9,7 @@ import '../audio/request.dart';
 import '../video/request.dart';
 import '../video/config.dart';
 
-enum GenerationKind { image, video, audio }
+enum GenerationKind { image, video, audio, transcription }
 
 enum GenerationTaskStatus {
   prepared,
@@ -41,6 +41,9 @@ sealed class GenerationRequest {
     }
     final request = json['request'] as Map<String, dynamic>;
     return switch (GenerationKind.values.byName(json['kind'] as String)) {
+      GenerationKind.transcription => TranscriptionGenerationRequest.fromJson(
+        request,
+      ),
       GenerationKind.audio => AudioGenerationRequest(
         AudioRequest.fromJson(request),
       ),
@@ -116,6 +119,47 @@ final class AudioGenerationRequest extends GenerationRequest {
     'version': 1,
     'kind': kind.name,
     'request': request.toJson(),
+  };
+}
+
+final class TranscriptionGenerationRequest extends GenerationRequest {
+  const TranscriptionGenerationRequest({
+    required this.modelId,
+    required this.assetId,
+    required this.audioOffsetUs,
+    required this.channelFingerprint,
+    this.nodeId,
+  });
+
+  @override
+  GenerationKind get kind => GenerationKind.transcription;
+  @override
+  final String modelId;
+  final String assetId;
+  final String? nodeId;
+  final int audioOffsetUs;
+  final String channelFingerprint;
+
+  factory TranscriptionGenerationRequest.fromJson(Map<String, dynamic> json) =>
+      TranscriptionGenerationRequest(
+        modelId: json['model_id'] as String,
+        assetId: json['asset_id'] as String,
+        nodeId: json['node_id'] as String?,
+        audioOffsetUs: json['audio_offset_us'] as int,
+        channelFingerprint: json['channel_fingerprint'] as String,
+      );
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'version': 1,
+    'kind': kind.name,
+    'request': {
+      'model_id': modelId,
+      'asset_id': assetId,
+      'node_id': ?nodeId,
+      'audio_offset_us': audioOffsetUs,
+      'channel_fingerprint': channelFingerprint,
+    },
   };
 }
 

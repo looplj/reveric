@@ -716,5 +716,14 @@
   "screenplay.narration.missingScene": "A scene or location is no longer available. Check the script and reopen Read aloud.",
   "screenplay.narration.invalidConfig": "This speech model is unavailable. Enable it in provider settings or choose another model.",
   "screenplay.narration.authentication": "Provider authentication failed. Check its API key.",
-  "screenplay.narration.rateLimited": "The speech provider is busy. Wait a moment and retry."
+  "screenplay.narration.rateLimited": "The speech provider is busy. Wait a moment and retry.",
+  "screenplay.production.transcribe": "Transcribe",
+  "screenplay.production.transcribing": "Transcribing",
+  "screenplay.production.transcriptionReady": "Transcript added to the canvas",
+  "screenplay.production.transcriptionFailed": "Transcription failed",
+  "screenplay.production.transcriptionConfig": "Configure a transcription model in AI provider settings",
+  "screenplay.production.transcriptionStorage": "Qwen file transcription requires object storage",
+  "screenplay.production.transcriptionNoSpeech": "No speech was recognized",
+  "screenplay.production.transcriptionLimit": "The audio exceeds the selected model’s size or duration limit",
+  "screenplay.production.transcriptionUnknown": "Submission receipt missing. Check the task status with the provider."
 }

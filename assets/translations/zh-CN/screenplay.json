@@ -716,5 +716,14 @@
   "screenplay.narration.missingScene": "场次或地点已不可用，请检查剧本后重新打开朗读。",
   "screenplay.narration.invalidConfig": "当前语音模型不可用，请在服务商设置中启用或重新选择模型。",
   "screenplay.narration.authentication": "服务商认证失败，请检查 API 密钥。",
-  "screenplay.narration.rateLimited": "语音服务请求过于频繁，请稍后重试。"
+  "screenplay.narration.rateLimited": "语音服务请求过于频繁，请稍后重试。",
+  "screenplay.production.transcribe": "转录",
+  "screenplay.production.transcribing": "正在转录",
+  "screenplay.production.transcriptionReady": "转录已添加到画布",
+  "screenplay.production.transcriptionFailed": "转录失败",
+  "screenplay.production.transcriptionConfig": "请在 AI 供应商设置中配置转录模型",
+  "screenplay.production.transcriptionStorage": "Qwen 文件转写需要配置对象存储",
+  "screenplay.production.transcriptionNoSpeech": "没有识别到语音",
+  "screenplay.production.transcriptionLimit": "音频大小或时长超过所选模型的限制",
+  "screenplay.production.transcriptionUnknown": "未收到提交回执，请先核对渠道任务状态"
 }

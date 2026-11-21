@@ -65,6 +65,8 @@ import 'provider_actions.dart';
 import 'provider_video_models.dart';
 import 'provider_models_editor.dart';
 import 'provider_audio_models.dart';
+import 'provider_transcription.dart';
+import '../../models/transcription/catalog.dart';
 import 'plugins/config_form.dart';
 import 'proxy_settings_section.dart';
 import 'plugin_provider_fields.dart';
@@ -108,7 +110,8 @@ class ProviderConfigPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsNotifier = ref.read(appSettingsProvider.notifier);
-    final config = ref.watch(aiSettingsProvider).findConfigById(providerId);
+    final aiSettings = ref.watch(aiSettingsProvider);
+    final config = aiSettings.findConfigById(providerId);
 
     if (config == null) {
       return const SizedBox.shrink();
@@ -118,6 +121,9 @@ class ProviderConfigPanel extends ConsumerWidget {
       key: ValueKey(config.id),
       config: config,
       onChanged: settingsNotifier.setAiProviderConfig,
+      defaultAsrModelId: aiSettings.defaultAsrModelId,
+      onDefaultAsrChanged: (id) =>
+          settingsNotifier.setDefaultAiModelForKind(AiModelKind.asr, id),
       badge: StatusBadge(isValid: config.isValid),
       guideKeys: guideKeys,
       headerActions: [
@@ -200,6 +206,8 @@ class ProviderConfigForm extends HookWidget {
     required this.headerActions,
     this.isDraft = false,
     this.pluginDraftController,
+    this.defaultAsrModelId,
+    this.onDefaultAsrChanged,
     this.guideKeys,
   });
 
@@ -208,6 +216,8 @@ class ProviderConfigForm extends HookWidget {
   final Widget badge;
   final List<Widget> headerActions;
   final bool isDraft;
+  final String? defaultAsrModelId;
+  final ValueChanged<String?>? onDefaultAsrChanged;
   final PluginConfigDraftController? pluginDraftController;
   final ProviderConfigGuideKeys? guideKeys;
 
@@ -528,6 +538,27 @@ class ProviderConfigForm extends HookWidget {
                   ),
                 ),
               ],
+              if (config.supportsModelKind(AiModelKind.asr)) ...[
+                const SizedBox(height: RevericSpacing.lg),
+                ProviderTranscriptionSettings(
+                  key: ValueKey(config.id),
+                  provider: config,
+                  defaultModelId: defaultAsrModelId,
+                  onDefaultChanged: config.isValid ? onDefaultAsrChanged : null,
+                  onModelsChanged: (models) => saveChange(
+                    (current) => current.copyWith(asrModels: models),
+                  ),
+                  fetchButton: _buildFetchButton(
+                    context,
+                    config,
+                    config.availableAsrModels,
+                    (models) => saveChange(
+                      (current) => current.copyWith(asrModels: models),
+                    ),
+                    kind: AiModelKind.asr,
+                  ),
+                ),
+              ],
               if (config.supportsModelKind(AiModelKind.image)) ...[
                 const SizedBox(height: RevericSpacing.lg),
                 ProviderModelsEditor(
@@ -642,7 +673,8 @@ class ProviderConfigForm extends HookWidget {
     ValueChanged<List<String>> onChanged, {
     AiModelKind kind = AiModelKind.chat,
   }) {
-    final ready = provider.hasCredentialConfiguration;
+    final ready =
+        kind == AiModelKind.asr || provider.hasCredentialConfiguration;
     return TextButton.icon(
       icon: RevericIcon(RevericIcons.download, size: 14),
       label: Text(context.t(LocaleKeys.providerFetchModels)),
@@ -864,6 +896,9 @@ Future<List<String>> fetchProviderModels(
   AiProvider config, {
   AiModelKind kind = AiModelKind.chat,
 }) async {
+  if (kind == AiModelKind.asr && config.typeEnum != AiProviderType.openrouter) {
+    return asrModelsForProvider(config.type);
+  }
   if (config.typeConfig.usesNewApi) {
     return NewApiClient(config).modelIds(kind);
   }
@@ -938,13 +973,17 @@ Future<List<String>> fetchProviderModels(
           path: kind == AiModelKind.image
               ? '$basePath/images/models'
               : '$basePath/models',
-          queryParameters: kind == AiModelKind.chat
-              ? {'output_modalities': 'text'}
-              : kind == AiModelKind.audio
-              ? {'output_modalities': 'speech'}
-              : null,
+          queryParameters: switch (kind) {
+            AiModelKind.chat => {'output_modalities': 'text'},
+            AiModelKind.audio => {'output_modalities': 'speech'},
+            AiModelKind.asr => {'output_modalities': 'transcription'},
+            _ => null,
+          },
         );
-        headers = {'Authorization': 'Bearer ${config.effectiveApiKey}'};
+        headers = {
+          if (config.hasApiKey)
+            'Authorization': 'Bearer ${config.effectiveApiKey}',
+        };
       case AiProviderType.atlascloud when kind == AiModelKind.image:
         final rootPath = basePath.replaceFirst(RegExp(r'/v1/?$'), '');
         url = baseUri.replace(
@@ -964,11 +1003,16 @@ Future<List<String>> fetchProviderModels(
     }
 
     final response = await client.get(url, headers: headers);
-    if (response.statusCode != 200) {
-      final body = response.body.replaceAll(
-        config.effectiveApiKey,
-        '[redacted]',
+    if (_log.isDebugEnabled) {
+      _log.debug(
+        'GET ${url.origin}${url.path} status=${response.statusCode} body=${response.body}',
       );
+    }
+    if (response.statusCode != 200) {
+      final apiKey = config.effectiveApiKey;
+      final body = apiKey.isEmpty
+          ? response.body
+          : response.body.replaceAll(apiKey, '[redacted]');
       _log.warning(
         'GET ${url.origin}${url.path} '
         'status=${response.statusCode} type=ModelsFetchHttpException body=$body',

@@ -16,6 +16,8 @@ import '../../../models/video/task_result.dart';
 import '../assets/certification.dart';
 import '../video/draft.dart';
 import 'nodes.dart';
+import 'transcription.dart';
+import '../../production/transcription_service.dart';
 import 'image_nodes.dart';
 import 'panorama_nodes.dart';
 import '../../production/canvas_preview.dart';
@@ -76,6 +78,7 @@ class ProductionToolHost {
     required this.video,
     required this.results,
     this.editingSessions,
+    this.transcription,
     this.assets,
     PanoramaService? panorama,
   }) : panorama = panorama ?? PanoramaService(canvas);
@@ -85,6 +88,7 @@ class ProductionToolHost {
   final Future<VideoTaskService> Function() video;
   final ProductionResultService results;
   final EditingSessions? editingSessions;
+  final TranscriptionService? transcription;
 
   /// 渠道私域素材认证；宿主不提供时 `assets certify` 返回 unavailable。
   final ProviderAssetService? assets;
@@ -397,6 +401,108 @@ class ProductionToolHost {
     }, SessionFiles(root: canvas.library.root.path, novelId: canvas.novelId));
   }
 
+  Future<Map<String, dynamic>> transcribe(
+    String id,
+    ToolExecutionContext context,
+    ToolOperationManager operations,
+    String callId, {
+    required bool nodeScope,
+  }) {
+    final service = transcription;
+    if (service == null) {
+      throw const ToolOperationException(
+        'unavailable',
+        'Transcription is unavailable in this session.',
+      );
+    }
+    return runTranscriptionCommand(
+      service: service,
+      canvas: canvas,
+      context: context,
+      operations: operations,
+      callId: callId,
+      id: id,
+      nodeScope: nodeScope,
+    );
+  }
+
+  Future<Map<String, dynamic>> transcriptionOperation(
+    Map<String, dynamic> operation,
+  ) async {
+    final id = operation['task_id'];
+    if (id is! String ||
+        operation['work_id'] != canvas.novelId ||
+        !{
+          'assets.transcribe',
+          'production.transcribe',
+        }.contains(operation['kind']) ||
+        (operation['status'] != 'interrupted' &&
+            operation['error_code'] != 'polling_interrupted')) {
+      return operation;
+    }
+    final task = await database.generationTaskDao.getById(id);
+    final request = task?.requestJson;
+    if (task == null ||
+        task.novelId != canvas.novelId ||
+        request is! app.TranscriptionGenerationRequest) {
+      return operation;
+    }
+    final result = {...operation}
+      ..remove('error')
+      ..remove('error_code');
+    if (task.status == app.GenerationTaskStatus.completed) {
+      final nodeId = task.providerState?['node_id'] as String?;
+      final target = operation['target_path'] as String;
+      final nodePath = nodeId == null
+          ? null
+          : target.replaceRange(target.lastIndexOf('/') + 1, null, nodeId);
+      return {
+        ...result,
+        'ok': true,
+        'status': 'completed',
+        'result': {
+          'ok': true,
+          'task_id': task.id,
+          'source_asset_id': request.assetId,
+          'transcript_path': task.path,
+          'segment_count': task.providerState?['segment_count'],
+          if (nodeId != null) ...{'node_id': nodeId, 'node_path': nodePath},
+        },
+      };
+    }
+    if (task.status == app.GenerationTaskStatus.running ||
+        task.status == app.GenerationTaskStatus.saving) {
+      return {...result..remove('result'), 'ok': true, 'status': 'running'};
+    }
+    final error = task.errorCode;
+    return {
+      ...result,
+      'ok': false,
+      'status': task.status == app.GenerationTaskStatus.cancelled
+          ? 'cancelled'
+          : 'failed',
+      'error_code': error ?? 'transcription_failed',
+      'result': {
+        'ok': false,
+        'error_code': error ?? 'transcription_failed',
+        if (task.path != null) 'transcript_path': task.path,
+      },
+    };
+  }
+
+  Future<Map<String, dynamic>> separateAudioAsset(
+    String id,
+    ToolExecutionContext context,
+    ToolOperationManager operations,
+    String callId,
+  ) => runSeparateAudioAssetCommand(
+    canvas: canvas,
+    context: context,
+    operations: operations,
+    callId: callId,
+    id: id,
+  );
+
   Future<Map<String, dynamic>> run(
     RunCommandSpec spec,
     Map<String, dynamic> options,
@@ -404,6 +510,13 @@ class ProductionToolHost {
     ToolOperationManager operations,
     String callId,
   ) async {
+    if (spec.subcommand == 'transcribe') {
+      final id = options['node_id'];
+      if (options.length != 1 || id is! String || id.trim().isEmpty) {
+        throw const FormatException('transcribe requires node_id');
+      }
+      return transcribe(id, context, operations, callId, nodeScope: true);
+    }
     if (spec.subcommand == 'canvas-preview') {
       return _previewCanvas(options, context);
     }

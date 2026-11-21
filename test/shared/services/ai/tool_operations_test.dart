@@ -102,6 +102,7 @@ void main() {
   Future<Map<String, dynamic>> start(
     Future<Map<String, dynamic>> Function(ToolOperationContext) execute, {
     bool background = true,
+    String? kind,
     ToolExecutionContext? context,
     ToolActionRequest? permission,
     Future<void> Function()? verify,
@@ -111,7 +112,7 @@ void main() {
     context: context ?? owner(),
     callId: 'call',
     workId: 'work',
-    kind: permission?.action ?? 'editing.preview',
+    kind: kind ?? permission?.action ?? 'editing.preview',
     targetPath: '/editings/one',
     toolName: 'Run',
     background: background,
@@ -411,6 +412,24 @@ void main() {
       );
     },
   );
+
+  test('a running transcription cannot be cancelled', () async {
+    final entered = Completer<ToolOperationContext>();
+    final finish = Completer<Map<String, dynamic>>();
+    final receipt = await start((ctx) {
+      entered.complete(ctx);
+      return finish.future;
+    }, kind: 'production.transcribe');
+    final id = receipt['run_id'] as String;
+    final ctx = await entered.future;
+    final response = manager.cancel(id, owner());
+    expect(response['accepted'], false);
+    expect(response['error_code'], 'not_cancellable');
+    expect(ctx.cancellation.isCancellationRequested, false);
+    expect(manager.read(id, owner())['status'], 'running');
+    finish.complete({'ok': true});
+    expect((await manager.wait(id, owner()))['status'], 'completed');
+  });
 
   test(
     'cancel remains cancelling until cleanup confirms termination',

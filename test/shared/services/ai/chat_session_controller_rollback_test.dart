@@ -3052,6 +3052,7 @@ void main() {
 const _materializationModel = 'fake-chat';
 
 final _materializationProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'fake_provider_materialization',
