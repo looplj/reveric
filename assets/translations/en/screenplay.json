@@ -608,6 +608,8 @@
   "screenplay.editing.subtitlesSrt": "Save SRT",
   "screenplay.editing.subtitlesNone": "Don't export",
   "screenplay.editing.sound": "Sound",
+  "screenplay.editing.exportWatermark": "Watermark",
+  "screenplay.editing.exportWatermarkDetail": "Show the Reveric watermark",
   "screenplay.editing.exportSound": "{count} audio tracks mixed to stereo · AAC 48 kHz",
   "screenplay.editing.exportMuted": "{tracks} muted, not exported",
   "screenplay.editing.exportHidden": "{tracks} hidden, left out of the film",

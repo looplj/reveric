@@ -608,6 +608,8 @@
   "screenplay.editing.subtitlesSrt": "另存 SRT",
   "screenplay.editing.subtitlesNone": "不导出",
   "screenplay.editing.sound": "声音",
+  "screenplay.editing.exportWatermark": "水印",
+  "screenplay.editing.exportWatermarkDetail": "显示 Reveric 水印",
   "screenplay.editing.exportSound": "{count} 条音轨混成立体声 · AAC 48 kHz",
   "screenplay.editing.exportMuted": "{tracks}已静音，不导出",
   "screenplay.editing.exportHidden": "{tracks} 已隐藏，不进成片",

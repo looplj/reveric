@@ -461,6 +461,44 @@ void main() {
           } finally {
             await marked.dispose();
           }
+
+          final logoTimeline = EditingDocument.empty(
+            '16:9',
+          ).copyWith(clips: [watermark.mainClips.single]);
+          const cornerRegions = {
+            EditingWatermarkCorner.top_left: '480:160:0:0',
+            EditingWatermarkCorner.top_right: '480:160:800:0',
+            EditingWatermarkCorner.bottom_left: '480:160:0:560',
+            EditingWatermarkCorner.bottom_right: '480:160:800:560',
+          };
+          for (final corner in [null, ...EditingWatermarkCorner.values]) {
+            final film = await renderer.render(
+              logoTimeline,
+              watermark: corner,
+              cancellation: MediaCancellation(),
+              progress: (_, _) {},
+            );
+            try {
+              for (final region in cornerRegions.entries) {
+                for (final frame in [0, logoTimeline.totalFrames - 1]) {
+                  expect(
+                    await greenPeak(film.file.path, region.value, frame),
+                    region.key == corner ? greaterThan(200) : lessThan(80),
+                    reason: '$corner export at ${region.key}, frame $frame',
+                  );
+                }
+              }
+              if (corner == EditingWatermarkCorner.top_left) {
+                expect(
+                  await greenPeak(film.file.path, '105:110:335:0', 0),
+                  greaterThan(200),
+                  reason: 'The credit text extends beyond the logo',
+                );
+              }
+            } finally {
+              await film.dispose();
+            }
+          }
         } finally {
           await renderer.dispose();
           await db.close();

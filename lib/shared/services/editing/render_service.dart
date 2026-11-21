@@ -38,6 +38,8 @@ typedef _BlockRange = ({
 
 typedef EditingProgress = void Function(String stage, double progress);
 
+enum EditingWatermarkCorner { top_left, top_right, bottom_left, bottom_right }
+
 /// 字幕轨的导出方式：烧录进画面、另存 SRT（标题仍烧录）、不导出。普通文字轨总是烧录。
 abstract final class EditingSubtitles {
   static const burn = 'burn';
@@ -111,6 +113,7 @@ class EditingRenderService {
     required EditingProgress progress,
     String resolution = '720p',
     String subtitles = EditingSubtitles.burn,
+    EditingWatermarkCorner? watermark,
     bool preview = false,
   }) {
     final previous = _preview;
@@ -123,7 +126,12 @@ class EditingRenderService {
       _check(cancellation);
       return _render(
         document,
-        (resolution: resolution, subtitles: subtitles, preview: preview),
+        (
+          resolution: resolution,
+          subtitles: subtitles,
+          watermark: preview ? null : watermark,
+          preview: preview,
+        ),
         cancellation,
         progress,
       );
@@ -487,11 +495,17 @@ class EditingRenderService {
 
   Future<EncodedMedia> _render(
     EditingDocument doc,
-    ({String resolution, String subtitles, bool preview}) options,
+    ({
+      String resolution,
+      String subtitles,
+      EditingWatermarkCorner? watermark,
+      bool preview,
+    })
+    options,
     MediaCancellation token,
     EditingProgress progress,
   ) async {
-    final (:resolution, :subtitles, :preview) = options;
+    final (:resolution, :subtitles, :watermark, :preview) = options;
     doc.validate();
     if (doc.totalFrames == 0) {
       throw StateError('Empty timeline');
@@ -587,6 +601,28 @@ class EditingRenderService {
           for (var i = 0; i < videos.length; i++) "file 'part-$i.mp4'",
         ].join('\n'),
       );
+      final edge = math.min(size.$1, size.$2);
+      final margin = (edge * .025).round();
+      final watermarkWidth = (edge * .30).round() * 2;
+      final right = 'W-w-$margin';
+      final bottom = 'H-h-$margin';
+      final position = switch (watermark) {
+        null => null,
+        EditingWatermarkCorner.top_left => '$margin:$margin',
+        EditingWatermarkCorner.top_right => '$right:$margin',
+        EditingWatermarkCorner.bottom_left => '$margin:$bottom',
+        EditingWatermarkCorner.bottom_right => '$right:$bottom',
+      };
+      final watermarkPath = p.join(temporary.path, 'watermark.png');
+      if (position != null) {
+        final asset = await rootBundle.load(
+          'assets/logo/reveric_production_watermark.png',
+        );
+        await File(watermarkPath).writeAsBytes(
+          asset.buffer.asUint8List(asset.offsetInBytes, asset.lengthInBytes),
+        );
+      }
+      _check(token);
       final output = File('${temporary.path}/result.mp4');
       token.onProgress = (d) => progress(
         'assemble',
@@ -614,12 +650,18 @@ class EditingRenderService {
           '2',
           '-i',
           audio.path,
+          if (position != null) ...[
+            '-i',
+            watermarkPath,
+            '-filter_complex',
+            '[2:v]scale=$watermarkWidth:-2,format=rgba[credit];'
+                '[0:v][credit]overlay=$position:eof_action=repeat[marked]',
+          ],
           '-map',
-          '0:v:0',
+          position == null ? '0:v:0' : '[marked]',
           '-map',
           '1:a:0',
-          '-c:v',
-          'copy',
+          if (position == null) ...['-c:v', 'copy'] else ..._videoEncoding(),
           '-af',
           _masterLimiter,
           '-c:a',
@@ -704,14 +746,7 @@ class EditingRenderService {
     }
   }
 
-  /// 预览块使用最快档编码。
-  List<String> _videoOutput(
-    (int, int) size,
-    int count,
-    String path, {
-    bool preview = false,
-  }) => [
-    '-an',
+  static List<String> _videoEncoding({bool preview = false}) => [
     '-c:v',
     'libx264',
     '-preset',
@@ -720,6 +755,19 @@ class EditingRenderService {
     preview ? '23' : '20',
     '-pix_fmt',
     'yuv420p',
+    '-video_track_timescale',
+    '${editingFps * 1000}',
+  ];
+
+  /// 预览块使用最快档编码。
+  List<String> _videoOutput(
+    (int, int) size,
+    int count,
+    String path, {
+    bool preview = false,
+  }) => [
+    '-an',
+    ..._videoEncoding(preview: preview),
     '-r',
     '$editingFps',
     '-frames:v',
@@ -734,8 +782,6 @@ class EditingRenderService {
     '0',
     '-flags',
     '+cgop',
-    '-video_track_timescale',
-    '${editingFps * 1000}',
     path,
   ];
 

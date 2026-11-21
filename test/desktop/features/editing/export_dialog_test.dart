@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/desktop/features/editing/export_dialog.dart';
 import 'package:reveric/desktop/features/editing/support.dart';
 import 'package:reveric/shared/components/reveric_button.dart';
+import 'package:reveric/shared/components/reveric_select.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/editing/document.dart';
 import 'package:reveric/shared/models/production/media.dart';
@@ -47,6 +48,7 @@ class _SavePanel extends FileSelectorPlatform {
 class _Renderer implements EditingRenderService {
   _Renderer(this.output);
   final EncodedMedia output;
+  final watermarks = <EditingWatermarkCorner?>[];
   @override
   Future<EncodedMedia> render(
     EditingDocument document, {
@@ -54,8 +56,13 @@ class _Renderer implements EditingRenderService {
     required EditingProgress progress,
     String resolution = '720p',
     String subtitles = EditingSubtitles.burn,
+    EditingWatermarkCorner? watermark,
     bool preview = false,
-  }) async => output;
+  }) async {
+    watermarks.add(watermark);
+    return output;
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -199,6 +206,25 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Save SRT'), findsNothing);
+      final watermarkPicker = find.byType(
+        RevericSelect<EditingWatermarkCorner?>,
+      );
+      expect(
+        find.descendant(of: watermarkPicker, matching: find.text('None')),
+        findsOneWidget,
+      );
+      await tester.tap(watermarkPicker);
+      await tester.pumpAndSettle();
+      for (final label in [
+        'Top left',
+        'Top right',
+        'Bottom left',
+        'Bottom right',
+      ]) {
+        expect(find.text(label), findsOneWidget);
+      }
+      await tester.tap(find.text('Bottom right'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.widgetWithText(RevericButton, 'Export as video node'),
       );
@@ -211,6 +237,7 @@ void main() {
       expect(renderer.output.file.existsSync(), isTrue);
       pending.complete();
       await _until(tester, find.text('Video node added to the canvas.'));
+      expect(renderer.watermarks, [EditingWatermarkCorner.bottom_right]);
       expect(find.widgetWithText(RevericButton, 'Retry'), findsNothing);
       expect(panel.suggestedName, isNull);
       expect(tester.takeException(), isNull);
@@ -245,6 +272,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(RevericButton, 'Export'));
       await _until(tester, find.widgetWithText(RevericButton, 'Save'));
+      expect(renderer.watermarks, [null]);
 
       // A cancelled system panel must not write either file.
       await tester.tap(find.widgetWithText(RevericButton, 'Save'));

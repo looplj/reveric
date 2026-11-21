@@ -1897,6 +1897,9 @@ abstract final class LocaleKeys {
   static const editingSubtitlesBurn = 'screenplay.editing.subtitlesBurn';
   static const editingSubtitlesSrt = 'screenplay.editing.subtitlesSrt';
   static const editingSubtitlesNone = 'screenplay.editing.subtitlesNone';
+  static const editingExportWatermark = 'screenplay.editing.exportWatermark';
+  static const editingExportWatermarkDetail =
+      'screenplay.editing.exportWatermarkDetail';
   static const editingSound = 'screenplay.editing.sound';
   static const editingExportSound = 'screenplay.editing.exportSound';
   static const editingExportMuted = 'screenplay.editing.exportMuted';
