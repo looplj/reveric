@@ -30,6 +30,7 @@
   "editor.cover_generation_failed": "生成封面失败：{error}",
   "editor.cover_extra_hint": "输入额外的封面要求（可选）。",
   "editor.cover_style_card_hint": "选择这个方向，制作封面候选 prompt。",
+  "editor.cover_style_cg3d": "3D 半写实 CG",
   "editor.cover_style_custom_hint": "输入自定义风格描述…",
   "editor.cover_extra_requirements": "额外要求",
   "editor.cover_start_craft": "开始制作",

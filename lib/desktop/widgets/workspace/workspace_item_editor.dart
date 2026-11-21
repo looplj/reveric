@@ -59,6 +59,11 @@ const _imageStyles = [
     label: LocaleKeys.editorCoverStyleMinimal,
     icon: RevericIcons.crop_square_rounded,
   ),
+  (
+    style: CoverStyle.cg3d,
+    label: LocaleKeys.editorCoverStyleCg3d,
+    icon: RevericIcons.cube,
+  ),
 ];
 
 Future<String?> _showItemImageStyleDialog({
@@ -106,7 +111,10 @@ Future<String?> _showItemImageStyleDialog({
                           onTap: () {
                             setDialogState(() {
                               selectedStyle = option.style;
-                              selectedLabel = context.t(option.label);
+                              selectedLabel = coverStylePromptText(
+                                option.style,
+                                context.t(option.label),
+                              );
                               isCustom = false;
                             });
                           },

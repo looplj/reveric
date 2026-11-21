@@ -2399,6 +2399,7 @@ abstract final class LocaleKeys {
   static const editorCoverStudioHint = 'editor.cover_studio_hint';
   static const editorCoverStyle = 'editor.cover_style';
   static const editorCoverStyleCardHint = 'editor.cover_style_card_hint';
+  static const editorCoverStyleCg3d = 'editor.cover_style_cg3d';
   static const editorCoverStyleCinematic = 'editor.cover_style_cinematic';
   static const editorCoverStyleCustomHint = 'editor.cover_style_custom_hint';
   static const editorCoverStyleEastern = 'editor.cover_style_eastern';

@@ -17,6 +17,7 @@
 //   assets/translations/zh-CN/common.json
 import 'shared/providers/plugin_providers.dart';
 import 'shared/providers/mcp_providers.dart';
+import 'debug/control_server.dart';
 import 'dart:async';
 import 'settings_navigation_host.dart';
 import 'shared/providers/depth.dart';
@@ -698,6 +699,13 @@ class _EagerInitialization extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 调试端点：debug 构建下启动本地控制端口，供外部脚本 / DSH 插件批量操作。
+    // release 构建里 `kDebugMode` 为常量 false，整条分支与实现会被裁剪掉。
+    if (kDebugMode) {
+      unawaited(
+        DebugControlServer.start(ProviderScope.containerOf(context, listen: false)),
+      );
+    }
     // 同步本地官方目录：安装新增技能，升级已有官方安装，保留用户删除选择。
     ref.watch(officialAgentSkillsProvider(agentSkillCatalogFilter()));
     ref.watch(officialSkillSyncProvider);
