@@ -1877,7 +1877,9 @@ mixin _AiToolManagerRunMixin
       );
     }
     final asset = await library.getAsset(assetId);
-    if (asset == null || workId == null || asset.novelId != workId) {
+    if (asset == null ||
+        workId == null ||
+        (asset.novelId != null && asset.novelId != workId)) {
       throw ToolOperationException(
         'not_found',
         'Image asset not found in this work: $assetId',

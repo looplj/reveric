@@ -3,6 +3,7 @@
 //   lib/desktop/features/production/support.dart
 //   lib/desktop/features/production/node_card.dart
 //   lib/shared/services/production/canvas_service.dart
+//   lib/shared/services/production/share_asset_orchestrator.dart
 //   lib/shared/components/reveric_dialog.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
@@ -32,6 +33,7 @@ import '../../../shared/logger/app_logger.dart';
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/services/production/ffmpeg_runner.dart'
     show MediaCancellation;
+import '../../../shared/services/production/share_asset_orchestrator.dart';
 import '../../../shared/theme/theme.dart';
 import '../asset/library_menu_item.dart';
 import 'node_card.dart' show ProductionAssetThumb;
@@ -59,12 +61,14 @@ class ProductionAssetPicker extends HookWidget {
     required this.service,
     required this.types,
     this.confirmLabel,
+    this.addToCanvas,
   });
   final ProductionCanvasService service;
   final Set<String> types;
 
   /// 主按钮文案；默认「确认」。
   final String? confirmLabel;
+  final Future<void> Function(AssetRow)? addToCanvas;
 
   static const double _width = 860;
   static const double _gridHeight = 440;
@@ -74,29 +78,155 @@ class ProductionAssetPicker extends HookWidget {
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
+    final showSources = addToCanvas != null;
+    final source = useState<String?>(service.novelId);
     final tab = useState<String?>(null);
     final picked = useState<AssetRow?>(null);
     final importing = useState(false);
+    final adding = useState(false);
+    final sharedForPlacement = useState<String?>(null);
+    final failure = useState<String?>(null);
+    final database = service.library.database;
     final assets = useStream(
       useMemoized(
-        () => service.library.database.assetDao
-            .watchAssets(inLibrary: true)
+        () => database.assetDao
+            .watchAssets(
+              novelId: showSources ? null : service.novelId,
+              inLibrary: true,
+            )
             .map(
-              (rows) => rows
-                  .where(
-                    (a) =>
-                        types.contains(a.type) &&
-                        (a.novelId == null || a.novelId == service.novelId),
-                  )
-                  .toList(),
+              (rows) =>
+                  rows.where((asset) => types.contains(asset.type)).toList(),
             ),
-        [service, types.join('|')],
+        [database, service.novelId, showSources, types.join('|')],
       ),
     );
-    final visible = (assets.data ?? const <AssetRow>[])
-        .where((a) => tab.value == null || a.type == tab.value)
+    final works = useStream(
+      useMemoized(() => showSources ? database.novelDao.watchAll() : null, [
+        database,
+        showSources,
+      ]),
+    );
+    final rows = assets.data ?? const <AssetRow>[];
+    final visible = rows
+        .where(
+          (asset) =>
+              (!showSources || asset.novelId == source.value) &&
+              (tab.value == null || asset.type == tab.value),
+        )
         .toList();
+    final owners = showSources
+        ? {
+            for (final asset in rows)
+              if (tab.value == null || asset.type == tab.value) asset.novelId,
+          }
+        : const <String?>{};
+    final otherWorks = [
+      for (final work in works.data ?? const <Novel>[])
+        if (work.id != service.novelId && owners.contains(work.id)) work,
+    ];
+    final loadFailed = assets.hasError || works.hasError;
+    useEffect(() {
+      if (loadFailed) {
+        _log.error(
+          'asset picker failed to load sources',
+          error: assets.error ?? works.error,
+          stackTrace: assets.hasError ? assets.stackTrace : works.stackTrace,
+        );
+      }
+      return null;
+    }, [assets.error, works.error]);
     final extensions = [for (final type in types) ...?_mediaExtensions[type]];
+    final selected = picked.value;
+    final busy = importing.value || adding.value;
+
+    bool needsSharing(AssetRow asset) =>
+        showSources &&
+        asset.novelId != null &&
+        asset.novelId != service.novelId;
+
+    void chooseAsset(AssetRow? asset) {
+      picked.value = asset;
+      failure.value = null;
+    }
+
+    void chooseSource(String? novelId) {
+      if (source.value != novelId) {
+        source.value = novelId;
+        chooseAsset(null);
+      }
+    }
+
+    void chooseType(String? type) {
+      if (busy || tab.value == type) {
+        return;
+      }
+      tab.value = type;
+      if (showSources) {
+        chooseAsset(null);
+        final activeSource = source.value;
+        if (activeSource != null &&
+            activeSource != service.novelId &&
+            !rows.any(
+              (asset) =>
+                  asset.novelId == activeSource &&
+                  (type == null || asset.type == type),
+            )) {
+          source.value = service.novelId;
+        }
+      }
+    }
+
+    Future<void> confirm(AssetRow asset) async {
+      final place = addToCanvas;
+      if (place == null) {
+        Navigator.pop(context, asset);
+        return;
+      }
+      if (adding.value) {
+        return;
+      }
+      adding.value = true;
+      failure.value = null;
+      final share = needsSharing(asset);
+      var ready = asset;
+      try {
+        if (share) {
+          ready = await ShareAssetOrchestrator().run(
+            library: service.library,
+            assetId: asset.id,
+            sourceNovelId: asset.novelId!,
+          );
+          if (!context.mounted) {
+            return;
+          }
+          sharedForPlacement.value = ready.id;
+          source.value = null;
+          picked.value = ready;
+        }
+        await place(ready);
+        if (context.mounted) {
+          Navigator.pop(context, ready);
+        }
+      } catch (error, stack) {
+        _log.error(
+          'asset picker add failed id=${asset.id}',
+          error: error,
+          stackTrace: stack,
+        );
+        if (context.mounted) {
+          failure.value = sharedForPlacement.value == asset.id
+              ? LocaleKeys.productionAssetSharedPlacementFailed
+              : share
+              ? LocaleKeys.productionAssetShareFailed
+              : LocaleKeys.productionFailed;
+        }
+      } finally {
+        if (context.mounted) {
+          adding.value = false;
+        }
+      }
+    }
 
     Future<void> import() async {
       importing.value = true;
@@ -121,7 +251,8 @@ class ProductionAssetPicker extends HookWidget {
         );
         if (context.mounted && types.contains(asset.type)) {
           tab.value = null;
-          picked.value = asset;
+          source.value = service.novelId;
+          chooseAsset(asset);
         }
       } catch (error, stack) {
         _log.error(
@@ -141,7 +272,52 @@ class ProductionAssetPicker extends HookWidget {
       }
     }
 
-    return RevericDialog.panel(
+    final grid = loadFailed
+        ? Center(child: Text(context.t(LocaleKeys.productionAssetLoadFailed)))
+        : !assets.hasData || (showSources && !works.hasData)
+        ? const Center(child: CircularProgressIndicator())
+        : visible.isEmpty
+        ? Center(
+            child: Text(
+              context.t(LocaleKeys.mediaEmpty),
+              style: typo.ui.copyWith(color: colors.textMuted),
+            ),
+          )
+        : GridView.builder(
+            gridDelegate: showSources
+                ? const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 160,
+                    mainAxisExtent: _cardHeight,
+                    mainAxisSpacing: RevericSpacing.md,
+                    crossAxisSpacing: RevericSpacing.md,
+                  )
+                : const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5,
+                    mainAxisExtent: _cardHeight,
+                    mainAxisSpacing: RevericSpacing.md,
+                    crossAxisSpacing: RevericSpacing.md,
+                  ),
+            itemCount: visible.length,
+            itemBuilder: (context, index) {
+              final asset = visible[index];
+              final isSelected = selected?.id == asset.id;
+              final foreign = needsSharing(asset);
+              return _Card(
+                key: ValueKey(asset.id),
+                service: service,
+                asset: asset,
+                selected: isSelected,
+                onTap: busy || (isSelected && foreign)
+                    ? null
+                    : isSelected
+                    ? () => confirm(asset)
+                    : () => chooseAsset(asset),
+                canManage: !busy && !foreign,
+              );
+            },
+          );
+
+    final dialog = RevericDialog.panel(
       width: _width,
       title: Text(context.t(LocaleKeys.productionAssets)),
       content: SizedBox(
@@ -161,14 +337,14 @@ class ProductionAssetPicker extends HookWidget {
                         RevericFilterChip(
                           label: context.t(LocaleKeys.commonFilterAll),
                           selected: tab.value == null,
-                          onTap: () => tab.value = null,
+                          onTap: () => chooseType(null),
                         ),
                         for (final entry in _typeLabels.entries)
                           if (types.contains(entry.key))
                             RevericFilterChip(
                               label: context.t(entry.value),
                               selected: tab.value == entry.key,
-                              onTap: () => tab.value = entry.key,
+                              onTap: () => chooseType(entry.key),
                             ),
                       ],
                     ),
@@ -179,7 +355,7 @@ class ProductionAssetPicker extends HookWidget {
                   RevericButton.secondary(
                     label: context.t(LocaleKeys.productionBuiltinVoices),
                     icon: RevericIcons.music_notes,
-                    onPressed: importing.value
+                    onPressed: busy
                         ? null
                         : () async {
                             importing.value = true;
@@ -189,7 +365,8 @@ class ProductionAssetPicker extends HookWidget {
                                 service,
                               );
                               if (asset != null && context.mounted) {
-                                Navigator.of(context).pop(asset);
+                                chooseAsset(asset);
+                                await confirm(asset);
                               }
                             } finally {
                               if (context.mounted) {
@@ -205,58 +382,165 @@ class ProductionAssetPicker extends HookWidget {
                     label: context.t(LocaleKeys.commonImport),
                     icon: RevericIcons.upload,
                     loading: importing.value,
-                    onPressed: importing.value ? null : import,
+                    onPressed: busy ? null : import,
                   ),
               ],
             ),
             const SizedBox(height: RevericSpacing.lg),
             SizedBox(
               height: _gridHeight,
-              child: !assets.hasData
-                  ? const Center(child: CircularProgressIndicator())
-                  : visible.isEmpty
-                  ? Center(
-                      child: Text(
-                        context.t(LocaleKeys.mediaEmpty),
-                        style: typo.ui.copyWith(color: colors.textMuted),
-                      ),
-                    )
-                  : GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 5,
-                            mainAxisExtent: _cardHeight,
-                            mainAxisSpacing: RevericSpacing.md,
-                            crossAxisSpacing: RevericSpacing.md,
+              child: showSources
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: 156,
+                          child: _AssetSourceTree(
+                            currentWorkId: service.novelId,
+                            source: source.value,
+                            works: otherWorks,
+                            onChoose: busy ? null : chooseSource,
                           ),
-                      itemCount: visible.length,
-                      itemBuilder: (context, index) {
-                        final asset = visible[index];
-                        return _Card(
-                          key: ValueKey(asset.id),
-                          service: service,
-                          asset: asset,
-                          selected: picked.value?.id == asset.id,
-                          onTap: () => picked.value = asset,
-                          onConfirm: () => Navigator.pop(context, asset),
-                        );
-                      },
-                    ),
+                        ),
+                        VerticalDivider(
+                          width: RevericSpacing.x2l,
+                          color: colors.borderSubtle,
+                        ),
+                        Expanded(child: grid),
+                      ],
+                    )
+                  : grid,
             ),
+            if (failure.value case final failureKey? when showSources) ...[
+              const SizedBox(height: RevericSpacing.md),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  context.t(failureKey),
+                  style: typo.uiSmall.copyWith(color: colors.error),
+                ),
+              ),
+            ],
           ],
         ),
       ),
       actions: [
         RevericButton.secondary(
           label: context.t(LocaleKeys.commonCancel),
-          onPressed: () => Navigator.pop(context),
+          onPressed: adding.value ? null : () => Navigator.pop(context),
         ),
         RevericButton.primary(
-          label: confirmLabel ?? context.t(LocaleKeys.commonConfirm),
-          onPressed: picked.value == null
-              ? null
-              : () => Navigator.pop(context, picked.value),
+          label: showSources
+              ? context.t(
+                  selected != null && needsSharing(selected)
+                      ? LocaleKeys.productionAssetShareAndAdd
+                      : LocaleKeys.productionAssetAddToCanvas,
+                )
+              : confirmLabel ?? context.t(LocaleKeys.commonConfirm),
+          loading: adding.value,
+          onPressed: selected == null || busy ? null : () => confirm(selected),
         ),
+      ],
+    );
+    return PopScope(canPop: !adding.value, child: dialog);
+  }
+}
+
+class _AssetSourceTree extends HookWidget {
+  const _AssetSourceTree({
+    required this.currentWorkId,
+    required this.source,
+    required this.works,
+    required this.onChoose,
+  });
+
+  final String currentWorkId;
+  final String? source;
+  final List<Novel> works;
+  final ValueChanged<String?>? onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    final expanded = useState(false);
+
+    Widget row({
+      required String label,
+      required String icon,
+      bool selected = false,
+      bool nested = false,
+      VoidCallback? onTap,
+    }) => Semantics(
+      selected: selected,
+      child: Material(
+        color: selected ? colors.selected : Colors.transparent,
+        borderRadius: BorderRadius.circular(RevericRadius.medium),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(RevericRadius.medium),
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              nested ? RevericSpacing.xl : RevericSpacing.sm,
+              RevericSpacing.sm,
+              RevericSpacing.sm,
+              RevericSpacing.sm,
+            ),
+            child: Row(
+              children: [
+                RevericIcon(icon, size: 14, color: colors.textMuted),
+                const SizedBox(width: RevericSpacing.sm),
+                Expanded(
+                  child: Tooltip(
+                    message: label,
+                    child: Text(
+                      label,
+                      style: typo.uiSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return ListView(
+      primary: false,
+      children: [
+        row(
+          label: context.t(LocaleKeys.productionAssetCurrentWork),
+          icon: RevericIcons.folder_outlined,
+          selected: source == currentWorkId,
+          onTap: onChoose == null ? null : () => onChoose!(currentWorkId),
+        ),
+        row(
+          label: context.t(LocaleKeys.productionAssetShared),
+          icon: RevericIcons.stack,
+          selected: source == null,
+          onTap: onChoose == null ? null : () => onChoose!(null),
+        ),
+        row(
+          label: context.t(LocaleKeys.productionAssetOtherWorks),
+          icon: expanded.value
+              ? RevericIcons.caret_down
+              : RevericIcons.caret_right,
+          onTap: works.isEmpty || onChoose == null
+              ? null
+              : () => expanded.value = !expanded.value,
+        ),
+        if (expanded.value)
+          for (final work in works)
+            row(
+              label: work.title,
+              icon: RevericIcons.folder_outlined,
+              selected: source == work.id,
+              nested: true,
+              onTap: onChoose == null ? null : () => onChoose!(work.id),
+            ),
       ],
     );
   }
@@ -270,13 +554,13 @@ class _Card extends HookWidget {
     required this.asset,
     required this.selected,
     required this.onTap,
-    required this.onConfirm,
+    required this.canManage,
   });
   final ProductionCanvasService service;
   final AssetRow asset;
   final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback onConfirm;
+  final VoidCallback? onTap;
+  final bool canManage;
 
   @override
   Widget build(BuildContext context) {
@@ -294,7 +578,7 @@ class _Card extends HookWidget {
       onExit: (_) => hovered.value = false,
       child: GestureDetector(
         // 不用 onDoubleTap：它会把单击延迟到双击超时之后，选中反馈发钝。
-        onTap: selected ? onConfirm : onTap,
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
           decoration: BoxDecoration(
@@ -329,7 +613,7 @@ class _Card extends HookWidget {
                         asset: asset,
                       ),
                     ),
-                    if (hovered.value)
+                    if (hovered.value && canManage)
                       Positioned(
                         top: RevericSpacing.xxs,
                         right: RevericSpacing.xxs,

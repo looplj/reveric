@@ -395,6 +395,21 @@ abstract final class LocaleKeys {
   static const productionPreviewAdopted =
       'screenplay.production.previewAdopted';
   static const productionAssets = 'screenplay.production.assets';
+  static const productionAssetCurrentWork =
+      'screenplay.production.assetCurrentWork';
+  static const productionAssetShared = 'screenplay.production.assetShared';
+  static const productionAssetOtherWorks =
+      'screenplay.production.assetOtherWorks';
+  static const productionAssetAddToCanvas =
+      'screenplay.production.assetAddToCanvas';
+  static const productionAssetShareAndAdd =
+      'screenplay.production.assetShareAndAdd';
+  static const productionAssetLoadFailed =
+      'screenplay.production.assetLoadFailed';
+  static const productionAssetShareFailed =
+      'screenplay.production.assetShareFailed';
+  static const productionAssetSharedPlacementFailed =
+      'screenplay.production.assetSharedPlacementFailed';
   static const productionAddToLibrary = 'screenplay.production.add_to_library';
   static const productionRemoveFromLibrary =
       'screenplay.production.remove_from_library';

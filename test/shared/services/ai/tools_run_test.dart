@@ -1255,7 +1255,7 @@ void main() {
       ('item', 'generate-photo', 'item_1'),
     ]) {
       test(
-        '$command $subcommand references only valid images in this work',
+        '$command $subcommand references valid work and shared images only',
         () async {
           final edited = <String>[];
           late AssetRow reference;
@@ -1298,6 +1298,25 @@ void main() {
             await source.readAsBytes(),
           );
 
+          const sharedPath = 'file_workspaces/shared/images/reference.png';
+          final sharedFile = File(RevericPaths.resolveDatabasePath(sharedPath));
+          await sharedFile.parent.create(recursive: true);
+          await source.copy(sharedFile.path);
+          await (appDb.update(
+            appDb.assets,
+          )..where((row) => row.id.equals(reference.id))).write(
+            const AssetsCompanion(
+              novelId: Value(null),
+              path: Value(sharedPath),
+            ),
+          );
+          final shared = await runSubjectImage(command, subcommand, {
+            ...options,
+            'asset_id': reference.id,
+          });
+          expect(shared['ok'], isTrue, reason: '$shared');
+          expect(edited.last, await sharedFile.resolveSymbolicLinks());
+
           for (final invalid in [
             'missing',
             source.path,
@@ -1314,7 +1333,6 @@ void main() {
           }
           for (final invalidState in [
             const AssetsCompanion(novelId: Value('other-work')),
-            const AssetsCompanion(novelId: Value(null)),
             AssetsCompanion(deletedAt: Value(DateTime(2026))),
             const AssetsCompanion(type: Value('video')),
             const AssetsCompanion(path: Value(null)),
@@ -1341,7 +1359,7 @@ void main() {
               ),
             );
           }
-          expect(edited, hasLength(1));
+          expect(edited, hasLength(2));
           expect(prompts, isEmpty);
         },
       );

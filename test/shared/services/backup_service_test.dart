@@ -1516,6 +1516,57 @@ void main() {
     expect(_readContentMarker(appSupportDir, 'novel-c'), 'current-c');
   });
 
+  test('selected restore never makes a live shared asset work-only', () async {
+    _writeLibrary(appSupportDir, {'work': (title: 'Work', marker: 'backup')});
+    const oldPath = 'file_workspaces/work/images/reference.png';
+    const sharedPath = 'file_workspaces/shared/images/reference.png';
+    final oldFile = File(p.join(appSupportDir.path, oldPath));
+    await oldFile.parent.create(recursive: true);
+    await oldFile.writeAsString('old file');
+    final dbPath = p.join(appSupportDir.path, 'reveric.sqlite');
+    final beforeBackup = sqlite3.open(dbPath);
+    insertBackupRow(beforeBackup, 'assets', {
+      'id': 'reference',
+      'novel_id': 'work',
+      'type': 'image',
+      'purpose': 'reference',
+      'path': oldPath,
+    });
+    beforeBackup.close();
+    final service = BackupService();
+    final backup = await service.backupToZip(outputDirectory: outputDir.path);
+    expect(backup.success, isTrue);
+
+    final sharedFile = File(p.join(appSupportDir.path, sharedPath));
+    await sharedFile.parent.create(recursive: true);
+    await sharedFile.writeAsString('shared file');
+    final afterBackup = sqlite3.open(dbPath);
+    afterBackup.execute(
+      'UPDATE assets SET novel_id = NULL, path = ? WHERE id = ?',
+      [sharedPath, 'reference'],
+    );
+    afterBackup.close();
+
+    final restored = await service.restoreFromZip(
+      backup.backupPath!,
+      mode: RestoreMode.selectedNovels,
+      novelIds: {'work'},
+    );
+    expect(restored.success, isTrue, reason: '${restored.failureReason}');
+    final afterRestore = sqlite3.open(dbPath);
+    try {
+      final row = afterRestore.select(
+        'SELECT novel_id, path FROM assets WHERE id = ?',
+        ['reference'],
+      ).single;
+      expect(row['novel_id'], isNull);
+      expect(row['path'], sharedPath);
+      expect(await sharedFile.readAsString(), 'shared file');
+    } finally {
+      afterRestore.close();
+    }
+  });
+
   for (final storedPath in [
     null,
     '',

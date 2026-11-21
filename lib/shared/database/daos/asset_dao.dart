@@ -191,6 +191,50 @@ class AssetDao extends DatabaseAccessor<AppDatabase> with _$AssetDaoMixin {
     }
   }
 
+  Future<bool> shareInLibrary({
+    required String id,
+    required String sourceNovelId,
+    required String sourcePath,
+    required String sharedPath,
+    required Set<String> movedPaths,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final updated =
+          await (update(assets)..where(
+                (row) =>
+                    row.id.equals(id) &
+                    row.novelId.equals(sourceNovelId) &
+                    row.path.equals(sourcePath) &
+                    row.inLibrary.equals(true) &
+                    row.deletedAt.equals(notDeletedSentinel),
+              ))
+              .write(
+                AssetsCompanion(
+                  novelId: const Value(null),
+                  path: Value(sharedPath),
+                  updatedAt: Value(now),
+                ),
+              );
+      if (updated == 1 && movedPaths.isNotEmpty) {
+        await (update(assets)..where(
+              (row) => row.id.isNotValue(id) & row.path.isIn(movedPaths),
+            ))
+            .write(
+              AssetsCompanion(path: Value(sharedPath), updatedAt: Value(now)),
+            );
+      }
+      return updated == 1;
+    } catch (error, stack) {
+      _log.error(
+        '[DB] assets UPDATE share id=$id',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    }
+  }
+
   /// 导演台导出按操作落到固定路径，续跑时按路径找回已登记的资产。
   Future<AssetRow?> findByPath(String path) =>
       (select(assets)..where(

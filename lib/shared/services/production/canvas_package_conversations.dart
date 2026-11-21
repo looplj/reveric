@@ -870,7 +870,7 @@ Future<_PackagedConversations> _writePackageConversations(
           );
           if (asset == null ||
               asset.type != 'image' ||
-              asset.novelId != canvas.novelId) {
+              (asset.novelId != null && asset.novelId != canvas.novelId)) {
             throw const FileSystemException('Conversation asset unavailable');
           }
           source = File(canvas.library.resolve(asset));

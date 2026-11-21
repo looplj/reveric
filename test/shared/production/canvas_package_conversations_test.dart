@@ -27,6 +27,7 @@ import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
+import 'package:reveric/shared/services/production/share_asset_orchestrator.dart';
 import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/services/storyboard/service.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
@@ -413,18 +414,23 @@ Continue writing.
   );
 
   test(
-    'unpacks persistent cache with single media copy and imports directly from cache',
+    'exports shared references once and imports directly from cache',
     () async {
+      await app.novelDao.create(
+        id: 'other',
+        title: 'Other work',
+        description: '',
+      );
       final png = File(p.join(support.path, 'sample.png'));
       await png.writeAsBytes(img.encodePng(img.Image(width: 8, height: 6)));
       final imported = await canvas.library.importFile(
         png,
         name: 'sample.png',
-        novelId: 'work',
+        novelId: 'other',
         purpose: AssetPurpose.production_upload,
         cancellation: MediaCancellation(),
+        addToLibrary: true,
       );
-      await canvas.addMedia(canvasId, imported.id);
       await persistence.saveMessages(
         sessionId: 'selected',
         novelDatabase: db,
@@ -445,6 +451,22 @@ Continue writing.
         ],
       );
 
+      await expectLater(
+        export(['selected']),
+        throwsA(
+          isA<ProductionCanvasPackageException>().having(
+            (error) => error.code,
+            'code',
+            'missing_conversation_file',
+          ),
+        ),
+      );
+      final shared = await ShareAssetOrchestrator().run(
+        library: canvas.library,
+        assetId: imported.id,
+        sourceNovelId: 'other',
+      );
+      await canvas.addMedia(canvasId, shared.id);
       final packaged = await export(['selected']);
       final cacheDir = Directory(p.join(support.path, 'persistent_cache'));
       final media = MediaService(FfmpegRunner());

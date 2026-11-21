@@ -1059,8 +1059,11 @@ void _upsertSelectedNovelRows({
             .where((name) => name != 'id')
             .map((name) => '"$name"=excluded."$name"')
             .join(',');
+        final preserveSharedAsset = table == 'assets'
+            ? ' WHERE NOT (assets.novel_id IS NULL AND excluded.novel_id IS NOT NULL)'
+            : '';
         currentDb.execute(
-          'INSERT INTO "$table" (${names.map(_quoteIdentifier).join(',')}) VALUES (${List.filled(names.length, '?').join(',')}) ON CONFLICT(id) DO UPDATE SET $updates',
+          'INSERT INTO "$table" (${names.map(_quoteIdentifier).join(',')}) VALUES (${List.filled(names.length, '?').join(',')}) ON CONFLICT(id) DO UPDATE SET $updates$preserveSharedAsset',
           values.values.toList(),
         );
       }

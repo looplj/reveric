@@ -680,14 +680,17 @@ class ProductionCanvasRegion extends HookConsumerWidget {
     }
 
     Future<CanvasNode> createAndPlace(
-      Future<CanvasNode> Function() create,
-    ) async {
+      Future<CanvasNode> Function() create, {
+      bool selectNode = true,
+    }) async {
       final node = await recordProductionChange(
         context,
         const [],
         () async => placeNew(await create(), selectNode: false),
       );
-      await select(node);
+      if (selectNode) {
+        await select(node);
+      }
       return node;
     }
 
@@ -696,11 +699,21 @@ class ProductionCanvasRegion extends HookConsumerWidget {
       if (!await session.close() || !context.mounted) {
         return;
       }
-      final asset = types == null
-          ? await pickProductionAsset(context, service)
-          : await pickProductionAsset(context, service, types: types);
-      if (asset != null) {
-        await createAndPlace(() => service.addMedia(canvas.data!.id, asset.id));
+      final canvasId = canvas.data!.id;
+      CanvasNode? placed;
+      final asset = await pickProductionAsset(
+        context,
+        service,
+        types: types ?? const {'image', 'video', 'audio'},
+        addToCanvas: (asset) async {
+          placed = await createAndPlace(
+            () => service.addMedia(canvasId, asset.id),
+            selectNode: false,
+          );
+        },
+      );
+      if (asset != null && placed != null && context.mounted) {
+        await select(placed!);
       }
     }
 
