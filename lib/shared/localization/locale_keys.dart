@@ -5377,6 +5377,7 @@ abstract final class LocaleKeys {
   static const toolRunDirectorPreview = 'tool.run_director_preview';
   static const toolRunDirectorOutput = 'tool.run_director_output';
   static const toolRunDirectorFrames = 'tool.run_director_frames';
+  static const toolRunDebugLog = 'tool.run_debug_log';
   static const toolRunFiles = 'tool.run_files';
   static const toolRunFilesList = 'tool.run_files_list';
   static const toolRunFilesReadText = 'tool.run_files_read_text';

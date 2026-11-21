@@ -87,6 +87,19 @@ final _grepInputSchema = const {
   'additionalProperties': false,
 };
 
+RegExp _compileGrepPattern(String pattern, Map<String, dynamic> options) {
+  final literal = _parseBoolArgument(options['literal']);
+  try {
+    return RegExp(
+      literal ? RegExp.escape(pattern) : pattern,
+      caseSensitive: !_parseBoolArgument(options['ignore_case']),
+      multiLine: true,
+    );
+  } on FormatException catch (error) {
+    throw FormatException('Invalid grep pattern: $error');
+  }
+}
+
 mixin _AiToolManagerGrepMixin on _AiToolManagerResourceSearchSupportMixin {
   Future<Map<String, dynamic>> _handleGrep(Map<String, dynamic> input) async {
     final patternArg = _parseStringArgument(input['pattern']);
@@ -98,19 +111,13 @@ mixin _AiToolManagerGrepMixin on _AiToolManagerResourceSearchSupportMixin {
       };
     }
 
-    final literal = _parseBoolArgument(input['literal']);
-    final pattern = literal ? RegExp.escape(patternArg) : patternArg;
     final RegExp regex;
     try {
-      regex = RegExp(
-        pattern,
-        caseSensitive: !_parseBoolArgument(input['ignore_case']),
-        multiLine: true,
-      );
-    } catch (error) {
+      regex = _compileGrepPattern(patternArg, input);
+    } on FormatException catch (error) {
       return {
         'ok': false,
-        'error': 'Invalid grep pattern: $error',
+        'error': error.message,
         'error_code': ToolErrorCode.invalid_argument.name,
       };
     }

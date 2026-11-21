@@ -554,7 +554,11 @@ class _GenericRunCardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final target = toolRowTarget(context, block, null);
     final output = block.result?['output']?.toString().trim();
-    final chips = <String>[if (target != null && target.isNotEmpty) target];
+    final chips = <String>[
+      if (target != null && target.isNotEmpty) target,
+      if (parsed?.topLevel == 'debug' && block.result?['truncated'] == true)
+        context.t(LocaleKeys.toolResultsTruncated),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

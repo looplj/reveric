@@ -122,6 +122,7 @@ String localizedToolCallTitle(BuildContext context, AiToolCallBlock block) {
 
 const _runActionKeys = <(String, String), String>{
   ('settings', 'open'): LocaleKeys.commonOpen,
+  ('debug', 'log'): LocaleKeys.toolRunDebugLog,
   ('production', 'canvas-preview'): LocaleKeys.toolRunProductionCanvasPreview,
   ('production', 'capture-panorama'):
       LocaleKeys.toolRunProductionCapturePanorama,
@@ -1185,6 +1186,7 @@ String? localizedRunHelpTopic(BuildContext context, String? topic) {
   }
   return switch (value) {
     'settings' => context.t(LocaleKeys.settingsTitle),
+    'debug' => context.t(LocaleKeys.toolRunDebugLog),
     'assets' => context.t(LocaleKeys.toolRunAssets),
     'stagings' => context.t(LocaleKeys.toolRunDirector),
     'styles' => context.t(LocaleKeys.toolRunStyles),

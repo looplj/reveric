@@ -17,6 +17,17 @@ void main() {
       expect(resolution.imageToolName, isNull);
     });
 
+    test('debug waits for the log subcommand', () {
+      expect(
+        resolveRunCommandUi({'command': 'debug'}).phase,
+        RunCommandUiPhase.awaitingSubcommand,
+      );
+      expect(
+        resolveRunCommandUi({'command': 'debug', 'subcommand': 'log'}).phase,
+        RunCommandUiPhase.ready,
+      );
+    });
+
     test('character generate-avatar resolves to GenerateAvatar', () {
       final resolution = resolveRunCommandUi({
         'command': 'character',

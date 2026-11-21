@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _commands = <String, List<String>>{
   'settings': ['open'],
+  'debug': ['log'],
   'files': [
     'list',
     'read-text',

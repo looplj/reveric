@@ -36,6 +36,29 @@ void main() {
   });
   setUp(() => rootBundle.clear());
 
+  testWidgets('debug log shows truncation outside the log preview', (
+    tester,
+  ) async {
+    final output = '${'x' * 4096} [truncated]\n';
+    await tester.pumpWidget(
+      _wrap(
+        AiToolDetailBody(
+          block: AiToolCallBlock(
+            id: 'debug-log',
+            callId: 'debug-log',
+            toolName: 'Run',
+            arguments: const {'command': 'debug', 'subcommand': 'log'},
+            status: AiToolCallStatus.success,
+            result: {'ok': true, 'output': output, 'truncated': true},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Truncated'), findsOneWidget);
+  }, timeout: const Timeout(Duration(seconds: 20)));
+
   for (final width in [390.0, 1000.0]) {
     testWidgets('completed waits stop spinning at $width', (tester) async {
       tester.view.physicalSize = Size(width, 900);
@@ -579,6 +602,7 @@ void main() {
           AiToolActivityGroup(
             blocks: [_block()],
             databasePath: '/tmp/novel.db',
+            novelId: 'work',
           ),
           debugMode: debugMode,
         ),

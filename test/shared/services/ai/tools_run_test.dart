@@ -4,6 +4,7 @@
 //   lib/shared/services/ai/tools_run.dart
 //   lib/shared/services/bundled_control_skills.dart
 //   lib/shared/services/ai/subagents_run_command_handler.dart
+//   lib/shared/logger/log_manager.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -23,10 +24,14 @@ import 'package:reveric/shared/services/image_library_service.dart';
 import 'package:reveric/shared/models/tool_permission.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:logger/logger.dart' show Level;
 import 'package:reveric/shared/utils/storage_paths.dart';
+import 'package:reveric/shared/agent/fake_agent.dart';
 import 'package:reveric/shared/agent/tool_result.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/agent/tool_approval.dart';
+import 'package:reveric/shared/logger/log_manager.dart';
+import 'package:reveric/shared/services/ai/files/text_reader.dart';
 import 'package:reveric/shared/services/ai/media/production.dart';
 import 'package:reveric/shared/services/ai/tool_operations.dart';
 import 'package:reveric/shared/services/tool_permission_gate.dart';
@@ -65,6 +70,28 @@ void main() {
       await RevericPaths.initialize();
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     }
+
+    Future<File> writeLog(String content) async {
+      final root = await Directory.systemTemp.createTemp('run-debug-log-');
+      final manager = LogManager.instance;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      messenger.setMockMethodCallHandler(channel, (_) async => root.path);
+      addTearDown(() async {
+        await manager.dispose();
+        messenger.setMockMethodCallHandler(channel, null);
+        await root.delete(recursive: true);
+      });
+      await manager.initialize(level: Level.off);
+      return File(manager.logFilePath!).writeAsString(content);
+    }
+
+    Future<Map<String, dynamic>> runDebugLog(Map<String, dynamic> options) =>
+        toolManager.executeTool(
+          name: 'Run',
+          input: {'command': 'debug', 'subcommand': 'log', 'options': options},
+        );
 
     test(
       'ffmpeg frames validates input and obeys files.read permission',
@@ -1464,6 +1491,265 @@ void main() {
     });
 
     test(
+      'Agent discovers Run debug log and receives the raw file text',
+      () async {
+        const content =
+            '[DEBUG] response={"token":"fixture","body":"原文"}\r\n'
+            '[ERROR] Failed\n  #0  service.dart:12\n\n';
+        await writeLog(content);
+        final client = FakeProviderClient(
+          responses: const [
+            FakeProviderClientResponse.toolCalls([
+              ToolCall(
+                callId: 'help',
+                toolName: 'Run',
+                arguments: {'command': 'help', 'subcommand': 'debug'},
+              ),
+            ]),
+            FakeProviderClientResponse.toolCalls([
+              ToolCall(
+                callId: 'log',
+                toolName: 'Run',
+                arguments: {'command': 'debug', 'subcommand': 'log'},
+              ),
+            ]),
+            FakeProviderClientResponse.text('Done'),
+          ],
+        );
+        final agent = FakeAgent.create(
+          client: client,
+          toolManager: toolManager,
+        );
+        await agent.process('Read my application log').drain<void>();
+
+        final requests = client.capturedStreamRequests;
+        expect(requests, hasLength(3));
+        expect(requests.first.tools!.map((tool) => tool.name), contains('Run'));
+        final results = requests.last.messages
+            .expand((message) => message.blocks)
+            .whereType<ToolResultBlock>();
+        final help = results.singleWhere((block) => block.toolCallId == 'help');
+        expect(
+          help.content.whereType<TextBlock>().single.text,
+          contains('Run debug log'),
+        );
+        final log = results.singleWhere((block) => block.toolCallId == 'log');
+        expect(log.isError, isFalse);
+        final payload =
+            jsonDecode(log.content.whereType<TextBlock>().single.text)
+                as Map<String, dynamic>;
+        expect(payload['command'], 'debug log');
+        expect(payload['output'], content);
+      },
+    );
+
+    test('Run debug log pages older lines by line offset', () async {
+      const content = '\uFEFF开头\r\n\n红😀\n\uFEFFZ中é';
+      final file = await writeLog(content);
+      final pages = <String>[];
+      int? offset;
+      for (var i = 0; i < 4; i++) {
+        final result = await runDebugLog({
+          'limit': 1,
+          if (offset != null) 'offset': offset,
+        });
+        expect(result['ok'], isTrue, reason: '$result');
+        expect(result['truncated'], isFalse);
+        pages.add(result['output'] as String);
+        expect(result['has_more'], i < 3);
+        offset = result['next_offset'] as int?;
+      }
+      expect(offset, isNull);
+      expect(pages, ['\uFEFFZ中é', '红😀\n', '\n', '\uFEFF开头\r\n']);
+      expect(pages.reversed.join(), content);
+
+      for (final options in [
+        {'offset': -1},
+        {'limit': 0},
+        {'limit': 1001},
+        {'keyword': 123},
+        {'before_byte': 1},
+        {'limit_bytes': 12},
+        {'continuation': 'not-valid'},
+        {'path': 'other.log'},
+      ]) {
+        expect((await runDebugLog(options))['error_code'], 'invalid_argument');
+      }
+      await file.writeAsString('');
+      final empty = await runDebugLog({});
+      expect(empty['output'], '');
+      expect(empty['has_more'], isFalse);
+      expect(empty.containsKey('next_offset'), isFalse);
+    });
+
+    test(
+      'Run debug log continues a line with the file reader cursor',
+      () async {
+        final prefix = List.filled(65536, 'a').join();
+        final file = await writeLog('${prefix}before');
+        final first = await runDebugLog({});
+        final direct = await readTextPage(file, const {});
+        expect(first['output'], direct['text']);
+        expect(first['continuation'], direct['continuation']);
+        expect(first['has_more'], isTrue);
+        expect(first['truncated'], isTrue);
+        expect(first['next_offset'], 0);
+        expect(
+          jsonDecode(
+            utf8.decode(base64Url.decode(first['continuation'] as String)),
+          ),
+          {'line': 0, 'skip': 65536},
+        );
+
+        final combined = await runDebugLog({
+          'continuation': first['continuation'],
+          'offset': 0,
+        });
+        expect(combined['error_code'], 'invalid_argument');
+        final rest = await runDebugLog({'continuation': first['continuation']});
+        expect(rest['output'], 'before');
+        expect(rest['has_more'], isFalse);
+        expect(rest.containsKey('continuation'), isFalse);
+      },
+    );
+
+    test(
+      'Run debug log reads the previous page without repeating it',
+      () async {
+        final line = '${'x' * (40 * 1024)}\n';
+        await writeLog('$line$line');
+        final recent = await runDebugLog({});
+        expect(recent['output'], line);
+        expect(recent['truncated'], isTrue);
+        expect(recent['has_more'], isTrue);
+        final older = await runDebugLog({'offset': recent['next_offset']});
+        expect(older['output'], line);
+        expect(older['truncated'], isFalse);
+        expect(older['has_more'], isFalse);
+      },
+    );
+
+    test('Run debug log continues at UTF-8 and CRLF boundaries', () async {
+      final file = await writeLog('');
+      for (final (head, tail) in [
+        ('x' * 65535, '😀\n'),
+        ('x' * 65535, '\r\n'),
+      ]) {
+        await file.writeAsString('$head$tail');
+        final first = await runDebugLog({});
+        expect(first['output'], head);
+        expect(first['truncated'], isTrue);
+        final rest = await runDebugLog({'continuation': first['continuation']});
+        expect(rest['output'], tail);
+        expect(rest['has_more'], isFalse);
+        expect(rest['total_lines'], 1);
+      }
+    });
+
+    test('Run debug log limits the number of matching lines', () async {
+      await writeLog('keep older\nskip this\nkeep latest\n');
+      const options = {'limit': 1, 'keyword': 'keep'};
+      final recent = await runDebugLog(options);
+      expect(recent['output'], 'keep latest\n');
+      expect(recent['has_more'], isTrue);
+      final previous = await runDebugLog({
+        ...options,
+        'offset': recent['next_offset'],
+      });
+      expect(previous['output'], 'keep older\n');
+      expect(previous['has_more'], isFalse);
+      expect(previous.containsKey('next_offset'), isFalse);
+
+      final noMatches = await runDebugLog({'keyword': 'unmatched'});
+      expect(noMatches['output'], '');
+      expect(noMatches['has_more'], isFalse);
+    });
+
+    test(
+      'Run debug log bounds filtered pages by physical line offset',
+      () async {
+        await writeLog('skip\nkeep older\nskip\nkeep latest\nskip');
+        for (final offset in [4, 5, 10]) {
+          final result = await runDebugLog({
+            'offset': offset,
+            'limit': 1,
+            'keyword': 'keep',
+          });
+          expect(result['output'], 'keep latest\n');
+          expect(result['total_lines'], 5);
+          expect(result['start_line'], 4);
+          expect(result['end_line'], 4);
+          expect(result['next_offset'], 3);
+        }
+
+        final older = await runDebugLog({'offset': 3, 'keyword': 'keep'});
+        expect(older['output'], 'keep older\n');
+        expect(older['start_line'], 2);
+        expect(older['has_more'], isFalse);
+
+        final empty = await runDebugLog({'offset': 1, 'keyword': 'keep'});
+        expect(empty['output'], '');
+        expect(empty['has_more'], isFalse);
+      },
+    );
+
+    test('Run debug log shares Grep pattern options and validation', () async {
+      await writeLog(
+        'error 500\r\nWARN 404\nerror 503 retry\ntrace (404)\nerror 599',
+      );
+      const pattern = r'^(error|warn) \d+$';
+      expect(
+        (await runDebugLog({'pattern': pattern}))['output'],
+        'error 500\r\nerror 599',
+      );
+      expect(
+        (await runDebugLog({
+          'pattern': pattern,
+          'ignore_case': true,
+        }))['output'],
+        'error 500\r\nWARN 404\nerror 599',
+      );
+      expect(
+        (await runDebugLog({
+          'pattern': pattern,
+          'ignore_case': true,
+          'keyword': '404',
+        }))['output'],
+        'WARN 404\n',
+      );
+      expect(
+        (await runDebugLog({'pattern': '(404)', 'literal': true}))['output'],
+        'trace (404)\n',
+      );
+      expect((await runDebugLog({'pattern': r'^$'}))['output'], '');
+
+      final invalidLog = await runDebugLog({'pattern': '['});
+      final invalidGrep = await toolManager.executeTool(
+        name: 'Grep',
+        input: {'pattern': '['},
+      );
+      expect(invalidLog['error_code'], 'invalid_argument');
+      expect(invalidLog['error'], invalidGrep['error']);
+    });
+
+    test(
+      'Run debug requires the log action and reports unavailable logs',
+      () async {
+        final missingAction = await toolManager.executeTool(
+          name: 'Run',
+          input: {'command': 'debug'},
+        );
+        expect(missingAction['error_code'], 'invalid_argument');
+        expect(missingAction['hint'], contains('Run debug log'));
+        final unavailable = await toolManager.executeTool(
+          name: 'Run',
+          input: {'command': 'debug', 'subcommand': 'log'},
+        );
+        expect(unavailable['error_code'], 'unavailable');
+      },
+    );
+
+    test(
       'Run help lists all base commands and points to skill-owned contracts',
       () async {
         final baseSkillCommands = Map.of(bundledControlRunCommandToCallName)
@@ -1495,6 +1781,7 @@ void main() {
           listed,
           unorderedEquals([
             'providers',
+            'debug',
             'sessions',
             'map',
             'notify',

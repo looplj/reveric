@@ -4,14 +4,26 @@
 //   lib/shared/services/bundled_control_skills.dart
 //   lib/shared/services/ai/subagents_run_command_handler.dart
 //   lib/shared/services/ai/providers_run_command_handler.dart
-//   lib/shared/agent/token_estimator.dart
+//   lib/shared/logger/log_manager.dart
 //   lib/shared/localization/locale_keys.dart
 // 遵循的 Rules:
 //   .agents/rules/ai-calling.md
+//   .agents/rules/file-access.md
 part of 'tools.dart';
 
 const runToolName = 'Run';
 const _agentSkillCatalogSources = {'official', 'marketplace'};
+const _debugLogPageBytes = 64 * 1024;
+const _debugLogDefaultLimit = 200;
+const _debugLogMaxLimit = 1000;
+final _debugLogLineEnding = RegExp(r'\r?\n$');
+const _debugHelp =
+    '''Run debug log reads the application's latest.log from the end.
+Use {"command":"debug","subcommand":"log"}.
+Optional options: offset (0-based line index from next_offset; that call reads only lines before it; omit it to read the last page), limit (maximum lines, default $_debugLogDefaultLimit, maximum $_debugLogMaxLimit), keyword (literal, case-sensitive substring), pattern (Grep-style regex; ignore_case and literal apply to pattern).
+A line must match both filters when keyword and pattern are set.
+Each page is at most $_debugLogPageBytes bytes. Lines stay in file order. start_line and end_line are 1-based; total_lines is the line count.
+When a line does not fit, continuation is set. Pass that value alone to read the rest of the line. Otherwise, when has_more is true, pass next_offset as offset, keeping keyword and pattern, to read the previous page.''';
 
 const _runDescription = '''Run a command.
 
@@ -247,6 +259,11 @@ mixin _AiToolManagerRunMixin
         ),
       },
       (spec, options, _) => _runSettingsCommand(options),
+    ),
+    'debug': _RunCommandDefinition(
+      subcommands: const {'log': RunPermission.none()},
+      codemode: const {'log': _RunCodemodeAccess.read()},
+      (spec, options, startedAt) => _runDebugLogs(options, startedAt),
     ),
     'providers': _RunCommandDefinition(
       codemode: const {
@@ -635,6 +652,85 @@ mixin _AiToolManagerRunMixin
         'hint': hint,
       };
     }
+  }
+
+  Future<Map<String, dynamic>> _runDebugLogs(
+    Map<String, dynamic> options,
+    DateTime startedAt,
+  ) async {
+    final continuation = options['continuation'];
+    if (continuation != null && options.length != 1) {
+      throw const FormatException(
+        'continuation cannot be combined with offset or limit',
+      );
+    }
+    final offset = options.containsKey('offset')
+        ? _parseIntArgument(options['offset'])
+        : null;
+    final limit = options.containsKey('limit')
+        ? _parseIntArgument(options['limit'])
+        : _debugLogDefaultLimit;
+    final keyword = options['keyword'];
+    final pattern = options['pattern'];
+    const supportedOptions = {
+      'offset',
+      'limit',
+      'continuation',
+      'keyword',
+      'pattern',
+      'ignore_case',
+      'literal',
+    };
+    if (options.keys.any((key) => !supportedOptions.contains(key)) ||
+        (options.containsKey('offset') && (offset == null || offset < 0)) ||
+        limit == null ||
+        limit < 1 ||
+        limit > _debugLogMaxLimit ||
+        (continuation != null && continuation is! String) ||
+        (keyword != null && keyword is! String)) {
+      throw const FormatException(
+        'Use a nonnegative offset, limit 1..$_debugLogMaxLimit, '
+        'a string keyword, or continuation alone.',
+      );
+    }
+    if (pattern != null && (pattern is! String || pattern.isEmpty)) {
+      throw const FormatException('pattern must be a nonempty string.');
+    }
+    final path = LogManager.instance.logFilePath;
+    if (path == null) {
+      throw const ToolOperationException(
+        'unavailable',
+        'The application log has not been initialized.',
+      );
+    }
+
+    final page = await compute(_readDebugLogPage, (
+      path: path,
+      offset: offset,
+      limit: limit,
+      continuation: continuation as String?,
+      keyword: keyword as String? ?? '',
+      pattern: pattern as String?,
+      grepOptions: <String, dynamic>{
+        'ignore_case': _parseBoolArgument(options['ignore_case']),
+        'literal': _parseBoolArgument(options['literal']),
+      },
+    ));
+    return {
+      'ok': true,
+      'command': 'debug log',
+      'file': p.basename(path),
+      'output': page.output,
+      'has_more': page.hasMore,
+      'truncated': page.truncated,
+      'total_lines': page.totalLines,
+      'start_line': page.startLine,
+      'end_line': page.endLine,
+      if (page.nextOffset != null) 'next_offset': page.nextOffset,
+      if (page.continuation != null) 'continuation': page.continuation,
+      'exit_code': 0,
+      'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
+    };
   }
 
   /// Points a misrouted action at the command group that owns it.
@@ -2021,6 +2117,240 @@ Map<String, dynamic> _runTextResult({
   return result;
 }
 
+final class _DebugLogPage {
+  const _DebugLogPage({
+    required this.output,
+    required this.hasMore,
+    required this.truncated,
+    required this.totalLines,
+    required this.startLine,
+    required this.endLine,
+    this.nextOffset,
+    this.continuation,
+  });
+
+  final String output;
+  final bool hasMore;
+  final bool truncated;
+  final int totalLines;
+  final int startLine;
+  final int endLine;
+  final int? nextOffset;
+  final String? continuation;
+}
+
+_DebugLogPage _readDebugLogPage(
+  ({
+    String path,
+    int? offset,
+    int limit,
+    String? continuation,
+    String keyword,
+    String? pattern,
+    Map<String, dynamic> grepOptions,
+  })
+  request,
+) {
+  final (
+    :path,
+    :offset,
+    :limit,
+    :continuation,
+    :keyword,
+    :pattern,
+    :grepOptions,
+  ) = request;
+  final regex = pattern == null
+      ? null
+      : _compileGrepPattern(pattern, grepOptions);
+  final cursor = continuation == null
+      ? null
+      : _parseDebugLogContinuation(continuation);
+  final boundary = cursor?.line ?? offset;
+  final bytes = File(path).readAsBytesSync();
+
+  // 统计物理行号，只记录分页或续读所需的字节位置。
+  var boundaryStart = bytes.length;
+  var boundaryEnd = bytes.length;
+  var lineStart = 0;
+  var totalLines = 0;
+  for (var index = 0; index < bytes.length; index++) {
+    if (bytes[index] != 10 && index != bytes.length - 1) {
+      continue;
+    }
+    if (totalLines == boundary) {
+      boundaryStart = lineStart;
+      boundaryEnd = index + 1;
+    }
+    lineStart = index + 1;
+    totalLines++;
+  }
+  if (cursor != null) {
+    if (cursor.line >= totalLines) {
+      throw const FormatException('Invalid continuation');
+    }
+    return _continueDebugLogLine(
+      _decodeDebugLogLine(bytes, boundaryStart, boundaryEnd),
+      totalLines,
+      cursor,
+    );
+  }
+
+  final selected = <String>[];
+  var oldest = 0;
+  var newest = 0;
+  var end = boundaryStart;
+  var used = 0;
+  var hasMore = false;
+  var truncated = false;
+  final endLine = offset != null && offset < totalLines ? offset : totalLines;
+  // 倒序匹配，填满一页后只需确认是否还有更早的匹配行。
+  for (var line = endLine; end > 0; line--) {
+    var start = end - 1;
+    while (start > 0 && bytes[start - 1] != 10) {
+      start--;
+    }
+    final size = end - start;
+    final text = _decodeDebugLogLine(bytes, start, end);
+    end = start;
+    if (!_debugLogLineMatches(text, keyword, regex)) {
+      continue;
+    }
+    if (selected.isEmpty && size > _debugLogPageBytes) {
+      final prefix = _debugLogPrefix(text);
+      return _DebugLogPage(
+        output: prefix,
+        hasMore: true,
+        truncated: true,
+        totalLines: totalLines,
+        startLine: line,
+        endLine: line,
+        nextOffset: line - 1,
+        continuation: _debugLogContinuation(line - 1, prefix.length),
+      );
+    }
+    if (selected.length == limit || used + size > _debugLogPageBytes) {
+      hasMore = true;
+      truncated = selected.length < limit;
+      break;
+    }
+    if (selected.isEmpty) {
+      newest = line;
+    }
+    oldest = line;
+    selected.add(text);
+    used += size;
+  }
+  return _DebugLogPage(
+    output: selected.reversed.join(),
+    hasMore: hasMore,
+    truncated: truncated,
+    totalLines: totalLines,
+    startLine: oldest,
+    endLine: newest,
+    nextOffset: hasMore ? oldest - 1 : null,
+  );
+}
+
+_DebugLogPage _continueDebugLogLine(
+  String text,
+  int totalLines,
+  ({int line, int skip}) cursor,
+) {
+  if (cursor.skip <= 0 || cursor.skip >= text.length) {
+    throw const FormatException('Invalid continuation');
+  }
+  final firstUnit = text.codeUnitAt(cursor.skip);
+  if (firstUnit >= 0xdc00 && firstUnit <= 0xdfff) {
+    throw const FormatException('Invalid continuation');
+  }
+  final prefix = _debugLogPrefix(text, start: cursor.skip);
+  final truncated = cursor.skip + prefix.length < text.length;
+  final lineNumber = cursor.line + 1;
+  final hasMore = truncated || cursor.line > 0;
+  return _DebugLogPage(
+    output: prefix,
+    hasMore: hasMore,
+    truncated: truncated,
+    totalLines: totalLines,
+    startLine: lineNumber,
+    endLine: lineNumber,
+    nextOffset: hasMore ? cursor.line : null,
+    continuation: truncated
+        ? _debugLogContinuation(cursor.line, cursor.skip + prefix.length)
+        : null,
+  );
+}
+
+String _decodeDebugLogLine(Uint8List bytes, int start, int end) {
+  final text = utf8.decode(Uint8List.sublistView(bytes, start, end));
+  final hasBom =
+      end - start >= 3 &&
+      bytes[start] == 0xef &&
+      bytes[start + 1] == 0xbb &&
+      bytes[start + 2] == 0xbf;
+  return hasBom ? '\uFEFF$text' : text;
+}
+
+bool _debugLogLineMatches(String text, String keyword, RegExp? regex) {
+  if (keyword.isNotEmpty && !text.contains(keyword)) {
+    return false;
+  }
+  if (regex != null &&
+      !regex.hasMatch(text.replaceFirst(_debugLogLineEnding, ''))) {
+    return false;
+  }
+  return true;
+}
+
+String _debugLogPrefix(String text, {int start = 0}) {
+  final runes = RuneIterator.at(text, start);
+  var end = start;
+  var used = 0;
+  while (runes.moveNext()) {
+    final size = switch (runes.current) {
+      <= 0x7f => 1,
+      <= 0x7ff => 2,
+      <= 0xffff => 3,
+      _ => 4,
+    };
+    if (used + size > _debugLogPageBytes) {
+      break;
+    }
+    used += size;
+    end += runes.currentSize;
+  }
+  if (end > start &&
+      end < text.length &&
+      text.codeUnitAt(end - 1) == 13 &&
+      text.codeUnitAt(end) == 10) {
+    end--;
+  }
+  return text.substring(start, end);
+}
+
+String _debugLogContinuation(int line, int skip) {
+  return base64Url.encode(
+    utf8.encode(jsonEncode({'line': line, 'skip': skip})),
+  );
+}
+
+({int line, int skip}) _parseDebugLogContinuation(String raw) {
+  try {
+    final value = jsonDecode(utf8.decode(base64Url.decode(raw)));
+    if (value is Map && value['line'] is int && value['skip'] is int) {
+      final line = value['line'] as int;
+      final skip = value['skip'] as int;
+      if (line >= 0 && skip >= 0) {
+        return (line: line, skip: skip);
+      }
+    }
+  } on FormatException {
+    throw const FormatException('Invalid continuation');
+  }
+  throw const FormatException('Invalid continuation');
+}
+
 String _helpFor(
   String? command, {
   String contentKind = contentKindNovel,
@@ -2043,6 +2373,9 @@ String _helpFor(
   }
   if (command == 'providers') {
     return ProvidersRunCommandHandler.helpText;
+  }
+  if (command == 'debug') {
+    return _debugHelp;
   }
   if (bundledControlRunCommandToCallName.containsKey(command)) {
     return _bundledSkillCommandGuidance(command, contentKind: contentKind);
@@ -2099,6 +2432,7 @@ String _runHelpText({
 }) {
   return '''Available commands:
 ${operations ? _operationHelpLines(contentKind) : ''}${sessionOperations ? _sessionHelpLines : ''}  providers       List configured providers and inspect chat, image, video and audio models.
+  debug           Read or filter the application's logs with Run debug log when troubleshooting an app issue.
   sessions        List, read, and search saved AI conversations.
   map             Submit a map design draft for review in Cartographer.
   notify          Notify the Assistant with progress/question/complete/error.
