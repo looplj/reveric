@@ -98,7 +98,7 @@ class UpdateService {
     return result;
   }
 
-  /// 下载更新。GitHub 资源下载失败时，改用同一文件在 R2 上的地址再试一次。
+  /// 下载更新。主地址下载失败时，使用同一文件的备用地址再试一次。
   Future<bool> downloadUpdate(UpdateInfo info) async {
     final urls = <String>[info.downloadUrl];
     final fallback = info.fallbackDownloadUrl;
