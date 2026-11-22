@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:super_clipboard/super_clipboard.dart' as clip;
 import 'package:reveric/desktop/features/production/drop_orchestrator.dart';
 import 'package:reveric/shared/database/app_database.dart' as app;
@@ -142,6 +143,60 @@ void main() {
       );
     });
   }
+
+  test(
+    'pastes a bitmap and a copied image file as one undoable batch',
+    () async {
+      final importer = ProductionDropOrchestrator();
+      final bytes = img.encodePng(img.Image(width: 320, height: 180));
+      final copy = await File(
+        '${root.path}/场景.PNG',
+      ).writeAsBytes(img.encodePng(img.Image(width: 100, height: 160)));
+      final note = await File('${root.path}/note.txt').writeAsString('text');
+      final assets = [
+        for (final reader in [
+          _FileReader(bytes),
+          _Reader(uri: note.uri),
+          _Reader(text: 'ordinary text'),
+          _Reader(uri: copy.uri),
+        ])
+          ?await importer.pasteImage(
+            reader: reader,
+            service: service,
+            imageName: '图片',
+          ),
+      ];
+      expect(assets.map((asset) => asset.name), ['图片.png', '场景.PNG']);
+      await importer.placeMedia(
+        assets: assets,
+        service: service,
+        canvasId: canvas,
+        center: const Offset(400, 300),
+        history: history,
+      );
+      final byAsset = {
+        for (final node in await nodes()) node.mediaAssetId: node,
+      };
+      final first = byAsset[assets.first.id]!;
+      final second = byAsset[assets.last.id]!;
+      expect(first.y, second.y);
+      expect(second.x, greaterThan(400));
+      expect(
+        await File(service.library.resolve(assets.first)).readAsBytes(),
+        bytes,
+      );
+      expect(copy.existsSync(), isTrue);
+      expect(
+        root.listSync().whereType<Directory>().map((e) => e.path),
+        isNot(contains(startsWith('${root.path}/production-drop-'))),
+      );
+      expect(history.undoCount, 1);
+      await history.undo();
+      expect(await nodes(), isEmpty);
+      await history.redo();
+      expect(await nodes(), hasLength(2));
+    },
+  );
   test(
     'unsupported, empty and missing files create no nodes or history',
     () async {

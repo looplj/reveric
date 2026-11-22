@@ -186,6 +186,7 @@ void main() {
         second.id: (x: 500, y: 150),
       });
       final selected = ValueNotifier<String?>(null);
+      var pasteRequests = 0;
       final typingFocus = FocusNode();
       addTearDown(typingFocus.dispose);
       addTearDown(selected.dispose);
@@ -219,6 +220,7 @@ void main() {
                           sceneLabels: const {},
                           camera: ProductionBoardCamera(),
                           onSelect: (node) => selected.value = node.id,
+                          onPaste: () => pasteRequests++,
                           onClear: () => selected.value = null,
                           onConnect: (_, _, _) {},
                           onOpenDirector: (_) {},
@@ -228,9 +230,7 @@ void main() {
                               const Text('Selection tools'),
                               SizedBox(
                                 width: 200,
-                                child: RevericTextField(
-                                  focusNode: typingFocus,
-                                ),
+                                child: RevericTextField(focusNode: typingFocus),
                               ),
                             ],
                           ),
@@ -643,6 +643,17 @@ void main() {
         typingFocus.requestFocus();
         await tester.pump();
         expect(typingFocus.hasPrimaryFocus, isTrue);
+        final modifier = platform == TargetPlatform.macOS
+            ? LogicalKeyboardKey.metaLeft
+            : LogicalKeyboardKey.controlLeft;
+        Future<void> paste() async {
+          await tester.sendKeyDownEvent(modifier);
+          await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+          await tester.sendKeyUpEvent(modifier);
+        }
+
+        await paste();
+        expect(pasteRequests, 0);
         await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
         await tester.pumpAndSettle();
         expect(find.byType(ConfirmDialog), findsNothing);
@@ -651,6 +662,8 @@ void main() {
         controller.selectNode(second.id, toggle: true);
         controller.canvasFocusNode.requestFocus();
         await tester.pumpAndSettle();
+        await paste();
+        expect(pasteRequests, 1);
         expect(controller.selectedNodeIds, {first.id, second.id});
         await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
         await tester.pumpAndSettle();

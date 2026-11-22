@@ -4,6 +4,10 @@
 //   lib/desktop/features/production/region.dart
 //   lib/desktop/features/editing/canvas_shell.dart
 import 'dart:io';
+// Use file_selector's locked platform test interface.
+// ignore: depend_on_referenced_packages
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
+import 'package:image/image.dart' as img;
 import 'package:reveric/shared/models/ai_chat_models.dart'
     show AiMessage, AiSuggestNextActionBlock;
 import 'package:drift/native.dart';
@@ -51,6 +55,21 @@ import 'package:reveric/shared/services/screenplay_service.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
 import '../../director/harness.dart';
 
+class _MediaPicker extends FileSelectorPlatform {
+  int calls = 0;
+  List<XFile> files = [];
+
+  @override
+  Future<List<XFile>> openFiles({
+    List<XTypeGroup>? acceptedTypeGroups,
+    String? initialDirectory,
+    String? confirmButtonText,
+  }) async {
+    calls++;
+    return files;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
@@ -81,6 +100,92 @@ void main() {
     await temp.delete(recursive: true);
   });
   setUp(() => rootBundle.clear());
+  testWidgets('canvas shows progress while importing readable files', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final app = AppDatabase.forTest(NativeDatabase.memory());
+    final db = NovelContentDatabase.forTest(NativeDatabase.memory());
+    await ScreenplayService(db).createCanvasStructure();
+    await app.novelDao.create(
+      id: 'batch-import',
+      title: 'Batch import',
+      description: '',
+      contentKind: contentKindCanvas,
+      contentDatabasePath: db.filePath,
+    );
+    final picker = _MediaPicker();
+    final original = FileSelectorPlatform.instance;
+    FileSelectorPlatform.instance = picker;
+    addTearDown(() => FileSelectorPlatform.instance = original);
+    final first = File('${temp.path}/第一张.png')
+      ..writeAsBytesSync(img.encodePng(img.Image(width: 32, height: 18)));
+    final second = File('${temp.path}/第二张.png')
+      ..writeAsBytesSync(img.encodePng(img.Image(width: 18, height: 32)));
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDatabaseProvider.overrideWithValue(app),
+            appSettingsDatabaseProvider.overrideWithValue(app),
+            novelContentDatabaseProvider(db.filePath).overrideWithValue(db),
+          ],
+          child: directorTestApp(
+            const WorkspaceEditorPage(novelId: 'batch-import'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final import = find.byKey(const ValueKey('canvas-import-media'));
+      final progress = find.descendant(
+        of: find.byType(ProductionBoard),
+        matching: find.byType(LinearProgressIndicator),
+      );
+      final importPosition = tester.getTopLeft(import);
+      await tester.tap(import);
+      await tester.pumpAndSettle();
+      expect(picker.calls, 1);
+      expect(progress, findsNothing);
+      expect(await db.select(db.canvasNodes).get(), isEmpty);
+
+      picker.files = [
+        XFile(first.path),
+        XFile('${temp.path}/missing.png'),
+        XFile(second.path),
+      ];
+      await tester.tap(import);
+      await tester.pump();
+      expect(progress, findsOneWidget);
+      expect(tester.getTopLeft(import), importPosition);
+      for (
+        var i = 0;
+        i < 100 &&
+            (import.evaluate().isNotEmpty || progress.evaluate().isNotEmpty);
+        i++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(picker.calls, 2);
+      expect(progress, findsNothing);
+      expect(find.byType(CanvasEmptyStart), findsNothing);
+      final ordered = [...await db.select(db.canvasNodes).get()]
+        ..sort((a, b) => a.x.compareTo(b.x));
+      expect(ordered.map((node) => node.title), ['第一张.png', '第二张.png']);
+      expect(ordered.first.y, ordered.last.y);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await db.close();
+      await app.close();
+    }
+  });
+
   testWidgets('empty canvas opens without episodes and adds editable video', (
     tester,
   ) async {
