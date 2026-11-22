@@ -67,8 +67,7 @@ class MapHistoryTab extends ConsumerWidget {
           key: const ValueKey('map_history_list'),
           padding: const EdgeInsets.all(RevericSpacing.md),
           itemCount: items.length,
-          separatorBuilder: (_, _) =>
-              const SizedBox(height: RevericSpacing.sm),
+          separatorBuilder: (_, _) => const SizedBox(height: RevericSpacing.sm),
           itemBuilder: (context, index) {
             final asset = items[index];
             return _MapHistoryRow(asset: asset, onTap: () => onSelected(asset));
@@ -96,6 +95,8 @@ class _MapHistoryRow extends ConsumerWidget {
       if (metadata.resolutionId != null) metadata.resolutionId!.toUpperCase(),
       if (metadata.qualityId != null)
         context.t(_qualityLabelKey(metadata.qualityId!)),
+      ?metadata.customSize?.replaceFirst('x', ' × '),
+      ?metadata.customQuality,
       if ((asset.model ?? '').trim().isNotEmpty) asset.model!.trim(),
     ];
     final sourceName = metadata.sourceMapName;

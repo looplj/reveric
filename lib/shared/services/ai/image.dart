@@ -166,6 +166,13 @@ AiImageErrorCode? classifyAiImageError(String? serverMessage) {
   if (lower.contains('model') && lower.contains('not support')) {
     return AiImageErrorCode.param;
   }
+  if (lower.contains('quality') &&
+      (lower.contains('不支持') ||
+          lower.contains('not support') ||
+          lower.contains('unsupported') ||
+          lower.contains('invalid'))) {
+    return AiImageErrorCode.param;
+  }
   return null;
 }
 

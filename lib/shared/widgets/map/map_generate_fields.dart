@@ -28,8 +28,10 @@ import '../../hooks/use_map_generate_form.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../ai/studio_image_model_selector.dart';
+import '../ai/studio_image_custom_parameters.dart';
 import '../../models/map_agent.dart' show mapCustomStyleId;
 import '../../providers/map_agent_providers.dart';
+import '../../providers/map_studio_providers.dart';
 import '../../services/map_prompt_builder.dart';
 import '../../theme/theme.dart';
 import 'map_agent_draft_card.dart';
@@ -77,7 +79,8 @@ class MapGenerateFields extends HookConsumerWidget {
     final referenceCount =
         (form.effectiveReferenceCurrentImage ? 1 : 0) +
         (form.effectiveReferenceParent ? 1 : 0);
-    final referenceLimit = form.choices?.referenceLimit;
+    final choices = ref.watch(mapImageChoicesProvider(form.modelId.value));
+    final referenceLimit = choices?.referenceLimit;
     final canAddReference =
         referenceLimit == null || referenceCount < referenceLimit;
     final agentDraft = ref.watch(
@@ -241,49 +244,60 @@ class MapGenerateFields extends HookConsumerWidget {
             },
           ),
         ],
-        for (final field in [
-          (
-            LocaleKeys.editorCoverRatio,
-            form.choices?.ratios ?? <String>[],
-            form.ratioId,
+        if (choices != null && choices.supportsCustomParameters) ...[
+          const SizedBox(height: RevericSpacing.lg),
+          StudioImageCustomParameters(
+            key: ValueKey((choices.provider.id, choices.model)),
+            parameters: form.customImageParameters.value,
+            enabled: !busy,
+            scene: StudioImageParameterScene.map,
+            touchTargets: touchTargets,
+            onChanged: (value) => form.customImageParameters.value = value,
           ),
-          (
-            LocaleKeys.mapEditorStudioResolution,
-            form.choices?.resolutions ?? <String>[],
-            form.resolutionId,
-          ),
-          (
-            LocaleKeys.mapEditorStudioQuality,
-            form.choices?.qualities ?? <String>[],
-            form.qualityId,
-          ),
-          (
-            LocaleKeys.commonComplexity,
-            form.choices?.complexities ?? <String>[],
-            form.complexityId,
-          ),
-        ]) ...[
-          if (field.$2.isNotEmpty) ...[
-            const SizedBox(height: RevericSpacing.lg),
-            sectionLabel(field.$1),
-            const SizedBox(height: RevericSpacing.sm),
-            Wrap(
-              spacing: RevericSpacing.sm,
-              runSpacing: RevericSpacing.sm,
-              children: [
-                for (final option in field.$2)
-                  _Chip(
-                    label: option,
-                    selected: field.$3.value == option,
-                    touchTarget: touchTargets,
-                    onTap: busy || field.$2.length == 1
-                        ? null
-                        : () => field.$3.value = option,
-                  ),
-              ],
+        ] else
+          for (final field in [
+            (
+              LocaleKeys.editorCoverRatio,
+              choices?.ratios ?? <String>[],
+              form.ratioId,
             ),
+            (
+              LocaleKeys.mapEditorStudioResolution,
+              choices?.resolutions ?? <String>[],
+              form.resolutionId,
+            ),
+            (
+              LocaleKeys.mapEditorStudioQuality,
+              choices?.qualities ?? <String>[],
+              form.qualityId,
+            ),
+            (
+              LocaleKeys.commonComplexity,
+              choices?.complexities ?? <String>[],
+              form.complexityId,
+            ),
+          ]) ...[
+            if (field.$2.isNotEmpty) ...[
+              const SizedBox(height: RevericSpacing.lg),
+              sectionLabel(field.$1),
+              const SizedBox(height: RevericSpacing.sm),
+              Wrap(
+                spacing: RevericSpacing.sm,
+                runSpacing: RevericSpacing.sm,
+                children: [
+                  for (final option in field.$2)
+                    _Chip(
+                      label: option,
+                      selected: field.$3.value == option,
+                      touchTarget: touchTargets,
+                      onTap: busy || field.$2.length == 1
+                          ? null
+                          : () => field.$3.value = option,
+                    ),
+                ],
+              ),
+            ],
           ],
-        ],
         const SizedBox(height: RevericSpacing.lg),
         Row(
           key: const ValueKey('map_prompt_header'),

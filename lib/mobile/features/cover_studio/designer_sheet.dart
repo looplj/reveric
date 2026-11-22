@@ -191,12 +191,7 @@ class _DesignerSheet extends ConsumerWidget {
                           pickImagePaths: _pickReferenceImages,
                         ),
                         const SizedBox(height: RevericSpacing.x3l),
-                        CoverQualitySection(novelId: novel.id),
-                        const SizedBox(height: RevericSpacing.x3l),
-                        CoverComplexitySection(novelId: novel.id),
-                        CoverResolutionSection(novelId: novel.id),
-                        const SizedBox(height: RevericSpacing.x3l),
-                        CoverRatioSection(novelId: novel.id),
+                        CoverImageParametersSection(novelId: novel.id),
                         const SizedBox(height: RevericSpacing.x3l),
                         CoverAdvancedSection(
                           novelId: novel.id,

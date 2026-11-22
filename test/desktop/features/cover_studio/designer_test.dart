@@ -36,6 +36,7 @@ import 'package:reveric/shared/services/ai/image.dart';
 import 'package:reveric/shared/services/cover_prompt_builder.dart';
 import 'package:reveric/shared/services/cover_studio_orchestrator.dart';
 import 'package:reveric/shared/theme/theme.dart';
+import 'package:reveric/shared/widgets/ai/studio_image_model_selector.dart';
 import 'package:reveric/shared/widgets/app_background.dart';
 import 'package:reveric/shared/widgets/cover_studio/sections.dart';
 import 'package:reveric/shared/widgets/cover_studio/slot_view.dart';
@@ -107,6 +108,18 @@ void main() {
     expect(find.text('明末'), findsOneWidget);
     expect(find.text('No cover'), findsOneWidget);
 
+    final model = find.byType(StudioImageModelSelector);
+    expect(model, findsOneWidget);
+    final modelBottom = tester.getBottomLeft(model).dy;
+    for (final section in [
+      CoverQualitySection,
+      CoverComplexitySection,
+      CoverResolutionSection,
+      CoverRatioSection,
+    ]) {
+      expect(modelBottom, lessThan(tester.getTopLeft(find.byType(section)).dy));
+    }
+
     // 书名与署名不再单列输入框，改提示词是唯一入口。
     for (final label in ['7:5', 'custom', 'studio', 'fine']) {
       final chip = tester.widget<CoverChip>(
@@ -148,6 +161,122 @@ void main() {
     expect(find.text('Extra Requirements'), findsNothing);
 
     expect(find.textContaining('Generate 1 schemes'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an unlisted 88API model edits quality and size independently', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(332, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const modelId = 'gateway-custom-image';
+    final provider = aiProviderBuiltinById(
+      'api88',
+    )!.copyWith(imageModels: [modelId]);
+    final choices = ImageModelChoices(provider, modelId);
+    await tester.pumpWidget(
+      _wrap(
+        database: database,
+        choices: choices,
+        child: const CoverImageParametersSection(novelId: 'novel_test'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(CoverImageParametersSection)),
+    );
+    CustomImageParameters readParams() => container
+        .read(coverStudioControllerProvider('novel_test'))
+        .customImageParameters;
+
+    final model = find.byType(StudioImageModelSelector);
+    final qualityHeader = find.byKey(
+      const ValueKey('studio_image_quality_section'),
+    );
+    final sizeHeader = find.byKey(const ValueKey('studio_image_size_section'));
+    expect(model, findsOneWidget);
+    expect(qualityHeader, findsOneWidget);
+    expect(sizeHeader, findsOneWidget);
+    expect(
+      tester.getBottomLeft(model).dy,
+      lessThan(tester.getTopLeft(qualityHeader).dy),
+    );
+    // 质量预置 low / medium / high，尺寸预置封面常见场景。
+    for (final preset in ['low', 'medium', 'high']) {
+      expect(
+        find.byKey(ValueKey('studio_image_quality_$preset')),
+        findsOneWidget,
+      );
+    }
+    for (final sizePreset in [
+      '1024x1536',
+      '768x1024',
+      '1024x1024',
+      '1536x1024',
+    ]) {
+      expect(
+        find.byKey(ValueKey('studio_image_size_$sizePreset')),
+        findsOneWidget,
+      );
+    }
+    expect(readParams(), defaultCustomImageParameters);
+
+    // 选预置质量，再切自定义就地编辑（不弹 Dialog）。
+    await tester.tap(find.byKey(const ValueKey('studio_image_quality_high')));
+    await tester.pumpAndSettle();
+    expect(readParams(), (quality: 'high', size: null));
+
+    await tester.tap(find.byKey(const ValueKey('studio_image_quality_custom')));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+    final qualityInput = find.byKey(
+      const ValueKey('studio_image_custom_quality_input'),
+    );
+    expect(qualityInput, findsOneWidget);
+    await tester.enterText(qualityInput, 'standard');
+    await tester.pump();
+    expect(readParams(), (quality: 'standard', size: null));
+
+    // 选预置尺寸后切自定义：预填宽高并横排展示，校验非法值与修正值。
+    await tester.tap(find.byKey(const ValueKey('studio_image_size_1024x1536')));
+    await tester.pumpAndSettle();
+    expect(readParams(), (quality: 'standard', size: '1024x1536'));
+
+    await tester.tap(find.byKey(const ValueKey('studio_image_size_custom')));
+    await tester.pumpAndSettle();
+    final widthInput = find.byKey(
+      const ValueKey('studio_image_custom_width_input'),
+    );
+    final heightInput = find.byKey(
+      const ValueKey('studio_image_custom_height_input'),
+    );
+    expect(widthInput, findsOneWidget);
+    expect(heightInput, findsOneWidget);
+    expect(
+      tester.getCenter(widthInput).dy,
+      moreOrLessEquals(tester.getCenter(heightInput).dy, epsilon: 1),
+    );
+    expect(tester.widget<TextField>(widthInput).controller?.text, '1024');
+    expect(tester.widget<TextField>(heightInput).controller?.text, '1536');
+
+    await tester.enterText(widthInput, '0');
+    await tester.enterText(heightInput, '1152');
+    await tester.pump();
+    expect(find.text('Enter a positive whole number.'), findsOneWidget);
+
+    await tester.enterText(widthInput, '864');
+    await tester.pump();
+    expect(find.text('Enter a positive whole number.'), findsNothing);
+    expect(readParams(), (quality: 'standard', size: '864x1152'));
+
+    // 单独把质量切回默认，不影响已设置的自定义尺寸。
+    await tester.tap(
+      find.byKey(const ValueKey('studio_image_quality_default')),
+    );
+    await tester.pumpAndSettle();
+    expect(qualityInput, findsNothing);
+    expect(readParams(), (quality: null, size: '864x1152'));
     expect(tester.takeException(), isNull);
   });
 

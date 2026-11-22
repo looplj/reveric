@@ -1985,6 +1985,8 @@ abstract final class LocaleKeys {
   static const commonComplexityMedium = 'common.complexity_medium';
   static const commonComplexityHigh = 'common.complexity_high';
   static const commonConfirm = 'common.confirm';
+  static const commonCustom = 'common.custom';
+  static const commonDefault = 'common.default';
   static const commonContent = 'common.content';
   static const commonContinue = 'common.continue';
   static const commonContinueInBackground = 'common.continue_in_background';
@@ -2508,6 +2510,14 @@ abstract final class LocaleKeys {
   static const editorCoverQualityMedium = 'editor.cover_quality_medium';
   static const editorCoverQualityHigh = 'editor.cover_quality_high';
   static const editorCoverResolution = 'editor.cover_resolution';
+  static const editorImageSize = 'editor.image_size';
+  static const editorImageWidth = 'editor.image_width';
+  static const editorImageHeight = 'editor.image_height';
+  static const editorImageDimensionPositive = 'editor.image_dimension_positive';
+  static const editorImageDimensionsIncomplete =
+      'editor.image_dimensions_incomplete';
+  static const editorImageQualityCustomHint =
+      'editor.image_quality_custom_hint';
   static const editorCoverRatio = 'editor.cover_ratio';
   static const editorCoverAdvanced = 'editor.cover_advanced';
   static const editorCoverInspiration = 'editor.cover_inspiration';

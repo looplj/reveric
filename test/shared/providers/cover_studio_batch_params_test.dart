@@ -53,6 +53,26 @@ void main() {
     await controller.reuseBatch(_batch('batch_default', '{}'));
     expect(state().complexityId, isNull);
   });
+
+  test(
+    'selecting and reusing a batch restores custom parameters independently',
+    () async {
+      controller.selectBatch(
+        _batch('custom', '{"custom_quality":"hd","custom_size":"864x1152"}'),
+      );
+      expect(state().customImageParameters, (quality: 'hd', size: '864x1152'));
+
+      await controller.reuseBatch(
+        _batch('size_only', '{"custom_size":"1024x1536"}'),
+      );
+      expect(state().customImageParameters, (quality: null, size: '1024x1536'));
+
+      controller.selectBatch(
+        _batch('legacy', '{"quality":"medium","size":"1536x2048"}'),
+      );
+      expect(state().customImageParameters, (quality: null, size: null));
+    },
+  );
 }
 
 ImageBatchRow _batch(String id, String paramsJson) => ImageBatchRow(

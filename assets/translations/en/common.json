@@ -44,6 +44,8 @@
   "common.payoff": "Payoff",
   "common.ai": "AI",
   "common.confirm": "Confirm",
+  "common.custom": "Custom",
+  "common.default": "Default",
   "common.duplicate": "Duplicate",
   "common.copy": "Copy",
   "common.copied": "Copied to clipboard",

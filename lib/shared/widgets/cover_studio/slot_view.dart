@@ -129,6 +129,10 @@ class _Failure extends StatelessWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final (titleKey, bodyKey) = coverSlotErrorCopy(slot);
+    final detail = switch (slot.knownError) {
+      AiImageErrorCode.param || AiImageErrorCode.size => slot.errorMessage,
+      _ => null,
+    };
 
     return ColoredBox(
       color: colors.surfaceContainer,
@@ -162,8 +166,10 @@ class _Failure extends StatelessWidget {
             ),
             const SizedBox(height: RevericSpacing.sm),
             Text(
-              context.t(bodyKey),
+              detail ?? context.t(bodyKey),
               textAlign: TextAlign.center,
+              maxLines: detail == null ? null : 4,
+              overflow: detail == null ? null : TextOverflow.ellipsis,
               style: typo.uiSmall.copyWith(color: colors.textMuted),
             ),
             const SizedBox(height: RevericSpacing.md),

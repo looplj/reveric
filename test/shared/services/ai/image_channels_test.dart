@@ -19,6 +19,7 @@ import 'package:http/testing.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/image/choices.dart';
 import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/production_images.dart';
@@ -534,6 +535,64 @@ void main() {
           );
         }),
       );
+    },
+  );
+
+  test(
+    '88API forwards optional quality and pixel size for an unlisted model',
+    () async {
+      const model = 'gateway-custom-image';
+      final provider = _provider('api88').copyWith(imageModels: [model]);
+      final choices = ImageModelChoices(provider, model);
+      expect(choices.supportsCustomParameters, isTrue);
+      expect(
+        ImageModelChoices(provider, 'gpt-image-2').supportsCustomParameters,
+        isFalse,
+      );
+      final service = AiImageGenerationService(provider, model: model);
+      final sentBodies = <Map<String, dynamic>>[];
+      final options = ImageInvocationOptions(
+        capabilities: choices.capabilities,
+      );
+      await http.runWithClient(
+        () async {
+          await service.generateImage('cover', options: options);
+          await service.generateImage(
+            'cover',
+            options: options,
+            quality: 'standard',
+            size: '864x1152',
+          );
+        },
+        () => _ReferenceClient((request) async {
+          expect(request.url.path, endsWith('/images/generations'));
+          sentBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'b64_json': _png},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      expect(sentBodies, [
+        {
+          'model': model,
+          'prompt': 'cover',
+          'n': 1,
+          'response_format': 'b64_json',
+        },
+        {
+          'model': model,
+          'prompt': 'cover',
+          'n': 1,
+          'response_format': 'b64_json',
+          'quality': 'standard',
+          'size': '864x1152',
+        },
+      ]);
     },
   );
 

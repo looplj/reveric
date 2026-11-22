@@ -94,6 +94,8 @@ void main() {
   late String baseUrl;
   String? requestedResponseFormat;
   Map<String, dynamic>? requestedBody;
+  String? requestedEditBody;
+  String? generationError;
   int imageStatus = 200;
 
   setUp(() async {
@@ -114,6 +116,8 @@ void main() {
     await RevericPaths.initialize();
     requestedResponseFormat = null;
     requestedBody = null;
+    requestedEditBody = null;
+    generationError = null;
     imageStatus = 200;
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     baseUrl = 'http://127.0.0.1:${server.port}/v1';
@@ -122,11 +126,32 @@ void main() {
       expect(request.connectionInfo!.remoteAddress.isLoopback, isTrue);
       expect(request.headers.host, '127.0.0.1');
       if (request.method == 'POST' &&
-          request.uri.path == '/v1/images/generations') {
-        final raw = await utf8.decoder.bind(request).join();
-        final body = jsonDecode(raw) as Map<String, dynamic>;
-        requestedBody = body;
-        requestedResponseFormat = body['response_format'] as String?;
+          {
+            '/v1/images/generations',
+            '/v1/images/edits',
+          }.contains(request.uri.path)) {
+        final raw = await const Utf8Decoder(
+          allowMalformed: true,
+        ).bind(request).join();
+        if (request.uri.path == '/v1/images/edits') {
+          requestedEditBody = raw;
+        } else {
+          final body = jsonDecode(raw) as Map<String, dynamic>;
+          requestedBody = body;
+          requestedResponseFormat = body['response_format'] as String?;
+        }
+        if (generationError case final message?) {
+          request.response
+            ..statusCode = 400
+            ..headers.contentType = ContentType.json
+            ..write(
+              jsonEncode({
+                'error': {'code': '1214', 'message': message},
+              }),
+            );
+          await request.response.close();
+          return;
+        }
         request.response
           ..statusCode = 200
           ..headers.contentType = ContentType.json
@@ -176,6 +201,105 @@ void main() {
     if (await supportDir.exists()) {
       await supportDir.delete(recursive: true);
     }
+  });
+
+  test(
+    'unlisted compatible models omit default parameters and send explicit values',
+    () async {
+      const model = 'cogview-3-flash';
+      final provider = _openAiCompatibleProvider(
+        baseUrl,
+      ).copyWith(imageModels: [model]);
+      final service = AiImageGenerationService(provider, model: model);
+
+      await service.generateImage('a cover');
+      expect(requestedBody, {'model': model, 'prompt': 'a cover'});
+
+      await service.generateImage(
+        'a cover',
+        quality: 'standard',
+        size: '864x1152',
+      );
+      expect(requestedBody, {
+        'model': model,
+        'prompt': 'a cover',
+        'quality': 'standard',
+        'size': '864x1152',
+      });
+    },
+  );
+
+  test('registered models keep the OpenAI image request defaults', () async {
+    const model = 'image-advance';
+    final service = AiImageGenerationService(
+      _openAiCompatibleProvider(baseUrl),
+      model: model,
+    );
+
+    await service.generateImage(
+      'a cover',
+      quality: 'medium',
+      size: '1536x2048',
+    );
+    expect(requestedBody, {
+      'model': model,
+      'prompt': 'a cover',
+      'output_format': 'png',
+      'n': 1,
+      'quality': 'medium',
+      'size': '1536x2048',
+    });
+  });
+
+  test(
+    'unlisted compatible models preserve defaults and custom parameters in edits',
+    () async {
+      const model = 'compatible-image';
+      final service = AiImageGenerationService(
+        _openAiCompatibleProvider(baseUrl).copyWith(imageModels: [model]),
+        model: model,
+      );
+      final reference = 'data:image/png;base64,${base64Encode(_pngBytes)}';
+      await service.editImages('a cover', imageData: [reference]);
+      expect(requestedEditBody, contains('name="image[]"'));
+      for (final field in ['size', 'quality', 'n', 'output_format']) {
+        expect(requestedEditBody, isNot(contains('name="$field"')));
+      }
+
+      await service.editImages(
+        'a cover',
+        imageData: [reference],
+        quality: 'hd',
+        size: '864x1152',
+      );
+      expect(requestedEditBody, contains('name="quality"\r\n\r\nhd'));
+      expect(requestedEditBody, contains('name="size"\r\n\r\n864x1152'));
+    },
+  );
+
+  test('a provider quality error keeps its readable message', () async {
+    const model = 'cogview-3-flash';
+    generationError = '不支持当前quality值';
+    final service = AiImageGenerationService(
+      _openAiCompatibleProvider(baseUrl).copyWith(imageModels: [model]),
+      model: model,
+    );
+    await expectLater(
+      service.generateImage('a cover', quality: 'medium'),
+      throwsA(
+        isA<AiImageGenerationException>()
+            .having(
+              (exception) => exception.code,
+              'code',
+              AiImageErrorCode.param,
+            )
+            .having(
+              (exception) => exception.userMessage,
+              'message',
+              generationError,
+            ),
+      ),
+    );
   });
 
   for (final model in imageModelsForProvider('agnes')) {

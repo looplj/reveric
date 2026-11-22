@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../../../models/ai_provider.dart';
+import '../../../models/image/choices.dart';
 import '../image.dart';
 import 'client.dart';
 
@@ -42,15 +43,14 @@ class OpenAiImageClient extends ImageClient {
         'timeout_s=${imageHttpDataTimeout.inSeconds}',
       );
 
-      final quality = request.quality;
+      final custom = supportsCustomImageParameters(config, request.model);
       final body = <String, dynamic>{
         'model': request.model,
         'prompt': request.prompt,
-        'output_format': 'png',
-        'n': 1,
-        'size': request.size ?? _generateSize,
-        // 只有 OpenAI 兼容通道认这个参数；Doubao / Gemini 不发，避免请求被拒。
-        if (quality != null && quality.isNotEmpty) 'quality': quality,
+        if (!custom) ...{'output_format': 'png', 'n': 1},
+        'size': ?(request.size ?? (custom ? null : _generateSize)),
+        if (request.quality case final String quality when quality.isNotEmpty)
+          'quality': quality,
         if (request.complexity case final String complexity)
           'complexity': complexity,
       };
@@ -113,12 +113,12 @@ class OpenAiImageClient extends ImageClient {
         'timeout_s=${imageHttpDataTimeout.inSeconds}',
       );
 
+      final custom = supportsCustomImageParameters(config, request.model);
       final form = FormData.fromMap(<String, dynamic>{
         'model': request.model,
         'prompt': request.prompt,
-        'output_format': 'png',
-        'n': '1',
-        'size': request.size ?? _editSize,
+        if (!custom) ...{'output_format': 'png', 'n': '1'},
+        'size': ?(request.size ?? (custom ? null : _editSize)),
       });
       final quality = request.quality;
       if (quality != null && quality.isNotEmpty) {

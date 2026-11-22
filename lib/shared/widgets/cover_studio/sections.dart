@@ -27,9 +27,10 @@ import '../../providers/cover_providers.dart';
 import '../../providers/cover_studio_providers.dart';
 import '../../services/cover_prompt_builder.dart';
 import '../../theme/theme.dart';
-import 'chips.dart';
+import '../ai/studio_image_custom_parameters.dart';
 import '../ai/studio_image_model_selector.dart';
 import '../media_asset_image.dart';
+import 'chips.dart';
 
 /// 设计师表单只有提示词一个字段：书名与署名不再单列输入框，避免与提示词正文
 /// 各说各话。两端共用同一个 schema。
@@ -326,6 +327,53 @@ class CoverCompositionSection extends StatelessWidget {
   }
 }
 
+class CoverImageParametersSection extends ConsumerWidget {
+  const CoverImageParametersSection({super.key, required this.novelId});
+
+  final String novelId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final choices = ref.watch(coverDraftImageChoicesProvider(novelId));
+    final provider = coverStudioControllerProvider(novelId);
+    final (modelId, busy, customParameters) = ref.watch(
+      provider.select(
+        (state) => (state.modelId, state.busy, state.customImageParameters),
+      ),
+    );
+    final controller = ref.read(provider.notifier);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        StudioImageModelSelector(
+          value: modelId,
+          enabled: !busy,
+          onChanged: controller.setModel,
+        ),
+        const SizedBox(height: RevericSpacing.x3l),
+        if (choices != null && choices.supportsCustomParameters)
+          StudioImageCustomParameters(
+            key: ValueKey((choices.provider.id, choices.model)),
+            parameters: customParameters,
+            enabled: !busy,
+            scene: StudioImageParameterScene.cover,
+            showSectionIcons: true,
+            sectionSpacing: RevericSpacing.x3l,
+            onChanged: controller.setCustomImageParameters,
+          )
+        else ...[
+          CoverQualitySection(novelId: novelId),
+          const SizedBox(height: RevericSpacing.x3l),
+          CoverComplexitySection(novelId: novelId),
+          CoverResolutionSection(novelId: novelId),
+          const SizedBox(height: RevericSpacing.x3l),
+          CoverRatioSection(novelId: novelId),
+        ],
+      ],
+    );
+  }
+}
+
 class CoverQualitySection extends ConsumerWidget {
   const CoverQualitySection({super.key, required this.novelId});
 
@@ -468,12 +516,6 @@ class CoverRatioSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        StudioImageModelSelector(
-          value: state.modelId,
-          enabled: !state.busy,
-          onChanged: controller.setModel,
-        ),
-        const SizedBox(height: RevericSpacing.lg),
         CoverSectionHead(
           icon: RevericIcons.image_outlined,
           label: context.t(LocaleKeys.editorCoverRatio),

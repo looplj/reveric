@@ -6,6 +6,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
+//   assets/translations/en/map_editor.json
+//   assets/translations/zh-CN/map_editor.json
 // 遵循的 Rules:
 //   .agents/rules/service-naming.md
 //   .agents/rules/ai-calling.md
@@ -119,6 +121,7 @@ class MapGenerationRequest {
     this.customPrompt,
     required this.includeLocations,
     this.quality = mapDefaultQualityId,
+    this.customImageParameters,
     this.referenceCurrentImage = false,
     this.parentReferenceMapId,
   });
@@ -133,6 +136,7 @@ class MapGenerationRequest {
 
   /// 当前模型声明的质量值；空字符串表示未指定。
   final String quality;
+  final CustomImageParameters? customImageParameters;
 
   /// 制图师面板的可编辑地图内容。为空时由管线按疆域/地点清单自行拼装；
   /// 当前画风在调用图片模型前统一追加，不写回编辑框。
@@ -226,7 +230,7 @@ class GenerateMapOrchestrator {
     }
     onProgress(
       MapGenerationStage.image,
-      '生成 ${request.resolutionId} 地图，地名直接写进画面',
+      tr(LocaleKeys.mapEditorStudioStageImage),
     );
     final userPrompt = request.customPrompt?.trim() ?? '';
     final basePrompt = userPrompt.isNotEmpty
@@ -246,20 +250,35 @@ class GenerateMapOrchestrator {
     if (choices == null) {
       throw MapGenerationException(tr(LocaleKeys.aiImageParametersUnavailable));
     }
-    final ratio = request.ratioId ?? choices.defaultRatio('16:9');
-    final resolution = choices.resolution(request.resolutionId);
-    final quality = request.quality.isEmpty
-        ? choices.defaults.quality
-        : request.quality;
-    final complexity = request.complexity ?? choices.defaults.complexity;
+    final custom = choices.supportsCustomParameters;
+    final customParameters = request.customImageParameters;
+    final ratio = custom
+        ? null
+        : request.ratioId ?? choices.defaultRatio('16:9');
+    final resolution = custom ? null : choices.resolution(request.resolutionId);
+    final quality = custom
+        ? customParameters?.quality
+        : (request.quality.isEmpty
+              ? choices.defaults.quality
+              : request.quality);
+    final complexity = custom
+        ? null
+        : request.complexity ?? choices.defaults.complexity;
+    final String? size;
     try {
-      choices.validate(
-        ratio: ratio,
-        resolution: resolution,
-        references: referenceImages.length,
-        quality: quality,
-        complexity: complexity,
-      );
+      if (custom) {
+        size = customParameters?.size;
+        choices.validateCustomSize(size, references: referenceImages.length);
+      } else {
+        choices.validate(
+          ratio: ratio!,
+          resolution: resolution!,
+          references: referenceImages.length,
+          quality: quality,
+          complexity: complexity,
+        );
+        size = choices.size(ratio, resolution);
+      }
     } on FormatException {
       throw MapGenerationException(tr(LocaleKeys.aiImageParametersUnavailable));
     }
@@ -269,7 +288,6 @@ class GenerateMapOrchestrator {
       capabilities: choices.capabilities,
       defaults: choices.rawDefaults,
     );
-    final size = choices.size(ratio, resolution);
     final imageResult = useEdit
         ? await imageEditCallback!(
             imagePrompt,

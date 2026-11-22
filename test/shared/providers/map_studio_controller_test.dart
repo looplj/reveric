@@ -6,6 +6,7 @@
 //   .agents/rules/testing.md
 import 'dart:io';
 import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/image/choices.dart';
 import 'package:reveric/shared/models/plugin/provider.dart';
 import 'package:reveric/shared/models/plugin/provider_registry.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
@@ -30,6 +31,57 @@ import 'package:reveric/shared/utils/storage_paths.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'unlisted 88API map models use default or explicit custom parameters',
+    () async {
+      final database = NovelContentDatabase.forTest(NativeDatabase.memory());
+      addTearDown(database.close);
+      const model = 'gateway-custom-image';
+      final provider = aiProviderBuiltinById(
+        'api88',
+      )!.copyWith(imageModels: [model]);
+      final requests = <CustomImageParameters>[];
+      final orchestrator = GenerateMapOrchestrator(
+        database: database,
+        imageChoices: ImageModelChoices(provider, model),
+        imageGenerateCallback:
+            (prompt, {model, options, size, quality, complexity}) async {
+              expect(options?.aspectRatio, isNull);
+              expect(options?.resolution, isNull);
+              requests.add((quality: quality, size: size));
+              return const AiImageGenerationResult(
+                imageBase64:
+                    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+              );
+            },
+        imageEditCallback: null,
+        placeNameReader: null,
+        onProgress: (_, _) {},
+        isCancelled: () => false,
+      );
+
+      for (final parameters in [
+        defaultCustomImageParameters,
+        (quality: 'hd', size: '1152x864'),
+      ]) {
+        await orchestrator.generate(
+          mapId: 'test-map',
+          request: MapGenerationRequest(
+            styleId: null,
+            resolutionId: '2K',
+            quality: 'medium',
+            customImageParameters: parameters,
+            includeLocations: false,
+          ),
+        );
+      }
+      expect(requests, [
+        defaultCustomImageParameters,
+        (quality: 'hd', size: '1152x864'),
+      ]);
+    },
+  );
 
   test(
     'generation applies automatically and previous images remain restorable',

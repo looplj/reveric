@@ -7,6 +7,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/image/choices.dart';
 import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/services/ai/image/agnes.dart';
 import '../../../helpers/media_provider_types.dart';
@@ -65,7 +66,9 @@ void main() {
     () {
       for (final type in [
         'openrouter',
+        'openai',
         'openai_compatible',
+        'api88',
         'qwen',
         'agnes',
         'atlascloud',
@@ -74,6 +77,11 @@ void main() {
         final provider = aiProviderBuiltinById(
           'openai',
         )!.copyWith(type: type, enabled: true, imageModels: ['custom-image']);
+        expect(
+          ImageModelChoices(provider, 'custom-image').supportsCustomParameters,
+          isTrue,
+          reason: type,
+        );
         final caps = ProductionImageCapabilities(provider, 'custom-image');
         caps.validate(
           prompt: 'cover',
