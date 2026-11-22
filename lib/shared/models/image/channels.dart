@@ -145,17 +145,24 @@ final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
   ImageProtocol.openai_images: _pixelSizeChannels,
   ImageProtocol.codex_image: _pixelSizeChannels,
   ImageProtocol.gemini_image: _geminiChannels,
-  ImageProtocol.purefox_media: purefoxMediaImageModels,
+  ImageProtocol.purefox_media: {
+    for (final id in [
+      'gpt-image-2.6',
+      ...imageModelsCatalog['gpt-image-2.6']!.aliases,
+    ])
+      id: const ImageChannelModel(
+        catalogId: 'gpt-image-2.6',
+        includedInPresets: false,
+        capabilities: ImageModelCapabilities(complexityLevels: {}),
+        requestDefaults: ImageRequestDefaults(complexity: ConfigValue(null)),
+      ),
+  },
   // https://platform.minimax.io/docs/api-reference/image-generation-h3-generations
   ImageProtocol.minimax_image: {
     for (final id in ['MiniMax-H3-Image', 'MiniMax-H3-Image-Highspeed'])
       id: ImageChannelModel(catalogId: id),
   },
 };
-
-/// PureFox 媒体网关的图片型号目录：不预置，填 key 后按站点 `/v1/models`
-/// 返回的 kind / qualities / refImages 登记。
-final purefoxMediaImageModels = <String, ImageChannelModel>{};
 
 const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
   // https://www.atlascloud.ai/docs/openapi-index
@@ -187,7 +194,7 @@ const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
     ),
     // https://static.atlascloud.ai/model/schema/openai-gpt-image-2.6-sunburst-text-to-image.json
     'openai/gpt-image-2.6-sunburst/text-to-image': ImageChannelModel(
-      catalogId: 'gpt-image-2.6-sunburst',
+      catalogId: 'gpt-image-2.6',
       capabilities: _atlasGptImage25Capabilities,
       requestDefaults: _atlasGptImage25Defaults,
       protocolOptions: AtlasCloudImageOptions(
@@ -196,7 +203,7 @@ const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
       ),
     ),
     'openai/gpt-image-2.6-flare/text-to-image': ImageChannelModel(
-      catalogId: 'gpt-image-2.6-flare',
+      catalogId: 'gpt-image-2.6',
       capabilities: _atlasGptImage25Capabilities,
       requestDefaults: _atlasGptImage25Defaults,
       protocolOptions: AtlasCloudImageOptions(
@@ -473,11 +480,11 @@ const _listedImageChannels = <ImageProtocol, Map<String, ImageChannelModel>>{
       requestDefaults: ImageRequestDefaults(outputFormat: ConfigValue('png')),
     ),
     'openai/gpt-image-2.6-sunburst': ImageChannelModel(
-      catalogId: 'gpt-image-2.6-sunburst',
+      catalogId: 'gpt-image-2.6',
       requestDefaults: _openrouterDefaults,
     ),
     'openai/gpt-image-2.6-flare': ImageChannelModel(
-      catalogId: 'gpt-image-2.6-flare',
+      catalogId: 'gpt-image-2.6',
       requestDefaults: _openrouterDefaults,
     ),
     'openai/gpt-image-2.5-sunburst': ImageChannelModel(

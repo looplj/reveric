@@ -156,11 +156,15 @@ class ProductionImageCapabilities {
               resolutions: const {'auto', '1K', '2K', '4K'},
               sizes: _usesRatioParameters ? const {} : _unlistedImageSizes,
               unlimitedReferences: true,
+              complexityLevels: lookupImageModel(
+                model,
+              )?.capabilities.complexityLevels,
             ));
 
   bool get _usesRatioParameters =>
       provider.typeConfig.imageProtocol == ImageProtocol.openrouter_image ||
       provider.typeConfig.imageProtocol == ImageProtocol.gemini_image ||
+      provider.typeConfig.imageProtocol == ImageProtocol.purefox_media ||
       (provider.typeConfig.imageProtocol == ImageProtocol.new_api_images &&
           model.startsWith('gemini-'));
 

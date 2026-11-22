@@ -1,4 +1,4 @@
-// 职责: 验证 PureFox 媒体网关按 /v1/models 动态登记型号、图片档位编码、视频 NDJSON 流与参考素材上传。
+// 职责: 验证 PureFox 媒体网关的模型发现、图片请求编码、视频规格登记与生成。
 // 关联文件:
 //   lib/shared/services/ai/purefox_media.dart
 //   lib/shared/services/ai/image/purefox.dart
@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/production/image_request.dart';
 import 'package:reveric/shared/models/video/catalog.dart';
 import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/models/video/request.dart';
@@ -42,12 +43,7 @@ String _catalogId(String modelId) => '$purefoxMediaCatalogPrefix$modelId';
 String _payload() => jsonEncode({
   'object': 'list',
   'data': [
-    {
-      'id': _imageId,
-      'kind': 'image',
-      'qualities': ['1K', '2K'],
-      'refImages': 3,
-    },
+    {'id': _imageId, 'kind': 'image'},
     {
       'id': _videoId,
       'kind': 'video',
@@ -87,7 +83,7 @@ Future<PurefoxMediaModelCatalog> _registerCatalog() async {
   return catalog;
 }
 
-/// 站点真实返回中存在与内置目录同名的型号；登记时必须落在 PureFox 命名空间。
+/// 站点返回与内置目录同名的型号，用于验证目录隔离。
 String _collidingPayload() => jsonEncode({
   'data': [
     {
@@ -173,15 +169,9 @@ void main() {
           const MethodChannel('plugins.flutter.io/path_provider'),
           null,
         );
-    purefoxMediaImageModels.remove(_imageId);
     purefoxMediaVideoModels.remove(_videoId);
-    imageModelsCatalog.remove(_catalogId(_imageId));
     videoModelsCatalog.remove(_catalogId(_videoId));
-    purefoxMediaImageModels.remove(_collidingImageId);
-    purefoxMediaImageModels.remove(_openAiImageId);
-    imageModelsCatalog.remove(_catalogId(_openAiImageId));
     purefoxMediaVideoModels.remove(_collidingVideoId);
-    imageModelsCatalog.remove(_catalogId(_collidingImageId));
     videoModelsCatalog.remove(_catalogId(_collidingVideoId));
     await support.delete(recursive: true);
   });
@@ -204,10 +194,7 @@ void main() {
     expect(catalog.idsOfKind('image'), [_imageId]);
     expect(catalog.idsOfKind('video'), [_videoId]);
 
-    final image = lookupImageChannelModel('purefox_media', _imageId);
-    expect(image, isNotNull);
-    expect(image!.capabilities.resolutions, {'1K', '2K'});
-    expect(image.capabilities.maxReferences, 3);
+    expect(lookupImageChannelModel('purefox_media', _imageId), isNull);
 
     final video = lookupVideoChannelModel('purefox_media', _videoId);
     expect(video, isNotNull);
@@ -274,15 +261,21 @@ void main() {
   });
 
   test('image request sends quality tier and aspect ratio', () async {
-    await _registerCatalog();
+    const model = 'gpt-image-2.6';
+    final provider = _media().copyWith(imageModels: [model]);
+    final capabilities = ProductionImageCapabilities(provider, model);
+    expect(capabilities.ratios, contains('16:9'));
+    expect(capabilities.resolutions, ['1K', '2K', '4K']);
+    expect(capabilities.size('16:9', '1K'), isNull);
     final seen = <http.Request>[];
     await http.runWithClient(
       () async {
-        final service = AiImageGenerationService(_media(), model: _imageId);
+        final service = AiImageGenerationService(provider, model: model);
         final result = await service.generateImage(
           'a cat',
+          size: capabilities.size('16:9', '1K'),
           aspectRatio: '16:9',
-          resolution: '2K',
+          resolution: '1K',
         );
         expect(
           File(result.localFilePath!).readAsBytesSync(),
@@ -306,25 +299,34 @@ void main() {
       'https://img.purefox.org/v1/images/generations',
     );
     expect(jsonDecode(seen.single.body), {
-      'model': _imageId,
+      'model': model,
       'prompt': 'a cat',
       'n': 1,
       'response_format': 'url',
-      'quality': '2K',
+      'quality': '1K',
       'aspect_ratio': '16:9',
     });
   });
 
-  test('image rejects unsupported resolution before network', () async {
-    await _registerCatalog();
-    await http.runWithClient(() async {
-      final service = AiImageGenerationService(_media(), model: _imageId);
-      await expectLater(
-        service.generateImage('a cat', aspectRatio: '1:1', resolution: '8K'),
-        throwsA(isA<AiImageGenerationException>()),
-      );
-    }, () => MockClient((_) => throw StateError('must not send')));
-  });
+  test(
+    'image rejects unsupported resolution and ratio before network',
+    () async {
+      await http.runWithClient(() async {
+        final service = AiImageGenerationService(
+          _media(),
+          model: 'gpt-image-2.6',
+        );
+        await expectLater(
+          service.generateImage('a cat', aspectRatio: '1:1', resolution: '8K'),
+          throwsA(isA<AiImageGenerationException>()),
+        );
+        await expectLater(
+          service.generateImage('a cat', aspectRatio: '2:1', resolution: '1K'),
+          throwsA(isA<AiImageGenerationException>()),
+        );
+      }, () => MockClient((_) => throw StateError('must not send')));
+    },
+  );
 
   test('video submit reads the receipt from the X-Job-Id header', () async {
     await _registerCatalog();
@@ -658,14 +660,10 @@ void main() {
       atlasCapabilities.durations,
     );
 
-    // PureFox 自己的条目仍按站点返回登记，只是换到命名空间内。
-    final purefox = lookupImageChannelModel('purefox_media', _collidingImageId);
-    expect(purefox, isNotNull);
-    expect(purefox!.capabilities.resolutions, {'1K'});
-    expect(purefox.capabilities.maxReferences, 1);
+    expect(lookupImageChannelModel('purefox_media', _collidingImageId), isNull);
     expect(
       imageModelsCatalog.containsKey(_catalogId(_collidingImageId)),
-      isTrue,
+      isFalse,
     );
 
     final video = lookupVideoChannelModel('purefox_media', _collidingVideoId);
@@ -680,7 +678,12 @@ void main() {
 
   test('requests strip the PureFox catalog prefix', () async {
     await _registerCollidingCatalog();
-    final image = AiImageGenerationService(_media(), model: _collidingImageId);
+    final provider = _media().copyWith(imageModels: [_collidingImageId]);
+    final image = AiImageGenerationService(provider, model: _collidingImageId);
+    final size = ProductionImageCapabilities(
+      provider,
+      _collidingImageId,
+    ).size('16:9', 'auto');
     expect(
       purefoxUpstreamModel(_catalogId(_collidingImageId)),
       _collidingImageId,
@@ -688,7 +691,13 @@ void main() {
 
     final seen = <http.Request>[];
     await http.runWithClient(
-      () => image.generateImage('a cat', aspectRatio: '1:1', resolution: '1K'),
+      () => image.generateImage(
+        'a cat',
+        model: _catalogId(_collidingImageId),
+        size: size,
+        aspectRatio: '16:9',
+        resolution: 'auto',
+      ),
       () => MockClient((request) async {
         seen.add(request);
         return http.Response(
@@ -701,7 +710,14 @@ void main() {
         );
       }),
     );
-    expect(jsonDecode(seen.single.body)['model'], _collidingImageId);
+    expect(jsonDecode(seen.single.body), {
+      'model': _collidingImageId,
+      'prompt': 'a cat',
+      'n': 1,
+      'response_format': 'url',
+      'quality': '1K',
+      'aspect_ratio': '16:9',
+    });
 
     final api = PurefoxVideoClient(
       httpClient: MockClient((_) async => http.Response('', 200)),

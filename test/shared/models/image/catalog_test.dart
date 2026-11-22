@@ -73,6 +73,7 @@ void main() {
         'agnes',
         'atlascloud',
         'gemini',
+        'purefox_media',
       ]) {
         final provider = aiProviderBuiltinById(
           'openai',
@@ -106,7 +107,9 @@ void main() {
         expect(caps.allowsReferenceCount(32), isTrue);
         expect(
           caps.size('16:9', '2K'),
-          ['openrouter', 'gemini'].contains(type) ? null : '2048x1152',
+          ['openrouter', 'gemini', 'purefox_media'].contains(type)
+              ? null
+              : '2048x1152',
         );
         expect(
           () => caps.validate(
@@ -468,11 +471,30 @@ void main() {
   });
 
   test('gpt image 2.6 complexity comes from the catalog', () {
+    final entry = lookupImageModel('gpt-image-2.6')!;
+    final purefox = _provider('purefox_media');
     for (final id in ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare']) {
-      final entry = lookupImageModel(id)!;
-      expect(entry.capabilities.complexityLevels, {'low', 'medium', 'high'});
-      expect(entry.requestDefaults.complexity, 'high');
+      expect(recognizeImageModel(id), 'gpt-image-2.6');
+      expect(lookupImageModel(id), same(entry));
+      expect(lookupImageChannelModel('purefox_media', id)!.model, same(entry));
+      expect(imageComplexityLevels(purefox, id), isEmpty);
+      expect(imageComplexityFor(purefox, id, 'high'), isNull);
     }
+    expect(imageComplexityLevels(purefox, 'gpt-image-2.6'), isEmpty);
+    expect(imageComplexityFor(purefox, 'gpt-image-2.6', 'high'), isNull);
+    final api88Choices = ImageModelChoices(
+      _provider('api88'),
+      'gpt-image-2.6-flare',
+    );
+    expect(api88Choices.supportsCustomParameters, isTrue);
+    expect(api88Choices.complexities, isEmpty);
+    expect(api88Choices.capabilities.complexityLevels, {
+      'low',
+      'medium',
+      'high',
+    });
+    expect(entry.capabilities.complexityLevels, {'low', 'medium', 'high'});
+    expect(entry.requestDefaults.complexity, 'high');
     expect(
       lookupImageModel('gpt-image-2.5-sunburst')!.capabilities.complexityLevels,
       isEmpty,

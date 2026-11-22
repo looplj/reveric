@@ -13,6 +13,7 @@ import '../../database/novel_content_database.dart';
 import '../../logger/app_logger.dart';
 import '../../models/generation/task.dart';
 import '../../models/ai_provider.dart';
+import '../../models/image/channels.dart' show imageComplexityFor;
 import '../../models/production/image_request.dart';
 import '../../models/production/view_presets.dart';
 import '../../models/storyboard/prompt.dart';
@@ -162,7 +163,7 @@ class ProductionImageGenerateOrchestrator {
         ratio: clip.ratio,
         resolution: clip.resolution,
         size: capabilities.size(clip.ratio, clip.resolution),
-        complexity: preset.complexity,
+        complexity: imageComplexityFor(provider, modelId, preset.complexity),
         references: references,
         capabilities: capabilities.effectiveCapabilities,
         requestDefaults:

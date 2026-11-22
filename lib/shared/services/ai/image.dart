@@ -770,12 +770,7 @@ class AiImageGenerationService {
                       request.quality != defaults?.quality)) {
           throw invalidImageParameter();
         }
-        final providerValidatesRatio =
-            client is PurefoxImageClient &&
-            effectiveCapabilities.ratios.length == 1 &&
-            effectiveCapabilities.ratios.contains('auto');
         if ((request.aspectRatio != null &&
-                !providerValidatesRatio &&
                 !effectiveCapabilities.ratios.contains(request.aspectRatio)) ||
             (request.resolution != null &&
                 !effectiveCapabilities.resolutions.contains(
