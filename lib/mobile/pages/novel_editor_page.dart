@@ -81,7 +81,9 @@ import '../widgets/foreshadowings_panel.dart';
 import '../widgets/maps_panel.dart';
 import '../widgets/outlines_panel.dart';
 import '../widgets/overview_panel.dart';
+import '../widgets/section_chips.dart';
 import '../widgets/section_panel.dart';
+import '../widgets/workspace_header.dart';
 import 'chapter_editor_page.dart';
 import 'character_editor_page.dart';
 import 'entry_editor_page.dart';
@@ -93,6 +95,7 @@ import 'novel_create_page.dart';
 import 'outline_editor_page.dart';
 import '../../shared/components/reveric_dialog.dart';
 import '../../shared/components/reveric_button.dart';
+import '../../shared/components/reveric_icon_button.dart';
 
 export '../services/document_import_orchestrator.dart'
     show mobileTextDocumentImportTypeGroup;
@@ -939,15 +942,23 @@ class _EditorBody extends HookConsumerWidget {
           children: [
             Column(
               children: [
-                _EditorHeader(
-                  novel: novel,
-                  selectedSection: selectedSection.value,
-                  sectionLabel: context.t(
-                    _sectionLabelKeys[selectedSection.value],
-                  ),
-                  createLabel: createLabel,
-                  onCreate: onCreate,
-                  onSelectSection: selectSection,
+                MobileWorkspaceHeader(
+                  title: novel.title,
+                  subtitle: context.t(_sectionLabelKeys[selectedSection.value]),
+                  onBack: () => Navigator.of(context).maybePop(),
+                  actions: [
+                    if (createLabel != null && onCreate != null)
+                      RevericIconButton(
+                        icon: RevericIcons.add,
+                        tooltip: createLabel,
+                        onPressed: onCreate,
+                      ),
+                  ],
+                ),
+                MobileSectionChips(
+                  labels: [for (final key in _sectionLabelKeys) context.t(key)],
+                  selectedIndex: selectedSection.value,
+                  onSelect: selectSection,
                 ),
                 // 快速开书草稿：头部下方提示条，「加入书架」后作品才进书库。
                 if (novel.draft)
@@ -1065,210 +1076,6 @@ class _AddToLibraryBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _EditorHeader extends StatelessWidget {
-  const _EditorHeader({
-    required this.novel,
-    required this.selectedSection,
-    required this.sectionLabel,
-    required this.createLabel,
-    required this.onCreate,
-    required this.onSelectSection,
-  });
-
-  final Novel novel;
-
-  /// 当前分区索引（对应 [_sectionLabelKeys]）。
-  final int selectedSection;
-
-  /// 当前分区名（标题副标题）。
-  final String sectionLabel;
-
-  /// 新建文案与入口；无新建入口的分区（概览）为 null。
-  final String? createLabel;
-  final VoidCallback? onCreate;
-  final ValueChanged<int> onSelectSection;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            RevericSpacing.xs,
-            RevericSpacing.sm,
-            RevericSpacing.xs,
-            RevericSpacing.sm,
-          ),
-          child: Row(
-            children: [
-              _HeaderIconButton(
-                icon: RevericIcons.arrow_back,
-                onTap: () => Navigator.of(context).maybePop(),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      novel.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: typo.uiSemibold.copyWith(
-                        color: colors.textPrimary,
-                      ),
-                    ),
-                    if (sectionLabel.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        sectionLabel,
-                        style: typo.uiTiny.copyWith(color: colors.textMuted),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              // 新建入口统一放在标题栏右上角（概览无新建入口）。
-              if (createLabel != null && onCreate != null)
-                _HeaderCreateButton(onTap: onCreate!),
-            ],
-          ),
-        ),
-        _SectionChips(
-          selectedIndex: selectedSection,
-          onSelect: onSelectSection,
-        ),
-      ],
-    );
-  }
-}
-
-/// 标题栏右上角的新建按钮（无底色，黑/白随主题适配）。
-class _HeaderCreateButton extends StatelessWidget {
-  const _HeaderCreateButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    return InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      child: Padding(
-        padding: const EdgeInsets.all(RevericSpacing.sm),
-        child: RevericIcon(
-          RevericIcons.add,
-          size: 22,
-          color: colors.textPrimary,
-        ),
-      ),
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({required this.icon, required this.onTap});
-
-  final String icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    return InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      child: Padding(
-        padding: const EdgeInsets.all(RevericSpacing.sm),
-        child: RevericIcon(icon, size: 22, color: colors.textSecondary),
-      ),
-    );
-  }
-}
-
-class _SectionChips extends HookWidget {
-  const _SectionChips({required this.selectedIndex, required this.onSelect});
-
-  final int selectedIndex;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
-    final scrollController = useScrollController();
-    final chipKeys = useMemoized(
-      () => List.generate(_sectionLabelKeys.length, (_) => GlobalKey()),
-      const [],
-    );
-
-    useEffect(() {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final chipContext = chipKeys[selectedIndex].currentContext;
-        if (chipContext != null) {
-          Scrollable.ensureVisible(
-            chipContext,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOutCubic,
-            alignment: 0.5,
-          );
-        }
-      });
-      return null;
-    }, [selectedIndex]);
-
-    return SizedBox(
-      height: 42,
-      child: ListView.separated(
-        controller: scrollController,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(
-          RevericSpacing.xl,
-          0,
-          RevericSpacing.xl,
-          RevericSpacing.lg,
-        ),
-        itemCount: _sectionLabelKeys.length,
-        separatorBuilder: (_, _) => const SizedBox(width: RevericSpacing.xs),
-        itemBuilder: (context, index) {
-          final key = _sectionLabelKeys[index];
-          final isActive = index == selectedIndex;
-          return InkWell(
-            key: chipKeys[index],
-            onTap: () => onSelect(index),
-            borderRadius: BorderRadius.circular(RevericRadius.pill),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOutCubic,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(
-                horizontal: RevericSpacing.xl,
-              ),
-              decoration: BoxDecoration(
-                color: isActive ? colors.accent : colors.surface,
-                borderRadius: BorderRadius.circular(RevericRadius.pill),
-                border: Border.all(
-                  color: isActive ? colors.accent : colors.borderSubtle,
-                ),
-              ),
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOutCubic,
-                style: typo.uiSmallSemibold.copyWith(
-                  color: isActive ? colors.onAccent : colors.textSecondary,
-                ),
-                child: Text(context.t(key)),
-              ),
-            ),
-          );
-        },
       ),
     );
   }

@@ -29,6 +29,20 @@ void main() {
     expect(state.section, ScreenplayWorkspaceSection.overview);
     expect(state.episodeId, 'ep1');
   });
+
+  test('legacy compendium subsections deserialize to compendium', () {
+    for (final raw in const [
+      'items',
+      'factions',
+      'creatures',
+      'skills',
+      'compendium',
+    ]) {
+      final state = ScreenplayWorkspaceState.fromJson({'section': raw});
+      expect(state.section, ScreenplayWorkspaceSection.compendium);
+      expect(state.toJson()['section'], 'compendium');
+    }
+  });
   test(
     'scene navigation resolves current hierarchy after a cross-season move and rejects deletion',
     () async {
