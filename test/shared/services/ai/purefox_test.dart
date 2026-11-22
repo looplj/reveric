@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/image/channels.dart';
+import 'package:reveric/shared/models/provider_brand.dart';
 import 'package:reveric/shared/models/video/catalog.dart';
 import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/models/video/request.dart';
@@ -35,6 +36,7 @@ const _imageId = 'site-image-model';
 const _collidingImageId = 'gemini-3-pro-image-preview';
 const _collidingVideoId = 'kwaivgi-kling-v4.0';
 const _openAiImageId = 'gpt-image-2';
+const _noRatiosImageId = 'site-image-without-ratios';
 
 String _catalogId(String modelId) => '$purefoxMediaCatalogPrefix$modelId';
 
@@ -46,12 +48,14 @@ String _payload() => jsonEncode({
       'id': _imageId,
       'kind': 'image',
       'qualities': ['1K', '2K'],
+      'ratios': ['1:1', '16:9', '9:16'],
       'refImages': 3,
     },
     {
       'id': _videoId,
       'kind': 'video',
       'qualities': ['720p'],
+      'ratios': ['16:9', '9:16', '21:9'],
       'duration': {
         'mode': 'options',
         'options': [5, 6],
@@ -66,6 +70,13 @@ String _payload() => jsonEncode({
       'kind': 'video',
       'qualities': ['720p'],
       'refImages': 2,
+    },
+    // 旧网关或未声明画幅的型号：保留本地默认，不能被空列表覆盖。
+    {
+      'id': _noRatiosImageId,
+      'kind': 'image',
+      'qualities': ['1K'],
+      'refImages': 0,
     },
   ],
 });
@@ -180,6 +191,8 @@ void main() {
     purefoxMediaImageModels.remove(_collidingImageId);
     purefoxMediaImageModels.remove(_openAiImageId);
     imageModelsCatalog.remove(_catalogId(_openAiImageId));
+    purefoxMediaImageModels.remove(_noRatiosImageId);
+    imageModelsCatalog.remove(_catalogId(_noRatiosImageId));
     purefoxMediaVideoModels.remove(_collidingVideoId);
     imageModelsCatalog.remove(_catalogId(_collidingImageId));
     videoModelsCatalog.remove(_catalogId(_collidingVideoId));
@@ -189,29 +202,33 @@ void main() {
   test('providers are built in but not seeded', () {
     expect(
       aiProviderFixedBaseUrl(AiProviderType.purefox),
-      'https://purefox.org/v1',
+      'https://vip.purefox.org/v1',
     );
     expect(
       aiProviderFixedBaseUrl(AiProviderType.purefox_media),
       'https://img.purefox.org/v1',
     );
+    expect(providerChannelUrls['purefox'], 'https://purefox.org/keys');
+    expect(providerChannelUrls['purefox_media'], 'https://img.purefox.org/');
     expect(imageModelsForProvider('purefox_media'), isEmpty);
     expect(videoModelsForProvider('purefox_media'), isEmpty);
   });
 
   test('models come from /v1/models and are split by kind', () async {
     final catalog = await _registerCatalog();
-    expect(catalog.idsOfKind('image'), [_imageId]);
+    expect(catalog.idsOfKind('image'), [_imageId, _noRatiosImageId]);
     expect(catalog.idsOfKind('video'), [_videoId]);
 
     final image = lookupImageChannelModel('purefox_media', _imageId);
     expect(image, isNotNull);
     expect(image!.capabilities.resolutions, {'1K', '2K'});
+    expect(image.capabilities.ratios, {'1:1', '16:9', '9:16'});
     expect(image.capabilities.maxReferences, 3);
 
     final video = lookupVideoChannelModel('purefox_media', _videoId);
     expect(video, isNotNull);
     expect(video!.capabilities.resolutions, {'720p'});
+    expect(video.capabilities.ratios, {'16:9', '9:16', '21:9'});
     expect(video.capabilities.durations, {5, 6});
     expect(video.capabilities.maxReferences, 7);
 
@@ -220,6 +237,11 @@ void main() {
       lookupVideoChannelModel('purefox_media', 'no-duration-video'),
       isNull,
     );
+
+    // 缺少 ratios 时沿用本地默认画幅。
+    final noRatios = lookupImageChannelModel('purefox_media', _noRatiosImageId);
+    expect(noRatios, isNotNull);
+    expect(noRatios!.capabilities.ratios, const {'auto'});
   });
 
   test(

@@ -41,6 +41,7 @@ class PurefoxMediaModelsException implements Exception {
 
 /// 站点 `/v1/models`（OpenAI 信封）的一个型号。真实字段形如：
 /// `{"id":"TTseadanco2.5-720","kind":"video","qualities":["720p"],`
+/// ` "ratios":["16:9","9:16"],`
 /// ` "duration":{"mode":"options","options":[5,...,30]},`
 /// ` "refImages":30,"refVideos":10,"refAudios":10}`
 class PurefoxMediaModel {
@@ -48,6 +49,7 @@ class PurefoxMediaModel {
     required this.id,
     required this.kind,
     required this.qualities,
+    required this.ratios,
     required this.durations,
     required this.refImages,
     required this.refVideos,
@@ -61,6 +63,9 @@ class PurefoxMediaModel {
 
   /// 清晰度档位；图片如 1K/2K/4K，视频如 720p/1080p。
   final List<String> qualities;
+
+  /// 站点声明的可用画幅；空表示上游未给出，沿用本地默认。
+  final List<String> ratios;
 
   /// 视频可用时长（秒）；图片为空。
   final List<int> durations;
@@ -83,6 +88,7 @@ class PurefoxMediaModel {
       id: json['id'] as String,
       kind: (json['kind'] as String? ?? '').trim(),
       qualities: _readStrings(json['qualities']),
+      ratios: _readStrings(json['ratios']),
       durations: _readDurations(json['duration'], json['durations']),
       refImages: (json['refImages'] as num?)?.toInt() ?? 0,
       refVideos: (json['refVideos'] as num?)?.toInt() ?? 0,
@@ -143,6 +149,7 @@ class PurefoxMediaModelCatalog {
         case 'image':
           imageModelsCatalog[catalogId] = ImageModelCatalogEntry(
             capabilities: ImageModelCapabilities(
+              ratios: model.ratios.isEmpty ? null : model.ratios.toSet(),
               resolutions: model.qualities.toSet(),
               maxReferences: model.refImages,
             ),
@@ -154,6 +161,7 @@ class PurefoxMediaModelCatalog {
         case 'video':
           videoModelsCatalog[catalogId] = VideoModelCatalogEntry(
             capabilities: VideoModelCapabilities(
+              ratios: model.ratios.isEmpty ? null : model.ratios.toSet(),
               resolutions: model.qualities.toSet(),
               durations: model.durations.toSet(),
               maxReferences:
