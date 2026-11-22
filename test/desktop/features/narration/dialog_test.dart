@@ -18,6 +18,8 @@ import 'package:reveric/shared/widgets/screenplay/editing_controller.dart';
 import 'package:reveric/desktop/features/narration/player.dart';
 import 'package:reveric/shared/components/reveric_icon_button.dart';
 import 'package:reveric/shared/database/app_database.dart';
+import 'package:reveric/shared/database/novel_content_database.dart'
+    show CharacterProfile, notDeletedSentinel;
 import 'package:reveric/shared/models/audio/request.dart';
 import 'package:reveric/shared/models/audio/result.dart';
 import 'package:reveric/shared/models/narration.dart';
@@ -166,7 +168,7 @@ void main() {
     );
   }
   testWidgets(
-    'novel dialog reads the committed draft and stops with its own navigator',
+    'novel dialog uses the committed draft, dialogue toggle and character voice',
     (tester) async {
       tester.view.physicalSize = const Size(480, 480);
       tester.view.devicePixelRatio = 1;
@@ -201,6 +203,9 @@ void main() {
         ProviderScope(
           overrides: [
             appDatabaseProvider.overrideWithValue(db),
+            characterProfilesProvider(
+              'novel-test',
+            ).overrideWith((ref) => Stream.value([_character()])),
             narrationServiceProvider.overrideWithValue(service),
             narrationPlayerFactoryProvider.overrideWithValue(
               (_) async => player,
@@ -217,6 +222,7 @@ void main() {
                           body: Center(
                             child: ChapterNarrationButton(
                               workId: 'novel',
+                              databasePath: 'novel-test',
                               controller: controller,
                               isChapterReady: true,
                             ),
@@ -242,24 +248,42 @@ void main() {
             .onPressed,
         isNull,
       );
-      controller.text = '最新的草稿。';
+      controller.text = '最新的草稿。阿澈说：“你好。”';
       await tester.pump();
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(navigatorKey.currentState!.canPop(), isTrue);
       expect(find.byType(NarrationDialog), findsOneWidget);
-      expect(find.text('Voice'), findsOneWidget);
-      expect(find.text('Character voices'), findsNothing);
+      expect(find.text('Narrator'), findsOneWidget);
+      expect(find.text('Character voices'), findsOneWidget);
+      expect(find.text('林澈'), findsOneWidget);
+      final dialogueOnly = find.text('Read dialogue only');
+      final checkbox = find.byType(Checkbox);
+      expect(tester.widget<Checkbox>(checkbox).value, isFalse);
       expect(
         find.text('Read scene headings, actions and subtitles'),
         findsNothing,
       );
       expect(requests, isEmpty);
 
+      await tester.tap(dialogueOnly);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Checkbox>(checkbox).value, isTrue);
+      await tester.ensureVisible(find.text('林澈'));
+      await tester.tap(find.text('Bright female').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Upbeat male').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Play'));
       await tester.pumpAndSettle();
-      expect(requests.single.prompt, '最新的草稿。');
-      expect(requests.single.parameters.voice, 'Kore');
+      expect(requests.single.prompt, '你好。');
+      expect(requests.single.parameters.voice, 'Puck');
+      final saved = await service.load(
+        'novel',
+        scope: NarrationSettingsScope.novel,
+      );
+      expect(saved.includeNarration, isFalse);
+      expect(saved.voices['lin'], 'Puck');
       expect(player.playing, isTrue);
 
       windowOpen.value = false;
@@ -289,5 +313,31 @@ void main() {
       TargetPlatform.android,
       TargetPlatform.linux,
     }),
+  );
+}
+
+CharacterProfile _character() {
+  final now = DateTime.fromMillisecondsSinceEpoch(0);
+  return CharacterProfile(
+    id: 'lin',
+    name: '林澈',
+    role: '',
+    gender: '',
+    aliases: const ['阿澈'],
+    tags: const [],
+    biography: '',
+    appearance: '',
+    description: '',
+    identity: '',
+    age: '',
+    motivation: '',
+    arc: '',
+    personality: '',
+    behaviorTags: const [],
+    currentState: '',
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: notDeletedSentinel,
   );
 }

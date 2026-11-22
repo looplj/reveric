@@ -517,6 +517,7 @@ class DesktopReadingPage extends HookConsumerWidget {
                             showNovelNarration(
                               context,
                               workId: novelId,
+                              databasePath: databasePath,
                               text: narrationChapter.content,
                             );
                           }

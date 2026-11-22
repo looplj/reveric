@@ -3833,7 +3833,9 @@ abstract final class LocaleKeys {
   static const readingReadingTime = 'reading.reading_time';
   static const readingSettingsTitle = 'reading.settings_title';
   static const readingExit = 'reading.exit';
-  static const readingNarrationVoice = 'reading.narration_voice';
+  static const readingNarrationDialogueOnly = 'reading.narration_dialogue_only';
+  static const readingNarrationNoDialogue = 'reading.narration_no_dialogue';
+  static const readingNarrationUnattributed = 'reading.narration_unattributed';
   static const readingNarrationComplete = 'reading.narration_complete';
   static const readingBrightness = 'reading.brightness';
   static const readingNightMode = 'reading.night_mode';

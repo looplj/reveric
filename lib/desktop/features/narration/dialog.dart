@@ -3,6 +3,7 @@
 //   lib/desktop/features/narration/setup.dart
 //   lib/desktop/features/narration/playback.dart
 //   lib/shared/providers/narration.dart
+//   lib/shared/providers/novel_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
@@ -23,6 +24,7 @@ import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/logger/app_logger.dart';
 import '../../../shared/models/narration.dart';
 import '../../../shared/providers/narration.dart';
+import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/services/screenplay/narration_service.dart';
 import '../../../shared/theme/theme.dart';
 import 'playback.dart';
@@ -33,6 +35,7 @@ final _log = AppLogger.forModule('Narration');
 Future<void> showNovelNarration(
   BuildContext context, {
   required String workId,
+  required String databasePath,
   required String text,
 }) {
   final container = ProviderScope.containerOf(context, listen: false);
@@ -45,6 +48,7 @@ Future<void> showNovelNarration(
       child: NarrationDialog(
         workId: workId,
         source: NovelNarrationSource(text),
+        novelDatabasePath: databasePath,
       ),
     ),
   );
@@ -55,9 +59,11 @@ class NarrationDialog extends HookConsumerWidget {
     super.key,
     required this.workId,
     required this.source,
+    this.novelDatabasePath,
   });
   final String workId;
   final NarrationInput source;
+  final String? novelDatabasePath;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,14 +71,36 @@ class NarrationDialog extends HookConsumerWidget {
     final scope = source is NovelNarrationSource
         ? NarrationSettingsScope.novel
         : NarrationSettingsScope.screenplay;
+    final path = novelDatabasePath;
+    final characterProvider = path == null
+        ? null
+        : characterProfilesProvider(path);
+    final profiles = characterProvider == null
+        ? null
+        : ref.watch(characterProvider.future);
     final revision = useState(0);
     final loaded = useFuture(
-      useMemoized(() => service.load(workId, scope: scope), [
-        service,
-        workId,
-        scope,
-        revision.value,
-      ]),
+      useMemoized(() async {
+        final settings = service.load(workId, scope: scope);
+        final input = source;
+        if (input is! NovelNarrationSource || profiles == null) {
+          return (settings: await settings, source: input);
+        }
+        final (saved, characters) = await (settings, profiles).wait;
+        return (
+          settings: saved,
+          source: NovelNarrationSource(
+            input.text,
+            characters: characters.map(
+              (profile) => (
+                id: profile.id,
+                name: profile.name,
+                aliases: profile.aliases,
+              ),
+            ),
+          ),
+        );
+      }, [service, workId, scope, source, profiles, revision.value]),
     );
     final plan = useState<NarrationPlan?>(null);
     final settings = useRef<NarrationSettings?>(null);
@@ -106,7 +134,12 @@ class NarrationDialog extends HookConsumerWidget {
                   title: context.t(LocaleKeys.narrationFailed),
                   action: RevericButton.secondary(
                     label: context.t(LocaleKeys.commonRetry),
-                    onPressed: () => revision.value++,
+                    onPressed: () {
+                      if (characterProvider != null) {
+                        ref.invalidate(characterProvider);
+                      }
+                      revision.value++;
+                    },
                   ),
                 ),
               )
@@ -115,16 +148,16 @@ class NarrationDialog extends HookConsumerWidget {
             : plan.value == null
             ? NarrationSetup(
                 workId: workId,
-                source: source,
+                source: loaded.data!.source,
                 scope: scope,
-                initial: settings.value ?? loaded.data!,
+                initial: settings.value ?? loaded.data!.settings,
                 onStart: (next) {
                   settings.value = next.settings;
                   plan.value = next;
                 },
               )
             : NarrationPlayback(
-                source: source,
+                source: loaded.data!.source,
                 plan: plan.value!,
                 onBack: () => plan.value = null,
               ),

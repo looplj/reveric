@@ -563,6 +563,7 @@ class NovelWorkspacePanel extends ConsumerWidget {
             outlineFocusNode: chapterOutlineFocusNode,
           );
         }
+        final narrationPath = databasePath;
         final canNarrateSelection =
             supportsDesktopNarration &&
             selectedChapter != null &&
@@ -591,9 +592,13 @@ class NovelWorkspacePanel extends ConsumerWidget {
           onCreateChapter: onCreateEntry,
           databasePath: databasePath,
           onAddSelectionToChat: onAddChapterSelectionToChat,
-          onNarrateSelection: canNarrateSelection
-              ? (text) =>
-                    showNovelNarration(context, workId: novel.id, text: text)
+          onNarrateSelection: canNarrateSelection && narrationPath != null
+              ? (text) => showNovelNarration(
+                  context,
+                  workId: novel.id,
+                  databasePath: narrationPath,
+                  text: text,
+                )
               : null,
         );
       case NovelWorkspaceSection.lore:
@@ -1058,9 +1063,12 @@ class NovelWorkspacePanel extends ConsumerWidget {
             ),
             const SizedBox(width: RevericSpacing.sm),
           ],
-          if (supportsDesktopNarration && showChapterPreviewButton) ...[
+          if (supportsDesktopNarration &&
+              showChapterPreviewButton &&
+              dbPath != null) ...[
             ChapterNarrationButton(
               workId: novel.id,
+              databasePath: dbPath,
               controller: chapterContentController,
               isChapterReady: selectedChapterDetails?.id == resourceId,
             ),

@@ -70,13 +70,9 @@ class NarrationPlayback extends HookConsumerWidget {
     final segment = controller.segments[controller.index];
     final typo = RevericTheme.typographyOf(context);
     final colors = RevericTheme.colorsOf(context);
-    final role = switch (source) {
-      NovelNarrationSource() => null,
-      NarrationSource(:final characterNames) =>
-        segment.characterId == null
-            ? context.t(LocaleKeys.narrationNarrator)
-            : characterNames[segment.characterId]!,
-    };
+    final role =
+        source.characterNames[segment.characterId] ??
+        context.t(LocaleKeys.narrationNarrator);
     final completedLabel = source is NovelNarrationSource
         ? LocaleKeys.readingNarrationComplete
         : LocaleKeys.narrationComplete;
@@ -98,17 +94,14 @@ class NarrationPlayback extends HookConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            if (role == null)
-              const Spacer()
-            else
-              Expanded(
-                child: Text(
-                  role,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: typo.uiSemibold.copyWith(color: colors.accent),
-                ),
+            Expanded(
+              child: Text(
+                role,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: typo.uiSemibold.copyWith(color: colors.accent),
               ),
+            ),
             Text(
               context.t(
                 LocaleKeys.narrationProgress,

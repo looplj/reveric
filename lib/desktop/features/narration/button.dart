@@ -86,11 +86,13 @@ class ChapterNarrationButton extends StatelessWidget {
   const ChapterNarrationButton({
     super.key,
     required this.workId,
+    required this.databasePath,
     required this.controller,
     required this.isChapterReady,
   });
 
   final String workId;
+  final String databasePath;
   final TextEditingController controller;
   final bool isChapterReady;
 
@@ -109,7 +111,12 @@ class ChapterNarrationButton extends StatelessWidget {
                 final text = controller.text;
                 if (!isTextInputComposing(controller) &&
                     text.trim().isNotEmpty) {
-                  showNovelNarration(context, workId: workId, text: text);
+                  showNovelNarration(
+                    context,
+                    workId: workId,
+                    databasePath: databasePath,
+                    text: text,
+                  );
                 }
               }
             : null,
