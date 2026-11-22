@@ -315,6 +315,7 @@ class NovelEditorPage extends HookConsumerWidget {
     // 顶部工具栏和 DesktopWindowFrame 的标题栏拖拽层重叠；
     // 将它注册为排除区域，避免双击 Save 等按钮时触发窗口最大化/还原。
     final workspaceHeaderToolbarKey = useMemoized(() => GlobalKey(), []);
+    final expandedChatHeaderActionsKey = useMemoized(() => GlobalKey(), []);
     final coverMenuTrigger = useState(0);
 
     final chapterTitleController = useTextEditingController();
@@ -4245,7 +4246,10 @@ class NovelEditorPage extends HookConsumerWidget {
         body: DesktopSaveShortcut(
           onSave: saveDesktopContent,
           child: DesktopWindowFrame(
-            titleBarGestureExclusionKeys: [workspaceHeaderToolbarKey],
+            titleBarGestureExclusionKeys: [
+              workspaceHeaderToolbarKey,
+              expandedChatHeaderActionsKey,
+            ],
             child: Builder(
               builder: (context) {
                 if (novelAsync.isLoading) {
@@ -4804,6 +4808,8 @@ class NovelEditorPage extends HookConsumerWidget {
                       }
                       return ExpandedChatArea(
                         onCollapse: showWorkspaceContent,
+                        headerActionsGestureExclusionKey:
+                            expandedChatHeaderActionsKey,
                         novel: novel,
                         // 快速开书草稿：输入框提示用户直接说想写什么。
                         composerHint: novel.draft

@@ -176,6 +176,104 @@ void main() {
       expect(colors['code'], bodyColor);
     },
   );
+
+  testWidgets(
+    'h1 scales proportionally to chat body size and dark table header uses dark surface',
+    (tester) async {
+      const darkTheme = RevericThemeData.revericDark;
+      final bodyStyle = darkTheme.typography.ui.copyWith(
+        color: darkTheme.colors.textPrimary,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: darkTheme.toThemeData(),
+          home: RevericTheme(
+            data: darkTheme,
+            child: Scaffold(
+              body: SizedBox(
+                width: 360,
+                child: AiMarkdownText(
+                  '# 第 1–10 集逐集大纲\n\n'
+                  '| 集 | 核心事件 |\n'
+                  '| --- | --- |\n'
+                  '| 1 | 宁青焕卖菜包饭收摊，巷子撞上一个从未来穿越而来的神秘小孩，两人就此结下不解之缘 |',
+                  style: bodyStyle,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 验证深色 ThemeData 的 ColorScheme 已显式提供深色 surfaceContainerHighest。
+      expect(
+        darkTheme.toThemeData().colorScheme.surfaceContainerHighest,
+        darkTheme.colors.surfaceContainerHigh,
+      );
+
+      // 验证 H1 字号按 13px 正文比例缩放，不再是默认 32px headlineLarge。
+      double? headingFontSize;
+      void findHeadingSize(InlineSpan span, TextStyle? inherited) {
+        final merged = inherited?.merge(span.style) ?? span.style;
+        if (span is TextSpan) {
+          if ((span.text ?? '').contains('逐集大纲')) {
+            headingFontSize = merged?.fontSize;
+          }
+          for (final child in span.children ?? const <InlineSpan>[]) {
+            findHeadingSize(child, merged);
+          }
+        }
+      }
+
+      for (final paragraph in tester.renderObjectList<RenderParagraph>(
+        find.byWidgetPredicate((widget) => widget is RichText),
+      )) {
+        findHeadingSize(paragraph.text, null);
+      }
+      expect(headingFontSize, isNotNull);
+      expect(headingFontSize!, lessThan(22));
+      expect(headingFontSize!, greaterThan(bodyStyle.fontSize!));
+
+      // 验证深色主题下表格表头背景走深色 surfaceContainerHigh，且列宽受上限约束以便折行。
+      final table = tester.widget<Table>(find.byType(Table));
+      final headerDecoration =
+          table.children.first.decoration as BoxDecoration?;
+      expect(headerDecoration?.color, darkTheme.colors.surfaceContainerHigh);
+      expect(tester.getSize(find.byType(Table)).width, lessThanOrEqualTo(340));
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  testWidgets(
+    'light theme table header uses surfaceDim to contrast against white surface',
+    (tester) async {
+      const lightTheme = RevericThemeData.reveric;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: lightTheme.toThemeData(),
+          home: RevericTheme(
+            data: lightTheme,
+            child: Scaffold(
+              body: AiMarkdownText(
+                '| Col A | Col B |\n| --- | --- |\n| 1 | 2 |',
+                style: lightTheme.typography.ui.copyWith(
+                  color: lightTheme.colors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final table = tester.widget<Table>(find.byType(Table));
+      final headerDecoration =
+          table.children.first.decoration as BoxDecoration?;
+      expect(headerDecoration?.color, lightTheme.colors.surfaceDim);
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 }
 
 Widget _wrap(String content, {bool selectable = true}) => EasyLocalization(

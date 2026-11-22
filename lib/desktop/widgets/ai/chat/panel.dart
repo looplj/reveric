@@ -155,10 +155,22 @@ class AiChatPanel extends HookConsumerWidget {
   /// Callback invoked when the user taps the expand button in the chat header.
   final VoidCallback? onExpand;
 
+  /// Callback invoked when the user taps the collapse button in expanded mode.
+  final VoidCallback? onCollapse;
+
   /// Whether the header should clear Windows caption buttons (side panel is
   /// rightmost): uses top inset on Windows. Expanded layouts pass false when
-  /// a sibling panel owns that space.
+  /// a sibling panel owns that space or when using [clearWindowCaptionTrailing].
   final bool avoidWindowCaption;
+
+  /// When true and [avoidWindowCaption] is false, keeps the header in the top
+  /// title-bar row while reserving [DesktopWindowFrame.trailingInset] on the
+  /// right for Windows/Linux caption buttons.
+  final bool clearWindowCaptionTrailing;
+
+  /// Optional key registered in [DesktopWindowFrame.titleBarGestureExclusionKeys]
+  /// for the header action cluster.
+  final GlobalKey? headerActionsGestureExclusionKey;
 
   /// 浮在画布上的外壳（见 floating.dart）：不避让窗口按钮，[onClose] 收成悬浮球。
   final bool floating;
@@ -228,7 +240,10 @@ class AiChatPanel extends HookConsumerWidget {
     this.onShortcutDraftConsumed,
     this.isExpanded = false,
     this.onExpand,
+    this.onCollapse,
     this.avoidWindowCaption = true,
+    this.clearWindowCaptionTrailing = false,
+    this.headerActionsGestureExclusionKey,
     this.floating = false,
     this.onSessionRestored,
     this.onActiveSessionIdChanged,
@@ -1364,6 +1379,7 @@ class AiChatPanel extends HookConsumerWidget {
                     : (id) => unawaited(_continueSession(context, ref, s, id)),
                 onClose: onClose,
                 onExpand: onExpand != null ? () => onExpand!() : null,
+                onCollapse: onCollapse != null ? () => onCollapse!() : null,
                 onOpenPermissions:
                     toolApprovalEnabled &&
                         novelId.isNotEmpty &&
@@ -1380,6 +1396,9 @@ class AiChatPanel extends HookConsumerWidget {
                       )
                     : null,
                 avoidWindowCaption: avoidWindowCaption && !floating,
+                clearWindowCaptionTrailing:
+                    clearWindowCaptionTrailing && !floating,
+                actionsGestureExclusionKey: headerActionsGestureExclusionKey,
                 floating: floating,
               ),
               Divider(height: 1, color: colors.border),
@@ -1393,6 +1412,8 @@ class AiChatPanel extends HookConsumerWidget {
                 const ChatConfigHint()
               else ...[
                 Expanded(
+                  // Todo 和变更卡片迁入或移出侧栏时，保留消息列表的滚动状态。
+                  key: const ValueKey('chat_message_list'),
                   child: _ChatMessageListArea(
                     panel: this,
                     runtimeSessionId: runtimeSessionId,
