@@ -32,7 +32,7 @@ void main() {
   ]) {
     for (final type in [
       'minimax',
-      'volcengine',
+      'doubao_audio',
       'openrouter',
       'atlascloud',
       'qwen',

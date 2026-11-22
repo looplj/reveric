@@ -93,6 +93,7 @@ final audioChannelModels = <AudioProtocol, Map<String, AudioChannelModel>>{
   },
   AudioProtocol.seed_audio: {
     'seed-audio-1.0': AudioChannelModel(catalogId: 'seed-audio-1.0'),
+    for (final id in doubaoTtsVoices.keys) id: AudioChannelModel(catalogId: id),
   },
   AudioProtocol.minimax_music: {
     'speech-2.8-hd': const AudioChannelModel(

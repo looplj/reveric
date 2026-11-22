@@ -14,6 +14,7 @@ import 'package:image/image.dart' as img;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
+import 'package:reveric/shared/models/object_storage_config.dart';
 import 'package:reveric/shared/services/object_storage/service.dart';
 import 'package:reveric/shared/services/production/transcription_service.dart';
 import 'package:reveric/shared/agent/tool_approval.dart';
@@ -56,6 +57,8 @@ void main() {
   late AiToolApprovalController approvals;
   late AiToolManager tools;
   late http.Client Function(AiProvider) transcriptionTransport;
+  late http.Client Function() storageTransport;
+  late ObjectStorageService storage;
   late TranscriptionService transcription;
   String? defaultAsr;
   final context = ToolExecutionContext(
@@ -168,11 +171,16 @@ void main() {
     );
     transcriptionTransport = (_) =>
         throw StateError('Unexpected transcription');
+    storageTransport = () => throw StateError('Unexpected storage request');
+    storage = ObjectStorageService(
+      database: appDb,
+      client: () => storageTransport(),
+    );
     defaultAsr = null;
     transcription = TranscriptionService(
       database: appDb,
       library: canvas.library,
-      storage: ObjectStorageService(database: appDb),
+      storage: storage,
       canvasForWork: (_) async => canvas,
       defaultAsrModelId: () async => defaultAsr,
       pollDelay: Duration.zero,
@@ -401,6 +409,90 @@ void main() {
         ))?.status,
         app.GenerationTaskStatus.completed,
       );
+    },
+  );
+
+  test(
+    'Doubao standard ASR uploads extracted audio and submits its signed URL',
+    () async {
+      await permissions.setRule(
+        'media.transcribe',
+        const ToolPermissionScope.global(),
+        ToolPermissionDecision.allow,
+      );
+      const modelId = 'volc.seedasr.auc';
+      defaultAsr = 'speech::$modelId';
+      await appDb.aiProviderDao.upsert(
+        aiProviderBuiltinById('openai')!.copyWith(
+          id: 'speech',
+          type: 'doubao_audio',
+          enabled: true,
+          apiKey: 'fixture-speech-key',
+          asrModels: const [modelId],
+        ),
+      );
+      await storage.save(
+        const ObjectStorageConfig(
+          endpoint: 'https://s3.example.test',
+          bucket: 'media',
+          accessKeyId: 'fixture-storage-id',
+          secretAccessKey: 'fixture-storage-secret',
+          pathStyle: true,
+          publicBaseUrl: 'https://cdn.example.test',
+        ),
+      );
+      Uri? uploaded;
+      storageTransport = () => MockClient((request) async {
+        if (request.method == 'HEAD') {
+          return http.Response('', 404);
+        }
+        expect(request.method, 'PUT');
+        expect(request.headers['content-type'], 'audio/mpeg');
+        expect(request.bodyBytes, isNotEmpty);
+        uploaded = request.url;
+        return http.Response('', 200);
+      });
+      String? taskId;
+      transcriptionTransport = (_) => MockClient((request) async {
+        expect(request.headers['x-api-resource-id'], modelId);
+        switch (request.url.path) {
+          case '/api/v3/auc/bigmodel/submit':
+            expect(uploaded, isNotNull);
+            final audio = jsonDecode(request.body)['audio'] as Map;
+            final source = Uri.parse(audio['url'] as String);
+            expect(source.host, uploaded!.host);
+            expect(source.path, uploaded!.path);
+            expect(source.queryParameters['X-Amz-Signature'], isNotEmpty);
+            expect(audio['format'], 'mp3');
+            taskId = request.headers['x-api-request-id'];
+            return http.Response(
+              '',
+              200,
+              headers: {'x-api-status-code': '20000000'},
+            );
+          case '/api/v3/auc/bigmodel/query':
+            expect(request.headers['x-api-request-id'], taskId);
+            return http.Response(
+              '{"result":{"text":"hello","utterances":[{"text":"hello","start_time":125,"end_time":600}]}}',
+              200,
+              headers: {'x-api-status-code': '20000000'},
+            );
+          default:
+            fail('Unexpected request ${request.url}');
+        }
+      });
+
+      final answer = await run(
+        'transcribe',
+      ).timeout(const Duration(seconds: 5));
+      expect(answer['ok'], true, reason: '$answer');
+      final result = answer['result'] as Map;
+      expect(result['segment_count'], 1);
+      final task = await appDb.generationTaskDao.getById(
+        result['task_id'] as String,
+      );
+      expect(task?.providerTaskId, taskId);
+      expect(task?.status, app.GenerationTaskStatus.completed);
     },
   );
 

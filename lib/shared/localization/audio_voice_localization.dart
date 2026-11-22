@@ -11,9 +11,14 @@ import 'package:flutter/widgets.dart';
 import 'app_localization.dart';
 import 'locale_keys.dart';
 
-// 名称来源为 Qwen / Gemini 音色文档、ElevenLabs /v1/voices 与 xAI 音色说明。
+// 名称来源为各供应商的音色文档与音色列表。
 // 同一音色在渠道中使用的名称或 ID 共用翻译，原始 ID 始终用于保存与请求。
 const _audioVoiceNameKeys = <String, String>{
+  'zh_female_vv_uranus_bigtts': LocaleKeys.audioVoiceDoubaoVivi,
+  'zh_female_xiaohe_uranus_bigtts': LocaleKeys.audioVoiceDoubaoXiaohe,
+  'zh_male_m191_uranus_bigtts': LocaleKeys.audioVoiceDoubaoYunzhou,
+  'zh_female_meilinvyou_moon_bigtts': LocaleKeys.audioVoiceDoubaoMeilinvyou,
+  'zh_male_shenyeboke_moon_bigtts': LocaleKeys.audioVoiceDoubaoShenyeboke,
   'longanhuan_v3.1': LocaleKeys.audioVoiceQwenHuan31,
   'longanlingxin_v3.1': LocaleKeys.audioVoiceQwenLingxin31,
   'xunanchuan_v3.1': LocaleKeys.audioVoiceQwenNanchuan31,

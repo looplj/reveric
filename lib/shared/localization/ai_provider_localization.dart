@@ -81,6 +81,7 @@ String localizedProviderTypeDescription(
     AiProviderType.zhipu => LocaleKeys.providerDescriptionZhipu,
     AiProviderType.doubao => LocaleKeys.providerDescriptionDoubao,
     AiProviderType.volcengine => LocaleKeys.providerDescriptionVolcengine,
+    AiProviderType.doubao_audio => LocaleKeys.providerDescriptionDoubaoAudio,
     AiProviderType.metaso => LocaleKeys.providerDescriptionMetaso,
     AiProviderType.minimax => LocaleKeys.providerDescriptionMinimax,
     AiProviderType.moss => LocaleKeys.providerDescriptionMoss,

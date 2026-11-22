@@ -404,7 +404,7 @@ void main() {
                 await SeedAudioClient(
                   transport,
                   'test-key',
-                  providerType: 'volcengine',
+                  providerType: 'doubao_audio',
                 ).generate(
                   AudioRequest(
                     providerId: 'audio',

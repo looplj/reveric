@@ -59,7 +59,12 @@ void main() {
       restored.effectiveBaseUrl,
       'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1',
     );
-    expect(restored.supportedModelKinds, AiModelKind.values.toSet());
+    expect(restored.supportedModelKinds, {
+      AiModelKind.chat,
+      AiModelKind.image,
+      AiModelKind.video,
+      AiModelKind.audio,
+    });
     expect(
       ProductionImageCapabilities(restored, 'qwen-image-3.0-pro').isSupported,
       true,
@@ -213,16 +218,17 @@ void main() {
   });
 
   test(
-    'Volcengine keeps domestic routing and all four model lists after round trip',
+    'Volcengine keeps its fixed Ark route and supported model lists after round trip',
     () {
       final config = aiProviderBuiltinById('doubao')!.copyWith(
         id: 'volcengine-custom',
         type: 'volcengine',
         baseUrl: 'https://override.example/v1',
-        apiKey: 'shared-key',
+        apiKey: 'ark-key',
         enabled: true,
         videoModels: ['doubao-seedance-2-5-260628'],
         audioModels: ['seed-audio-1.0'],
+        asrModels: ['volc.seedasr.auc'],
       );
       final settings = const AiSettings(providers: []).addCustomConfig(config);
       final provider = AiProvider.fromJson(
@@ -234,22 +240,22 @@ void main() {
         provider.effectiveBaseUrl,
         'https://ark.cn-beijing.volces.com/api/v3',
       );
-      expect(provider.apiKey, 'shared-key');
+      expect(provider.apiKey, 'ark-key');
       expect(provider.supportedModelKinds, {
         AiModelKind.chat,
         AiModelKind.image,
         AiModelKind.video,
-        AiModelKind.audio,
       });
       expect(provider.availableModels, config.models);
       expect(provider.availableImageModels, config.imageModels);
       expect(provider.availableVideoModels, config.videoModels);
-      expect(provider.availableAudioModels, config.audioModels);
+      expect(provider.availableAudioModels, isEmpty);
+      expect(provider.availableAsrModels, isEmpty);
       expect(provider.isValid, isTrue);
       expect(provider.copyWith(apiKey: '').isValid, isFalse);
       expect(
         AudioCapabilities('seed-audio-1.0').supportsProvider(provider),
-        isTrue,
+        isFalse,
       );
       expect(productionProtocol(provider.type), VideoProtocol.ark_video);
       final image = ProductionImageCapabilities(
@@ -277,6 +283,27 @@ void main() {
       );
     },
   );
+  test('Doubao Audio keeps speech models and uses its own fixed endpoint', () {
+    final config = aiProviderBuiltinById('openai')!.copyWith(
+      type: AiProviderType.doubao_audio.name,
+      apiKey: 'speech-key',
+      enabled: true,
+      audioModels: ['seed-audio-1.0', 'seed-tts-2.0'],
+      asrModels: ['volc.seedasr.auc'],
+    );
+    final provider = AiProvider.fromJson(config.toJson());
+
+    expect(customAiProviderTypes, contains(provider.type));
+    expect(
+      provider.effectiveBaseUrl,
+      'https://openspeech.bytedance.com/api/v3',
+    );
+    expect(provider.supportedModelKinds, {AiModelKind.audio, AiModelKind.asr});
+    expect(provider.availableAudioModels, config.audioModels);
+    expect(provider.availableAsrModels, config.asrModels);
+    expect(provider.isValid, isTrue);
+    expect(provider.copyWith(apiKey: '').isValid, isFalse);
+  });
   test('new Codex providers start with presets that remain editable', () {
     final provider = aiProviderBuiltinById('openai')!.copyWith(
       id: 'local-codex',

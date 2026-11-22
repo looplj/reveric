@@ -6,7 +6,7 @@
 enum TranscriptionProtocol {
   openai_multipart,
   dashscope_file,
-  volcengine_flash,
+  volcengine_standard,
   atlascloud,
 }
 
@@ -24,6 +24,10 @@ class TranscriptionModel {
   final int maxBytes;
   final Set<String> formats;
   final Duration? maxDuration;
+
+  bool get requiresSourceUrl =>
+      protocol == TranscriptionProtocol.dashscope_file ||
+      protocol == TranscriptionProtocol.volcengine_standard;
 }
 
 const _asrChannelModels = <String, List<TranscriptionModel>>{
@@ -35,13 +39,18 @@ const _asrChannelModels = <String, List<TranscriptionModel>>{
       {'mp3', 'wav', 'm4a'},
     ),
   ],
-  'volcengine': [
+  'doubao_audio': [
     TranscriptionModel(
-      'volc.bigasr.auc_turbo',
-      TranscriptionProtocol.volcengine_flash,
-      20 * 1000 * 1000,
+      'volc.seedasr.auc',
+      TranscriptionProtocol.volcengine_standard,
+      512 * 1000 * 1000 - 1,
       {'mp3', 'wav'},
-      maxDuration: Duration(hours: 2),
+    ),
+    TranscriptionModel(
+      'volc.bigasr.auc',
+      TranscriptionProtocol.volcengine_standard,
+      512 * 1000 * 1000 - 1,
+      {'mp3', 'wav'},
     ),
   ],
   // Atlas accepts inline audio. Bound the raw input before allocating Base64 and JSON.

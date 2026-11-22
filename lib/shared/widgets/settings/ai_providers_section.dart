@@ -915,6 +915,9 @@ String localizedProviderTypeName(BuildContext context, String type) {
   if (type == 'volcengine') {
     return context.t(LocaleKeys.providerTypeVolcengine);
   }
+  if (type == 'doubao_audio') {
+    return context.t(LocaleKeys.providerTypeDoubaoAudio);
+  }
   if (type == 'openai_compatible') {
     return context.t(LocaleKeys.providerTypeOpenaiCompatible);
   }

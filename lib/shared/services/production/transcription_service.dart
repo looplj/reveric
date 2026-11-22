@@ -178,7 +178,7 @@ class TranscriptionService {
         throw const TranscriptionException('invalid_config');
       }
       Uri? sourceUrl;
-      if (model.protocol == TranscriptionProtocol.dashscope_file) {
+      if (model.requiresSourceUrl) {
         final config = await storage.load();
         if (!config.isConfigured) {
           throw const TranscriptionException('object_storage_required');

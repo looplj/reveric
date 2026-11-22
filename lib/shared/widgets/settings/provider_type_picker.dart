@@ -84,7 +84,7 @@ String providerKindLabel(BuildContext context, AiModelKind kind) =>
       AiModelKind.image => LocaleKeys.providerKindImage,
       AiModelKind.video => LocaleKeys.providerKindVideo,
       AiModelKind.audio => LocaleKeys.providerKindAudio,
-      AiModelKind.asr => LocaleKeys.providerTranscription,
+      AiModelKind.asr => LocaleKeys.providerKindAsr,
     });
 
 /// 类型的可选能力。

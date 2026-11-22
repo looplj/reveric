@@ -26,6 +26,8 @@ const providerChannelUrls = {
   'zhipu': 'https://z.ai/manage-apikey/apikey-list',
   'doubao': 'https://console.volcengine.com/ark/region:cn-beijing/apiKey',
   'volcengine': 'https://console.volcengine.com/ark/region:cn-beijing/apiKey',
+  'doubao_audio':
+      'https://console.volcengine.com/speech/new/setting/apikeys?projectName=default',
   'minimax': 'https://platform.minimax.io/console/access',
   'agnes': 'https://platform.agnes-ai.com/',
   'atlascloud': 'https://www.atlascloud.ai?ref=6MQKFA',
@@ -43,6 +45,7 @@ const providerLogoAssets = <String, String>{
   'zhipu': 'assets/icons/providers/zhipu.svg',
   'doubao': 'assets/icons/providers/doubao.png',
   'volcengine': 'assets/icons/providers/volcengine.png',
+  'doubao_audio': 'assets/icons/providers/doubao.png',
   'minimax': 'assets/icons/providers/minimax.png',
   'openrouter': 'assets/icons/providers/openrouter.png',
   'xai': 'assets/icons/providers/xai.png',

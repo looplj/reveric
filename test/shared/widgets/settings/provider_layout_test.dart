@@ -62,6 +62,18 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+  test('the picker offers Doubao Audio under audio and transcription', () {
+    expect(providerTypePickerTypes(), contains('doubao_audio'));
+    expect(providerTypePickerKinds('doubao_audio'), [
+      AiModelKind.audio,
+      AiModelKind.asr,
+    ]);
+    expect(providerTypePickerKinds('volcengine'), [
+      AiModelKind.chat,
+      AiModelKind.image,
+      AiModelKind.video,
+    ]);
+  });
   for (final platform in [
     TargetPlatform.windows,
     TargetPlatform.macOS,
@@ -299,7 +311,12 @@ void main() {
                   : 'Infistar',
             );
             expect(draft.effectiveBaseUrl, baseUrl);
-            expect(draft.supportedModelKinds, AiModelKind.values.toSet());
+            expect(draft.supportedModelKinds, {
+              AiModelKind.chat,
+              AiModelKind.image,
+              AiModelKind.video,
+              AiModelKind.audio,
+            });
             final types = providerTypePickerTypes();
             expect(
               types.indexOf(type),
@@ -374,7 +391,12 @@ void main() {
           await tester.pumpAndSettle();
           expect(token91.name, '91Token');
           expect(token91.effectiveBaseUrl, 'https://api.91token.com/v1');
-          expect(token91.supportedModelKinds, AiModelKind.values.toSet());
+          expect(token91.supportedModelKinds, {
+            AiModelKind.chat,
+            AiModelKind.image,
+            AiModelKind.video,
+            AiModelKind.audio,
+          });
           expect(
             find.text(locale.languageCode == 'zh' ? '推广' : 'Sponsored'),
             findsOneWidget,
