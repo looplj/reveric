@@ -1,4 +1,4 @@
-// 职责: 桌面端章节正文编辑器 — 章节标题、大纲与正文输入展示，承载选区批注，并只读呈现编年史者回填的紧张度、情绪与章内事件。
+// 职责: 桌面端章节正文编辑器 — 章节标题、大纲与正文输入展示，承载选区操作，并只读呈现编年史者回填的紧张度、情绪与章内事件。
 // 关联文件:
 //   lib/desktop/widgets/workspace/novel_workspace_panel.dart
 //   lib/desktop/widgets/workspace/chapter_comment_session.dart
@@ -31,12 +31,14 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../shared/components/dialog_feedback.dart';
+import '../../../shared/components/horizontal_wheel_scroll.dart';
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/providers/settings_providers.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/utils/chapter_entity_recognition.dart';
+import '../../../shared/utils/text_input_composing.dart';
 import '../../../shared/utils/text_input_formatters.dart';
 import '../../../shared/widgets/entity_card.dart';
 import '../../../shared/widgets/editor_line_numbers.dart';
@@ -83,6 +85,7 @@ class ChapterEditor extends HookConsumerWidget {
     required this.onCreateChapter,
     this.databasePath,
     this.onAddSelectionToChat,
+    this.onNarrateSelection,
   });
 
   final List<Chapter> chapters;
@@ -111,6 +114,7 @@ class ChapterEditor extends HookConsumerWidget {
 
   /// 把正文选区作为快照引用加入当前 AI 对话。
   final ValueChanged<String>? onAddSelectionToChat;
+  final ValueChanged<String>? onNarrateSelection;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -262,6 +266,7 @@ class ChapterEditor extends HookConsumerWidget {
                 entityUnderline: entityUnderline,
                 entityBold: entityBold,
                 onAddSelectionToChat: onAddSelectionToChat,
+                onNarrateSelection: onNarrateSelection,
                 commentSession: commentSession,
               ),
             ],
@@ -388,6 +393,7 @@ class _ChapterContentField extends StatefulWidget {
     this.entityUnderline = false,
     this.entityBold = false,
     this.onAddSelectionToChat,
+    this.onNarrateSelection,
     required this.commentSession,
   });
 
@@ -411,6 +417,7 @@ class _ChapterContentField extends StatefulWidget {
   final bool entityUnderline;
   final bool entityBold;
   final ValueChanged<String>? onAddSelectionToChat;
+  final ValueChanged<String>? onNarrateSelection;
 
   /// 批注的状态与行为门面；整簇批注能力都从这一个对象进出。
   final ChapterCommentSession commentSession;
@@ -1134,13 +1141,34 @@ class _ChapterContentFieldState extends State<_ChapterContentField> {
   ) {
     final buttonItems = [...editableState.contextMenuButtonItems];
     final onAddSelectionToChat = widget.onAddSelectionToChat;
+    final onNarrateSelection = widget.onNarrateSelection;
     final session = widget.commentSession;
     final selection = _styleController.selection;
     ContextMenuButtonItem? emphasizedItem;
     if (selection.isValid && !selection.isCollapsed) {
       final selectedText = selection.textInside(_styleController.text);
-      // 章节工具按「批注 / 加入对话」的顺序排在系统文本动作之前；
+      // 章节工具按「批注 / 加入对话 / 朗读」的顺序排在系统文本动作之前；
       // 逆序插入 0 号位，最后一个插入的排最前。
+      if (onNarrateSelection != null &&
+          selectedText.trim().isNotEmpty &&
+          !isTextInputComposing(_styleController)) {
+        buttonItems.insert(
+          0,
+          ContextMenuButtonItem(
+            label: context.t(LocaleKeys.workspaceChapterNarrateSelection),
+            onPressed: () {
+              final value = _styleController.value;
+              ContextMenuController.removeAny();
+              if (!isTextInputComposing(_styleController) &&
+                  value.selection == selection &&
+                  selection.end <= value.text.length &&
+                  selection.textInside(value.text) == selectedText) {
+                onNarrateSelection(selectedText);
+              }
+            },
+          ),
+        );
+      }
       if (onAddSelectionToChat != null && selectedText.trim().isNotEmpty) {
         buttonItems.insert(
           0,
@@ -1598,43 +1626,47 @@ class _ChapterSelectionToolbar extends StatelessWidget {
             side: BorderSide(color: colors.border),
           ),
           clipBehavior: Clip.antiAlias,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              key: const ValueKey('chapter-selection-toolbar-row'),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var index = 0; index < buttonItems.length; index++) ...[
-                  if (index > 0)
-                    SizedBox(
-                      width: RevericSizes.dividerThickness,
-                      height: RevericSizes.buttonHeightSm - RevericSpacing.x2l,
-                      child: ColoredBox(color: colors.borderSubtle),
-                    ),
-                  TextButton(
-                    onPressed: buttonItems[index].onPressed,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(0, RevericSizes.buttonHeightSm),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: RevericSpacing.lg,
+          child: HorizontalWheelScroll(
+            builder: (context, controller) => SingleChildScrollView(
+              controller: controller,
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                key: const ValueKey('chapter-selection-toolbar-row'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var index = 0; index < buttonItems.length; index++) ...[
+                    if (index > 0)
+                      SizedBox(
+                        width: RevericSizes.dividerThickness,
+                        height:
+                            RevericSizes.buttonHeightSm - RevericSpacing.x2l,
+                        child: ColoredBox(color: colors.borderSubtle),
                       ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      foregroundColor:
-                          identical(buttonItems[index], emphasizedItem)
-                          ? colors.accent
-                          : colors.textSecondary,
-                      textStyle: typo.uiSmall,
-                      shape: const RoundedRectangleBorder(),
-                    ),
-                    child: Text(
-                      AdaptiveTextSelectionToolbar.getButtonLabel(
-                        context,
-                        buttonItems[index],
+                    TextButton(
+                      onPressed: buttonItems[index].onPressed,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, RevericSizes.buttonHeightSm),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: RevericSpacing.lg,
+                        ),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor:
+                            identical(buttonItems[index], emphasizedItem)
+                            ? colors.accent
+                            : colors.textSecondary,
+                        textStyle: typo.uiSmall,
+                        shape: const RoundedRectangleBorder(),
+                      ),
+                      child: Text(
+                        AdaptiveTextSelectionToolbar.getButtonLabel(
+                          context,
+                          buttonItems[index],
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

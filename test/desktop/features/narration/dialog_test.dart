@@ -16,6 +16,7 @@ import 'package:reveric/shared/models/screenplay_editing.dart';
 import 'package:reveric/shared/widgets/screenplay/document_session.dart';
 import 'package:reveric/shared/widgets/screenplay/editing_controller.dart';
 import 'package:reveric/desktop/features/narration/player.dart';
+import 'package:reveric/shared/components/reveric_icon_button.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/audio/request.dart';
 import 'package:reveric/shared/models/audio/result.dart';
@@ -164,15 +165,129 @@ void main() {
       variant: TargetPlatformVariant({platform}),
     );
   }
-  testWidgets('Android has no narration entry', (tester) async {
-    final session = _Session();
-    addTearDown(session.controller.dispose);
-    await tester.pumpWidget(
-      directorTestApp(NarrationButton(workId: 'work', session: session)),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('screenplay-narration')), findsNothing);
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
-  }, variant: TargetPlatformVariant({TargetPlatform.android}));
+  testWidgets(
+    'novel dialog reads the committed draft and stops with its own navigator',
+    (tester) async {
+      tester.view.physicalSize = const Size(480, 480);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      addTearDown(db.close);
+      await insertNarrationProvider(db);
+      final requests = <AudioRequest>[];
+      final player = _Player();
+      final service = NarrationService(
+        database: db,
+        invoke: (_, request, _, _) async {
+          requests.add(request);
+          return AudioGenerationResult(Uint8List.fromList([1, 2]));
+        },
+      );
+      await service.save(
+        'novel',
+        NarrationSettings(
+          providerId: 'speech',
+          modelId: narrationModel,
+          narrator: 'Kore',
+        ),
+        scope: NarrationSettingsScope.novel,
+      );
+      final controller = TextEditingController(text: 'Saved draft');
+      addTearDown(controller.dispose);
+      final windowOpen = ValueNotifier(true);
+      addTearDown(windowOpen.dispose);
+      final navigatorKey = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDatabaseProvider.overrideWithValue(db),
+            narrationServiceProvider.overrideWithValue(service),
+            narrationPlayerFactoryProvider.overrideWithValue(
+              (_) async => player,
+            ),
+          ],
+          child: directorTestApp(
+            ValueListenableBuilder(
+              valueListenable: windowOpen,
+              builder: (context, open, _) => open
+                  ? Navigator(
+                      key: navigatorKey,
+                      onGenerateRoute: (_) => MaterialPageRoute<void>(
+                        builder: (_) => Scaffold(
+                          body: Center(
+                            child: ChapterNarrationButton(
+                              workId: 'novel',
+                              controller: controller,
+                              isChapterReady: true,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.value = const TextEditingValue(
+        text: 'xin',
+        composing: TextRange(start: 0, end: 3),
+      );
+      await tester.pump();
+      final button = find.byTooltip('Read aloud');
+      expect(
+        tester
+            .widget<RevericIconButton>(find.byType(RevericIconButton))
+            .onPressed,
+        isNull,
+      );
+      controller.text = '最新的草稿。';
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(navigatorKey.currentState!.canPop(), isTrue);
+      expect(find.byType(NarrationDialog), findsOneWidget);
+      expect(find.text('Voice'), findsOneWidget);
+      expect(find.text('Character voices'), findsNothing);
+      expect(
+        find.text('Read scene headings, actions and subtitles'),
+        findsNothing,
+      );
+      expect(requests, isEmpty);
+
+      await tester.tap(find.text('Play'));
+      await tester.pumpAndSettle();
+      expect(requests.single.prompt, '最新的草稿。');
+      expect(requests.single.parameters.voice, 'Kore');
+      expect(player.playing, isTrue);
+
+      windowOpen.value = false;
+      await tester.pumpAndSettle();
+      expect(find.byType(NarrationDialog), findsNothing);
+      expect(player.disposed, isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
+  testWidgets(
+    'the rollout hides narration on Android and Linux',
+    (tester) async {
+      final session = _Session();
+      addTearDown(session.controller.dispose);
+      await tester.pumpWidget(
+        directorTestApp(NarrationButton(workId: 'work', session: session)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('screenplay-narration')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.android,
+      TargetPlatform.linux,
+    }),
+  );
 }

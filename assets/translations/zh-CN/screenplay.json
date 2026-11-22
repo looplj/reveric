@@ -692,7 +692,6 @@
   "screenplay.narration.title": "朗读",
   "screenplay.narration.chooseVoice": "选择音色",
   "screenplay.narration.useNarrator": "使用旁白音色",
-  "screenplay.narration.hint": "从当前场读到本集结束。语音由所选服务商在线生成并计费。本次朗读中复用已生成的音频，关闭窗口后清除音频缓存。",
   "screenplay.narration.noModels": "尚未配置语音模型",
   "screenplay.narration.noModelsHint": "请在 AI 服务商设置中启用语音合成模型，然后开始朗读。",
   "screenplay.narration.configure": "配置 AI 服务商",

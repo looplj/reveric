@@ -196,12 +196,14 @@ void main() {
 
       final contentController = TextEditingController();
       String? addedExcerpt;
+      String? narratedExcerpt;
       await tester.pumpWidget(
         _wrapEditor(
           _editor(
             content: '',
             contentController: contentController,
             onAddSelectionToChat: (text) => addedExcerpt = text,
+            onNarrateSelection: (text) => narratedExcerpt = text,
           ),
           minimapEnabled: true,
           lineNumbersEnabled: true,
@@ -452,6 +454,9 @@ void main() {
         lessThanOrEqualTo(24),
         reason: '三击后的工具栏必须水平居中于当前段落选区。',
       );
+      await tester.tap(find.text('朗读选中内容'));
+      await tester.pumpAndSettle();
+      expect(narratedExcerpt, paragraphSelection.textInside(paragraphContent));
 
       const entity = ChapterEntityMention(
         entityType: entityTypeCharacter,
@@ -500,6 +505,7 @@ Widget _editor({
   required String content,
   TextEditingController? contentController,
   ValueChanged<String>? onAddSelectionToChat,
+  ValueChanged<String>? onNarrateSelection,
   List<CharacterProfile> characterProfiles = const [],
 }) {
   final titleController = TextEditingController(text: '2.0版本开发');
@@ -529,6 +535,7 @@ Widget _editor({
     contentFocusNode: FocusNode(),
     onCreateChapter: () async {},
     onAddSelectionToChat: onAddSelectionToChat,
+    onNarrateSelection: onNarrateSelection,
   );
 }
 

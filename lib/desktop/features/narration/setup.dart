@@ -1,4 +1,4 @@
-// 职责: 配置朗读模型、角色音色与旁白范围，校验并保存后提交播放计划。
+// 职责: 配置朗读模型和音色，校验并保存后提交剧本或小说的播放计划。
 // 关联文件:
 //   lib/desktop/features/narration/dialog.dart
 //   lib/desktop/features/narration/voice.dart
@@ -7,6 +7,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/reading.json
+//   assets/translations/zh-CN/reading.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -29,6 +31,7 @@ import '../../../shared/logger/app_logger.dart';
 import '../../../shared/models/audio/channels.dart';
 import '../../../shared/models/narration.dart';
 import '../../../shared/providers/narration.dart';
+import '../../../shared/services/screenplay/narration_service.dart';
 import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/theme/theme.dart';
 import '../../widgets/agent_management/ai_providers_page.dart';
@@ -58,16 +61,20 @@ class NarrationSetup extends HookConsumerWidget {
     super.key,
     required this.workId,
     required this.source,
+    required this.scope,
     required this.initial,
     required this.onStart,
   });
   final String workId;
-  final NarrationSource source;
+  final NarrationInput source;
+  final NarrationSettingsScope scope;
   final NarrationSettings initial;
   final ValueChanged<NarrationPlan> onStart;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final input = source;
+    final screenplay = input is NarrationSource ? input : null;
     final form = useForm<_Field>(
       initialValues: {
         _Field.model: (initial.providerId, initial.modelId),
@@ -132,7 +139,7 @@ class NarrationSetup extends HookConsumerWidget {
         if (!context.mounted) {
           return;
         }
-        await service.save(workId, settings);
+        await service.save(workId, settings, scope: scope);
         if (context.mounted) {
           onStart((settings: settings, segments: segments));
         }
@@ -164,7 +171,8 @@ class NarrationSetup extends HookConsumerWidget {
           description: context.t(LocaleKeys.narrationNoModelsHint),
           action: RevericButton.secondary(
             label: context.t(LocaleKeys.narrationConfigure),
-            onPressed: () => showAiProviderSettingsDialog(context),
+            onPressed: () =>
+                showAiProviderSettingsDialog(context, useRootNavigator: false),
           ),
         ),
       );
@@ -193,7 +201,8 @@ class NarrationSetup extends HookConsumerWidget {
         )!.capabilities.voices;
         form.updateValue(_Field.narrator, available.firstOrNull ?? '');
         form.updateValue(_Field.voices, <String, String>{
-          for (final (index, id) in source.characterIds.indexed)
+          for (final (index, id)
+              in (screenplay?.characterIds ?? const <String>{}).indexed)
             if (available.isNotEmpty)
               id: available[(index + 1) % available.length],
         });
@@ -213,11 +222,6 @@ class NarrationSetup extends HookConsumerWidget {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        context.t(LocaleKeys.narrationHint),
-                        style: typo.uiSmall.copyWith(color: colors.textMuted),
-                      ),
-                      const SizedBox(height: RevericSpacing.x3l),
                       Wrap(
                         spacing: RevericSpacing.x2l,
                         runSpacing: RevericSpacing.lg,
@@ -230,7 +234,9 @@ class NarrationSetup extends HookConsumerWidget {
                                 ignoring: busy.value,
                                 child: NarrationVoiceSelect(
                                   label: context.t(
-                                    LocaleKeys.narrationNarrator,
+                                    screenplay == null
+                                        ? LocaleKeys.readingNarrationVoice
+                                        : LocaleKeys.narrationNarrator,
                                   ),
                                   allowNarrator: false,
                                   value: narrator,
@@ -243,7 +249,7 @@ class NarrationSetup extends HookConsumerWidget {
                             ),
                         ],
                       ),
-                      if (capability != null) ...[
+                      if (capability != null && screenplay != null) ...[
                         const SizedBox(height: RevericSpacing.sm),
                         MergeSemantics(
                           child: InkWell(
@@ -283,7 +289,7 @@ class NarrationSetup extends HookConsumerWidget {
                             ),
                           ),
                         ),
-                        if (source.characterIds.isNotEmpty) ...[
+                        if (screenplay.characterIds.isNotEmpty) ...[
                           const SizedBox(height: RevericSpacing.x2l),
                           Divider(height: 1, color: colors.borderSubtle),
                           const SizedBox(height: RevericSpacing.x2l),
@@ -298,14 +304,14 @@ class NarrationSetup extends HookConsumerWidget {
                             spacing: RevericSpacing.x2l,
                             runSpacing: RevericSpacing.lg,
                             children: [
-                              for (final id in source.characterIds)
+                              for (final id in screenplay.characterIds)
                                 SizedBox(
                                   width: cell,
                                   child: IgnorePointer(
                                     ignoring: busy.value,
                                     child: NarrationVoiceSelect(
                                       label:
-                                          source.characterNames[id] ??
+                                          screenplay.characterNames[id] ??
                                           context.t(
                                             LocaleKeys
                                                 .screenplayDeletedCharacter,

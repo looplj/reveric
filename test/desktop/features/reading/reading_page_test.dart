@@ -12,16 +12,23 @@
 //   .agents/rules/desktop-window-frame.md
 //   .agents/rules/i18n.md
 
+import 'dart:async';
+
+import 'package:drift/native.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:reveric/desktop/features/narration/dialog.dart';
 import 'package:reveric/desktop/features/reading/reading_page.dart';
 import 'package:reveric/desktop/widgets/desktop_window_frame.dart';
+import 'package:reveric/shared/components/reveric_icon_button.dart';
+import 'package:reveric/shared/database/app_database.dart' show AppDatabase;
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/chapter.dart';
+import 'package:reveric/shared/models/narration.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
@@ -34,6 +41,81 @@ void main() {
   });
 
   setUp(rootBundle.clear);
+
+  testWidgets(
+    'read aloud waits for the selected chapter body after a chapter switch',
+    (tester) async {
+      final database = AppDatabase.forTest(NativeDatabase.memory());
+      addTearDown(database.close);
+      final secondChapter = StreamController<Chapter>();
+      addTearDown(secondChapter.close);
+      await _pumpReadingPage(
+        tester,
+        detachedWindow: true,
+        database: database,
+        secondChapter: secondChapter.stream,
+      );
+
+      final narrationButton = find.byWidgetPredicate(
+        (widget) =>
+            widget is RevericIconButton &&
+            widget.tooltip == tr(LocaleKeys.narrationTitle),
+      );
+      expect(
+        tester.widget<RevericIconButton>(narrationButton).onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.text(tr(LocaleKeys.readingNextChapter)));
+      await tester.pump();
+      expect(
+        tester.widget<RevericIconButton>(narrationButton).onPressed,
+        isNull,
+      );
+
+      secondChapter.add(_secondChapter(content: 'Current chapter body'));
+      await tester.pumpAndSettle();
+      await tester.tap(narrationButton);
+      await tester.pumpAndSettle();
+      final dialog = tester.widget<NarrationDialog>(
+        find.byType(NarrationDialog),
+      );
+      expect(dialog.workId, 'reading_test_novel');
+      expect(
+        (dialog.source as NovelNarrationSource).text,
+        'Current chapter body',
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
+  testWidgets(
+    'continuous reading narrates the chapter visible after scrolling',
+    (tester) async {
+      final database = AppDatabase.forTest(NativeDatabase.memory());
+      addTearDown(database.close);
+      final body = List.filled(45, 'Current chapter body.').join('\n');
+      await _pumpReadingPage(
+        tester,
+        database: database,
+        readingMode: DesktopReadingMode.continuous_scroll,
+        secondChapter: Stream.value(_secondChapter(content: body)),
+      );
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -650));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip(tr(LocaleKeys.narrationTitle)));
+      await tester.pumpAndSettle();
+      final dialog = tester.widget<NarrationDialog>(
+        find.byType(NarrationDialog),
+      );
+      expect((dialog.source as NovelNarrationSource).text, body);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
 
   testWidgets(
     'loads body from chapter detail below the desktop reading toolbar',
@@ -107,6 +189,9 @@ Future<void> _pumpReadingPage(
   bool detachedWindow = false,
   bool pinned = false,
   ValueChanged<bool>? onPinnedChanged,
+  AppDatabase? database,
+  Stream<Chapter>? secondChapter,
+  DesktopReadingMode readingMode = DesktopReadingMode.chapter,
 }) async {
   tester.view.physicalSize = const Size(1440, 900);
   tester.view.devicePixelRatio = 1;
@@ -117,6 +202,10 @@ Future<void> _pumpReadingPage(
     _wrap(
       ProviderScope(
         overrides: [
+          if (database != null) appDatabaseProvider.overrideWithValue(database),
+          if (database != null)
+            appSettingsDatabaseProvider.overrideWithValue(database),
+          desktopReadingModeProvider.overrideWithValue(readingMode),
           appBackgroundImagePathProvider.overrideWithValue(''),
           appBackgroundFitProvider.overrideWithValue(AppBackgroundFit.cover),
           appBackgroundThemeProvider.overrideWithValue(null),
@@ -124,7 +213,10 @@ Future<void> _pumpReadingPage(
           readingMarginProvider.overrideWithValue(24),
           chapterTreeProvider('reading_test_db').overrideWith(
             // 章号只由章节树计算；正文详情直查原表，chapterNum 为空。
-            (ref) => Stream.value([_chapter(content: '', chapterNum: 7)]),
+            (ref) => Stream.value([
+              _chapter(content: '', chapterNum: 7),
+              if (secondChapter != null) _secondChapter(),
+            ]),
           ),
           chapterContentByIdProvider(
             path: 'reading_test_db',
@@ -132,6 +224,11 @@ Future<void> _pumpReadingPage(
           ).overrideWith(
             (ref) => Stream.value(_chapter(content: 'Reader content')),
           ),
+          if (secondChapter != null)
+            chapterContentByIdProvider(
+              path: 'reading_test_db',
+              chapterId: 'chapter_two',
+            ).overrideWith((ref) => secondChapter),
         ],
         child: DesktopReadingPage(
           novelId: 'reading_test_novel',
@@ -146,6 +243,14 @@ Future<void> _pumpReadingPage(
   );
   await tester.pumpAndSettle();
 }
+
+Chapter _secondChapter({String content = ''}) => _chapter(
+  content: content,
+  id: 'chapter_two',
+  title: 'Chapter two',
+  siblingOrder: 1,
+  chapterNum: 8,
+);
 
 Chapter _chapter({
   required String content,

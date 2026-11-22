@@ -259,10 +259,34 @@ void main() {
   }
 
   test(
-    'per-work configuration round trips without changing character data',
+    'novel configuration is shared by work and separate from screenplay voices',
     () async {
       expect((await service.load('new')).modelId, isEmpty);
       await service.save('work', settings);
+      expect(
+        (await service.load(
+          'work',
+          scope: NarrationSettingsScope.novel,
+        )).modelId,
+        isEmpty,
+      );
+      final novelSettings = NarrationSettings(
+        providerId: settings.providerId,
+        modelId: settings.modelId,
+        narrator: 'Kore',
+      );
+      await service.save(
+        'work',
+        novelSettings,
+        scope: NarrationSettingsScope.novel,
+      );
+      expect(
+        (await service.load(
+          'work',
+          scope: NarrationSettingsScope.novel,
+        )).toJson(),
+        novelSettings.toJson(),
+      );
       final restored = await service.load('work');
       expect(restored.toJson(), settings.toJson());
       expect((await service.load('other')).modelId, isEmpty);

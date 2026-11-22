@@ -1,4 +1,4 @@
-// 职责: 展示当前朗读台词、段落进度和播放控制，并管理播放界面的资源生命周期。
+// 职责: 展示当前朗读文本、段落进度和播放控制，并管理播放界面的资源生命周期。
 // 关联文件:
 //   lib/desktop/features/narration/player.dart
 //   lib/desktop/features/narration/setup.dart
@@ -6,6 +6,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/reading.json
+//   assets/translations/zh-CN/reading.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -35,7 +37,7 @@ class NarrationPlayback extends HookConsumerWidget {
     required this.plan,
     required this.onBack,
   });
-  final NarrationSource source;
+  final NarrationInput source;
   final NarrationPlan plan;
   final VoidCallback onBack;
 
@@ -68,16 +70,23 @@ class NarrationPlayback extends HookConsumerWidget {
     final segment = controller.segments[controller.index];
     final typo = RevericTheme.typographyOf(context);
     final colors = RevericTheme.colorsOf(context);
-    final role = segment.characterId == null
-        ? context.t(LocaleKeys.narrationNarrator)
-        : source.characterNames[segment.characterId]!;
+    final role = switch (source) {
+      NovelNarrationSource() => null,
+      NarrationSource(:final characterNames) =>
+        segment.characterId == null
+            ? context.t(LocaleKeys.narrationNarrator)
+            : characterNames[segment.characterId]!,
+    };
+    final completedLabel = source is NovelNarrationSource
+        ? LocaleKeys.readingNarrationComplete
+        : LocaleKeys.narrationComplete;
     final status = controller.error != null
         ? narrationErrorText(context, controller.error!)
         : context.t(
             controller.loading
                 ? LocaleKeys.narrationGenerating
                 : controller.completed
-                ? LocaleKeys.narrationComplete
+                ? completedLabel
                 : controller.playing
                 ? LocaleKeys.narrationPlaying
                 : LocaleKeys.narrationPaused,
@@ -89,14 +98,17 @@ class NarrationPlayback extends HookConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Expanded(
-              child: Text(
-                role,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: typo.uiSemibold.copyWith(color: colors.accent),
+            if (role == null)
+              const Spacer()
+            else
+              Expanded(
+                child: Text(
+                  role,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: typo.uiSemibold.copyWith(color: colors.accent),
+                ),
               ),
-            ),
             Text(
               context.t(
                 LocaleKeys.narrationProgress,

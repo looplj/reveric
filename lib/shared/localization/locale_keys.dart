@@ -3828,6 +3828,8 @@ abstract final class LocaleKeys {
   static const readingReadingTime = 'reading.reading_time';
   static const readingSettingsTitle = 'reading.settings_title';
   static const readingExit = 'reading.exit';
+  static const readingNarrationVoice = 'reading.narration_voice';
+  static const readingNarrationComplete = 'reading.narration_complete';
   static const readingBrightness = 'reading.brightness';
   static const readingNightMode = 'reading.night_mode';
   static const readingExitNightMode = 'reading.exit_night_mode';
@@ -4454,7 +4456,6 @@ abstract final class LocaleKeys {
   static const narrationTitle = 'screenplay.narration.title';
   static const narrationChooseVoice = 'screenplay.narration.chooseVoice';
   static const narrationUseNarrator = 'screenplay.narration.useNarrator';
-  static const narrationHint = 'screenplay.narration.hint';
   static const narrationNoModels = 'screenplay.narration.noModels';
   static const narrationNoModelsHint = 'screenplay.narration.noModelsHint';
   static const narrationConfigure = 'screenplay.narration.configure';
@@ -5677,6 +5678,8 @@ abstract final class LocaleKeys {
   static const workspaceChapterFormatFailed = 'workspace.chapter_format_failed';
   static const workspaceChapterBodyHint = 'workspace.chapter_body_hint';
   static const workspaceChapterCopy = 'workspace.chapter_copy';
+  static const workspaceChapterNarrateSelection =
+      'workspace.chapter_narrate_selection';
   static const workspaceChapterCopyAddRule = 'workspace.chapter_copy_add_rule';
   static const workspaceChapterCopyFrom = 'workspace.chapter_copy_from';
   static const workspaceChapterCopyReplaceTitle =

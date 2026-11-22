@@ -20,6 +20,17 @@ import 'narration_orchestrator.dart';
 
 final _log = AppLogger.forModule('Narration');
 
+enum NarrationSettingsScope {
+  screenplay('screenplay_narration'),
+  novel('novel_narration');
+
+  const NarrationSettingsScope(this._prefix);
+
+  final String _prefix;
+
+  String _storageKey(String workId) => '$_prefix:$workId';
+}
+
 class NarrationService {
   NarrationService({
     required this.database,
@@ -32,26 +43,34 @@ class NarrationService {
   final ProductionAudioQuery? query;
   final Duration pollInterval;
 
-  Future<NarrationSettings> load(String workId) async {
-    final raw = await database.appStateDao.get('screenplay_narration:$workId');
+  Future<NarrationSettings> load(
+    String workId, {
+    NarrationSettingsScope scope = NarrationSettingsScope.screenplay,
+  }) async {
+    final raw = await database.appStateDao.get(scope._storageKey(workId));
     return raw == null
         ? NarrationSettings()
         : NarrationSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
   }
 
-  Future<void> save(String workId, NarrationSettings settings) async {
+  Future<void> save(
+    String workId,
+    NarrationSettings settings, {
+    NarrationSettingsScope scope = NarrationSettingsScope.screenplay,
+  }) async {
     await requireProvider(settings);
     if (settings.narrator.trim().isEmpty) {
       throw const AudioException('audio_voice_required');
     }
+    final key = scope._storageKey(workId);
     try {
       await database.appStateDao.set(
-        key: 'screenplay_narration:$workId',
+        key: key,
         value: jsonEncode(settings.toJson()),
       );
     } catch (error, stack) {
       _log.error(
-        '[DB] UPSERT app_states screenplay_narration:$workId',
+        '[DB] UPSERT app_states $key',
         error: error,
         stackTrace: stack,
       );

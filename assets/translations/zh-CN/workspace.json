@@ -188,6 +188,7 @@
   "workspace.chapter_format_progress_label": "正在排版章节…",
   "workspace.chapter_format_failed": "排版失败：已写入 {count} 章后中断",
   "workspace.chapter_copy": "复制",
+  "workspace.chapter_narrate_selection": "朗读选中内容",
   "workspace.chapter_copy_replace_title": "替换标点规则",
   "workspace.chapter_replace": "替换",
   "workspace.chapter_copy_replace_action": "替换且复制",

@@ -9,6 +9,8 @@
   "reading.start_from_beginning": "从头开始",
   "reading.resume_from": "继续：{chapter}",
   "reading.reader_title": "阅读中",
+  "reading.narration_voice": "音色",
+  "reading.narration_complete": "朗读结束",
   "reading.table_of_contents": "目录",
   "reading.pin_window": "窗口置顶",
   "reading.unpin_window": "取消置顶",

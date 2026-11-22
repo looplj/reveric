@@ -59,6 +59,36 @@ void main() {
     narrator: 'narrator',
     voices: {'a': 'voice-a', 'b': 'voice-b'},
   );
+  test('novel snapshots use a single voice and skip blank segments', () {
+    final segments = compileNarration(
+      const NovelNarrationSource('　第一句。\n           第二句。　'),
+      NarrationSettings(narrator: 'reader', includeNarration: false),
+      maxCharacters: 5,
+      supportsInstructions: true,
+    );
+    expect(segments.map((segment) => segment.text), ['第一句。', '第二句。']);
+    for (final segment in segments) {
+      expect(segment.voice, 'reader');
+      expect(segment.characterId, isNull);
+      expect(segment.instructions, isEmpty);
+    }
+    expect(
+      () => compileNarration(
+        const NovelNarrationSource('　\n '),
+        settings,
+        maxCharacters: 500,
+        supportsInstructions: true,
+      ),
+      throwsA(
+        isA<AudioException>().having(
+          (error) => error.code,
+          'code',
+          'narration_empty',
+        ),
+      ),
+    );
+  });
+
   test('characters switch voices, directions do not enter spoken text', () {
     final segments = compileNarration(
       narrationFixture(),

@@ -16,9 +16,13 @@ import 'home_management_cards.dart';
 import 'page_dialog.dart';
 
 /// 没有可用模型时的配置入口：就地弹出供应商管理页。
-Future<void> showAiProviderSettingsDialog(BuildContext context) {
+Future<void> showAiProviderSettingsDialog(
+  BuildContext context, {
+  bool useRootNavigator = true,
+}) {
   return showManagementPageDialog(
     context,
+    useRootNavigator: useRootNavigator,
     builder: (headerKey, closeButton) => AiProvidersPage(
       headerGestureExclusionKey: headerKey,
       headerAction: closeButton,

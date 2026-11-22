@@ -24,9 +24,11 @@ import '../../../shared/widgets/settings/leave_guard.dart';
 Future<void> showManagementPageDialog(
   BuildContext context, {
   required Widget Function(GlobalKey headerKey, Widget closeButton) builder,
+  bool useRootNavigator = true,
 }) {
   return showRevericDialog<void>(
     context: context,
+    useRootNavigator: useRootNavigator,
     builder: (_) => _ManagementPageDialog(builder: builder),
   );
 }

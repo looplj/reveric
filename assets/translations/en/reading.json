@@ -9,6 +9,8 @@
   "reading.start_from_beginning": "Start from Beginning",
   "reading.resume_from": "Resume: {chapter}",
   "reading.reader_title": "Reading",
+  "reading.narration_voice": "Voice",
+  "reading.narration_complete": "Reading complete",
   "reading.table_of_contents": "Contents",
   "reading.pin_window": "Pin on top",
   "reading.unpin_window": "Unpin",
