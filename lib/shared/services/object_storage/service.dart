@@ -132,6 +132,7 @@ class ObjectStorageService {
     required String mimeType,
     required int fileSize,
     AgentCancellationToken? cancellation,
+    bool forcePresigned = false,
   }) async {
     final normalized = config.normalized();
     final extension = extensionFromMime(mimeType);
@@ -159,7 +160,7 @@ class ObjectStorageService {
         if (cancellation?.isCancellationRequested == true) {
           throw StateError('Object storage upload cancelled');
         }
-        return _accessUrl(normalized, s3, key);
+        return _accessUrl(normalized, s3, key, forcePresigned: forcePresigned);
       })().timeout(
         const Duration(minutes: 10),
         onTimeout: () {
@@ -184,8 +185,13 @@ class ObjectStorageService {
         ObjectStorageProvider.s3 => S3Client(config, client, now: _now),
       };
 
-  StoredObject _accessUrl(ObjectStorageConfig config, S3Client s3, String key) {
-    if (config.publicBaseUrl.isNotEmpty) {
+  StoredObject _accessUrl(
+    ObjectStorageConfig config,
+    S3Client s3,
+    String key, {
+    bool forcePresigned = false,
+  }) {
+    if (!forcePresigned && config.publicBaseUrl.isNotEmpty) {
       return (
         url: Uri.parse('${config.publicBaseUrl}/${encodeS3Key(key)}'),
         expiresAt: null,

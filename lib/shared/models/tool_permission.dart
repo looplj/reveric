@@ -15,6 +15,7 @@ const toolPermissionActions = <String>{
   'generation.image',
   'generation.video',
   'generation.audio',
+  'media.transcribe',
   'files.read',
   'files.remove',
 };

@@ -7,6 +7,7 @@ Upstream Dart and Windows/macOS plugin sources are retained under `fvp/`.
 Local changes:
 
 - Adapt the disposal lifecycle from [FVP PR #416](https://github.com/wang-bin/fvp/pull/416): confirm native pause, allow 100ms for pending audio completions, then confirm native stop before releasing textures. Query native state directly, coalesce concurrent disposal, and preserve resources on callback timeout instead of continuing teardown. Keep the existing awaitable `dispose()` API and platform audio backends; the PR's audio-only controller API is not included. The native disposal integration test covers play/pause/seek, end-of-stream, concurrent and repeated disposal.
+- Keep desktop local media open at end of playback so users can seek while paused. Report the native pause after active playback as completion and leave the last frame in place, avoiding a redundant seek to the end when Flutter handles completion.
 
 - Register native plugins only on Windows and macOS. Register the Dart backend explicitly after selecting the shared FFmpeg runtime.
 - Use the local `video_player` Dart API package, without endorsed platform backends.

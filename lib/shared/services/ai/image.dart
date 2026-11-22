@@ -166,6 +166,13 @@ AiImageErrorCode? classifyAiImageError(String? serverMessage) {
   if (lower.contains('model') && lower.contains('not support')) {
     return AiImageErrorCode.param;
   }
+  if (lower.contains('quality') &&
+      (lower.contains('不支持') ||
+          lower.contains('not support') ||
+          lower.contains('unsupported') ||
+          lower.contains('invalid'))) {
+    return AiImageErrorCode.param;
+  }
   return null;
 }
 
@@ -184,6 +191,76 @@ class AiImageGenerationException implements Exception {
 
   @override
   String toString() => userMessage;
+}
+
+/// 提交没有明确拒绝时，按失败形态选择文案。连接中断与超时都还没有 HTTP 回执。
+String imageSubmitFailureMessage(Object error) {
+  if (_imageSubmitTimedOut(error) || _imageSubmitDisconnected(error)) {
+    return tr(LocaleKeys.aiRequestTimeout);
+  }
+  final status = _imageSubmitStatusCode(error);
+  if (status != null && status >= 500) {
+    final data = error is DioException ? error.response?.data : null;
+    final providerMessage = readImageProviderError(data, null);
+    if (providerMessage != null) {
+      return providerMessage;
+    }
+    return tr(LocaleKeys.aiImageServerError);
+  }
+  final code = switch (error) {
+    ProviderFailure(:final code) => code,
+    PluginHostError(:final code) => code,
+    PluginExecutionError(:final code) => code,
+    _ => null,
+  };
+  if (code == 'cancelled' || code == 'user_cancelled') {
+    return tr(LocaleKeys.aiOperationCancelled);
+  }
+  if (code == 'invalid_response' &&
+      (error is PluginHostError || error is PluginExecutionError)) {
+    return tr(LocaleKeys.aiImagePluginResponseInvalid);
+  }
+  if (code == 'submission_unknown' ||
+      error is FormatException ||
+      error is TypeError) {
+    return tr(LocaleKeys.aiImageResponseInvalid);
+  }
+  return tr(LocaleKeys.aiImageGenerationFailed);
+}
+
+bool _imageSubmitTimedOut(Object error) {
+  if (error is TimeoutException) {
+    return true;
+  }
+  return error is DioException &&
+      const {
+        DioExceptionType.connectionTimeout,
+        DioExceptionType.sendTimeout,
+        DioExceptionType.receiveTimeout,
+        DioExceptionType.transformTimeout,
+      }.contains(error.type);
+}
+
+bool _imageSubmitDisconnected(Object error) {
+  if (error is SocketException ||
+      error is http.ClientException ||
+      error is TlsException) {
+    return true;
+  }
+  if (error is DioException && error.type == DioExceptionType.connectionError) {
+    return true;
+  }
+  final cause = error is DioException ? error.error : null;
+  return cause is SocketException ||
+      cause is http.ClientException ||
+      cause is TlsException;
+}
+
+int? _imageSubmitStatusCode(Object error) {
+  if (error is DioException) {
+    return error.response?.statusCode;
+  }
+  return null;
 }
 
 /// Preserves submission certainty through the facade and task persistence.
@@ -846,7 +923,7 @@ class AiImageGenerationService {
           throw AiImageSubmissionException(
             code == 'rejected'
                 ? (resolvedMessage ?? tr(LocaleKeys.aiImageGenerationFailed))
-                : tr(LocaleKeys.aiImageSubmissionUnknown),
+                : imageSubmitFailureMessage(error),
             failureCode: code == 'rejected' ? 'rejected' : 'submission_unknown',
             debugMessage: '$error',
             code: code == 'rejected'

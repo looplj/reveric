@@ -31,10 +31,11 @@ void main() {
     final end = tester.widget<Slider>(find.byType(Slider));
     expect(end.value, end.max);
 
-    end.onChanged!(2000);
+    await tester.tap(find.byType(Slider));
     await tester.pumpAndSettle();
     expect(find.text('0:02 / 0:05'), findsOneWidget);
-    expect(tester.widget<Slider>(find.byType(Slider)).value, 2000);
+    expect(tester.widget<Slider>(find.byType(Slider)).value, closeTo(2500, 1));
+    expect(player.value.isPlaying, isFalse);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
     await player.dispose();

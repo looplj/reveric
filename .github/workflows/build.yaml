@@ -483,10 +483,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            clang cmake ninja-build pkg-config \
-            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            clang cmake ninja-build pkg-config patchelf \
+            libgtk-3-dev libjson-glib-dev liblzma-dev libstdc++-12-dev \
             libx11-dev libxi-dev \
-            xz-utils
+            xz-utils zstd
       - run: dart pub global activate fastforge ${{ env.FASTFORGE_VERSION }}
       - name: Update pubspec version from tag
         id: version
@@ -537,10 +537,8 @@ jobs:
       - name: Restore bundled FFmpeg
         uses: actions/cache@v4
         with:
-          path: |
-            linux/ffmpeg/.cache
-            linux/ffmpeg/bundle
-          key: linux-ffmpeg-${{ hashFiles('linux/ffmpeg/prepare.sh') }}
+          path: linux/ffmpeg/.cache
+          key: linux-ffmpeg-kit-${{ hashFiles('linux/ffmpeg/complete_kit.py') }}
       - name: Restore MDK Linux SDK
         uses: actions/cache@v4
         with:
@@ -548,9 +546,6 @@ jobs:
             third/fvp/linux/mdk-sdk
             third/fvp/linux/mdk-sdk-linux-x64.tar.xz
           key: mdk-linux-${{ hashFiles('third/fvp/cmake/deps.cmake') }}
-      - name: Prepare bundled FFmpeg
-        shell: bash
-        run: bash linux/ffmpeg/prepare.sh
       - run: flutter pub get
       - name: Build archive
         run: fastforge release --name release --jobs linux-zip --skip-clean
@@ -583,6 +578,72 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             dist/**/*-linux.zip
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s globstar failglob
+          for file in dist/**/*-linux.zip; do
+            npx --yes wrangler@4.160.1 r2 object put \
+              "reveric-releases/releases/${TAG_NAME}/${file##*/}" \
+              --file="$file" \
+              --content-type=application/zip \
+              --remote \
+              --force
+          done
+
+  # 完整发布时才更新清单，手动补打单个平台时保留已发布的清单。
+  publish-update-manifest:
+    needs: [package-macos, package-windows, package-android, package-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: publish-update-manifest
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}
+      - name: Publish R2 update manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          read -r tag <<< "$TAG_NAME"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Skipping update manifest for non-stable tag $tag"
+            exit 0
+          fi
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$work_dir/release.json"
+          status="$(curl --silent --show-error --retry 3 --max-time 30 \
+            --output "$work_dir/current.json" --write-out '%{http_code}' \
+            'https://downloads.reveric.app/updates/latest.json')"
+          case "$status" in
+            200) ;;
+            404) rm "$work_dir/current.json" ;;
+            *) echo "Could not read current R2 update manifest (HTTP $status)"; exit 1 ;;
+          esac
+          python3 scripts/build-update-manifest.py "$tag" "$work_dir"
+          if [[ -f "$work_dir/latest.json" ]]; then
+            npx --yes wrangler@4.160.1 r2 object put \
+              'reveric-releases/updates/latest.json' \
+              --file="$work_dir/latest.json" \
+              --content-type='application/json; charset=utf-8' \
+              --cache-control='no-store' \
+              --remote \
+              --force
+          fi
 
   # 四个平台都打包成功后，用本次 tag 的版本构建官网并部署到 Cloudflare Pages。
   # 手动只打单个平台时，其余打包 job 被跳过，这里也随之跳过；需要时手动运行 Website workflow。

@@ -228,11 +228,7 @@ void main() {
           await db.close();
           await main.close();
           closed = true;
-          final backup = collectSelectedMedia(
-            backup: root,
-            novelIds: {'work'},
-            contentPaths: ['${root.path}/content.sqlite'],
-          );
+          final backup = collectSelectedMedia(backup: root, novelIds: {'work'});
           expect(
             backup.rows['assets']!.map((a) => a['id']),
             containsAll(result.nodes.map((n) => n.mediaAssetId).toSet()),

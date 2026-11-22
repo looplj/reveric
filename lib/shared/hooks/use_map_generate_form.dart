@@ -35,6 +35,7 @@ class MapGenerateForm {
     required this.customStyleError,
     required this.resolutionId,
     required this.qualityId,
+    required this.customImageParameters,
     required this.includeLocations,
     required this.referenceCurrentImage,
     required this.referenceParentImage,
@@ -57,6 +58,7 @@ class MapGenerateForm {
   final ValueNotifier<bool> customStyleError;
   final ValueNotifier<String> resolutionId;
   final ValueNotifier<String> qualityId;
+  final ValueNotifier<CustomImageParameters> customImageParameters;
   final ValueNotifier<bool> includeLocations;
   final ValueNotifier<bool> referenceCurrentImage;
   final ValueNotifier<bool> referenceParentImage;
@@ -80,6 +82,7 @@ class MapGenerateForm {
     customStyleError,
     resolutionId,
     qualityId,
+    customImageParameters,
     includeLocations,
     referenceCurrentImage,
     referenceParentImage,
@@ -123,6 +126,9 @@ class MapGenerateForm {
     complexity: complexityId.value,
     resolutionId: resolutionId.value,
     quality: qualityId.value,
+    customImageParameters: choices?.supportsCustomParameters ?? false
+        ? customImageParameters.value
+        : null,
     customPrompt: promptController.text,
     includeLocations: includeLocations.value,
     referenceCurrentImage: effectiveReferenceCurrentImage,
@@ -165,6 +171,16 @@ MapGenerateForm useMapGenerateForm({
   final qualityId = useState(
     choices?.defaultQuality(mapDefaultQualityId) ?? '',
   );
+  final customImageParameters = useState(defaultCustomImageParameters);
+  useEffect(() {
+    var active = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (active) {
+        customImageParameters.value = defaultCustomImageParameters;
+      }
+    });
+    return () => active = false;
+  }, [choices?.provider.id, choices?.model]);
   final complexityId = useState(
     choices?.defaults.complexity ?? choices?.complexities.firstOrNull,
   );
@@ -259,6 +275,7 @@ MapGenerateForm useMapGenerateForm({
     customStyleError: customStyleError,
     resolutionId: resolutionId,
     qualityId: qualityId,
+    customImageParameters: customImageParameters,
     includeLocations: includeLocations,
     referenceCurrentImage: referenceCurrentImage,
     referenceParentImage: referenceParentImage,

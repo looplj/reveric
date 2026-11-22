@@ -14,6 +14,7 @@
   "assets.media_import_failed": "Import failed. Check the format, file permissions and free space.",
   "assets.media_load_failed": "Could not load media. Try again.",
   "assets.media_preview_failed": "This file cannot be played. It may be missing or damaged.",
+  "assets.media_video_shortcuts": "Space: Play/pause · ←/→: Skip {seconds}s · Esc: Close",
   "assets.media_export_failed": "Export failed. Choose a new filename and check permissions and free space.",
   "assets.media_delete_confirm": "Hide this asset from the library? Its local file and existing references will be retained.",
   "assets.bone_hips": "Hips",

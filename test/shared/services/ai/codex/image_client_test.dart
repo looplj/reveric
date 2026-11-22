@@ -11,9 +11,11 @@ import 'dart:io';
 import 'package:reveric/shared/utils/storage_paths.dart';
 import 'dart:math';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/services/ai/codex/credentials.dart';
@@ -409,36 +411,45 @@ void main() {
       expect(posts, 1);
     });
   }
-  test('facade keeps unclassified HTTP 200 SSE failure uncertain', () async {
-    var posts = 0;
-    final provider = aiProviderBuiltinById(
-      'openai',
-    )!.copyWith(type: 'codex', apiKey: '', models: ['gpt-6-luna']);
-    final service = AiImageGenerationService(
-      provider,
-      model: 'gpt-image-2',
-      codexImageClientFactory: () => CodexImageClient(
-        credentials: () async => _auth,
-        client: _Client((_) {
-          posts++;
-          return _sse(
-            'event: error\ndata: {"error":{"code":"unknown","message":"unknown result"}}\n\n',
-          );
-        }),
-      ),
-    );
-    await expectLater(
-      service.generateImage('test'),
-      throwsA(
-        isA<AiImageSubmissionException>().having(
-          (e) => e.failureCode,
-          'submission outcome',
-          'submission_unknown',
+  test(
+    'facade reports unclassified HTTP 200 SSE failure as a bad response',
+    () async {
+      var posts = 0;
+      final provider = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(type: 'codex', apiKey: '', models: ['gpt-6-luna']);
+      final service = AiImageGenerationService(
+        provider,
+        model: 'gpt-image-2',
+        codexImageClientFactory: () => CodexImageClient(
+          credentials: () async => _auth,
+          client: _Client((_) {
+            posts++;
+            return _sse(
+              'event: error\ndata: {"error":{"code":"unknown","message":"unknown result"}}\n\n',
+            );
+          }),
         ),
-      ),
-    );
-    expect(posts, 1);
-  });
+      );
+      await expectLater(
+        service.generateImage('test'),
+        throwsA(
+          isA<AiImageSubmissionException>()
+              .having(
+                (e) => e.failureCode,
+                'submission outcome',
+                'submission_unknown',
+              )
+              .having(
+                (e) => e.userMessage,
+                'message',
+                tr(LocaleKeys.aiImageResponseInvalid),
+              ),
+        ),
+      );
+      expect(posts, 1);
+    },
+  );
 
   test('SSE error header retains structured quota classification', () async {
     final transport = _Client(

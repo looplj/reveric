@@ -30,6 +30,7 @@
   "tool.run_director_preview": "Refresh director preview",
   "tool.run_director_output": "Export director output",
   "tool.run_director_frames": "View director frames",
+  "tool.run_debug_log": "Read application logs",
   "tool.run_files": "Files",
   "tool.run_files_list": "List files",
   "tool.run_files_read_text": "Read text",

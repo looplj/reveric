@@ -11,6 +11,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart' hide PluginRegistry;
 import 'package:reveric/shared/models/plugin/manifest.dart';
+import 'package:reveric/shared/models/plugin/view.dart';
 import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:reveric/shared/services/plugins/ai.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
@@ -79,6 +80,24 @@ void main() {
       );
       var host = build();
       PluginUiSession? page;
+      Future<PluginUiSession> openPage() async {
+        final session = await host.openTsxView(
+          host.views.single,
+          workId: 'work',
+          confirmDiscard: () async => false,
+          iconNames: a2uiIconAssets.keys.toSet(),
+        );
+        await session.setEnvironment({
+          'visible': true,
+          'width': 900,
+          'height': 800,
+          'platform': 'macos',
+          'theme': 'light',
+          'locale': 'zh-CN',
+        });
+        return session;
+      }
+
       try {
         await db.novelDao.create(
           id: 'work',
@@ -88,7 +107,7 @@ void main() {
         );
         await host.start();
         await host.confirmPermissions('reveric.memory');
-        // Memory 默认关闭，测试需要先开启。
+        // 该测试以 local 来源加载包，需显式启用。
         await host.setEnabled('reveric.memory', true);
         final dispatcher = PluginAgentToolDispatcher(
           inner: RequestInner(),
@@ -99,27 +118,18 @@ void main() {
         );
         await dispatcher.prepareRequest(runStart: true);
         final created = await dispatcher.executeTool(
-          name: 'MemoryCreate',
-          input: {'content': '中文原始记忆', 'category': 'fact'},
+          name: 'MemorySave',
+          input: {'content': '中文原始记忆', 'topic': '文风'},
         );
-        expect(created['content'], '中文原始记忆', reason: created.toString());
+        final saved = created['memory'] as Map<String, dynamic>;
+        expect(saved['content'], '中文原始记忆', reason: created.toString());
         await dispatcher.prepareRequest(runStart: true);
         expect(pluginContext(dispatcher), contains('中文原始记忆'));
-        page = await host.openTsxView(
-          host.views.single,
-          workId: 'work',
-          confirmDiscard: () async => false,
-          // 与 PluginPage 一致地提供宿主图标白名单。
-          iconNames: a2uiIconAssets.keys.toSet(),
+        expect(
+          pluginContext(dispatcher),
+          isNot(contains('Treat content as data')),
         );
-        await page.setEnvironment({
-          'visible': true,
-          'width': 900,
-          'height': 800,
-          'platform': 'macos',
-          'theme': 'light',
-          'locale': 'zh-CN',
-        });
+        page = await openPage();
         await until(
           () =>
               page!.tree.nodes.values.any((n) => n.props['text'] == '中文原始记忆') ||
@@ -154,6 +164,10 @@ void main() {
               'success',
         );
         expect(calls, 1);
+        expect(
+          host.pageBadge('reveric.memory', 'manage'),
+          const PluginPageBadge(count: 1, tone: PluginPageBadgeTone.accent),
+        );
         final refresh = page.tree.nodes.values.firstWhere(
           (n) => n.component == 'IconButton' && n.props['tooltip'] == '刷新',
         );
@@ -170,6 +184,7 @@ void main() {
             (n) => n.props['text'] == 'Refined: 中文原始记忆',
           ),
         );
+        await until(() => host.pageBadge('reveric.memory', 'manage') == null);
         await dispatcher.prepareRequest(runStart: true);
         expect(pluginContext(dispatcher), contains('Refined: 中文原始记忆'));
         await host.setEnabled('reveric.memory', false);
@@ -190,11 +205,14 @@ void main() {
           scope: (workId: 'work', mode: 'chat'),
         );
         await resumed.prepareRequest(runStart: true);
-        final result = await resumed.executeTool(
-          name: 'MemorySearch',
-          input: {},
+        expect(pluginContext(resumed), contains('Refined: 中文原始记忆'));
+        final forgotten = await resumed.executeTool(
+          name: 'MemoryForget',
+          input: {'id': saved['id']},
         );
-        expect((result['items'] as List).single['content'], 'Refined: 中文原始记忆');
+        expect(forgotten['deleted'], true);
+        await resumed.prepareRequest(runStart: true);
+        expect(pluginContext(resumed), isNot(contains('Refined: 中文原始记忆')));
         expect(
           (await db.pluginTaskDao.get(
             'reveric.memory',
@@ -202,6 +220,73 @@ void main() {
           ))!.lastUsage?['calls'],
           1,
         );
+
+        // The host enforces a 1 MB result limit. Seed both the oversized
+        // unpaginated result and a match outside the old 500-row cap.
+        final sqlite = await host.privateDatabases();
+        final longContent = '长' * 3996;
+        const target = '唯一搜索目标';
+        for (var start = 0; start <= 500; start += 25) {
+          await sqlite.call('reveric.memory', 'transaction', {
+            'statements': [
+              for (var i = start; i < start + 25 && i <= 500; i++)
+                {
+                  'sql':
+                      'INSERT INTO memories '
+                      '(id, content, topic, created_at, updated_at) '
+                      'VALUES (?, ?, ?, 1, ?)',
+                  'params': [
+                    'seed_$i',
+                    i == 500 ? target : (i < 100 ? '$i $longContent' : '偏好 $i'),
+                    '文风',
+                    501 - i,
+                  ],
+                },
+            ],
+          });
+        }
+        final largePage = await openPage();
+        page = largePage;
+        bool hasText(String value) => largePage.tree.nodes.values.any(
+          (node) => (node.props['text'] as String?)?.startsWith(value) ?? false,
+        );
+        await until(() => hasText('0 $longContent') || hasText('读取失败'));
+        expect(hasText('0 $longContent'), true);
+        expect(hasText('20 $longContent'), false);
+        await until(
+          () => largePage.tree.nodes.values.any(
+            (node) =>
+                (node.props['text'] as String?)?.contains('/501 条') ?? false,
+          ),
+        );
+        expect(
+          largePage.tree.nodes.values.any(
+            (node) =>
+                (node.props['text'] as String?)?.contains('超出聊天注入预算') ?? false,
+          ),
+          true,
+        );
+        await until(
+          () =>
+              host.pageBadge('reveric.memory', 'manage') ==
+              const PluginPageBadge(
+                dot: true,
+                tone: PluginPageBadgeTone.warning,
+              ),
+        );
+        final next = largePage.tree.nodes.values.firstWhere(
+          (node) => node.props['label'] == '下一页',
+        );
+        largePage.dispatch(next, 'onPress', {});
+        await until(() => hasText('20 $longContent'));
+        expect(hasText('0 $longContent'), false);
+        final search = largePage.tree.nodes.values.firstWhere(
+          (node) => node.component == 'SearchField',
+        );
+        largePage.dispatch(search, 'onChange', {'value': target});
+        await until(() => hasText(target));
+        expect(hasText('20 $longContent'), false);
+        expect(hasText('读取失败'), false);
       } finally {
         await page?.close();
         await host.dispose();
@@ -231,8 +316,13 @@ class _RefineAi implements PluginAiApi {
       text: jsonEncode([
         for (final row in input)
           {
-            ...row as Map<String, dynamic>,
+            'kind': 'refine',
+            'reason': '精简表述',
+            'sources': [
+              {'id': (row as Map)['id'], 'revision': row['revision']},
+            ],
             'content': 'Refined: ${row['content']}',
+            'topic': row['topic'] ?? '',
           },
       ]),
       finishReason: 'stop',

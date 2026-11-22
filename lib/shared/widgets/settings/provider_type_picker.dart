@@ -26,6 +26,7 @@ import '../../components/reveric_segmented_control.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../models/ai_provider.dart';
+import '../../models/transcription/catalog.dart';
 import '../../theme/theme.dart';
 import 'ai_providers_section.dart' show localizedProviderTypeName;
 import 'provider_logo.dart';
@@ -46,6 +47,7 @@ const _pickerKinds = [
   AiModelKind.image,
   AiModelKind.video,
   AiModelKind.audio,
+  AiModelKind.asr,
 ];
 
 /// Codex 依赖桌面登录，移动端不提供。
@@ -82,6 +84,7 @@ String providerKindLabel(BuildContext context, AiModelKind kind) =>
       AiModelKind.image => LocaleKeys.providerKindImage,
       AiModelKind.video => LocaleKeys.providerKindVideo,
       AiModelKind.audio => LocaleKeys.providerKindAudio,
+      AiModelKind.asr => LocaleKeys.providerTranscription,
     });
 
 /// 类型的可选能力。
@@ -89,7 +92,9 @@ List<AiModelKind> providerTypePickerKinds(String type) {
   final kinds = aiProviderTypeConfigs[type]?.supportedModelKinds ?? const {};
   return [
     for (final kind in _pickerKinds)
-      if (kinds.contains(kind)) kind,
+      if (kinds.contains(kind) ||
+          (kind == AiModelKind.asr && supportsAsrForProvider(type)))
+        kind,
   ];
 }
 

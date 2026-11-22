@@ -61,6 +61,38 @@ void main() {
   });
   tearDown(() => db.close());
 
+  test('episode lookup leaves the application database accessible', () async {
+    final lookupStarted = Completer<void>();
+    final finishLookup = Completer<void>();
+    final permissions = ToolPermissionService(
+      db,
+      episodeExists: (_, _) async {
+        lookupStarted.complete();
+        await finishLookup.future;
+        return true;
+      },
+    );
+    final write = permissions.setRule(
+      action,
+      episode,
+      ToolPermissionDecision.allow,
+    );
+    try {
+      await lookupStarted.future;
+      final registeredWork = await db.novelDao
+          .get('work')
+          .timeout(const Duration(seconds: 2));
+      expect(registeredWork?.id, 'work');
+    } finally {
+      finishLookup.complete();
+      await write;
+    }
+    expect(
+      (await db.toolPermissionDao.rules(episode)).single.decision,
+      ToolPermissionDecision.allow,
+    );
+  });
+
   test(
     'most specific active rule wins and unrelated actions default to ask',
     () async {

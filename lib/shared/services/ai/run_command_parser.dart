@@ -64,6 +64,7 @@ RunCommandUiResolution resolveRunCommandUi(Map<String, dynamic> arguments) {
     );
   }
   const needsSubcommand = {
+    'debug',
     'agent-skills',
     'subagents',
     'themes',

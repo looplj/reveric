@@ -1,7 +1,7 @@
-// 职责: 管理 GitHub Releases 版本检查、下载进度、更新状态和提醒。
+// 职责: 管理 R2 版本检查、下载进度、更新状态和提醒。
 // 关联文件:
 //   lib/shared/services/update/update_service.dart
-//   lib/shared/services/update/sources/github_releases_source.dart
+//   lib/shared/services/update/sources/r2_update_source.dart
 //   lib/shared/widgets/settings/about_settings_section.dart
 //   lib/shared/app_config.dart
 //   lib/shared/localization/locale_keys.dart
@@ -29,9 +29,7 @@ final _log = AppLogger.forModule('UpdateProvider');
 /// UpdateSource 单例
 @Riverpod(keepAlive: true)
 UpdateSource updateSource(Ref ref) {
-  return GitHubReleasesSource(
-    owner: 'looplj',
-    repo: 'reveric',
+  return R2UpdateSource(
     createClient: () async => IOClient(
       await createProxyHttpClient(
         (await ref.read(appSettingsProvider.future)).networkProxy,

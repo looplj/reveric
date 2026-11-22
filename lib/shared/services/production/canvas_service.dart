@@ -465,6 +465,60 @@ class ProductionCanvasService {
     }),
   );
 
+  /// 后台任务恢复时使用任务 ID 查重，保留已提交的画布结果。
+  Future<CanvasNode> addTranscription(
+    String sourceNodeId, {
+    required String taskId,
+    required String title,
+    required String content,
+  }) => write(sourceNodeId, () async {
+    final source = await requireNode(sourceNodeId);
+    final nodes = await db.canvasDao.getNodesByCanvas(source.canvasId);
+    final existing = nodes
+        .where((node) => node.style?['transcriptionTaskId'] == taskId)
+        .firstOrNull;
+    if (existing != null) {
+      return existing;
+    }
+    final node = await _insertNode(
+      source.canvasId,
+      canvasNodeTypeText,
+      refType: null,
+      refId: null,
+      title: title,
+      content: content,
+      x: source.x + (source.width ?? 300) + 120,
+      y: source.y,
+    );
+    await db.canvasDao.updateActiveNodeFields(
+      node.id,
+      CanvasNodesCompanion(style: Value({'transcriptionTaskId': taskId})),
+    );
+    await _insertEdge(
+      (id) => CanvasEdgesCompanion.insert(
+        id: id,
+        canvasId: source.canvasId,
+        sourceNodeId: source.id,
+        targetNodeId: node.id,
+        type: const Value(canvasEdgeTypeDerivedOutput),
+      ),
+    );
+    return node;
+  });
+
+  Future<AssetRow> currentMediaAsset(String nodeId) async {
+    final node = await requireNode(nodeId);
+    final assetId =
+        node.mediaAssetId ??
+        (node.clipId == null
+            ? null
+            : (await shots.getShot(node.clipId!))?.adoptedAssetId);
+    if (assetId == null) {
+      throw const StoryboardException('invalid_reference');
+    }
+    return requireAsset(assetId);
+  }
+
   Future<void> updateText(
     String nodeId, {
     required String title,
@@ -1172,16 +1226,11 @@ class ProductionCanvasService {
 
   /// 视频节点当前的视频：素材节点取素材，视频节点取采用结果。
   Future<AssetRow> videoSource(String nodeId) async {
-    final node = await requireNode(nodeId);
-    final assetId =
-        node.mediaAssetId ??
-        (node.clipId == null
-            ? null
-            : (await shots.getShot(node.clipId!))?.adoptedAssetId);
-    if (assetId == null) {
-      throw const StoryboardException('invalid_reference');
+    final asset = await currentMediaAsset(nodeId);
+    if (asset.type != 'video') {
+      throw const StoryboardException('invalid_asset');
     }
-    return requireAsset(assetId, type: 'video');
+    return asset;
   }
 
   /// 视频处理的产物用 derived_output 连线标明来源。给了 [placement] 时落在指定位置并同时移动让位的节点；

@@ -1,4 +1,4 @@
-// 职责: 承载剧本朗读的配置加载、音色设置与播放界面。
+// 职责: 承载剧本和小说朗读的配置加载、音色设置与播放界面。
 // 关联文件:
 //   lib/desktop/features/narration/setup.dart
 //   lib/desktop/features/narration/playback.dart
@@ -23,11 +23,32 @@ import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/logger/app_logger.dart';
 import '../../../shared/models/narration.dart';
 import '../../../shared/providers/narration.dart';
+import '../../../shared/services/screenplay/narration_service.dart';
 import '../../../shared/theme/theme.dart';
 import 'playback.dart';
 import 'setup.dart';
 
 final _log = AppLogger.forModule('Narration');
+
+Future<void> showNovelNarration(
+  BuildContext context, {
+  required String workId,
+  required String text,
+}) {
+  final container = ProviderScope.containerOf(context, listen: false);
+  return showRevericDialog<void>(
+    context: context,
+    // 独立阅读窗口关闭时，其 Navigator 一并释放朗读会话。
+    useRootNavigator: false,
+    builder: (_) => UncontrolledProviderScope(
+      container: container,
+      child: NarrationDialog(
+        workId: workId,
+        source: NovelNarrationSource(text),
+      ),
+    ),
+  );
+}
 
 class NarrationDialog extends HookConsumerWidget {
   const NarrationDialog({
@@ -36,16 +57,20 @@ class NarrationDialog extends HookConsumerWidget {
     required this.source,
   });
   final String workId;
-  final NarrationSource source;
+  final NarrationInput source;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final service = ref.watch(narrationServiceProvider);
+    final scope = source is NovelNarrationSource
+        ? NarrationSettingsScope.novel
+        : NarrationSettingsScope.screenplay;
     final revision = useState(0);
     final loaded = useFuture(
-      useMemoized(() => service.load(workId), [
+      useMemoized(() => service.load(workId, scope: scope), [
         service,
         workId,
+        scope,
         revision.value,
       ]),
     );
@@ -91,6 +116,7 @@ class NarrationDialog extends HookConsumerWidget {
             ? NarrationSetup(
                 workId: workId,
                 source: source,
+                scope: scope,
                 initial: settings.value ?? loaded.data!,
                 onStart: (next) {
                   settings.value = next.settings;

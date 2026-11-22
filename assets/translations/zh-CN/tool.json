@@ -30,6 +30,7 @@
   "tool.run_director_preview": "刷新导演预览",
   "tool.run_director_output": "导出导演画面",
   "tool.run_director_frames": "查看导演画面",
+  "tool.run_debug_log": "读取应用日志",
   "tool.run_files": "文件",
   "tool.run_files_list": "列出文件",
   "tool.run_files_read_text": "读取文本",

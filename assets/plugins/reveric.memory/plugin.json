@@ -1,14 +1,14 @@
 {
   "id": "reveric.memory",
   "name": {
-    "zh-CN": "示例：记忆系统",
-    "en": "Example: Memory"
+    "zh-CN": "创作记忆",
+    "en": "Writing Memory"
   },
   "description": {
-    "zh-CN": "记忆系统插件示例。",
-    "en": "Memory system plugin example."
+    "zh-CN": "记录跨作品的长期创作偏好，并通过后台梦境整理去重、发现冲突与提炼风格。",
+    "en": "Remembers cross-work writing preferences and runs background dream consolidation to merge duplicates, spot conflicts, and refine style."
   },
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": "Reveric",
   "pluginApiVersion": "^1",
   "main": "dist/index.js",
@@ -20,30 +20,34 @@
       "organizeModel": {
         "type": "model",
         "title": {
-          "zh-CN": "整理所用模型",
-          "en": "Model for organizing"
+          "zh-CN": "梦境整理所用模型",
+          "en": "Model for dream consolidation"
         },
         "description": {
-          "zh-CN": "后台整理记忆时调用的聊天模型；不选择则使用默认聊天模型。",
-          "en": "Chat model used to organize memories in the background. Uses the default chat model when not set."
+          "zh-CN": "后台梦境整理时调用的聊天模型；不选择则使用默认聊天模型。",
+          "en": "Chat model used during background dream consolidation. Uses the default chat model when not set."
         }
       }
     }
   },
   "database": {
-    "version": 1,
+    "version": 2,
     "migrations": [
       {
         "version": 1,
         "source": "migrations/001.sql"
+      },
+      {
+        "version": 2,
+        "source": "migrations/002.sql"
       }
     ]
   },
   "pages": {
     "manage": {
       "title": {
-        "zh-CN": "示例：记忆系统",
-        "en": "Example: Memory"
+        "zh-CN": "创作记忆",
+        "en": "Writing Memory"
       },
       "location": "home.plugin",
       "protocol": "reveric-tsx-v1",
@@ -53,8 +57,8 @@
   "tasks": {
     "organize": {
       "title": {
-        "zh-CN": "整理记忆",
-        "en": "Organize memories"
+        "zh-CN": "梦境整理",
+        "en": "Dream consolidation"
       },
       "intervalMinutes": 60
     }

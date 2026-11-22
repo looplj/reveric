@@ -228,12 +228,14 @@ Future<AssetRow?> pickProductionAsset(
   ProductionCanvasService service, {
   Set<String> types = const {'image', 'video', 'audio'},
   String? confirmLabel,
+  Future<void> Function(AssetRow)? addToCanvas,
 }) => showRevericDialog<AssetRow>(
   context: context,
   builder: (_) => ProductionAssetPicker(
     service: service,
     types: types,
     confirmLabel: confirmLabel,
+    addToCanvas: addToCanvas,
   ),
 );
 

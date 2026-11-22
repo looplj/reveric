@@ -12,6 +12,8 @@
   <a href="README.md">简体中文</a> •
   <a href="README.en-US.md">English</a> •
   <a href="README.ja-JP.md">日本語</a> ｜
+  <a href="https://reveric.app">Website</a> •
+  <a href="https://reveric.app/#gallery">Showcase</a> •
   <a href="#core-features">Features</a> •
   <a href="#end-to-end-workflow">Workflow</a> •
   <a href="#supported-models">Models</a> •
@@ -82,6 +84,46 @@
 - **Local-First, Bring Your Own Key**: Your work stays in a local SQLite database. Connect directly to OpenAI, Anthropic, Gemini, DeepSeek, Seedance, H3, or a self-hosted gateway.
 
 ![Reveric Home](.github/images/home.png)
+
+---
+
+## Featured Showcase · Canvas Gallery
+
+The desktop app includes a built-in **Canvas Gallery** where creators can publish complete canvas projects (scripts, character look sheets, storyboard nodes, media assets, and AI chat logs) and clone any work to their local shelf in one click.
+
+Visit **[reveric.app/#gallery](https://reveric.app/#gallery)** to watch full featured outputs online and inspect their behind-the-scenes canvas graphs and character/scene sheets:
+
+<table width="100%">
+  <tr>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/duantianhe_poster.webp" alt="Breaking the Sky River (断天河)" />
+      </a>
+      <br />
+      <strong>断天河 (29s Full Cut)</strong>
+      <br />
+      <sub>Xianxia Action · 14 Nodes · Full script, 4-view sheet & 3-shot edit</sub>
+    </td>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/shuangshu_board.webp" alt="Twin Blades Canvas Graph (双姝之战)" />
+      </a>
+      <br />
+      <strong>双姝之战 (51s Full Cut)</strong>
+      <br />
+      <sub>Gothic Fantasy · 24 Nodes · Complete canvas topology & 3-act battle</sub>
+    </td>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/mori_poster.webp" alt="Doomsday Survival Short Drama (末日圣母回收指南)" />
+      </a>
+      <br />
+      <strong>末日圣母回收指南 (81s Full Cut)</strong>
+      <br />
+      <sub>Apocalypse Drama · 36 Nodes · Multi-shot storyboard & multi-track cut</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 

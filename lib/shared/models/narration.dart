@@ -1,4 +1,4 @@
-// 职责: 将剧本文档快照编译为按角色分声、受模型长度限制的朗读段落。
+// 职责: 将剧本文档和小说正文快照编译为受模型长度限制的朗读段落。
 // 关联文件:
 //   lib/shared/models/screenplay_document.dart
 //   lib/shared/models/screenplay_element.dart
@@ -40,7 +40,17 @@ class NarrationSettings {
       );
 }
 
-class NarrationSource {
+sealed class NarrationInput {
+  const NarrationInput();
+}
+
+class NovelNarrationSource extends NarrationInput {
+  const NovelNarrationSource(this.text);
+
+  final String text;
+}
+
+class NarrationSource extends NarrationInput {
   NarrationSource({
     required this.document,
     required Map<String, String> characterNames,
@@ -86,7 +96,7 @@ class NarrationSegment {
 }
 
 List<NarrationSegment> compileNarration(
-  NarrationSource source,
+  NarrationInput source,
   NarrationSettings settings, {
   required int maxCharacters,
   required bool supportsInstructions,
@@ -94,6 +104,51 @@ List<NarrationSegment> compileNarration(
   if (maxCharacters <= 0) {
     throw const AudioException('invalid_config');
   }
+  return switch (source) {
+    NovelNarrationSource(:final text) => _compileNovelNarration(
+      text,
+      settings.narrator,
+      maxCharacters,
+    ),
+    NarrationSource() => _compileScreenplayNarration(
+      source,
+      settings,
+      maxCharacters,
+      supportsInstructions,
+    ),
+  };
+}
+
+List<NarrationSegment> _compileNovelNarration(
+  String text,
+  String narrator,
+  int maxCharacters,
+) {
+  final body = text.trim();
+  if (body.isEmpty) {
+    throw const AudioException('narration_empty');
+  }
+  final voice = narrator.trim();
+  if (voice.isEmpty) {
+    throw const AudioException('audio_voice_required');
+  }
+  final parts = splitNarrationText(
+    body,
+    maxCharacters,
+  ).map((part) => part.trim());
+  return List.unmodifiable([
+    for (final part in parts)
+      if (part.isNotEmpty)
+        NarrationSegment(text: part, voice: voice, sceneId: null),
+  ]);
+}
+
+List<NarrationSegment> _compileScreenplayNarration(
+  NarrationSource source,
+  NarrationSettings settings,
+  int maxCharacters,
+  bool supportsInstructions,
+) {
   final segments = <NarrationSegment>[];
   String? speaker;
   var extension = '';

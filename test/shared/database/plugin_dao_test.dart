@@ -123,7 +123,7 @@ void main() {
             ),
             'ai_providers' => entry.value.replaceFirst(
               ', PRIMARY KEY ("id"))',
-              ', "config" TEXT NULL, PRIMARY KEY ("id"))',
+              ', "config" TEXT NULL, "asr_models" TEXT NOT NULL DEFAULT \'[]\', PRIMARY KEY ("id"))',
             ),
             'provider_assets' => entry.value.replaceFirst(
               ', PRIMARY KEY ("id"))',

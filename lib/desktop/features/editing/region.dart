@@ -5,6 +5,7 @@
 //   lib/desktop/features/editing/preview.dart
 //   lib/desktop/features/editing/timeline.dart
 //   lib/desktop/features/editing/export_dialog.dart
+//   lib/shared/widgets/production/canvas_overlay.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
@@ -26,6 +27,7 @@ import '../../../shared/components/reveric_segmented_control.dart';
 import '../../../shared/components/reveric_surfaces.dart';
 import '../../../shared/database/app_database.dart' show AssetRow;
 import '../../../shared/hooks/use_production_subpage.dart';
+import '../../../shared/widgets/production/canvas_overlay.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/editing/document.dart';
@@ -218,6 +220,22 @@ class _EditingWorkspace extends HookWidget {
       }
     }
 
+    final overlay = CanvasWorkOverlayScope.maybeOf(context);
+    final overlayRef = useRef(overlay)..value = overlay;
+    final closeRef = useRef(close)..value = close;
+    final editingGeneration = overlay?.editingGeneration ?? -1;
+    useEffect(() {
+      final token = editingGeneration;
+      final bus = overlayRef.value;
+      if (bus == null || token < 0) {
+        return null;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        bus.setEditingLeave(token, () => closeRef.value());
+      });
+      return null;
+    }, [editingGeneration]);
+
     Future<void> export() async {
       if (host.readOnly) {
         return;
@@ -307,116 +325,124 @@ class _EditingWorkspace extends HookWidget {
                 databasePath: path,
                 label: '${context.t(LocaleKeys.editingTitle)} · $title',
               ),
-            ScreenplayRegionToolbar(
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RevericIconButton(
-                    icon: host.isCanvasEditing
-                        ? RevericIcons.arrow_back
-                        : RevericIcons.close,
-                    tooltip: context.t(
-                      host.isCanvasEditing
-                          ? LocaleKeys.productionBackToCanvas
-                          : LocaleKeys.commonClose,
-                    ),
-                    onPressed: () => editingRun(context, close),
-                  ),
-                  const SizedBox(width: RevericSpacing.sm),
-                  if (host.readOnly) ...[
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 280),
-                      child: Text(
-                        title.trim().isEmpty
-                            ? context.t(LocaleKeys.editingTitle)
-                            : title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: typo.uiSmallSemibold.copyWith(
-                          color: colors.textPrimary,
-                        ),
+            KeyedSubtree(
+              key: overlay?.editingChromeKey,
+              child: ScreenplayRegionToolbar(
+                leadingInset: overlay?.leadingInset ?? 0,
+                trailingInset: overlay?.trailingInset ?? 0,
+                barHeight: overlay == null || overlay.captionExtent == 0
+                    ? null
+                    : overlay.captionExtent,
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RevericIconButton(
+                      icon: host.isCanvasEditing
+                          ? RevericIcons.arrow_back
+                          : RevericIcons.close,
+                      tooltip: context.t(
+                        host.isCanvasEditing
+                            ? LocaleKeys.productionBackToCanvas
+                            : LocaleKeys.commonClose,
                       ),
+                      onPressed: () => editingRun(context, close),
                     ),
                     const SizedBox(width: RevericSpacing.sm),
-                    RevericBadge(
-                      label: context.t(LocaleKeys.commonReadOnly),
-                      color: colors.textMuted,
-                    ),
-                  ] else ...[
-                    RevericIcon(
-                      session.error != null
-                          ? RevericIcons.warning_circle
-                          : RevericIcons.check,
-                      size: 12,
-                      color: session.error != null
-                          ? colors.warningText
-                          : colors.textSubtle,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      saveLabel,
-                      style: typo.uiTiny.copyWith(
+                    if (host.readOnly) ...[
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 280),
+                        child: Text(
+                          title.trim().isEmpty
+                              ? context.t(LocaleKeys.editingTitle)
+                              : title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: typo.uiSmallSemibold.copyWith(
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: RevericSpacing.sm),
+                      RevericBadge(
+                        label: context.t(LocaleKeys.commonReadOnly),
+                        color: colors.textMuted,
+                      ),
+                    ] else ...[
+                      RevericIcon(
+                        session.error != null
+                            ? RevericIcons.warning_circle
+                            : RevericIcons.check,
+                        size: 12,
                         color: session.error != null
                             ? colors.warningText
                             : colors.textSubtle,
                       ),
+                      const SizedBox(width: 3),
+                      Text(
+                        saveLabel,
+                        style: typo.uiTiny.copyWith(
+                          color: session.error != null
+                              ? colors.warningText
+                              : colors.textSubtle,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                trailing: [
+                  if (!host.readOnly && doc != null && doc.clips.isEmpty)
+                    RevericButton.text(
+                      label: context.t(LocaleKeys.editingImportAdopted),
+                      size: RevericButtonSize.compact,
+                      onPressed: controller.importing
+                          ? null
+                          : () => editingRun(
+                              context,
+                              () => controller.importAdopted(
+                                context,
+                                host.episodeId,
+                              ),
+                            ),
+                    ),
+                  Flexible(
+                    child: Tooltip(
+                      message: context.t(LocaleKeys.editingSpecHint),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          RevericIcon(
+                            RevericIcons.frame_corners,
+                            size: 13,
+                            color: colors.textMuted,
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              spec,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: typo.uiSmall.copyWith(
+                                color: colors.textMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (!host.readOnly) ...[
+                    Container(width: 1, height: 18, color: colors.borderSubtle),
+                    RevericButton.primary(
+                      icon: RevericIcons.download_simple,
+                      label: context.t(LocaleKeys.commonExport),
+                      size: RevericButtonSize.compact,
+                      onPressed: doc == null || doc.totalFrames == 0
+                          ? null
+                          : () => editingRun(context, export),
                     ),
                   ],
                 ],
               ),
-              trailing: [
-                if (!host.readOnly && doc != null && doc.clips.isEmpty)
-                  RevericButton.text(
-                    label: context.t(LocaleKeys.editingImportAdopted),
-                    size: RevericButtonSize.compact,
-                    onPressed: controller.importing
-                        ? null
-                        : () => editingRun(
-                            context,
-                            () => controller.importAdopted(
-                              context,
-                              host.episodeId,
-                            ),
-                          ),
-                  ),
-                Flexible(
-                  child: Tooltip(
-                    message: context.t(LocaleKeys.editingSpecHint),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        RevericIcon(
-                          RevericIcons.frame_corners,
-                          size: 13,
-                          color: colors.textMuted,
-                        ),
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            spec,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: typo.uiSmall.copyWith(
-                              color: colors.textMuted,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (!host.readOnly) ...[
-                  Container(width: 1, height: 18, color: colors.borderSubtle),
-                  RevericButton.primary(
-                    icon: RevericIcons.download_simple,
-                    label: context.t(LocaleKeys.commonExport),
-                    size: RevericButtonSize.compact,
-                    onPressed: doc == null || doc.totalFrames == 0
-                        ? null
-                        : () => editingRun(context, export),
-                  ),
-                ],
-              ],
             ),
             if (session.sourceProblem != null ||
                 (!host.readOnly && session.error != null))

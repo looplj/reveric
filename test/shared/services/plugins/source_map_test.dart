@@ -14,9 +14,9 @@ void main() {
       'plugins/memory/src/views/manage.tsx',
     ).readAsLinesSync();
     final map = PluginSourceMap.parse(File('$view.js.map').readAsStringSync());
-    final line = generated.indexWhere((text) => text.contains('搜索记忆'));
-    final column = generated[line].indexOf('搜索记忆') + 1;
-    final expected = source.indexWhere((text) => text.contains('搜索记忆')) + 1;
+    final line = generated.indexWhere((text) => text.contains('搜索创作偏好'));
+    final column = generated[line].indexOf('搜索创作偏好') + 1;
+    final expected = source.indexWhere((text) => text.contains('搜索创作偏好')) + 1;
     final rewritten = map.rewrite(
       'Error\n    at f (plugin-view.js:${line + 1}:$column)\n    at g (eval_script:1:1)',
       'plugin-view.js',

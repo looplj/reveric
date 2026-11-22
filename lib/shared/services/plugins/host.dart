@@ -48,7 +48,10 @@ import 'package:uuid/uuid.dart';
 
 final _log = AppLogger.forModule('Plugin');
 
-const _defaultEnabledBundledPlugins = {'reveric.web'};
+const _defaultEnabledBundledPlugins = {'reveric.web', 'reveric.memory'};
+const _initialBundledPermissions = {
+  'reveric.memory': {'ai.generateText'},
+};
 
 class PluginPackage {
   PluginPackage(this.path, this.manifest, this.code, {this.source = 'bundled'});
@@ -807,8 +810,62 @@ class PluginHostService {
 
   final _registrations = <String, List<Map<String, dynamic>>>{};
   final _views = <String, List<PluginView>>{};
+  final _pageBadges = <({String pluginId, String pageId}), PluginPageBadge>{};
   List<PluginView> get views =>
       List.unmodifiable(_views.values.expand((v) => v));
+
+  /// 指定插件页面的当前导航角标；无角标或插件未启用时返回 null。
+  PluginPageBadge? pageBadge(String pluginId, String pageId) =>
+      _pageBadges[(pluginId: pluginId, pageId: pageId)];
+
+  void _clearPageBadges(String pluginId) {
+    _pageBadges.removeWhere((key, _) => key.pluginId == pluginId);
+  }
+
+  bool _syncPageBadge(String pluginId, String key, Object? value) {
+    if (!key.startsWith(pluginPageBadgeStoragePrefix)) {
+      return false;
+    }
+    final pageId = key.substring(pluginPageBadgeStoragePrefix.length);
+    final hasView = _views[pluginId]?.any((view) => view.id == pageId) ?? false;
+    if (!hasView) {
+      return false;
+    }
+    final badgeKey = (pluginId: pluginId, pageId: pageId);
+    final next = PluginPageBadge.tryParse(value);
+    final previous = _pageBadges[badgeKey];
+    if (previous == next) {
+      return false;
+    }
+    if (next == null) {
+      _pageBadges.remove(badgeKey);
+    } else {
+      _pageBadges[badgeKey] = next;
+    }
+    return true;
+  }
+
+  Future<void> _loadPageBadges(String pluginId, List<PluginView> views) async {
+    _clearPageBadges(pluginId);
+    for (final view in views) {
+      final raw = await dao.getStorage(
+        pluginId,
+        'data.$pluginPageBadgeStoragePrefix${view.id}',
+      );
+      if (raw == null) {
+        continue;
+      }
+      try {
+        final badge = PluginPageBadge.tryParse(jsonDecode(raw));
+        if (badge != null) {
+          _pageBadges[(pluginId: pluginId, pageId: view.id)] = badge;
+        }
+      } catch (_) {
+        // 损坏的角标缓存不影响插件激活，后续写入会覆盖。
+      }
+    }
+  }
+
   final _packages = <String, PluginPackage>{};
   final _statuses = <String, PluginStatus>{};
   final _serial = <String, Future<void>>{};
@@ -918,6 +975,7 @@ class PluginHostService {
     aiProviderTypeConfigs.remove('plugin:$id');
     pluginProviderModels.removePlugin(id);
     _views.remove(id);
+    _clearPageBadges(id);
     _registrations.remove(id);
     final status = _statuses[id];
     if (status != null) {
@@ -1117,16 +1175,30 @@ class PluginHostService {
       if (_packages.containsKey(manifest.id)) {
         throw StateError('Duplicate plugin id: ${manifest.id}');
       }
-      await dao.register(
-        pluginId: manifest.id,
-        version: manifest.version,
-        source: package.source,
-        packagePath: package.path,
-        initiallyEnabled:
-            package.source == 'bundled' &&
-            _defaultEnabledBundledPlugins.contains(manifest.id),
-      );
-      final row = (await dao.getPlugin(manifest.id))!;
+      final defaultEnabled =
+          package.source == 'bundled' &&
+          _defaultEnabledBundledPlugins.contains(manifest.id);
+      final initialPermissions = defaultEnabled
+          ? manifest.permissions.intersection(
+              _initialBundledPermissions[manifest.id] ?? const <String>{},
+            )
+          : const <String>{};
+      final row = await dao.transaction(() async {
+        final grantInitialPermissions =
+            initialPermissions.isNotEmpty &&
+            await dao.getPlugin(manifest.id) == null;
+        await dao.register(
+          pluginId: manifest.id,
+          version: manifest.version,
+          source: package.source,
+          packagePath: package.path,
+          initiallyEnabled: defaultEnabled,
+        );
+        if (grantInitialPermissions) {
+          await dao.grantPermissions(manifest.id, initialPermissions);
+        }
+        return (await dao.getPlugin(manifest.id))!;
+      });
       _packages[manifest.id] = package;
       _statuses[manifest.id] = PluginStatus(
         id: manifest.id,
@@ -1158,6 +1230,7 @@ class PluginHostService {
     await _loadProviderModels(pluginId);
     _registrations.remove(pluginId);
     _views.remove(pluginId);
+    _clearPageBadges(pluginId);
     status.error = null;
     status.state = 'activating';
     await _promptCollector.cancelPlugin(pluginId);
@@ -1257,6 +1330,7 @@ class PluginHostService {
       }
       _registrations[pluginId] = List.unmodifiable(definitions);
       _views[pluginId] = List.unmodifiable(views);
+      await _loadPageBadges(pluginId, views);
       await tasks.register(pluginId, package.manifest.tasks);
       status.state = 'available';
       tasks.kick();
@@ -1397,6 +1471,7 @@ class PluginHostService {
     pluginProviderModels.removePlugin(id);
     _registrations.remove(id);
     _views.remove(id);
+    _clearPageBadges(id);
     _packages.remove(id);
     _statuses.remove(id);
     _emit();
@@ -2504,6 +2579,9 @@ class PluginHostService {
       }
       if (method == 'storage.remove') {
         await dao.removePluginData(id, key);
+        if (_syncPageBadge(id, key, null)) {
+          _emit();
+        }
         return null;
       }
       if (!args.containsKey('value')) {
@@ -2513,6 +2591,9 @@ class PluginHostService {
         await dao.setPluginData(id, key, jsonEncode(args['value']));
       } on PluginStorageQuotaException {
         throw PluginHostError('too_large', 'Plugin storage quota exceeded');
+      }
+      if (_syncPageBadge(id, key, args['value'])) {
+        _emit();
       }
       return null;
     }
@@ -2678,6 +2759,7 @@ class PluginHostService {
       pluginProviderModels.removePlugin(id);
       _registrations.remove(id);
       _views.remove(id);
+      _clearPageBadges(id);
     }
     for (final queue in _queues.values) {
       for (final waiter in queue) {

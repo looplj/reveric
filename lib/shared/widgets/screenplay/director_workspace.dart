@@ -4,6 +4,7 @@
 //   lib/shared/widgets/screenplay/director_workspace_host.dart
 //   lib/shared/widgets/director/workspace.dart
 //   lib/shared/widgets/screenplay/director_export.dart
+//   lib/shared/widgets/production/canvas_overlay.dart
 //   lib/shared/hooks/use_production_subpage.dart
 //   lib/shared/services/system_tray_service.dart
 //   lib/shared/localization/locale_keys.dart
@@ -30,6 +31,7 @@ import '../../models/director/document.dart';
 import '../../services/director/session.dart';
 import '../../services/screenplay/staging.dart';
 import '../../services/system_tray_service.dart';
+import '../production/canvas_overlay.dart';
 import '../director/error_status.dart';
 import '../director/header.dart';
 import '../director/strings.dart';
@@ -103,6 +105,9 @@ class ScreenplayDirectorWorkspace extends HookWidget {
     final allowPop = useState(false);
     final close = useRef(onClose)..value = onClose;
     final register = useRef(registerFlush)..value = registerFlush;
+    final overlay = CanvasWorkOverlayScope.maybeOf(context);
+    final overlayRef = useRef(overlay)..value = overlay;
+    final leaveRef = useRef<Future<void> Function()?>(null);
 
     Future<void> flush() async {
       if (activeHost != null) {
@@ -148,6 +153,26 @@ class ScreenplayDirectorWorkspace extends HookWidget {
         }
       });
     }
+
+    leaveRef.value = leave;
+    final directorGeneration = overlay?.directorGeneration ?? -1;
+    useEffect(() {
+      final token = directorGeneration;
+      final bus = overlayRef.value;
+      if (bus == null || token < 0) {
+        return null;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        bus.setDirectorLeave(token, () {
+          final current = leaveRef.value;
+          if (current == null) {
+            return Future<void>.value();
+          }
+          return current();
+        });
+      });
+      return null;
+    }, [directorGeneration, lifecycleKey]);
 
     useEffect(() {
       final listener = AppLifecycleListener(
@@ -239,13 +264,22 @@ class ScreenplayDirectorWorkspace extends HookWidget {
               );
             },
       viewportBuilder: viewportBuilder,
-      header: (viewMode) => DirectorHeader(
-        session: activeSession,
-        title: activeSession.history.document.title,
-        onBack: leave,
-        center: viewMode,
-        trailing: readOnly ? null : buildTrailing,
-      ),
+      header: (viewMode) {
+        final window = CanvasWorkOverlayScope.maybeOf(context);
+        return KeyedSubtree(
+          key: window?.directorChromeKey,
+          child: DirectorHeader(
+            session: activeSession,
+            title: activeSession.history.document.title,
+            onBack: leave,
+            center: viewMode,
+            trailing: readOnly ? null : buildTrailing,
+            leadingInset: window?.leadingInset ?? 0,
+            trailingInset: window?.trailingInset ?? 0,
+            barExtent: window?.captionExtent ?? 0,
+          ),
+        );
+      },
       footer: DirectorErrorStatus(session: activeSession),
     );
 

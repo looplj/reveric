@@ -30,6 +30,9 @@ class DirectorHeader extends StatelessWidget {
     this.title,
     this.center,
     this.trailing,
+    this.leadingInset = 0,
+    this.trailingInset = 0,
+    this.barExtent = 0,
   });
   final DirectorSession session;
   final VoidCallback onBack;
@@ -42,6 +45,11 @@ class DirectorHeader extends StatelessWidget {
 
   /// 顶栏右侧的宿主操作（导出）；[compact] 时只放图标。
   final Widget? Function(bool compact)? trailing;
+
+  /// 画布作品里贴住窗口标题栏时，让开红绿灯、系统窗口按钮，并铺满标题栏高度。
+  final double leadingInset;
+  final double trailingInset;
+  final double barExtent;
 
   /// 低于这个宽度时画幅和右侧操作只显示图标，给视角下拉和保存状态让位。
   static const double _compactWidth = 720;
@@ -59,18 +67,21 @@ class DirectorHeader extends StatelessWidget {
     final typo = RevericTheme.typographyOf(context);
     final readOnly = session.readOnly;
     final resolvedTitle = (title ?? session.history.document.title).trim();
+    final extent = barExtent > RevericSizes.directorHeaderHeight
+        ? barExtent
+        : RevericSizes.directorHeaderHeight;
     return Container(
-      constraints: const BoxConstraints(
-        minHeight: RevericSizes.directorHeaderHeight,
-      ),
+      constraints: BoxConstraints(minHeight: extent),
       decoration: BoxDecoration(
         color: colors.surfaceContainer,
         border: Border(bottom: BorderSide(color: colors.border)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: RevericSpacing.sm,
-          vertical: RevericSpacing.xxs,
+        padding: EdgeInsets.fromLTRB(
+          RevericSpacing.sm + leadingInset,
+          RevericSpacing.xxs,
+          RevericSpacing.sm + trailingInset,
+          RevericSpacing.xxs,
         ),
         child: Row(
           children: [

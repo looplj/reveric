@@ -53,3 +53,58 @@ class PluginView {
   List<String> get actionNames =>
       (definition['actions'] as List? ?? const []).cast<String>();
 }
+
+/// 插件在 `storage` 中写入页面角标所使用的系统保留前缀。
+const pluginPageBadgeStoragePrefix = '__system_internal_page_badge:';
+
+enum PluginPageBadgeTone { accent, warning, danger }
+
+/// 插件页面导航入口角标（数字胶囊或状态点）。
+class PluginPageBadge {
+  const PluginPageBadge({
+    this.count,
+    this.dot = false,
+    this.tone = PluginPageBadgeTone.accent,
+  });
+
+  final int? count;
+  final bool dot;
+  final PluginPageBadgeTone tone;
+
+  bool get isVisible => (count != null && count! > 0) || dot;
+
+  static PluginPageBadge? tryParse(Object? raw) {
+    if (raw is! Map) {
+      return null;
+    }
+    final rawCount = raw['count'];
+    int? count;
+    if (rawCount is int && rawCount > 0) {
+      count = rawCount;
+    } else if (rawCount is num &&
+        rawCount > 0 &&
+        rawCount == rawCount.toInt()) {
+      count = rawCount.toInt();
+    }
+    final dot = raw['dot'] == true;
+    if (count == null && !dot) {
+      return null;
+    }
+    final tone = switch (raw['tone']) {
+      'warning' => PluginPageBadgeTone.warning,
+      'danger' => PluginPageBadgeTone.danger,
+      _ => PluginPageBadgeTone.accent,
+    };
+    return PluginPageBadge(count: count, dot: dot, tone: tone);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PluginPageBadge &&
+      other.count == count &&
+      other.dot == dot &&
+      other.tone == tone;
+
+  @override
+  int get hashCode => Object.hash(count, dot, tone);
+}

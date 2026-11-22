@@ -14,6 +14,7 @@
   "assets.media_import_failed": "导入失败，请检查格式、文件权限和可用空间。",
   "assets.media_load_failed": "媒体加载失败，请重试。",
   "assets.media_preview_failed": "无法预览此文件，文件可能缺失或已损坏。",
+  "assets.media_video_shortcuts": "空格：播放 / 暂停 · ←/→：后退 / 前进 {seconds} 秒 · Esc：关闭",
   "assets.media_export_failed": "导出失败，请使用新文件名，并检查权限和可用空间。",
   "assets.media_delete_confirm": "将此资产从素材库隐藏？本地文件和已有引用会保留。",
   "assets.bone_hips": "骨盆",

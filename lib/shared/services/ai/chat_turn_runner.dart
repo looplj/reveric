@@ -90,6 +90,7 @@ import '../storyboard/service.dart';
 import '../../providers/production_media.dart';
 import '../../providers/production_images.dart';
 import '../../providers/production_audio.dart';
+import '../../providers/transcription.dart';
 import '../../providers/video_tasks.dart';
 import 'agent_message_mapping.dart';
 import 'agent_skills_run_command_handler.dart';
@@ -664,6 +665,7 @@ class ChatTurnRunner {
               canvas: await toolManager.productionStyleServiceBuilder!(),
               images: container.read(imageTaskServiceProvider),
               audio: container.read(audioTaskServiceProvider),
+              transcription: container.read(transcriptionServiceProvider),
               video: () => container.read(videoTaskServiceProvider.future),
               results: container.read(productionResultServiceProvider),
               editingSessions: container.read(editingSessionsProvider),

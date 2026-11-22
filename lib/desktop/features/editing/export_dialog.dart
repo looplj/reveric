@@ -20,6 +20,7 @@ import '../../../shared/components/reveric_button.dart';
 import '../../../shared/components/reveric_dialog.dart';
 import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_segmented_control.dart';
+import '../../../shared/components/reveric_select.dart';
 import '../../../shared/components/reveric_text_field.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
@@ -63,6 +64,7 @@ class EditingExportDialog extends HookWidget {
     final phase = useState(_Phase.form);
     final res = useState('720p');
     final subtitles = useState(EditingSubtitles.burn);
+    final watermark = useState<EditingWatermarkCorner?>(null);
     final name = useTextEditingController(
       text: title.replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ').trim(),
     );
@@ -90,6 +92,7 @@ class EditingExportDialog extends HookWidget {
           cancellation: token.value,
           resolution: res.value,
           subtitles: subtitles.value,
+          watermark: watermark.value,
           progress: (step, value) {
             if (context.mounted) {
               stage.value = step;
@@ -326,6 +329,35 @@ class EditingExportDialog extends HookWidget {
                 ),
               ],
               onChanged: (v) => subtitles.value = v,
+            ),
+          ),
+        ),
+        _ExportRow(
+          icon: RevericIcons.image,
+          title: context.t(LocaleKeys.editingExportWatermark),
+          detail: context.t(LocaleKeys.editingExportWatermarkDetail),
+          trailing: SizedBox(
+            width: 160,
+            child: RevericSelect<EditingWatermarkCorner?>(
+              value: watermark.value,
+              items: [
+                for (final corner in [null, ...EditingWatermarkCorner.values])
+                  RevericSelectItem(
+                    value: corner,
+                    label: context.t(switch (corner) {
+                      null => LocaleKeys.commonNone,
+                      EditingWatermarkCorner.top_left =>
+                        LocaleKeys.editingPositionTopLeft,
+                      EditingWatermarkCorner.top_right =>
+                        LocaleKeys.editingPositionTopRight,
+                      EditingWatermarkCorner.bottom_left =>
+                        LocaleKeys.editingPositionBottomLeft,
+                      EditingWatermarkCorner.bottom_right =>
+                        LocaleKeys.editingPositionBottomRight,
+                    }),
+                  ),
+              ],
+              onChanged: (corner) => watermark.value = corner,
             ),
           ),
         ),

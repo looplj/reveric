@@ -10,7 +10,7 @@
 /// 应用版本号。
 /// 与 pubspec.yaml 的 version 字段保持同步，由 release.sh 一同更新。
 /// 供需要同步获取版本号的场景使用（如匿名上报），避免 PackageInfo 异步调用。
-const appVersion = '0.10.2';
+const appVersion = '0.10.4';
 
 /// 匿名 Agent 诊断服务根地址。
 const anonymousReportingBaseUrl = 'https://anonymous-api.reveric.app';
@@ -40,8 +40,8 @@ const revericAttribution = 'Based on Reveric by looplj.';
 /// 接收用户通过邮件私下发送的反馈与诊断文件。
 const revericFeedbackEmail = 'bababaa261@gmail.com';
 
-/// 用户主动提交日志与会话的诊断后端，与匿名事件上报独立。
-const diagnosticsBaseUrl = 'https://diagnostics.reveric.app';
+/// 用户主动提交日志与会话的诊断入口，与匿名事件上报使用同一服务。
+const diagnosticsBaseUrl = anonymousReportingBaseUrl;
 
 /// 构思画布的 UI、工具与内置技能入口；不影响视频制作画布。
 const ideationCanvasEnabled = bool.fromEnvironment(

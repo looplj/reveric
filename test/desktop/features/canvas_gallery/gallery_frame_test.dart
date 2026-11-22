@@ -96,36 +96,25 @@ void main() {
             find.byKey(const ValueKey('gallery-body')),
           );
 
-          // 页面标题始终留在顶部 titleBarHeight 内垂直居中，不被 Windows captionSafeTopInset 下推。
+          final titleCenter = DesktopWindowFrame.titleBarHeight / 2;
+          // 标题和短操作留在同一行，不把刷新按钮推到窗口按钮下面。
+          expect(titleRect.center.dy, closeTo(titleCenter, 2.0));
+          expect(actionRect.center.dy, closeTo(titleCenter, 2.0));
           expect(
-            titleRect.center.dy,
-            closeTo(DesktopWindowFrame.titleBarHeight / 2, 2.0),
+            bodyRect.top,
+            greaterThanOrEqualTo(DesktopWindowFrame.titleBarHeight),
           );
+          expect(bodyRect.top, greaterThanOrEqualTo(actionRect.bottom));
 
-          if (platform == TargetPlatform.windows) {
-            expect(
-              actionRect.top,
-              greaterThanOrEqualTo(DesktopWindowFrame.titleBarHeight),
+          if (platform != TargetPlatform.macOS) {
+            final captionButtons = Rect.fromLTWH(
+              1100 - DesktopWindowFrame.windowsCaptionButtonsWidth,
+              0,
+              DesktopWindowFrame.windowsCaptionButtonsWidth,
+              DesktopWindowFrame.titleBarHeight,
             );
-            expect(bodyRect.top, greaterThanOrEqualTo(actionRect.bottom));
-          } else {
-            expect(
-              actionRect.center.dy,
-              closeTo(DesktopWindowFrame.titleBarHeight / 2, 2.0),
-            );
-            expect(
-              bodyRect.top,
-              greaterThanOrEqualTo(DesktopWindowFrame.titleBarHeight),
-            );
-          }
-
-          if (platform == TargetPlatform.linux) {
-            expect(
-              actionRect.right,
-              lessThanOrEqualTo(
-                1100 - DesktopWindowFrame.windowsCaptionButtonsWidth,
-              ),
-            );
+            expect(actionRect.overlaps(captionButtons), isFalse);
+            expect(actionRect.right, lessThanOrEqualTo(captionButtons.left));
           }
 
           await tester.tap(find.byKey(const ValueKey('gallery-action')));

@@ -3,6 +3,7 @@
 //   lib/desktop/features/production/region.dart
 //   lib/desktop/features/production/canvas_work_header.dart
 //   lib/desktop/features/editing/canvas_shell.dart
+//   lib/shared/widgets/production/canvas_overlay.dart
 //   lib/desktop/widgets/ai/chat/panel.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/ai.json
@@ -31,6 +32,7 @@ import '../../../shared/providers/novel_providers.dart';
 import '../../../shared/providers/production_chat.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/app_background.dart';
+import '../../../shared/widgets/production/canvas_overlay.dart';
 import '../../../shared/widgets/screenplay/director_shell.dart';
 import '../../pages/workspace_editor_page.dart';
 import '../../widgets/desktop_window_frame.dart';
@@ -69,6 +71,13 @@ class CanvasWorkPage extends HookConsumerWidget {
     final titleFlush = useRef<Future<void> Function()?>(null);
     final allowPop = useState(false);
     final leaving = useRef(false);
+    final overlay = useMemoized(CanvasWorkOverlayBus.new);
+    useListenable(overlay);
+    useEffect(() => overlay.dispose, [overlay]);
+    overlay
+      ..leadingInset = DesktopWindowFrame.sidebarLeadingInset
+      ..trailingInset = DesktopWindowFrame.trailingInset
+      ..captionExtent = DesktopWindowFrame.titleBarHeight;
     final headerKeys = useMemoized(
       () => (
         back: GlobalKey(),
@@ -230,109 +239,117 @@ class CanvasWorkPage extends HookConsumerWidget {
             headerKeys.save,
             headerKeys.cancel,
             headerKeys.settings,
+            overlay.editingChromeKey,
+            overlay.directorChromeKey,
           ],
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ProductionHistoryRegion(
-                novel: novel,
-                episodeId: '',
-                child: Column(
-                  children: [
-                    CanvasWorkHeader(
-                      gestureKeys: headerKeys,
-                      novel: novel,
-                      onBack: () => productionRun(context, leave),
-                      registerFlush: (value) => titleFlush.value = value,
-                    ),
-                    Expanded(
-                      child: ScreenplayDirectorShell(
-                        novelId: novel.id,
-                        databasePath: novel.contentDatabasePath!,
-                        viewportBuilder: directorViewportBuilder,
-                        registerFlush: (value) => flush.value = value,
-                        builder: (openDirector, registerDirector) =>
-                            CanvasEditingShell(
-                              novel: novel,
-                              registerFlush: registerDirector,
-                              builder: (registerCanvas) => ProductionTextAsk(
-                                ask: ask,
-                                child: ProductionCanvasRegion(
-                                  novel: novel,
-                                  episodeId: '',
-                                  registerFlush: (saveCanvas) => registerCanvas(
-                                    saveCanvas == null
-                                        ? null
-                                        : () async {
-                                            await titleFlush.value?.call();
-                                            await saveCanvas();
-                                          },
-                                  ),
-                                  sceneActions: ProductionSceneActions(
-                                    openDirector: (id, {canvas}) async {
-                                      await titleFlush.value?.call();
-                                      await openDirector(id, canvas: canvas);
-                                    },
-                                    uploadScript: uploadScript,
-                                    attachReference: (reference) {
-                                      chatState.setOpen(true);
-                                      shortcut.value = AiChatShortcutDraft(
-                                        id: 'production_${DateTime.now().microsecondsSinceEpoch}',
-                                        text: '',
-                                        references: [reference],
-                                      );
-                                    },
+          child: CanvasWorkOverlayScope(
+            bus: overlay,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ProductionHistoryRegion(
+                  novel: novel,
+                  episodeId: '',
+                  child: Column(
+                    children: [
+                      if (!overlay.returnsToCanvas)
+                        CanvasWorkHeader(
+                          gestureKeys: headerKeys,
+                          novel: novel,
+                          onBack: () => productionRun(context, leave),
+                          registerFlush: (value) => titleFlush.value = value,
+                        ),
+                      Expanded(
+                        child: ScreenplayDirectorShell(
+                          novelId: novel.id,
+                          databasePath: novel.contentDatabasePath!,
+                          viewportBuilder: directorViewportBuilder,
+                          registerFlush: (value) => flush.value = value,
+                          builder: (openDirector, registerDirector) =>
+                              CanvasEditingShell(
+                                novel: novel,
+                                registerFlush: registerDirector,
+                                builder: (registerCanvas) => ProductionTextAsk(
+                                  ask: ask,
+                                  child: ProductionCanvasRegion(
+                                    novel: novel,
+                                    episodeId: '',
+                                    registerFlush: (saveCanvas) =>
+                                        registerCanvas(
+                                          saveCanvas == null
+                                              ? null
+                                              : () async {
+                                                  await titleFlush.value
+                                                      ?.call();
+                                                  await saveCanvas();
+                                                },
+                                        ),
+                                    sceneActions: ProductionSceneActions(
+                                      openDirector: (id, {canvas}) async {
+                                        await titleFlush.value?.call();
+                                        await openDirector(id, canvas: canvas);
+                                      },
+                                      uploadScript: uploadScript,
+                                      attachReference: (reference) {
+                                        chatState.setOpen(true);
+                                        shortcut.value = AiChatShortcutDraft(
+                                          id: 'production_${DateTime.now().microsecondsSinceEpoch}',
+                                          text: '',
+                                          references: [reference],
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Positioned.fill(
-                top: DesktopWindowFrame.titleBarHeight,
-                child: FloatingAiChat(
-                  open: chat.open,
-                  onOpenChanged: chatState.setOpen,
-                  sessionId: sessionId.value,
-                  panel: !chatStarted.value
-                      ? const SizedBox.shrink()
-                      : AiChatPanel(
-                          novel: novel,
-                          databasePath: novel.contentDatabasePath,
-                          workspaceSection: NovelWorkspaceSection.storyboard,
-                          workspaceTitle: novel.title,
-                          activeSessionId: sessionId.value,
-                          floating: true,
-                          avoidWindowCaption: false,
-                          onClose: () => chatState.setOpen(false),
-                          onRequestNewSession: () async {
-                            sessionId.value =
-                                '__new__${DateTime.now().microsecondsSinceEpoch}';
-                          },
-                          onSessionRestored: (id) => sessionId.value = id,
-                          onActiveSessionIdChanged: (id) async =>
-                              sessionId.value = id,
-                          onOpenSessionReference: openChatSource,
-                          handoffDraft: draft.value,
-                          onRequestHandoff: (value) => draft.value = value,
-                          onHandoffDraftConsumed: (id) {
-                            if (draft.value?.id == id) {
-                              draft.value = null;
-                            }
-                          },
-                          shortcutDraft: shortcut.value,
-                          onShortcutDraftConsumed: (id) {
-                            if (shortcut.value?.id == id) {
-                              shortcut.value = null;
-                            }
-                          },
                         ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                Positioned.fill(
+                  top: DesktopWindowFrame.titleBarHeight,
+                  child: FloatingAiChat(
+                    open: chat.open,
+                    onOpenChanged: chatState.setOpen,
+                    sessionId: sessionId.value,
+                    panel: !chatStarted.value
+                        ? const SizedBox.shrink()
+                        : AiChatPanel(
+                            novel: novel,
+                            databasePath: novel.contentDatabasePath,
+                            workspaceSection: NovelWorkspaceSection.storyboard,
+                            workspaceTitle: novel.title,
+                            activeSessionId: sessionId.value,
+                            floating: true,
+                            avoidWindowCaption: false,
+                            onClose: () => chatState.setOpen(false),
+                            onRequestNewSession: () async {
+                              sessionId.value =
+                                  '__new__${DateTime.now().microsecondsSinceEpoch}';
+                            },
+                            onSessionRestored: (id) => sessionId.value = id,
+                            onActiveSessionIdChanged: (id) async =>
+                                sessionId.value = id,
+                            onOpenSessionReference: openChatSource,
+                            handoffDraft: draft.value,
+                            onRequestHandoff: (value) => draft.value = value,
+                            onHandoffDraftConsumed: (id) {
+                              if (draft.value?.id == id) {
+                                draft.value = null;
+                              }
+                            },
+                            shortcutDraft: shortcut.value,
+                            onShortcutDraftConsumed: (id) {
+                              if (shortcut.value?.id == id) {
+                                shortcut.value = null;
+                              }
+                            },
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

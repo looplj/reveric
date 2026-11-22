@@ -59,11 +59,7 @@ void main() {
       });
       db.close();
       try {
-        final backup = collectSelectedMedia(
-          backup: dir,
-          novelIds: {'work'},
-          contentPaths: [],
-        );
+        final backup = collectSelectedMedia(backup: dir, novelIds: {'work'});
         expect(backup.rows['assets']!.map((row) => row['id']).toSet(), {
           for (var i = 0; i < 4; i++) 'candidate-$i',
         });
@@ -74,71 +70,31 @@ void main() {
     },
   );
 
-  test(
-    'selected backups keep shared voices and removed voices selected by a shot',
-    () async {
-      final dir = await Directory.systemTemp.createTemp('voices-backup-');
-      final schemas = await BackupDatabases.create();
-      final main = schemas.writeMain('${dir.path}/reveric.sqlite');
-      for (final id in ['shared', 'selected', 'history', 'unrelated']) {
-        insertBackupRow(main, 'assets', {
-          'id': id,
-          'type': 'audio',
-          'purpose': 'reference',
-          'path': 'file_workspaces/shared/audio/$id.wav',
-        });
-      }
-      main.close();
-      final path = '${dir.path}/content.sqlite';
-      final content = schemas.writeContent(path);
-      insertBackupRow(content, 'character_profiles', {
-        'id': 'hero',
-        'name': 'Hero',
-        'voices': jsonEncode([
-          {'asset_id': 'shared', 'name': 'Voice'},
-        ]),
+  test('selected backups include all shared voices', () async {
+    final dir = await Directory.systemTemp.createTemp('voices-backup-');
+    final schemas = await BackupDatabases.create();
+    final main = schemas.writeMain('${dir.path}/reveric.sqlite');
+    for (final id in ['shared', 'selected', 'history', 'unrelated']) {
+      insertBackupRow(main, 'assets', {
+        'id': id,
+        'type': 'audio',
+        'purpose': 'reference',
+        'path': 'file_workspaces/shared/audio/$id.wav',
       });
-      Map<String, Object> input(String voice) => {
-        'id': 'input',
-        'ref_type': 'node',
-        'ref_id': 'character-node',
-        'role': 'reference_image',
-        'voice_asset_id': voice,
-      };
-      insertBackupRow(content, 'production_clips', {
-        'id': 'clip',
-        'episode_id': 'episode',
-        'kind': 'video',
-        'inputs': jsonEncode([input('selected')]),
+    }
+    main.close();
+    try {
+      final backup = collectSelectedMedia(backup: dir, novelIds: {'work'});
+      expect(backup.rows['assets']!.map((r) => r['id']).toSet(), {
+        'shared',
+        'selected',
+        'history',
+        'unrelated',
       });
-      insertBackupRow(content, 'working_changes', {
-        'id': 'change',
-        'resource_path': 'production_clips/clip/inputs',
-        'resource_type': 'production_clips',
-        'resource_id': 'clip',
-        'field': 'inputs',
-        'change_type': 'update',
-        'source': 'user',
-        'old_text': jsonEncode([input('history')]),
-        'new_text': '[]',
-      });
-      content.close();
-      try {
-        final backup = collectSelectedMedia(
-          backup: dir,
-          novelIds: {'work'},
-          contentPaths: [path],
-        );
-        expect(backup.rows['assets']!.map((r) => r['id']).toSet(), {
-          'shared',
-          'selected',
-          'history',
-        });
-      } finally {
-        await dir.delete(recursive: true);
-      }
-    },
-  );
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
   test(
     'audio history keeps frozen reference files and output receipt in selected backups',
     () async {
@@ -149,6 +105,7 @@ void main() {
         'id': 'original',
         'type': 'audio',
         'purpose': 'reference',
+        'novel_id': 'work',
         'path': 'file_workspaces/work/audio/original.wav',
       });
       final request = AudioGenerationRequest(
@@ -184,11 +141,7 @@ void main() {
       });
       db.close();
       try {
-        final backup = collectSelectedMedia(
-          backup: dir,
-          novelIds: {'work'},
-          contentPaths: [],
-        );
+        final backup = collectSelectedMedia(backup: dir, novelIds: {'work'});
         expect(
           backup.rows['assets']!.map((row) => row['id']),
           contains('original'),

@@ -12,6 +12,8 @@
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/desktop-window-frame.md
+// 注意事项:
+// 剪辑或导演台打开时，这一整行（标题和风格）由画布页卸下，不留空顶栏。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -119,156 +121,177 @@ class CanvasWorkHeader extends HookConsumerWidget {
       });
       return () => registered.value(null);
     }, const []);
-    return SizedBox(
-      height:
-          DesktopWindowFrame.titleBarHeight +
-          DesktopWindowFrame.captionSafeTopInset +
-          RevericSpacing.sm,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(width: DesktopWindowFrame.sidebarLeadingInset),
-          Expanded(
-            child: SizedBox(
-              height: DesktopWindowFrame.titleBarHeight,
-              child: Row(
-                children: [
-                  RevericIconButton(
-                    key: gestureKeys.back,
-                    icon: RevericIcons.arrow_back,
-                    tooltip: context.t(LocaleKeys.commonBack),
-                    onPressed: busy.value ? null : onBack,
-                  ),
-                  const SizedBox(width: RevericSpacing.xs),
-                  if (editing.value) ...[
-                    // 宽度封顶，确认与取消紧跟输入框，不被推到窗口另一侧。
-                    Flexible(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: RevericSizes.productionTitleFieldWidth,
-                        ),
-                        child: CallbackShortcuts(
-                          bindings: {
-                            const SingleActivator(LogicalKeyboardKey.escape):
-                                cancel,
-                          },
-                          child: RevericTextField(
-                            key: gestureKeys.title,
-                            fieldKey: const ValueKey('canvas-work-title'),
-                            controller: title,
-                            focusNode: focus,
-                            enabled: !busy.value,
-                            onSubmitted: (_) => productionRun(context, save),
-                          ),
-                        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 编辑标题时要同时放下返回、输入框、保存、取消和错误图标。
+        // 剩下的宽度给风格和规格；放不下就缩短风格名，仍留在窗口按钮左侧。
+        final leading = DesktopWindowFrame.sidebarLeadingInset;
+        final titleFloor =
+            RevericSizes.iconButtonSize * 3 +
+            RevericSpacing.xs +
+            RevericSizes.iconButtonIconSize +
+            RevericSpacing.sm +
+            RevericSpacing.x6l * 2;
+        final settingsMax = (constraints.maxWidth - leading - titleFloor).clamp(
+          0.0,
+          double.infinity,
+        );
+        return SizedBox(
+          height: DesktopWindowFrame.titleBarHeight + RevericSpacing.sm,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: leading),
+              Expanded(
+                child: SizedBox(
+                  height: DesktopWindowFrame.titleBarHeight,
+                  child: Row(
+                    children: [
+                      RevericIconButton(
+                        key: gestureKeys.back,
+                        icon: RevericIcons.arrow_back,
+                        tooltip: context.t(LocaleKeys.commonBack),
+                        onPressed: busy.value ? null : onBack,
                       ),
-                    ),
-                    if (error.value != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: RevericSpacing.sm),
-                        child: Tooltip(
-                          message: error.value!,
-                          child: RevericIcon(
-                            RevericIcons.error_outline,
-                            color: colors.error,
-                          ),
-                        ),
-                      ),
-                    RevericIconButton(
-                      key: gestureKeys.save,
-                      icon: RevericIcons.check,
-                      tooltip: context.t(LocaleKeys.commonSave),
-                      onPressed: busy.value
-                          ? null
-                          : () => productionRun(context, save),
-                    ),
-                    RevericIconButton(
-                      key: gestureKeys.cancel,
-                      icon: RevericIcons.close,
-                      tooltip: context.t(LocaleKeys.commonCancel),
-                      onPressed: cancel,
-                    ),
-                  ] else
-                    // 标题本身就是重命名入口，铅笔贴着标题提示可编辑。
-                    Flexible(
-                      child: Tooltip(
-                        message: context.t(LocaleKeys.commonRename),
-                        child: InkWell(
-                          key: gestureKeys.title,
-                          borderRadius: BorderRadius.circular(
-                            RevericRadius.iconButton,
-                          ),
-                          hoverColor: colors.hover,
-                          onTap: busy.value ? null : rename,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: RevericSpacing.sm,
-                              vertical: RevericSpacing.xs,
+                      const SizedBox(width: RevericSpacing.xs),
+                      if (editing.value) ...[
+                        // 宽度封顶，确认与取消紧跟输入框，不被推到窗口另一侧。
+                        Flexible(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxWidth: RevericSizes.productionTitleFieldWidth,
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    novel.title,
-                                    key: const ValueKey(
-                                      'canvas-work-title-label',
-                                    ),
-                                    style: typo.uiSemibold.copyWith(
-                                      color: colors.textPrimary,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: RevericSpacing.xs),
-                                RevericIcon(
-                                  RevericIcons.edit,
-                                  size: 14,
-                                  color: colors.textSubtle,
-                                ),
-                              ],
+                            child: CallbackShortcuts(
+                              bindings: {
+                                const SingleActivator(
+                                  LogicalKeyboardKey.escape,
+                                ): cancel,
+                              },
+                              child: RevericTextField(
+                                key: gestureKeys.title,
+                                fieldKey: const ValueKey('canvas-work-title'),
+                                controller: title,
+                                focusNode: focus,
+                                enabled: !busy.value,
+                                onSubmitted: (_) =>
+                                    productionRun(context, save),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            key: gestureKeys.settings,
-            padding: EdgeInsets.only(
-              top: DesktopWindowFrame.captionSafeTopInset,
-              right: DesktopWindowFrame.captionSafeTopInset == 0
-                  ? DesktopWindowFrame.trailingInset
-                  : RevericSpacing.lg,
-            ),
-            child: SizedBox(
-              height: DesktopWindowFrame.titleBarHeight,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ProductionScreenplayStyle(service: service),
-                  Container(
-                    width: 1,
-                    height: RevericSpacing.x2l,
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: RevericSpacing.sm,
-                    ),
-                    color: colors.borderSubtle,
+                        if (error.value != null)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              left: RevericSpacing.sm,
+                            ),
+                            child: Tooltip(
+                              message: error.value!,
+                              child: RevericIcon(
+                                RevericIcons.error_outline,
+                                color: colors.error,
+                              ),
+                            ),
+                          ),
+                        RevericIconButton(
+                          key: gestureKeys.save,
+                          icon: RevericIcons.check,
+                          tooltip: context.t(LocaleKeys.commonSave),
+                          onPressed: busy.value
+                              ? null
+                              : () => productionRun(context, save),
+                        ),
+                        RevericIconButton(
+                          key: gestureKeys.cancel,
+                          icon: RevericIcons.close,
+                          tooltip: context.t(LocaleKeys.commonCancel),
+                          onPressed: cancel,
+                        ),
+                      ] else
+                        // 标题本身就是重命名入口，铅笔贴着标题提示可编辑。
+                        Flexible(
+                          child: Tooltip(
+                            message: context.t(LocaleKeys.commonRename),
+                            child: InkWell(
+                              key: gestureKeys.title,
+                              borderRadius: BorderRadius.circular(
+                                RevericRadius.iconButton,
+                              ),
+                              hoverColor: colors.hover,
+                              onTap: busy.value ? null : rename,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: RevericSpacing.sm,
+                                  vertical: RevericSpacing.xs,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        novel.title,
+                                        key: const ValueKey(
+                                          'canvas-work-title-label',
+                                        ),
+                                        style: typo.uiSemibold.copyWith(
+                                          color: colors.textPrimary,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: RevericSpacing.xs),
+                                    RevericIcon(
+                                      RevericIcons.edit,
+                                      size: 14,
+                                      color: colors.textSubtle,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  ProductionSpecChip(
-                    path: novel.contentDatabasePath!,
-                    episodeId: '',
-                  ),
-                ],
+                ),
               ),
-            ),
+              // 风格和规格留在标题行，靠 trailingInset 排在窗口按钮左侧。
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: settingsMax),
+                child: Padding(
+                  key: gestureKeys.settings,
+                  padding: EdgeInsets.only(
+                    right: DesktopWindowFrame.trailingInset,
+                  ),
+                  child: SizedBox(
+                    height: DesktopWindowFrame.titleBarHeight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: ProductionScreenplayStyle(service: service),
+                        ),
+                        Container(
+                          width: 1,
+                          height: RevericSpacing.x2l,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: RevericSpacing.sm,
+                          ),
+                          color: colors.borderSubtle,
+                        ),
+                        ProductionSpecChip(
+                          path: novel.contentDatabasePath!,
+                          episodeId: '',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

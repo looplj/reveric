@@ -113,7 +113,9 @@ $setTool
         );
         expect(write['workId'], 'work');
         expect(write['agentId'], 'test-agent');
-        final first = await round();
+        // 同一 run 内的工具轮不重新拉取插件上下文，避免刚写入就在本回合重复注入。
+        expect(await round(), isEmpty);
+        final first = await round(runStart: true);
         expect(first, hasLength(1));
         expect(first.single.role, AgentMessageRole.user);
         expect(
@@ -123,11 +125,20 @@ $setTool
           ),
         );
         expect(first.single.content, contains('test-agent@work:first'));
-        // 内容未变：工具轮与重试都不再追加。
+        // 内容未变：工具轮与新一轮都不再追加。
         expect(await round(), isEmpty);
         expect(await round(runStart: true), isEmpty);
+        // 若同一 run 中途发生上下文压缩清掉了旧快照，仍可复用本次 run 的缓存补注。
+        history.clear();
+        final restoredAfterCompact = await round();
+        expect(restoredAfterCompact, hasLength(1));
+        expect(
+          restoredAfterCompact.single.content,
+          contains('test-agent@work:first'),
+        );
         await dispatcher.executeTool(name: 'Set', input: {'memory': 'second'});
-        final second = await round();
+        expect(await round(), isEmpty);
+        final second = await round(runStart: true);
         expect(second.single.content, contains('test-agent@work:second'));
         expect(await round(), isEmpty);
 
@@ -157,7 +168,7 @@ $setTool
         );
 
         await dispatcher.executeTool(name: 'Set', input: {'mode': 'forbidden'});
-        expect(await round(), isEmpty);
+        expect(await round(runStart: true), isEmpty);
         expect(
           await database.pluginDao.getStorage('test.prompt', 'data.forbidden'),
           null,
@@ -167,11 +178,11 @@ $setTool
           'permission_denied',
         );
         await dispatcher.executeTool(name: 'Set', input: {'mode': 'large'});
-        expect(await round(), isEmpty);
+        expect(await round(runStart: true), isEmpty);
         expect(host.statuses.single.promptDiagnostic?.code, 'prompt_budget');
         await dispatcher.executeTool(name: 'Set', input: {'mode': 'slow'});
         final clock = Stopwatch()..start();
-        expect(await round(), isEmpty);
+        expect(await round(runStart: true), isEmpty);
         expect(clock.elapsedMilliseconds, lessThan(1500));
         expect(
           host.statuses.single.promptDiagnostic?.code,
@@ -180,19 +191,19 @@ $setTool
 
         // 插件变为没有内容时追加一次空快照，之后保持不变。
         await dispatcher.executeTool(name: 'Set', input: {'mode': 'clear'});
-        final cleared = await round();
+        final cleared = await round(runStart: true);
         expect(cleared.single.content, contains('{"content":null}'));
-        expect(await round(), isEmpty);
+        expect(await round(runStart: true), isEmpty);
         // 恢复到与历史中更早快照相同的内容也要追加：只和最后一条比较。
         await dispatcher.executeTool(name: 'Set', input: {'mode': 'normal'});
         expect(
-          (await round()).single.content,
+          (await round(runStart: true)).single.content,
           contains('test-agent@work:second'),
         );
 
         await host.setEnabled('test.prompt', false);
-        expect(await round(), isEmpty);
-        expect(inner.requests, 13);
+        expect(await round(runStart: true), isEmpty);
+        expect(inner.requests, 16);
       } finally {
         await host.dispose();
         await database.close();

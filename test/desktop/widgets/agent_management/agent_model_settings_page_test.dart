@@ -96,6 +96,7 @@ class _TestAppSettingsNotifier extends AppSettingsNotifier {
 }
 
 final _testProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'test-provider',

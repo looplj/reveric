@@ -66,6 +66,20 @@ args 是逐项字符串数组，不含 ffmpeg / ffprobe 程序名，不是 shell
 
 execute 必须提供已有文件、图片序列或 concat 清单作为输入。不支持 lavfi 输入，以及 color、anullsrc、testsrc、sine 等源滤镜；不能通过 filter_complex 绕过。loop、aloop 滤镜及 -loop、-stream_loop 参数也不开放。成片的背景与静音底轨由 editing 工程渲染处理。
 
+## 图片去底
+
+先确认原图是否已有透明区域。PNG 扩展名、预览里的棋盘格都不能证明图片透明。用 `-vf format=rgba,alphaextract` 导出单帧灰度图检查：黑是透明、白是不透明、灰是半透明；如果背景对应区域全白，就还没有去底。
+
+生成水印素材时，生成入口支持透明输出就直接要求带 Alpha 的 PNG，再检查实际结果。不支持时，使用与主体颜色不重合的纯色背景，不加阴影、渐变或棋盘格。已有图片若背景复杂，或底色也出现在主体上，用蒙版抠图保留文字、内孔和细边；没有可用的抠图工具时，向用户索取透明原图，不强行按色删除。
+
+纯绿色背景、主体无绿色时，可用 `colorkey` 去底。把示例中的键色换成取样得到的真实背景色；从较低的 `similarity` 开始，去不干净再逐步提高，适度调整 `blend` 保留边缘。输出到新文件，不覆盖原图。
+
+```json
+{"command":"ffmpeg","subcommand":"execute","options":{"args":["-i","{file_path}","-vf","format=rgba,colorkey=0x00FF00:0.12:0.05","-frames:v","1","-c:v","png","-pix_fmt","rgba","watermark-transparent.png"]}}
+```
+
+把输出分别叠在深底、浅底上，按成片里的大小检查：背景应透出，主体不能缺笔、缺角，边缘不能残留底色。通过后再把透明 PNG 放到叠加轨。
+
 ## 输入依赖
 
 图片序列输入使用 %d 或 %0Nd（N 为 1..9），可用 -framerate 与 -start_number。编号必须连续；省略起始编号时在 0..4 中找首张，其他起始编号必须明确指定。不会因缺图而默默截短输入。

@@ -430,6 +430,7 @@ class _CrossWorkAccess implements CrossWorkAccess {
 }
 
 AiProvider _provider() => AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'test',

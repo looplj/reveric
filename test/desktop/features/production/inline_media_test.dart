@@ -1,6 +1,7 @@
-// 职责: 验证视频节点悬停、点击播放，以及媒体节点双击和工具条弹窗预览。
+// 职责: 验证画布媒体的内联播放、转录入口、弹窗快捷键和视频文件导出。
 // 关联文件:
 //   lib/desktop/features/production/inline_media.dart
+//   lib/desktop/features/production/transcription_action.dart
 //   lib/shared/services/production/playback_service.dart
 //   test/desktop/director/harness.dart
 
@@ -9,6 +10,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+// ignore: depend_on_referenced_packages
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +31,7 @@ import 'package:reveric/shared/models/production/media.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/providers/production_media.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/providers/settings_navigation.dart';
 import 'package:reveric/shared/services/production/canvas_service.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
@@ -101,10 +105,113 @@ void main() {
     return mouse;
   }
 
+  for (final type in ['audio', 'video']) {
+    testWidgets(
+      'standalone $type transcribe opens provider settings when no ASR model is configured',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final root = (await tester.runAsync(
+          () => Directory.systemTemp.createTemp('production-transcription-'),
+        ))!;
+        try {
+          final path =
+              'file_workspaces/work/source.${type == 'audio' ? 'm4a' : 'mp4'}';
+          await tester.runAsync(() async {
+            final file = File('${root.path}/$path');
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes([1]);
+          });
+          service = ProductionCanvasService(
+            StoryboardService(db),
+            MediaLibraryService(assets, _Media(hasAudio: true), root),
+            'work',
+          );
+          await assets.assetDao.insertAsset(
+            AssetsCompanion.insert(
+              id: 'standalone-asset',
+              type: type,
+              novelId: const Value('work'),
+              path: Value(path),
+              purpose: 'upload',
+              content: Value(
+                type == 'audio'
+                    ? const AudioAssetContent(mimeType: 'audio/mp4')
+                    : const VideoAssetContent(mimeType: 'video/mp4'),
+              ),
+            ),
+          );
+          final episode = (await ScreenplayService(
+            db,
+          ).createInitialStructure()).episodeId;
+          final canvas = await service.ensureCanvas(episode);
+          final node = (await tester.runAsync(
+            () => service.addMedia(canvas.id, 'standalone-asset'),
+          ))!;
+          expect(node.clipId, isNull);
+          final opened = <String>[];
+          final navigation = SettingsNavigation()
+            ..openSection = (section) async => opened.add(section);
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                aiSettingsProvider.overrideWithValue(const AiSettings()),
+                settingsNavigationProvider.overrideWithValue(navigation),
+              ],
+              child: directorTestApp(
+                Center(
+                  child: ProductionNodeBar(
+                    service: service,
+                    path: db.filePath,
+                    node: node,
+                    clip: null,
+                    segmentLabels: const {},
+                    onPreview: null,
+                    onSource: null,
+                    onToSegments: null,
+                    onCopy: null,
+                    onDelete: () {},
+                    onOpenDirector: (_) {},
+                    onSelectNode: (_) {},
+                    onExport: (_) async {},
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.runAsync(() => service.library.probePath(path));
+          await tester.pumpAndSettle();
+
+          const configHint =
+              'Configure a transcription model in AI provider settings';
+          final transcribe = find.text('Transcribe');
+          expect(transcribe, findsOneWidget);
+          final mouse = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: tester.getCenter(transcribe));
+          await tester.pumpAndSettle();
+          expect(find.text(configHint), findsOneWidget);
+          await tester.tap(transcribe);
+          await tester.pumpAndSettle();
+          expect(opened, ['providers']);
+          expect(find.byType(SnackBar), findsNothing);
+          await mouse.removePointer();
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+          await tester.runAsync(() => root.delete(recursive: true));
+        }
+      },
+    );
+  }
+
   for (final type in ['image', 'video']) {
     for (final generated in [false, true]) {
       testWidgets(
-        '$type generated=$generated opens from double tap and toolbar',
+        '$type generated=$generated opens from double tap and toolbar and supports video actions',
         (tester) async {
           tester.view.physicalSize = const Size(1400, 1000);
           tester.view.devicePixelRatio = 1;
@@ -135,6 +242,7 @@ void main() {
               AssetsCompanion.insert(
                 id: 'preview-asset',
                 type: type,
+                name: const Value('断天河｜成片 v1.mp4'),
                 purpose: 'upload',
                 novelId: const Value('work'),
                 path: Value(path),
@@ -224,7 +332,7 @@ void main() {
               ),
               type == 'image' ? findsOneWidget : findsNothing,
             );
-            Future<void> expectPreview() async {
+            Future<void> expectPreview({bool keyboard = false}) async {
               for (
                 var i = 0;
                 i < 50 && find.byType(MediaPreviewDialog).evaluate().isEmpty;
@@ -253,7 +361,38 @@ void main() {
                   findsOneWidget,
                 );
               }
-              await tester.tap(find.byTooltip('Close'));
+              if (keyboard) {
+                playback.player.value = playback.player.value.copyWith(
+                  duration: const Duration(seconds: 12),
+                  position: const Duration(seconds: 3),
+                );
+                await tester.sendKeyEvent(LogicalKeyboardKey.space);
+                expect(playback.player.value.isPlaying, isFalse);
+                await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+                expect(
+                  playback.player.value.position,
+                  const Duration(seconds: 8),
+                );
+                await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+                expect(
+                  playback.player.value.position,
+                  const Duration(seconds: 12),
+                );
+                await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+                expect(
+                  playback.player.value.position,
+                  const Duration(seconds: 7),
+                );
+                await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+                await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+                expect(playback.player.value.position, Duration.zero);
+                expect(playback.player.value.isPlaying, isFalse);
+                await tester.sendKeyEvent(LogicalKeyboardKey.space);
+                expect(playback.player.value.isPlaying, isTrue);
+                await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+              } else {
+                await tester.tap(find.byTooltip('Close'));
+              }
               await tester.pumpAndSettle();
               expect(find.byType(MediaPreviewDialog), findsNothing);
               expect(playback.active.value, isNull);
@@ -264,7 +403,7 @@ void main() {
             await tester.tapAt(tester.getCenter(card));
             await tester.pump(const Duration(milliseconds: 50));
             await tester.tapAt(tester.getCenter(card));
-            await expectPreview();
+            await expectPreview(keyboard: type == 'video' && !generated);
             await tester.tap(
               find.descendant(
                 of: find.byType(ProductionNodeBar),
@@ -280,6 +419,47 @@ void main() {
                 .controller;
             controller.events.node!.onDoubleTap!(controller.getNode(node.id)!);
             await expectPreview();
+            if (type == 'video' && !generated) {
+              final original = FileSelectorPlatform.instance;
+              final panel = _SavePanel();
+              FileSelectorPlatform.instance = panel;
+              addTearDown(() => FileSelectorPlatform.instance = original);
+              final output = File('${root.path}/exported.mp4');
+              await tester.tap(find.byTooltip('More actions'));
+              await tester.pumpAndSettle();
+              await tester.runAsync(() async {
+                await tester.tap(find.text('Export').hitTestable().last);
+                for (
+                  var attempt = 0;
+                  attempt < 50 && panel.names.isEmpty;
+                  attempt++
+                ) {
+                  await Future<void>.delayed(const Duration(milliseconds: 10));
+                }
+              });
+              expect(panel.names, ['断天河｜成片 v1.mp4']);
+              expect(output.existsSync(), isFalse);
+              await tester.pumpAndSettle();
+              panel.path = output.path;
+              await tester.runAsync(() async {
+                await tester.tap(
+                  find.descendant(
+                    of: find.byType(ProductionNodeBar),
+                    matching: find.text('Export'),
+                  ),
+                );
+                for (
+                  var attempt = 0;
+                  attempt < 50 &&
+                      (!output.existsSync() || output.lengthSync() == 0);
+                  attempt++
+                ) {
+                  await Future<void>.delayed(const Duration(milliseconds: 10));
+                }
+              });
+              expect(panel.names, ['断天河｜成片 v1.mp4', '断天河｜成片 v1.mp4']);
+              expect(output.readAsBytesSync(), [1]);
+            }
             expect(tester.takeException(), isNull);
           } finally {
             await tester.pumpWidget(const SizedBox.shrink());
@@ -464,7 +644,9 @@ void main() {
 }
 
 class _Media extends MediaService {
-  _Media() : super(FfmpegRunner());
+  _Media({this.hasAudio = false}) : super(FfmpegRunner());
+
+  final bool hasAudio;
 
   int thumbnailCalls = 0;
   bool failThumbnail = false;
@@ -473,9 +655,9 @@ class _Media extends MediaService {
   Future<MediaInfo> probe(
     String path, {
     MediaCancellation? cancellation,
-  }) async => const MediaInfo(
-    duration: Duration(seconds: 5),
-    hasAudio: false,
+  }) async => MediaInfo(
+    duration: const Duration(seconds: 5),
+    hasAudio: hasAudio,
     hasVideo: true,
     width: 320,
     height: 180,
@@ -502,12 +684,27 @@ class _Media extends MediaService {
   }
 }
 
+class _SavePanel extends FileSelectorPlatform {
+  final names = <String?>[];
+  String? path;
+
+  @override
+  Future<FileSaveLocation?> getSaveLocation({
+    List<XTypeGroup>? acceptedTypeGroups,
+    SaveDialogOptions options = const SaveDialogOptions(),
+  }) async {
+    names.add(options.suggestedName);
+    final destination = path;
+    return destination == null ? null : FileSaveLocation(destination);
+  }
+}
+
 class _Playback extends PlaybackService {
   final opens = <String>[];
   Completer<void>? gate;
   String? owner;
   @override
-  final player = VideoPlayerController.file(File('unused.mp4'));
+  final player = _Player();
 
   @override
   Future<void> open({
@@ -543,5 +740,20 @@ class _Playback extends PlaybackService {
   Future<void> dispose() async {
     await player.dispose();
     active.dispose();
+  }
+}
+
+class _Player extends VideoPlayerController {
+  _Player() : super.file(File('unused.mp4'));
+
+  @override
+  Future<void> pause() async => value = value.copyWith(isPlaying: false);
+
+  @override
+  Future<void> play() async => value = value.copyWith(isPlaying: true);
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    value = value.copyWith(isCompleted: false, position: position);
   }
 }

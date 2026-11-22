@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links_linux
+  ffmpeg_kit_flutter_new
   file_selector_linux
   fvp
   irondash_engine_context

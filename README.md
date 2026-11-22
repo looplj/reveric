@@ -12,6 +12,8 @@
   <a href="README.md">简体中文</a> •
   <a href="README.en-US.md">English</a> •
   <a href="README.ja-JP.md">日本語</a> ｜
+  <a href="https://reveric.app">官网</a> •
+  <a href="https://reveric.app/#gallery">作品展映</a> •
   <a href="#核心特性">核心特性</a> •
   <a href="#全流程展示">全流程展示</a> •
   <a href="#模型支持">模型支持</a> •
@@ -82,6 +84,46 @@
 - **本地优先，模型自选（BYOK）**：作品数据保存在本地 SQLite，模型直连 OpenAI、Anthropic、Gemini、DeepSeek、Seedance、H3 或自建网关。
 
 ![Reveric 主界面](.github/images/home.png)
+
+---
+
+## 作品展映 · 画布画廊
+
+桌面端内置**画布画廊**，创作者可以上传自己的画布工程（含剧本、定妆设定、分镜节点、音视频素材与 AI 对话记录），也能浏览并一键复制到本地书架直接复用或二创。
+
+前往官网 **[reveric.app/#gallery](https://reveric.app/#gallery)** 可在线试映精选作品成片，并切换查看背后的画布节点与设定：
+
+<table width="100%">
+  <tr>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/duantianhe_poster.webp" alt="断天河" />
+      </a>
+      <br />
+      <strong>断天河（29s 成片）</strong>
+      <br />
+      <sub>仙侠动作 · 14 节点 · 完整剧本、定妆四视图与三段直剪</sub>
+    </td>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/shuangshu_board.webp" alt="双姝之战画布节点图" />
+      </a>
+      <br />
+      <strong>双姝之战（51s 成片）</strong>
+      <br />
+      <sub>奇幻哥特 · 24 节点 · 含全套画布拓扑与三幕连剪</sub>
+    </td>
+    <td width="33.3%" align="center" valign="top">
+      <a href="https://reveric.app/#gallery">
+        <img src="https://gallery.reveric.app/showcase/mori_poster.webp" alt="末日圣母回收指南" />
+      </a>
+      <br />
+      <strong>末日圣母回收指南（81s 成片）</strong>
+      <br />
+      <sub>末世短剧 · 36 节点 · 多机位分镜与多轨成片剪辑</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 

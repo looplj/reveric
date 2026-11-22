@@ -404,6 +404,7 @@ class MapStudioController extends _$MapStudioController {
     required String sourceMapName,
   }) async {
     final model = _generationModelId;
+    final customParameters = request.customImageParameters;
     final asset = await ref
         .read(imageLibraryServiceProvider)
         .importMapImage(
@@ -416,8 +417,12 @@ class MapStudioController extends _$MapStudioController {
             sourceMapName: sourceMapName,
             styleId: request.styleId,
             styleWord: draft.styleWord,
-            resolutionId: request.resolutionId,
-            qualityId: request.quality,
+            resolutionId: customParameters == null
+                ? request.resolutionId
+                : null,
+            qualityId: customParameters == null ? request.quality : null,
+            customQuality: customParameters?.quality,
+            customSize: customParameters?.size,
             includeLocations: request.includeLocations,
             referenceCurrentImage: request.referenceCurrentImage,
           ).toJson(),

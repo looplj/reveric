@@ -15,6 +15,8 @@ class MapAssetMetadata {
     this.styleWord,
     this.resolutionId,
     this.qualityId,
+    this.customQuality,
+    this.customSize,
     this.includeLocations = true,
     this.referenceCurrentImage = false,
   });
@@ -26,6 +28,8 @@ class MapAssetMetadata {
   final String? styleWord;
   final String? resolutionId;
   final String? qualityId;
+  final String? customQuality;
+  final String? customSize;
   final bool includeLocations;
   final bool referenceCurrentImage;
 
@@ -37,6 +41,8 @@ class MapAssetMetadata {
     if (styleWord != null) 'style_word': styleWord,
     if (resolutionId != null) 'resolution_id': resolutionId,
     if (qualityId != null) 'quality_id': qualityId,
+    if (customQuality != null) 'custom_quality': customQuality,
+    if (customSize != null) 'custom_size': customSize,
     'include_locations': includeLocations,
     'reference_current_image': referenceCurrentImage,
   };
@@ -58,6 +64,8 @@ class MapAssetMetadata {
       styleWord: text('style_word'),
       resolutionId: text('resolution_id'),
       qualityId: text('quality_id'),
+      customQuality: text('custom_quality'),
+      customSize: text('custom_size'),
       includeLocations: decoded['include_locations'] is bool
           ? decoded['include_locations'] as bool
           : true,

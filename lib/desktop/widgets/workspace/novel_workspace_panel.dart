@@ -89,6 +89,8 @@ import 'foreshadowing_editor.dart';
 import '../history/resource_history_button.dart';
 import '../../features/canvas/widgets/canvas_region.dart';
 import '../../features/map/map_studio_page.dart';
+import '../../features/narration/button.dart';
+import '../../features/narration/dialog.dart';
 import '../../features/screenplay/outline.dart';
 import '../../features/screenplay/overview.dart';
 import '../../features/screenplay/scenes.dart';
@@ -561,6 +563,10 @@ class NovelWorkspacePanel extends ConsumerWidget {
             outlineFocusNode: chapterOutlineFocusNode,
           );
         }
+        final canNarrateSelection =
+            supportsDesktopNarration &&
+            selectedChapter != null &&
+            selectedChapterDetails?.id == selectedChapter.id;
         return ChapterEditor(
           key: ValueKey(selectedChapter?.id),
           chapters: chapters,
@@ -585,6 +591,10 @@ class NovelWorkspacePanel extends ConsumerWidget {
           onCreateChapter: onCreateEntry,
           databasePath: databasePath,
           onAddSelectionToChat: onAddChapterSelectionToChat,
+          onNarrateSelection: canNarrateSelection
+              ? (text) =>
+                    showNovelNarration(context, workId: novel.id, text: text)
+              : null,
         );
       case NovelWorkspaceSection.lore:
         return _buildSimpleEntryEditor(
@@ -1045,6 +1055,14 @@ class NovelWorkspacePanel extends ConsumerWidget {
               onPressed: () {
                 showSettingsSectionDialog(context, 'editor');
               },
+            ),
+            const SizedBox(width: RevericSpacing.sm),
+          ],
+          if (supportsDesktopNarration && showChapterPreviewButton) ...[
+            ChapterNarrationButton(
+              workId: novel.id,
+              controller: chapterContentController,
+              isChapterReady: selectedChapterDetails?.id == resourceId,
             ),
             const SizedBox(width: RevericSpacing.sm),
           ],

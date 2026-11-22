@@ -17,6 +17,7 @@ void main() {
 
   const model = 'fake-chat';
   final provider = AiProvider(
+    asrModels: const [],
     audioModels: const [],
     videoModels: const [],
     id: 'fake_provider',

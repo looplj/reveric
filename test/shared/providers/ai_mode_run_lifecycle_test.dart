@@ -47,6 +47,7 @@ void main() {
         novelActionsService: actions,
       );
       final config = AiProvider(
+        asrModels: const [],
         id: 'custom_test',
         name: 'Test',
         builtin: false,

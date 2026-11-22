@@ -54,6 +54,7 @@ import 'shared/localization/merging_asset_loader.dart';
 import 'shared/providers/tool_operations.dart';
 import 'shared/providers/video_tasks.dart';
 import 'shared/providers/production_images.dart';
+import 'shared/providers/transcription.dart';
 import 'shared/providers/production_audio.dart';
 import 'shared/providers/agent_skill_catalog_providers.dart';
 import 'shared/providers/official_skill_sync_providers.dart';
@@ -474,6 +475,7 @@ class MyApp extends ConsumerWidget {
       ref.watch(providerAssetServiceProvider);
       ref.watch(imageTaskRecoveryProvider);
       ref.watch(audioTaskRecoveryProvider);
+      ref.watch(transcriptionRecoveryProvider);
       if (Platform.isMacOS || Platform.isWindows) {
         ref.watch(depthTaskProvider);
       }

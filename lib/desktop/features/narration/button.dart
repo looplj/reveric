@@ -1,4 +1,4 @@
-// 职责: 从桌面剧本正文打开当前场次起的朗读快照。
+// 职责: 从桌面剧本或章节编辑器打开当前正文的朗读快照。
 // 关联文件:
 //   lib/desktop/features/screenplay/script.dart
 //   lib/desktop/features/narration/dialog.dart
@@ -14,12 +14,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../shared/components/reveric_button.dart';
 import '../../../shared/components/reveric_dialog.dart';
+import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/models/narration.dart';
 import '../../../shared/theme/theme.dart';
+import '../../../shared/utils/text_input_composing.dart';
+import '../../../shared/widgets/frame_safe_text_editing_value_builder.dart';
 import '../../../shared/widgets/screenplay/document_session.dart';
 import 'dialog.dart';
+
+bool get supportsDesktopNarration =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS);
 
 class NarrationButton extends HookWidget {
   const NarrationButton({
@@ -38,13 +46,7 @@ class NarrationButton extends HookWidget {
       session.controller,
       () => session.controller.isComposing,
     );
-    final supported =
-        !kIsWeb &&
-        {
-          TargetPlatform.windows,
-          TargetPlatform.macOS,
-        }.contains(defaultTargetPlatform);
-    if (!supported) {
+    if (!supportsDesktopNarration) {
       return const SizedBox.shrink();
     }
     return RevericButton.text(
@@ -76,6 +78,42 @@ class NarrationButton extends HookWidget {
                 builder: (_) => NarrationDialog(workId: workId, source: source),
               );
             },
+    );
+  }
+}
+
+class ChapterNarrationButton extends StatelessWidget {
+  const ChapterNarrationButton({
+    super.key,
+    required this.workId,
+    required this.controller,
+    required this.isChapterReady,
+  });
+
+  final String workId;
+  final TextEditingController controller;
+  final bool isChapterReady;
+
+  @override
+  Widget build(BuildContext context) {
+    return FrameSafeTextEditingValueBuilder(
+      controller: controller,
+      builder: (context, value, _) => RevericIconButton(
+        icon: RevericIcons.play_arrow,
+        tooltip: context.t(LocaleKeys.narrationTitle),
+        onPressed:
+            isChapterReady &&
+                (!value.composing.isValid || value.composing.isCollapsed) &&
+                value.text.trim().isNotEmpty
+            ? () {
+                final text = controller.text;
+                if (!isTextInputComposing(controller) &&
+                    text.trim().isNotEmpty) {
+                  showNovelNarration(context, workId: workId, text: text);
+                }
+              }
+            : null,
+      ),
     );
   }
 }

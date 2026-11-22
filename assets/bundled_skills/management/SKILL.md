@@ -1,6 +1,6 @@
 ---
 name: 系统管理
-when_to_use: 用户要保存长期写作偏好、管理 AI 规则，智能体规则、设计、安装或维护 AgentSkill、配置智能体或专家，查询已配置的供应商以及聊天、图像、视频、音频模型能力，打开应用设置分区，或自定义、修改、切换应用界面主题配色时
+when_to_use: 用户要管理当前作品的长期写作规则、管理 AI 规则，智能体规则、设计、安装或维护 AgentSkill、配置智能体或专家，查询已配置的供应商以及聊天、图像、视频、音频模型能力，打开应用设置分区，或自定义、修改、切换应用界面主题配色时
 description: 按任务读取对应操作指南，管理创作规则、AI 技能、智能体、界面主题，查询供应商与模型能力，打开应用设置分区。
 agent_scopes: [chat]
 ---
@@ -11,7 +11,7 @@ agent_scopes: [chat]
 
 | 任务 | Reference |
 | --- | --- |
-| 保存长期写作偏好、禁忌，管理当前小说的 AgentRules | `references/agent-rules.md` |
+| 管理当前作品的长期写作规则与禁忌（AgentRules）；跨作品偏好优先使用记忆工具 | `references/agent-rules.md` |
 | AgentSkill 的查找、安装与日常管理，包括附件 | `references/agent-skills.md` |
 | 从模糊需求设计新 AgentSkill，优化触发边界、提示词或附件结构 | `references/skill-design.md` |
 | 管理智能体，配置职责与 system prompt | `references/subagents.md` |

@@ -67,7 +67,7 @@ void main() {
   });
 
   test('inherits the previous line indentation when pressing enter', () {
-    const formatter = ChapterParagraphIndentFormatter();
+    final formatter = ChapterParagraphIndentFormatter();
     TextEditingValue pressEnter(String oldText, int cursor) {
       final newText =
           '${oldText.substring(0, cursor)}\n${oldText.substring(cursor)}';
@@ -96,6 +96,50 @@ void main() {
       ).text,
       '\u3000\u3000第一行\n\u3000\u3000第二行',
     );
+  });
+
+  testWidgets('indents an empty chapter after the final IME segment commits', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _wrapEditor(_editor(content: '', contentController: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.showKeyboard(
+      find.byKey(const ValueKey('chapter-content-selection-listener')),
+    );
+
+    const composingUpdates = [
+      TextEditingValue(
+        text: 'nihao',
+        selection: TextSelection.collapsed(offset: 5),
+        composing: TextRange(start: 0, end: 5),
+      ),
+      TextEditingValue(
+        text: '你hao',
+        selection: TextSelection.collapsed(offset: 4),
+        composing: TextRange(start: 1, end: 4),
+      ),
+    ];
+    for (final value in composingUpdates) {
+      tester.testTextInput.updateEditingValue(value);
+      await tester.pump();
+      expect(controller.value, value);
+    }
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: '你好',
+        selection: TextSelection.collapsed(offset: 2),
+      ),
+    );
+    await tester.pump();
+    expect(controller.text, '\u3000\u3000你好');
+    expect(controller.selection.baseOffset, 4);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
   });
 
   testWidgets('hovering a recognized character shows its entity card', (
@@ -152,12 +196,14 @@ void main() {
 
       final contentController = TextEditingController();
       String? addedExcerpt;
+      String? narratedExcerpt;
       await tester.pumpWidget(
         _wrapEditor(
           _editor(
             content: '',
             contentController: contentController,
             onAddSelectionToChat: (text) => addedExcerpt = text,
+            onNarrateSelection: (text) => narratedExcerpt = text,
           ),
           minimapEnabled: true,
           lineNumbersEnabled: true,
@@ -408,6 +454,9 @@ void main() {
         lessThanOrEqualTo(24),
         reason: '三击后的工具栏必须水平居中于当前段落选区。',
       );
+      await tester.tap(find.text('朗读选中内容'));
+      await tester.pumpAndSettle();
+      expect(narratedExcerpt, paragraphSelection.textInside(paragraphContent));
 
       const entity = ChapterEntityMention(
         entityType: entityTypeCharacter,
@@ -456,6 +505,7 @@ Widget _editor({
   required String content,
   TextEditingController? contentController,
   ValueChanged<String>? onAddSelectionToChat,
+  ValueChanged<String>? onNarrateSelection,
   List<CharacterProfile> characterProfiles = const [],
 }) {
   final titleController = TextEditingController(text: '2.0版本开发');
@@ -485,6 +535,7 @@ Widget _editor({
     contentFocusNode: FocusNode(),
     onCreateChapter: () async {},
     onAddSelectionToChat: onAddSelectionToChat,
+    onNarrateSelection: onNarrateSelection,
   );
 }
 

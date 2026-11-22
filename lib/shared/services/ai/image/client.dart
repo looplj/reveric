@@ -409,15 +409,30 @@ void throwForImageHttpFailure({
   final serverMessage = extractImageServerMessage(data);
   final errorCode = imageErrorCodeFromStatus(code, serverMessage);
   throw AiImageSubmissionException(
-    code >= 400 && code < 500
-        ? _providerImageMessage(data, providerId) ??
-              _userMessageFromStatusCode(code, serverMessage)
-        : tr(LocaleKeys.aiImageSubmissionUnknown),
+    readImageProviderError(data, providerId) ??
+        (code >= 400 && code < 500
+            ? _userMessageFromStatusCode(code, serverMessage)
+            : tr(
+                code >= 500
+                    ? LocaleKeys.aiImageServerError
+                    : LocaleKeys.aiImageResponseInvalid,
+              )),
     debugMessage:
         'HTTP $code for ${safeImageUriForLog(uri)} response=${safeImageSerializeForLog(data)}',
     code: errorCode,
     failureCode: code >= 400 && code < 500 ? 'rejected' : 'submission_unknown',
   );
+}
+
+/// 结构化错误正文优先于状态码兜底。纯文本或 HTML 不算服务端错误文案。
+String? readImageProviderError(Object? data, String? providerId) {
+  if (data is String) {
+    final trimmed = data.trimLeft();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+      return null;
+    }
+  }
+  return _providerImageMessage(data, providerId);
 }
 
 /// HTTP 状态码先于文案：401/403、402、429 不必等服务端文案措辞对得上关键字。

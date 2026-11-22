@@ -274,6 +274,7 @@ void main() {
 }
 
 final _imageProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'external',

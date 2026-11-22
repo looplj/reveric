@@ -445,6 +445,7 @@ export function apply(setup: PluginSetup): void {
 | `context.log.info/warn/error(message, data?)` | 写宿主日志，不会抛错，已知密钥会被脱敏 |
 | `context.http.fetch(url, init?)` | HTTP 请求，支持 `timeoutMs`、`maxBytes`、`responseType: "base64"` |
 | `context.storage.get/set/remove(key)` | 插件私有的 JSON 键值存储 |
+| `setPageBadge(context.storage, pageId, badge)` | 设置或清除插件页面导航入口的角标（计数或状态点），持久化并实时刷新侧栏与移动端入口 |
 | `context.settings.get(key)` / `context.secrets.get(key)` | 读取设置 |
 | `context.sqlite.query/execute/transaction` | 私有 SQLite，需要声明 `database` |
 | `context.ai.listModels()` / `generateText(input)` | 调用用户配置的聊天模型，需要 `ai.generateText` 权限 |

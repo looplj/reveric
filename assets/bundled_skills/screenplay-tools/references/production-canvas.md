@@ -70,6 +70,14 @@
 
 删除文本节点会在同一事务移除下游的 `role=prompt` 输入及提示词中对应的引用标签，保留其余输入、标签和文字；批量 `remove_types=["text"]` 遵循相同规则。界面发起的删除可在当前画布会话内撤销，恢复文本、输入连线和被此次删除清理的标签，重做再次移除；若提示词随后被用户或 AI 改动，该步撤销或重做会拒绝执行，不覆盖新内容。普通提示词和模型设置编辑不进入画布结构撤销。
 
+## 音视频转录
+
+`Run production transcribe` 的 options 只传 `node_id`。它使用已配置的默认转写模型，读取该节点采用的音频或视频，完成后在同一画布创建文本节点并连接来源。视频会提取临时音轨。渠道返回的时间戳会保留。
+
+只处理已登记的素材时，用 `Run assets transcribe` 或 `Run assets separate-audio`，options 只传 `id`。前者交付包含正文和可用时间戳的 JSON，后者将视频音轨登记为独立 M4A 素材，返回其资产 ID。两个素材命令均不创建画布节点。
+
+用 `Run operations read/wait` 跟踪返回的 `run_id`。转录开始执行后不能取消；尚未向渠道提交、仍在等待审批时可以取消。成功的转录结果含 `transcript_path` 和 `segment_count`。用 `Run files read-text` 读取 `transcript_path`，需要时按其分页参数继续读取。画布命令还会返回结果的 `node_id` 和 `node_path`。
+
 ## 视频节点操作
 
 需要可继续引用的独立资产时，使用 `Run production`，options 的 `node_id` 从当前制作画布读取，不使用 clip_id、asset_id 或标题替代。每次调用处理源节点当前采用的视频，创建同画布的派生媒体节点和 `derived_output` 来源边，保留原视频与采用结果。

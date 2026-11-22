@@ -26,6 +26,7 @@
 <header class="topbar">
   <a class="brand" href="#top"><img src="assets/icon-180.png" alt="" width="40" height="40">幻界 Reveric</a>
   <nav class="topnav">
+    <a href="#gallery">画布画廊</a>
     <a href="#run">工作方式</a>
     <a href="#models">模型</a>
     <a href="#download">下载</a>
@@ -70,12 +71,89 @@
     <div class="bar bar-bottom mono" aria-hidden="true"><span>SC.01 片头</span><span>WINDOWS · MACOS · ANDROID</span><span>00:00:00:00</span></div>
   </cv-scene>
 
-  <!-- ============ SC.02 一条指令跑完全程（定住的场景） ============ -->
+  <!-- ============ SC.02 画布画廊展映 ============ -->
+  <cv-scene id="gallery" class="sc gallery">
+    <div class="sec-head">
+      <p class="label mono"><b>SC.02</b>&nbsp;&nbsp;CANVAS GALLERY</p>
+      <cv-animate fx="rise(soft)" duration="700"><h2 class="h2">画布画廊，<br>看得到的成品与工程</h2></cv-animate>
+      <p class="lead">客户端内置画布画廊。精选作品可在线试映成片，也可切换查看背后的角色设定与画布节点；在桌面端可一键复制完整工程与 AI 对话到书架。</p>
+    </div>
+
+    <div class="gal-stage">
+      <div class="gal-screen">
+        <div class="gal-frame">
+          <video id="gal-video" playsinline preload="metadata" poster="https://gallery.reveric.app/showcase/duantianhe_poster.webp" src="https://gallery.reveric.app/showcase/duantianhe.mp4"></video>
+          <img id="gal-board" src="https://gallery.reveric.app/showcase/duantianhe_board.webp" alt="《断天河》角色与场景设定" hidden>
+          <button class="gal-play" id="gal-play" type="button" aria-label="播放成片">
+            <span class="gal-play-ico" aria-hidden="true">▶</span>
+            <span class="gal-play-txt">播放成片 <small class="mono" id="gal-play-dur">00:29</small></span>
+          </button>
+        </div>
+        <div class="gal-bar">
+          <div class="gal-tabs" role="tablist" aria-label="视图切换">
+            <button class="gal-tab is-on" type="button" role="tab" aria-selected="true" data-gal-view="video">成片试映</button>
+            <button class="gal-tab" type="button" role="tab" aria-selected="false" data-gal-view="board" id="gal-board-tab">角色与设定</button>
+          </div>
+          <span class="gal-hint mono" id="gal-view-note">完整成片 · 720p 在线试映</span>
+        </div>
+      </div>
+
+      <aside class="gal-info">
+        <p class="gal-kicker mono" id="gal-kicker">01 · 仙侠动作短片</p>
+        <h3 class="gal-title" id="gal-title">断天河</h3>
+        <p class="gal-desc" id="gal-desc">一场酣畅淋漓的高速动作打戏：从完整剧本、云岫定妆四视图、万妖原与妖兽设定出发，三段视频直剪出 29 秒成片。</p>
+        <dl class="gal-stats">
+          <div><dt class="mono">画布节点</dt><dd class="mono" id="gal-nodes">14</dd></div>
+          <div><dt class="mono">工程素材</dt><dd class="mono" id="gal-assets">12</dd></div>
+          <div><dt class="mono">试映时长</dt><dd class="mono" id="gal-duration">29s</dd></div>
+        </dl>
+        <p class="gal-cta">想看原画布、节点提示词与 AI 对话？<a href="#download">下载桌面端</a>，在「画布画廊」直接打开复用。</p>
+      </aside>
+    </div>
+
+    <div class="gal-list" role="list" aria-label="精选画布作品">
+      <button class="gal-card is-active" type="button" data-gal-idx="0" aria-pressed="true">
+        <span class="gal-thumb">
+          <img src="https://gallery.reveric.app/showcase/duantianhe_thumb.webp" alt="《断天河》成片剧照" loading="lazy">
+          <span class="gal-badge mono">00:29</span>
+        </span>
+        <span class="gal-card-meta">
+          <span class="gal-card-n mono">01 · 仙侠动作</span>
+          <b>断天河</b>
+          <small>14 节点 · 完整 29s 成片直出</small>
+        </span>
+      </button>
+      <button class="gal-card" type="button" data-gal-idx="1" aria-pressed="false">
+        <span class="gal-thumb">
+          <img src="https://gallery.reveric.app/showcase/shuangshu_thumb.webp" alt="《双姝之战》成片剧照" loading="lazy">
+          <span class="gal-badge mono">00:51</span>
+        </span>
+        <span class="gal-card-meta">
+          <span class="gal-card-n mono">02 · 奇幻哥特</span>
+          <b>双姝之战</b>
+          <small>24 节点 · 三幕连剪完整 51s 成片</small>
+        </span>
+      </button>
+      <button class="gal-card" type="button" data-gal-idx="2" aria-pressed="false">
+        <span class="gal-thumb">
+          <img src="https://gallery.reveric.app/showcase/mori_thumb.webp" alt="《末日圣母回收指南》成片剧照" loading="lazy">
+          <span class="gal-badge mono">01:21</span>
+        </span>
+        <span class="gal-card-meta">
+          <span class="gal-card-n mono">03 · 末世短剧</span>
+          <b>末日圣母回收指南</b>
+          <small>36 节点 · 三段连剪加速版 81s 成片</small>
+        </span>
+      </button>
+    </div>
+  </cv-scene>
+
+  <!-- ============ SC.03 一条指令跑完全程（定住的场景） ============ -->
   <cv-scene id="run" class="sc run" zone>
     <cv-animate class="anchor" duration="6000" aria-hidden="true"></cv-animate>
 
     <div class="slate mono" aria-hidden="true">
-      <span><b>SC.02</b>&nbsp;&nbsp;一条指令跑完全程</span>
+      <span><b>SC.03</b>&nbsp;&nbsp;一条指令跑完全程</span>
       <span class="slate-swap">
         <cv-animate fx="keyframes(swap-first)" at="0% 17%" duration="200">TASK 01 / 06</cv-animate>
         <cv-animate fx="keyframes(swap)" at="16% 34%" duration="200">TASK 02 / 06</cv-animate>
@@ -168,10 +246,10 @@
     </div>
   </cv-scene>
 
-  <!-- ============ SC.03 为什么是 Agent Native ============ -->
+  <!-- ============ SC.04 为什么是 Agent Native ============ -->
   <cv-scene id="agent" class="sc agent">
     <div class="sec-head">
-      <p class="label mono"><b>SC.03</b>&nbsp;&nbsp;AGENT NATIVE</p>
+      <p class="label mono"><b>SC.04</b>&nbsp;&nbsp;AGENT NATIVE</p>
       <cv-animate fx="rise(soft)" duration="700"><h2 class="h2">模块就是工具，<br>过程全程可见</h2></cv-animate>
     </div>
     <div class="agent-grid">
@@ -198,10 +276,10 @@
     </div>
   </cv-scene>
 
-  <!-- ============ SC.04 你也可以亲自上手（横向胶片） ============ -->
+  <!-- ============ SC.05 你也可以亲自上手（横向胶片） ============ -->
   <cv-scene id="studio" class="sc studio" track="x">
     <div class="studio-lead">
-      <p class="label mono"><b>SC.04</b>&nbsp;&nbsp;STUDIO</p>
+      <p class="label mono"><b>SC.05</b>&nbsp;&nbsp;STUDIO</p>
       <h2 class="h2">每一步，<br>你也能亲手接管</h2>
       <p class="lead">智能体用的工具，就是你用的工作台。哪一步想自己来，随时接过去。</p>
     </div>
@@ -227,10 +305,10 @@
     </figure>
   </cv-scene>
 
-  <!-- ============ SC.05 模型自选 ============ -->
+  <!-- ============ SC.06 模型自选 ============ -->
   <cv-scene id="models" class="sc models">
     <div class="sec-head">
-      <p class="label mono"><b>SC.05</b>&nbsp;&nbsp;LOCAL FIRST</p>
+      <p class="label mono"><b>SC.06</b>&nbsp;&nbsp;LOCAL FIRST</p>
       <cv-animate fx="rise(soft)" duration="700"><h2 class="h2">本地优先，<br>模型由你决定</h2></cv-animate>
       <p class="lead">作品只保存在你自己的设备上。模型用你自己的 Key：直连各家官方接口，或者接入 NewAPI 等聚合网关和自建服务，兼容 OpenAI 与 Anthropic 协议。</p>
     </div>
@@ -241,7 +319,7 @@
     </div>
   </cv-scene>
 
-  <!-- ============ SC.06 片尾 ============ -->
+  <!-- ============ SC.07 片尾 ============ -->
   <cv-scene id="download" class="sc ending">
     <div class="ending-body">
       <cv-animate fx="rise(soft)" duration="700"><h2 class="ending-title">免费下载，完全开源</h2></cv-animate>
@@ -262,7 +340,7 @@
       </a>
     </div>
     <footer class="bar bar-bottom mono">
-      <span>SC.06 片尾 · © 幻界 Reveric</span>
+      <span>SC.07 片尾 · © 幻界 Reveric</span>
       <span><a href="mailto:bababaa261@gmail.com">商业授权</a></span>
     </footer>
   </cv-scene>

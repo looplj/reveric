@@ -74,6 +74,7 @@ void main() {
     Future<AiImageGenerationResult> Function(AiProvider, app.GenerationTask)?
     fetch,
     Future<void> Function(app.GenerationTask)? onGenerationAttempt,
+    Future<String?> Function(app.GenerationTask)? sourceName,
   }) {
     final result = results();
     return ImageTaskService(
@@ -86,6 +87,7 @@ void main() {
       recoverSources: result.recover,
       fetchResult: fetch ?? (_, _) => throw StateError('Must not fetch'),
       onGenerationAttempt: onGenerationAttempt,
+      sourceName: sourceName,
     );
   }
 
@@ -368,6 +370,61 @@ void main() {
       expect(task.resultAssetIds, hasLength(4));
       expect(generations, 1);
       service.dispose();
+    },
+  );
+
+  test(
+    'saving image candidates lets a concurrent canvas transaction read the task',
+    () async {
+      final titleLookup = Completer<String>();
+      final readTitle = Completer<void>();
+      final result = results();
+      final otherOutput = await File(
+        '${root.path}/other.png',
+      ).writeAsBytes([...await output.readAsBytes(), 2]);
+      final service = jobs(
+        (_, _, _, _, _, _) async => AiImageGenerationResult.group([
+          AiImageGenerationResult(localFilePath: output.path),
+          AiImageGenerationResult(localFilePath: otherOutput.path),
+        ]),
+        sourceName: (task) async {
+          titleLookup.complete(task.id);
+          await readTitle.future;
+          return result.sourceName(task);
+        },
+      );
+      addTearDown(service.shutdown);
+      final preview = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      final submission = submit(service, preview);
+      try {
+        final taskId = await titleLookup.future.timeout(
+          const Duration(seconds: 5),
+        );
+        await canvas.write(node.id, () async {
+          final clip = (await canvas.shots.getShot(node.clipId!))!;
+          readTitle.complete();
+          final task = await service
+              .requireRun(taskId)
+              .timeout(const Duration(seconds: 2));
+          expect(task.status, GenerationTaskStatus.saving);
+          expect(clip.prompt, 'Body');
+        });
+      } finally {
+        if (!readTitle.isCompleted) {
+          readTitle.complete();
+        }
+        await submission;
+      }
+      final task = await service.requireRun(await submission);
+      expect(task.status, GenerationTaskStatus.completed);
+      expect(task.resultAssetIds, hasLength(2));
+      expect(
+        (await canvas.shots.getShot(node.clipId!))!.adoptedAssetId,
+        task.resultAssetId,
+      );
     },
   );
 

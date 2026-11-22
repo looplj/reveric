@@ -38,6 +38,8 @@
 
 <inline-ref type="reference" skill="剧本工具使用规范" section="文本节点">references/production-canvas.md</inline-ref>
 
+<inline-ref type="reference" skill="剧本工具使用规范" section="音视频转录">references/production-canvas.md</inline-ref>
+
 <inline-ref type="reference" skill="剧本工具使用规范" section="视频节点操作">references/production-canvas.md</inline-ref>
 
 <inline-ref type="reference" skill="剧本工具使用规范" section="图片派生、预设与宫格">references/production-canvas.md</inline-ref>

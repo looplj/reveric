@@ -13,6 +13,8 @@
 //   lib/shared/theme/theme.dart
 //   assets/translations/en/reading.json
 //   assets/translations/zh-CN/reading.json
+//   assets/translations/en/screenplay.json
+//   assets/translations/zh-CN/screenplay.json
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
 //   assets/translations/en/common.json
@@ -25,6 +27,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../shared/widgets/novel_open_boundary.dart';
+import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/logger/app_logger.dart';
@@ -39,6 +42,8 @@ import '../../../shared/widgets/reading/chapter_title.dart';
 import '../../../shared/widgets/reading/reading_settings_controls.dart';
 import '../../../shared/widgets/reading/reading_theme_palette.dart';
 import '../../widgets/desktop_window_frame.dart';
+import '../narration/button.dart';
+import '../narration/dialog.dart';
 
 final _log = AppLogger.forModule('ReadingRestore');
 
@@ -47,7 +52,7 @@ const _desktopReadingMaxWidth = 800.0;
 const _readingTocItemExtent =
     RevericSizes.buttonHeight + RevericSpacing.x4l + RevericSpacing.sm;
 
-/// 桌面端阅读页：纯阅读体验，无编辑、无 AI。
+/// 桌面端阅读页，提供阅读进度、章节切换和当前章朗读。
 ///
 /// 通过 [novelId]、[novelTitle]、[databasePath] 构造。
 /// 进入时自动恢复上次阅读章节；切换章节时持久化进度；滚动时持久化偏移。
@@ -227,6 +232,12 @@ class DesktopReadingPage extends HookConsumerWidget {
             ),
           );
     final currentChapter = currentChapterAsync?.value;
+    final narrationChapter =
+        supportsDesktopNarration &&
+            selectedChapterSummary != null &&
+            currentChapter?.id == selectedChapterId
+        ? currentChapter
+        : null;
     // 当前章节序号
     final currentIndex = selectedChapterId == null
         ? -1
@@ -492,8 +503,25 @@ class DesktopReadingPage extends HookConsumerWidget {
                     : () => Navigator.of(context).pop(),
                 pinned: pinned,
                 onPinnedChanged: onPinnedChanged,
-                onOpenToc: () => scaffoldKey.currentState?.openEndDrawer(),
-                onOpenSettings: () => _openSettingsDialog(context),
+                actions: (
+                  tableOfContents: () =>
+                      scaffoldKey.currentState?.openEndDrawer(),
+                  settings: () => _openSettingsDialog(context),
+                  narrate:
+                      narrationChapter == null ||
+                          narrationChapter.content.trim().isEmpty
+                      ? null
+                      : () {
+                          if ((currentChapterId.value ?? selectedChapterId) ==
+                              narrationChapter.id) {
+                            showNovelNarration(
+                              context,
+                              workId: novelId,
+                              text: narrationChapter.content,
+                            );
+                          }
+                        },
+                ),
               ),
             ),
             // 底部章节切换栏
@@ -550,8 +578,7 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onBack,
     required this.pinned,
     required this.onPinnedChanged,
-    required this.onOpenToc,
-    required this.onOpenSettings,
+    required this.actions,
   });
 
   final String novelTitle;
@@ -561,8 +588,12 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback? onBack;
   final bool pinned;
   final ValueChanged<bool>? onPinnedChanged;
-  final VoidCallback onOpenToc;
-  final VoidCallback onOpenSettings;
+  final ({
+    VoidCallback tableOfContents,
+    VoidCallback settings,
+    VoidCallback? narrate,
+  })
+  actions;
 
   @override
   Widget build(BuildContext context) {
@@ -618,18 +649,34 @@ class _ReadingTopBar extends StatelessWidget {
             ),
             const SizedBox(width: RevericSpacing.sm),
           ],
+          if (supportsDesktopNarration) ...[
+            IconButtonTheme(
+              data: IconButtonThemeData(
+                style: IconButton.styleFrom(
+                  foregroundColor: palette.iconColor,
+                  disabledForegroundColor: palette.textSecondary,
+                ).merge(IconButtonTheme.of(context).style),
+              ),
+              child: RevericIconButton(
+                icon: RevericIcons.play_arrow,
+                tooltip: context.t(LocaleKeys.narrationTitle),
+                onPressed: actions.narrate,
+              ),
+            ),
+            const SizedBox(width: RevericSpacing.sm),
+          ],
           _IconButton(
             icon: RevericIcons.format_list_bulleted,
             color: palette.iconColor,
             tooltip: context.t(LocaleKeys.readingTableOfContents),
-            onPressed: onOpenToc,
+            onPressed: actions.tableOfContents,
           ),
           const SizedBox(width: RevericSpacing.sm),
           _IconButton(
             icon: RevericIcons.settings_outlined,
             color: palette.iconColor,
             tooltip: context.t(LocaleKeys.readingSettingsTitle),
-            onPressed: onOpenSettings,
+            onPressed: actions.settings,
           ),
         ],
       ),

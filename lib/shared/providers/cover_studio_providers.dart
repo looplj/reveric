@@ -145,6 +145,7 @@ class CoverStudioState {
     this.ratioId = coverDefaultRatioId,
     this.resolutionId = coverDefaultResolutionId,
     this.qualityId = coverDefaultQualityId,
+    this.customImageParameters = defaultCustomImageParameters,
     this.complexityId,
     this.modelId,
     this.advancedOpen = false,
@@ -169,6 +170,7 @@ class CoverStudioState {
   final String ratioId;
   final String resolutionId;
   final String qualityId;
+  final CustomImageParameters customImageParameters;
 
   /// 复杂度。null 表示尚未手选；提交时由生图服务按型号校验并补目录默认值。
   final String? complexityId;
@@ -217,6 +219,7 @@ class CoverStudioState {
     String? ratioId,
     String? resolutionId,
     String? qualityId,
+    CustomImageParameters? customImageParameters,
     String? complexityId,
     String? modelId,
     bool clearComplexityId = false,
@@ -247,6 +250,8 @@ class CoverStudioState {
       ratioId: ratioId ?? this.ratioId,
       resolutionId: resolutionId ?? this.resolutionId,
       qualityId: qualityId ?? this.qualityId,
+      customImageParameters:
+          customImageParameters ?? this.customImageParameters,
       complexityId: clearComplexityId
           ? null
           : (complexityId ?? this.complexityId),
@@ -283,7 +288,7 @@ class CoverStudioController extends _$CoverStudioController {
 
   @override
   CoverStudioState build(String novelId) {
-    ref.listen(coverImageChoicesProvider, (_, next) {
+    ref.listen(coverImageChoicesProvider, (previous, next) {
       if (next == null || state.busy || state.modelId != null) {
         return;
       }
@@ -291,6 +296,11 @@ class CoverStudioController extends _$CoverStudioController {
         ratioId: next.defaultRatio(state.ratioId),
         resolutionId: next.defaultResolution(state.resolutionId),
         qualityId: next.defaultQuality(state.qualityId) ?? '',
+        customImageParameters:
+            next.provider.id == previous?.provider.id &&
+                next.model == previous?.model
+            ? null
+            : defaultCustomImageParameters,
         complexityId: next.complexities.contains(state.complexityId)
             ? state.complexityId
             : next.defaults.complexity ?? next.complexities.firstOrNull,
@@ -336,6 +346,7 @@ class CoverStudioController extends _$CoverStudioController {
       ratioId: choices.defaultRatio(state.ratioId),
       resolutionId: choices.defaultResolution(state.resolutionId),
       qualityId: choices.defaultQuality(state.qualityId) ?? '',
+      customImageParameters: defaultCustomImageParameters,
       complexityId: choices.complexities.contains(state.complexityId)
           ? state.complexityId
           : choices.defaults.complexity ?? choices.complexities.firstOrNull,
@@ -358,6 +369,19 @@ class CoverStudioController extends _$CoverStudioController {
     final choices = _choices;
     if (choices == null) {
       throw const FormatException('Model declarations are unavailable');
+    }
+    if (choices.supportsCustomParameters) {
+      final custom = state.customImageParameters;
+      choices.validateCustomSize(
+        custom.size,
+        references: state.references.length,
+      );
+      return (
+        size: custom.size,
+        quality: custom.quality,
+        complexity: null,
+        options: ImageInvocationOptions(capabilities: choices.capabilities),
+      );
     }
     final ratio = choices.ratio(state.ratioId);
     final resolution = choices.resolution(state.resolutionId);
@@ -390,6 +414,8 @@ class CoverStudioController extends _$CoverStudioController {
   void setRatio(String id) => state = state.copyWith(ratioId: id);
   void setResolution(String id) => state = state.copyWith(resolutionId: id);
   void setQuality(String id) => state = state.copyWith(qualityId: id);
+  void setCustomImageParameters(CustomImageParameters parameters) =>
+      state = state.copyWith(customImageParameters: parameters);
   void setComplexity(String id) => state = state.copyWith(complexityId: id);
 
   void toggleAdvanced() =>
@@ -440,11 +466,12 @@ class CoverStudioController extends _$CoverStudioController {
       return;
     }
     final params = _decodeBatchParams(batch.paramsJson);
-    final complexityId = _complexityFromParams(params['complexity']);
+    final complexityId = _optionalStringFromParams(params['complexity']);
     state = state.copyWith(
       ratioId: _resolvedRatioId(params['ratio']),
       resolutionId: _resolvedResolutionId(params['resolution']),
       qualityId: _resolvedQualityId(params['quality']),
+      customImageParameters: _customParametersFromBatch(params),
       complexityId: complexityId,
       clearComplexityId: complexityId == null,
       batchCount: batch.requestedCount.clamp(
@@ -518,13 +545,14 @@ class CoverStudioController extends _$CoverStudioController {
     final ratioId = params['ratio'] as String? ?? state.ratioId;
     final resolutionId = params['resolution'] as String? ?? state.resolutionId;
     final qualityId = params['quality'] as String? ?? state.qualityId;
-    final complexityId = _complexityFromParams(params['complexity']);
+    final complexityId = _optionalStringFromParams(params['complexity']);
     final references = _referencesFromParams(params['references']);
 
     state = state.copyWith(
       ratioId: ratioId,
       resolutionId: resolutionId,
       qualityId: qualityId,
+      customImageParameters: _customParametersFromBatch(params),
       complexityId: complexityId,
       clearComplexityId: complexityId == null,
       references: references,
@@ -568,10 +596,15 @@ class CoverStudioController extends _$CoverStudioController {
     return next;
   }
 
-  /// 记录里没有复杂度，说明那一批没手选、用的是目录默认值；恢复成未选，
-  /// 不沿用当前面板上的选择。
-  static String? _complexityFromParams(Object? value) =>
+  static String? _optionalStringFromParams(Object? value) =>
       value is String && value.isNotEmpty ? value : null;
+
+  static CustomImageParameters _customParametersFromBatch(
+    Map<String, dynamic> params,
+  ) => (
+    quality: _optionalStringFromParams(params['custom_quality']),
+    size: _optionalStringFromParams(params['custom_size']),
+  );
 
   static String _resolvedRatioId(Object? value) =>
       value is String && value.isNotEmpty ? value : coverDefaultRatioId;
@@ -698,6 +731,7 @@ class CoverStudioController extends _$CoverStudioController {
       return;
     }
     final finalized = finalizePrompt(prompt);
+    final custom = _choices?.supportsCustomParameters ?? false;
 
     state = state.copyWith(
       generating: true,
@@ -725,11 +759,16 @@ class CoverStudioController extends _$CoverStudioController {
         complexity: params.complexity,
         options: params.options,
         paramsJson: jsonEncode({
-          'ratio': state.ratioId,
-          'resolution': state.resolutionId,
-          'quality': state.qualityId,
-          'complexity': ?state.complexityId,
           'size': params.size,
+          if (custom) ...{
+            'custom_quality': ?params.quality,
+            'custom_size': ?params.size,
+          } else ...{
+            'ratio': state.ratioId,
+            'resolution': state.resolutionId,
+            'quality': state.qualityId,
+            'complexity': ?state.complexityId,
+          },
           'references': references
               .map((assetId) => {'asset_id': assetId})
               .toList(),

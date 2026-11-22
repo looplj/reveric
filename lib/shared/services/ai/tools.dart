@@ -104,6 +104,7 @@ import '../../utils/json_repair.dart' show tryExtractJson;
 import '../../utils/storage_paths.dart';
 import '../../utils/text_unit_count.dart' show countTextUnitStats;
 import '../../logger/app_logger.dart';
+import '../../logger/log_manager.dart';
 import '../bundled_control_skills.dart'
     show bundledControlRunCommandToCallName, bundledControlSkillForRun;
 import '../working_overlay.dart';

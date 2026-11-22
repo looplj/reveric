@@ -1,6 +1,7 @@
-// 职责: 验证音频模型列表在桌面和移动端的添加、删除及配置保留。
+// 职责: 验证音频和语音转写模型列表在桌面和移动端的添加、删除及配置保留。
 // 关联文件:
 //   lib/shared/widgets/settings/provider_audio_models.dart
+//   lib/shared/widgets/settings/provider_transcription.dart
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
@@ -15,6 +16,7 @@ import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/components/reveric_checkbox.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/settings/provider_audio_models.dart';
+import 'package:reveric/shared/widgets/settings/provider_transcription.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 
 void main() {
@@ -104,5 +106,75 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+  }
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.linux,
+    TargetPlatform.android,
+  ]) {
+    testWidgets('ASR models can be entered manually on $platform', (
+      tester,
+    ) async {
+      const modelId = 'custom-transcription-model';
+      var provider = aiProviderBuiltinById(
+        'openai',
+      )!.copyWith(type: 'openrouter', asrModels: const []);
+      await tester.pumpWidget(
+        EasyLocalization(
+          supportedLocales: const [Locale('en')],
+          path: 'assets/translations',
+          assetLoader: const MergingAssetLoader(),
+          fallbackLocale: const Locale('en'),
+          startLocale: const Locale('en'),
+          child: Builder(
+            builder: (context) => MaterialApp(
+              localizationsDelegates: context.localizationDelegates,
+              supportedLocales: context.supportedLocales,
+              locale: context.locale,
+              theme: RevericThemeData.reveric.toThemeData().copyWith(
+                platform: platform,
+              ),
+              home: RevericTheme(
+                data: RevericThemeData.reveric,
+                child: Scaffold(
+                  body: SizedBox(
+                    width: 360,
+                    child: StatefulBuilder(
+                      builder: (context, setState) =>
+                          ProviderTranscriptionSettings(
+                            provider: provider,
+                            fetchButton: const SizedBox.shrink(),
+                            onModelsChanged: (models) => setState(
+                              () => provider = provider.copyWith(
+                                asrModels: models,
+                              ),
+                            ),
+                          ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final input = find.byType(TextField);
+      final add = find.text('Add');
+      expect(input, findsOneWidget);
+      expect(add, findsOneWidget);
+      await tester.enterText(input, modelId);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(provider.asrModels, [modelId]);
+      expect(find.text(modelId), findsOneWidget);
+      await tester.tap(find.byTooltip('Delete'));
+      await tester.pumpAndSettle();
+      expect(provider.asrModels, isEmpty);
+      expect(input, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   }
 }

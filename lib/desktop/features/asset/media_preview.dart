@@ -1,4 +1,4 @@
-// 职责: 预览单个媒体资产，图片可复制到系统剪贴板，并管理视频画面初始化与播放生命周期。
+// 职责: 预览单个媒体资产，支持复制图片和键盘控制视频，并管理播放生命周期。
 // 关联文件:
 //   lib/desktop/features/asset/media_region.dart
 //   lib/desktop/features/asset/playback_controls.dart
@@ -19,6 +19,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:super_clipboard/super_clipboard.dart' as clip;
@@ -38,6 +39,7 @@ import '../../../shared/utils/image_clipboard.dart';
 import 'playback_controls.dart';
 
 final _log = AppLogger.forModule('MediaPreview');
+const _seekStep = Duration(seconds: 5);
 
 class MediaPreviewDialog extends HookConsumerWidget {
   MediaPreviewDialog({
@@ -267,7 +269,53 @@ class MediaPreviewDialog extends HookConsumerWidget {
               );
             }
 
-            return Padding(
+            Future<void> controlVideo([Duration? offset]) async {
+              if (!ready.value ||
+                  failed.value ||
+                  playback.active.value != owner) {
+                return;
+              }
+              final player = playback.player;
+              final value = player.value;
+              if (value.hasError) {
+                return;
+              }
+              try {
+                if (offset == null) {
+                  await playback.playOrPause();
+                } else if (value.duration > Duration.zero) {
+                  final position = value.isCompleted
+                      ? value.duration
+                      : value.position;
+                  final target = position + offset;
+                  await player.seekTo(
+                    target.isNegative
+                        ? Duration.zero
+                        : target > value.duration
+                        ? value.duration
+                        : target,
+                  );
+                }
+              } catch (error, stackTrace) {
+                _log.error(
+                  'video shortcut failed',
+                  error: error,
+                  stackTrace: stackTrace,
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: DialogToast(
+                        variant: DialogToastVariant.error,
+                        child: Text(context.t(LocaleKeys.mediaPreviewFailed)),
+                      ),
+                    ),
+                  );
+                }
+              }
+            }
+
+            final content = Padding(
               padding: const EdgeInsets.fromLTRB(
                 RevericSpacing.x2l,
                 RevericSpacing.lg,
@@ -321,9 +369,34 @@ class MediaPreviewDialog extends HookConsumerWidget {
                   if (ready.value && !failed.value) ...[
                     const SizedBox(height: RevericSpacing.sm),
                     PlaybackControls(player: playback.player),
+                    if (isVideo)
+                      Text(
+                        context.t(
+                          LocaleKeys.mediaVideoShortcuts,
+                          namedArgs: {'seconds': '${_seekStep.inSeconds}'},
+                        ),
+                        style: typo.uiTiny.copyWith(color: colors.textMuted),
+                        textAlign: TextAlign.center,
+                      ),
                   ],
                 ],
               ),
+            );
+            if (!isVideo) {
+              return content;
+            }
+            return CallbackShortcuts(
+              bindings: {
+                const SingleActivator(
+                  LogicalKeyboardKey.space,
+                  includeRepeats: false,
+                ): controlVideo,
+                const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                    unawaited(controlVideo(-_seekStep)),
+                const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+                    unawaited(controlVideo(_seekStep)),
+              },
+              child: Focus(autofocus: true, child: content),
             );
           },
         ),

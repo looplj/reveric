@@ -159,5 +159,7 @@
   "provider.plugin_models_invalid": "模型声明无效：{details}",
   "provider.plugin_models_refresh_needed": "请重新获取模型以恢复能力声明。",
   "provider.plugin_model_unavailable": "已下架或不可用",
-  "provider.fetch_models_empty": "未返回模型。"
+  "provider.fetch_models_empty": "未返回模型。",
+  "provider.transcription": "转录模型",
+  "provider.default_transcription": "Agent 默认转录模型"
 }

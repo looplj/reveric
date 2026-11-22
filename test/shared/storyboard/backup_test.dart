@@ -13,7 +13,7 @@ import '../../helpers/backup_fixture.dart';
 
 void main() {
   test(
-    'collects current and historical references without copying unrelated assets',
+    'includes all shared storyboard assets regardless of references',
     () async {
       final dir = await Directory.systemTemp.createTemp('storyboard-backup-');
       final schemas = await BackupDatabases.create();
@@ -210,11 +210,7 @@ void main() {
       content.close();
       main.close();
       try {
-        final backup = collectSelectedMedia(
-          backup: dir,
-          novelIds: {'work'},
-          contentPaths: ['${dir.path}/content.sqlite'],
-        );
+        final backup = collectSelectedMedia(backup: dir, novelIds: {'work'});
         expect(backup.rows['assets']!.map((r) => r['id']).toSet(), {
           ...photos,
           'current',
@@ -227,6 +223,9 @@ void main() {
           'image-result',
           'standalone',
           'deleted-node-asset',
+          'unrelated',
+          'clip-id',
+          'staging-id',
         });
       } finally {
         await dir.delete(recursive: true);

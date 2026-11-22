@@ -7899,6 +7899,16 @@ class $AiProvidersTable extends AiProviders
     defaultValue: const Constant('[]'),
   ).withConverter<List<String>>($AiProvidersTable.$converteraudioModels);
   @override
+  late final GeneratedColumnWithTypeConverter<List<String>, String> asrModels =
+      GeneratedColumn<String>(
+        'asr_models',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      ).withConverter<List<String>>($AiProvidersTable.$converterasrModels);
+  @override
   late final GeneratedColumnWithTypeConverter<List<String>, String>
   videoModels = GeneratedColumn<String>(
     'video_models',
@@ -8068,6 +8078,7 @@ class $AiProvidersTable extends AiProviders
     models,
     imageModels,
     audioModels,
+    asrModels,
     videoModels,
     embeddingModels,
     temperature,
@@ -8282,6 +8293,12 @@ class $AiProvidersTable extends AiProviders
           data['${effectivePrefix}audio_models'],
         )!,
       ),
+      asrModels: $AiProvidersTable.$converterasrModels.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}asr_models'],
+        )!,
+      ),
       videoModels: $AiProvidersTable.$convertervideoModels.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -8358,6 +8375,8 @@ class $AiProvidersTable extends AiProviders
       const StringListConverter();
   static TypeConverter<List<String>, String> $converteraudioModels =
       const StringListConverter();
+  static TypeConverter<List<String>, String> $converterasrModels =
+      const StringListConverter();
   static TypeConverter<List<String>, String> $convertervideoModels =
       const StringListConverter();
   static TypeConverter<List<String>, String> $converterembeddingModels =
@@ -8379,6 +8398,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
   final List<String> models;
   final List<String> imageModels;
   final List<String> audioModels;
+  final List<String> asrModels;
   final List<String> videoModels;
   final List<String> embeddingModels;
   final double temperature;
@@ -8408,6 +8428,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     required this.models,
     required this.imageModels,
     required this.audioModels,
+    required this.asrModels,
     required this.videoModels,
     required this.embeddingModels,
     required this.temperature,
@@ -8446,6 +8467,11 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     {
       map['audio_models'] = Variable<String>(
         $AiProvidersTable.$converteraudioModels.toSql(audioModels),
+      );
+    }
+    {
+      map['asr_models'] = Variable<String>(
+        $AiProvidersTable.$converterasrModels.toSql(asrModels),
       );
     }
     {
@@ -8497,6 +8523,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       models: Value(models),
       imageModels: Value(imageModels),
       audioModels: Value(audioModels),
+      asrModels: Value(asrModels),
       videoModels: Value(videoModels),
       embeddingModels: Value(embeddingModels),
       temperature: Value(temperature),
@@ -8540,6 +8567,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       models: serializer.fromJson<List<String>>(json['models']),
       imageModels: serializer.fromJson<List<String>>(json['imageModels']),
       audioModels: serializer.fromJson<List<String>>(json['audioModels']),
+      asrModels: serializer.fromJson<List<String>>(json['asrModels']),
       videoModels: serializer.fromJson<List<String>>(json['videoModels']),
       embeddingModels: serializer.fromJson<List<String>>(
         json['embeddingModels'],
@@ -8572,6 +8600,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       'models': serializer.toJson<List<String>>(models),
       'imageModels': serializer.toJson<List<String>>(imageModels),
       'audioModels': serializer.toJson<List<String>>(audioModels),
+      'asrModels': serializer.toJson<List<String>>(asrModels),
       'videoModels': serializer.toJson<List<String>>(videoModels),
       'embeddingModels': serializer.toJson<List<String>>(embeddingModels),
       'temperature': serializer.toJson<double>(temperature),
@@ -8600,6 +8629,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     List<String>? models,
     List<String>? imageModels,
     List<String>? audioModels,
+    List<String>? asrModels,
     List<String>? videoModels,
     List<String>? embeddingModels,
     double? temperature,
@@ -8625,6 +8655,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     models: models ?? this.models,
     imageModels: imageModels ?? this.imageModels,
     audioModels: audioModels ?? this.audioModels,
+    asrModels: asrModels ?? this.asrModels,
     videoModels: videoModels ?? this.videoModels,
     embeddingModels: embeddingModels ?? this.embeddingModels,
     temperature: temperature ?? this.temperature,
@@ -8662,6 +8693,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
       audioModels: data.audioModels.present
           ? data.audioModels.value
           : this.audioModels,
+      asrModels: data.asrModels.present ? data.asrModels.value : this.asrModels,
       videoModels: data.videoModels.present
           ? data.videoModels.value
           : this.videoModels,
@@ -8710,6 +8742,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
           ..write('models: $models, ')
           ..write('imageModels: $imageModels, ')
           ..write('audioModels: $audioModels, ')
+          ..write('asrModels: $asrModels, ')
           ..write('videoModels: $videoModels, ')
           ..write('embeddingModels: $embeddingModels, ')
           ..write('temperature: $temperature, ')
@@ -8740,6 +8773,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
     models,
     imageModels,
     audioModels,
+    asrModels,
     videoModels,
     embeddingModels,
     temperature,
@@ -8769,6 +8803,7 @@ class AiProvider extends DataClass implements Insertable<AiProvider> {
           other.models == this.models &&
           other.imageModels == this.imageModels &&
           other.audioModels == this.audioModels &&
+          other.asrModels == this.asrModels &&
           other.videoModels == this.videoModels &&
           other.embeddingModels == this.embeddingModels &&
           other.temperature == this.temperature &&
@@ -8796,6 +8831,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
   final Value<List<String>> models;
   final Value<List<String>> imageModels;
   final Value<List<String>> audioModels;
+  final Value<List<String>> asrModels;
   final Value<List<String>> videoModels;
   final Value<List<String>> embeddingModels;
   final Value<double> temperature;
@@ -8822,6 +8858,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     this.models = const Value.absent(),
     this.imageModels = const Value.absent(),
     this.audioModels = const Value.absent(),
+    this.asrModels = const Value.absent(),
     this.videoModels = const Value.absent(),
     this.embeddingModels = const Value.absent(),
     this.temperature = const Value.absent(),
@@ -8849,6 +8886,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     this.models = const Value.absent(),
     this.imageModels = const Value.absent(),
     this.audioModels = const Value.absent(),
+    this.asrModels = const Value.absent(),
     this.videoModels = const Value.absent(),
     this.embeddingModels = const Value.absent(),
     this.temperature = const Value.absent(),
@@ -8878,6 +8916,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     Expression<String>? models,
     Expression<String>? imageModels,
     Expression<String>? audioModels,
+    Expression<String>? asrModels,
     Expression<String>? videoModels,
     Expression<String>? embeddingModels,
     Expression<double>? temperature,
@@ -8905,6 +8944,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
       if (models != null) 'models': models,
       if (imageModels != null) 'image_models': imageModels,
       if (audioModels != null) 'audio_models': audioModels,
+      if (asrModels != null) 'asr_models': asrModels,
       if (videoModels != null) 'video_models': videoModels,
       if (embeddingModels != null) 'embedding_models': embeddingModels,
       if (temperature != null) 'temperature': temperature,
@@ -8934,6 +8974,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     Value<List<String>>? models,
     Value<List<String>>? imageModels,
     Value<List<String>>? audioModels,
+    Value<List<String>>? asrModels,
     Value<List<String>>? videoModels,
     Value<List<String>>? embeddingModels,
     Value<double>? temperature,
@@ -8961,6 +9002,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
       models: models ?? this.models,
       imageModels: imageModels ?? this.imageModels,
       audioModels: audioModels ?? this.audioModels,
+      asrModels: asrModels ?? this.asrModels,
       videoModels: videoModels ?? this.videoModels,
       embeddingModels: embeddingModels ?? this.embeddingModels,
       temperature: temperature ?? this.temperature,
@@ -9016,6 +9058,11 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
     if (audioModels.present) {
       map['audio_models'] = Variable<String>(
         $AiProvidersTable.$converteraudioModels.toSql(audioModels.value),
+      );
+    }
+    if (asrModels.present) {
+      map['asr_models'] = Variable<String>(
+        $AiProvidersTable.$converterasrModels.toSql(asrModels.value),
       );
     }
     if (videoModels.present) {
@@ -9087,6 +9134,7 @@ class AiProvidersCompanion extends UpdateCompanion<AiProvider> {
           ..write('models: $models, ')
           ..write('imageModels: $imageModels, ')
           ..write('audioModels: $audioModels, ')
+          ..write('asrModels: $asrModels, ')
           ..write('videoModels: $videoModels, ')
           ..write('embeddingModels: $embeddingModels, ')
           ..write('temperature: $temperature, ')
@@ -28978,6 +29026,7 @@ typedef $$AiProvidersTableCreateCompanionBuilder =
       Value<List<String>> models,
       Value<List<String>> imageModels,
       Value<List<String>> audioModels,
+      Value<List<String>> asrModels,
       Value<List<String>> videoModels,
       Value<List<String>> embeddingModels,
       Value<double> temperature,
@@ -29006,6 +29055,7 @@ typedef $$AiProvidersTableUpdateCompanionBuilder =
       Value<List<String>> models,
       Value<List<String>> imageModels,
       Value<List<String>> audioModels,
+      Value<List<String>> asrModels,
       Value<List<String>> videoModels,
       Value<List<String>> embeddingModels,
       Value<double> temperature,
@@ -29082,6 +29132,12 @@ class $$AiProvidersTableFilterComposer
   ColumnWithTypeConverterFilters<List<String>, List<String>, String>
   get audioModels => $composableBuilder(
     column: $table.audioModels,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<List<String>, List<String>, String>
+  get asrModels => $composableBuilder(
+    column: $table.asrModels,
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
@@ -29218,6 +29274,11 @@ class $$AiProvidersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get asrModels => $composableBuilder(
+    column: $table.asrModels,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get videoModels => $composableBuilder(
     column: $table.videoModels,
     builder: (column) => ColumnOrderings(column),
@@ -29334,6 +29395,9 @@ class $$AiProvidersTableAnnotationComposer
         builder: (column) => column,
       );
 
+  GeneratedColumnWithTypeConverter<List<String>, String> get asrModels =>
+      $composableBuilder(column: $table.asrModels, builder: (column) => column);
+
   GeneratedColumnWithTypeConverter<List<String>, String> get videoModels =>
       $composableBuilder(
         column: $table.videoModels,
@@ -29438,6 +29502,7 @@ class $$AiProvidersTableTableManager
                 Value<List<String>> models = const Value.absent(),
                 Value<List<String>> imageModels = const Value.absent(),
                 Value<List<String>> audioModels = const Value.absent(),
+                Value<List<String>> asrModels = const Value.absent(),
                 Value<List<String>> videoModels = const Value.absent(),
                 Value<List<String>> embeddingModels = const Value.absent(),
                 Value<double> temperature = const Value.absent(),
@@ -29464,6 +29529,7 @@ class $$AiProvidersTableTableManager
                 models: models,
                 imageModels: imageModels,
                 audioModels: audioModels,
+                asrModels: asrModels,
                 videoModels: videoModels,
                 embeddingModels: embeddingModels,
                 temperature: temperature,
@@ -29492,6 +29558,7 @@ class $$AiProvidersTableTableManager
                 Value<List<String>> models = const Value.absent(),
                 Value<List<String>> imageModels = const Value.absent(),
                 Value<List<String>> audioModels = const Value.absent(),
+                Value<List<String>> asrModels = const Value.absent(),
                 Value<List<String>> videoModels = const Value.absent(),
                 Value<List<String>> embeddingModels = const Value.absent(),
                 Value<double> temperature = const Value.absent(),
@@ -29518,6 +29585,7 @@ class $$AiProvidersTableTableManager
                 models: models,
                 imageModels: imageModels,
                 audioModels: audioModels,
+                asrModels: asrModels,
                 videoModels: videoModels,
                 embeddingModels: embeddingModels,
                 temperature: temperature,

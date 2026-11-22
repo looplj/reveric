@@ -188,6 +188,7 @@
   "workspace.chapter_format_progress_label": "Formatting chapters…",
   "workspace.chapter_format_failed": "Formatting failed: stopped after writing {count} chapters",
   "workspace.chapter_copy": "Copy",
+  "workspace.chapter_narrate_selection": "Read selection aloud",
   "workspace.chapter_copy_replace_title": "Replace punctuation rules",
   "workspace.chapter_replace": "Replace",
   "workspace.chapter_copy_replace_action": "Replace and copy",

@@ -24,6 +24,7 @@ const _testChatId = 'wxid_alice';
 const _testModel = 'fake-chat';
 
 final _fakeProvider = AiProvider(
+  asrModels: const [],
   audioModels: const [],
   videoModels: const [],
   id: 'fake_provider',

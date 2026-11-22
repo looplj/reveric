@@ -44,6 +44,8 @@
   "common.payoff": "回收",
   "common.ai": "AI",
   "common.confirm": "确认",
+  "common.custom": "自定义",
+  "common.default": "默认",
   "common.duplicate": "创建副本",
   "common.copy": "复制",
   "common.copied": "已复制到剪贴板",

@@ -14,9 +14,9 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/ai_provider_config.dart';
 
 void main() {
-  for (final version in [1, 2, 3, 4, 5, 6, 7, 8]) {
+  for (final version in [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
     test(
-      'schema $version providers gain config and keep temperature unsent',
+      'schema $version adds ASR models while retaining provider configuration, defaults and outbox rows',
       () async {
         final database = AppDatabase.forTest(
           NativeDatabase.memory(
@@ -80,6 +80,18 @@ void main() {
                   'ALTER TABLE ai_providers ADD COLUMN config TEXT',
                 );
               }
+              if (version >= 9) {
+                sqlite.execute(
+                  'DROP INDEX IF EXISTS anonymous_outbox_events_by_endpoint_product_code_device_id_next_retry_at_id',
+                );
+                sqlite.execute(
+                  'ALTER TABLE anonymous_outbox_events DROP COLUMN product_code',
+                );
+                sqlite.execute(
+                  'CREATE INDEX IF NOT EXISTS anonymous_outbox_events_by_endpoint_device_id_next_retry_at_id '
+                  'ON anonymous_outbox_events (endpoint, device_id, next_retry_at, id)',
+                );
+              }
               sqlite.execute('PRAGMA user_version=$version');
               sqlite.execute(
                 "INSERT INTO ai_providers (id, name, type, temperature, updated_at, deleted_at) "
@@ -87,8 +99,10 @@ void main() {
                 "('deleted', 'Deleted', 'openai', 0.9, 15, 20)",
               );
               sqlite.execute(
-                "INSERT INTO anonymous_outbox_events VALUES "
-                "(42, 'queued-event', 'trace', 2, 'trace', 'legacy', "
+                "INSERT INTO anonymous_outbox_events "
+                "(id, event_id, channel, priority, endpoint, ${version < 9 ? 'product_code, ' : ''}"
+                "device_id, payload_json, occurred_at, created_at, next_retry_at, attempt_count) VALUES "
+                "(42, 'queued-event', 'trace', 2, 'trace', ${version < 9 ? "'legacy', " : ''}"
                 "'device', '{}', 10, 11, 12, 1)",
               );
             },
@@ -130,6 +144,11 @@ void main() {
         );
         expect(column.read<String>('type'), 'TEXT');
         expect(column.read<int>('notnull'), 0);
+        final asrColumn = columns.singleWhere(
+          (row) => row.read<String>('name') == 'asr_models',
+        );
+        expect(asrColumn.read<String>('type'), 'TEXT');
+        expect(asrColumn.read<int>('notnull'), 1);
         expect(
           (await database.customSelect('PRAGMA index_list(ai_providers)').get())
               .map((row) => row.read<String>('name')),
@@ -147,6 +166,7 @@ void main() {
         final stored = (await database.aiProviderDao.getById('openai'))!;
         expect(stored.name, 'OpenAI');
         expect(stored.temperature, 0.4);
+        expect(stored.asrModels, isEmpty);
         expect(stored.config, isNull);
         expect(stored.providerConfig.enableTemperature, isFalse);
         expect(stored.updatedAt.millisecondsSinceEpoch, 10000);
@@ -154,11 +174,13 @@ void main() {
         await database.aiProviderDao.upsert(
           stored.copyWith(
             config: const Value(AiProviderConfig(enableTemperature: true)),
+            asrModels: const ['transcription-test-model'],
           ),
         );
         final enabled = (await database.aiProviderDao.getById('openai'))!;
         expect(enabled.providerConfig.enableTemperature, isTrue);
         expect(enabled.temperature, 0.4);
+        expect(enabled.asrModels, ['transcription-test-model']);
       },
     );
   }

@@ -76,6 +76,7 @@ class AiProviderDao extends DatabaseAccessor<AppDatabase>
             imageModels: Value(provider.imageModels),
             videoModels: Value(provider.videoModels),
             audioModels: Value(provider.audioModels),
+            asrModels: Value(provider.asrModels),
             embeddingModels: Value(provider.embeddingModels),
             temperature: Value(provider.temperature),
             config: Value(provider.config),

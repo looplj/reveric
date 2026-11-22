@@ -71,6 +71,7 @@ class NarrationVoiceSelect extends StatelessWidget {
       }
       final custom = await showRevericDialog<String>(
         context: context,
+        useRootNavigator: false,
         builder: (_) => const _CustomVoiceDialog(),
       );
       if (custom != null && context.mounted) {

@@ -183,6 +183,26 @@ class MediaService {
     ], token);
   }
 
+  /// 生成转写所需的临时音频，统一声道和采样率。
+  Future<EncodedMedia> prepareTranscriptionAudio(
+    String input, {
+    required MediaCancellation cancellation,
+  }) => _transform(input, '.mp3', [
+    '-i',
+    input,
+    '-map',
+    '0:a:0',
+    '-vn',
+    '-ac',
+    '1',
+    '-ar',
+    '16000',
+    '-c:a',
+    'libmp3lame',
+    '-b:a',
+    '64k',
+  ], cancellation);
+
   /// 去掉音轨；H.264 画面直接拷贝，其余编码转成 H.264。
   Future<EncodedMedia> mute(
     String input, {

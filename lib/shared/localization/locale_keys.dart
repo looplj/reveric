@@ -317,6 +317,7 @@ abstract final class LocaleKeys {
   static const aiPermissionLoading = 'ai.permission_loading';
   static const aiPermissionGenerationImage = 'ai.permission_generation_image';
   static const aiPermissionGenerationVideo = 'ai.permission_generation_video';
+  static const aiPermissionMediaTranscribe = 'ai.permission_media_transcribe';
   static const aiPermissionGenerationAudio = 'ai.permission_generation_audio';
   static const aiPermissionFilesRead = 'ai.permission_files_read';
   static const aiPermissionFilesRemove = 'ai.permission_files_remove';
@@ -395,6 +396,21 @@ abstract final class LocaleKeys {
   static const productionPreviewAdopted =
       'screenplay.production.previewAdopted';
   static const productionAssets = 'screenplay.production.assets';
+  static const productionAssetCurrentWork =
+      'screenplay.production.assetCurrentWork';
+  static const productionAssetShared = 'screenplay.production.assetShared';
+  static const productionAssetOtherWorks =
+      'screenplay.production.assetOtherWorks';
+  static const productionAssetAddToCanvas =
+      'screenplay.production.assetAddToCanvas';
+  static const productionAssetShareAndAdd =
+      'screenplay.production.assetShareAndAdd';
+  static const productionAssetLoadFailed =
+      'screenplay.production.assetLoadFailed';
+  static const productionAssetShareFailed =
+      'screenplay.production.assetShareFailed';
+  static const productionAssetSharedPlacementFailed =
+      'screenplay.production.assetSharedPlacementFailed';
   static const productionAddToLibrary = 'screenplay.production.add_to_library';
   static const productionRemoveFromLibrary =
       'screenplay.production.remove_from_library';
@@ -487,6 +503,22 @@ abstract final class LocaleKeys {
   static const productionDepthNoTask = 'screenplay.production.depth.noTask';
   static const productionDepthError = 'screenplay.production.depth.error';
   static const productionTrimRange = 'screenplay.production.trimRange';
+  static const productionTranscribe = 'screenplay.production.transcribe';
+  static const productionTranscribing = 'screenplay.production.transcribing';
+  static const productionTranscriptionReady =
+      'screenplay.production.transcriptionReady';
+  static const productionTranscriptionFailed =
+      'screenplay.production.transcriptionFailed';
+  static const productionTranscriptionConfig =
+      'screenplay.production.transcriptionConfig';
+  static const productionTranscriptionStorage =
+      'screenplay.production.transcriptionStorage';
+  static const productionTranscriptionNoSpeech =
+      'screenplay.production.transcriptionNoSpeech';
+  static const productionTranscriptionLimit =
+      'screenplay.production.transcriptionLimit';
+  static const productionTranscriptionUnknown =
+      'screenplay.production.transcriptionUnknown';
   static const productionSeparateAudio = 'screenplay.production.separateAudio';
   static const productionCaptureFrame = 'screenplay.production.captureFrame';
   static const productionCaptureCurrent =
@@ -1345,7 +1377,10 @@ abstract final class LocaleKeys {
   static const aiImageCandidatesFetchFailed =
       'ai.image_candidates_fetch_failed';
   static const aiImageStagedUnconfirmed = 'ai.image_staged_unconfirmed';
-  static const aiImageSubmissionUnknown = 'ai.image_submission_unknown';
+  static const aiImageServerError = 'ai.image_server_error';
+  static const aiImageResponseInvalid = 'ai.image_response_invalid';
+  static const aiImagePluginResponseInvalid =
+      'ai.image_plugin_response_invalid';
   static const aiImageInvalidOutputs = 'ai.image_invalid_outputs';
   static const aiImageParametersUnavailable = 'ai.image_parameters_unavailable';
   static const aiImageReferenceUploadUnavailable =
@@ -1897,6 +1932,9 @@ abstract final class LocaleKeys {
   static const editingSubtitlesBurn = 'screenplay.editing.subtitlesBurn';
   static const editingSubtitlesSrt = 'screenplay.editing.subtitlesSrt';
   static const editingSubtitlesNone = 'screenplay.editing.subtitlesNone';
+  static const editingExportWatermark = 'screenplay.editing.exportWatermark';
+  static const editingExportWatermarkDetail =
+      'screenplay.editing.exportWatermarkDetail';
   static const editingSound = 'screenplay.editing.sound';
   static const editingExportSound = 'screenplay.editing.exportSound';
   static const editingExportMuted = 'screenplay.editing.exportMuted';
@@ -1947,6 +1985,8 @@ abstract final class LocaleKeys {
   static const commonComplexityMedium = 'common.complexity_medium';
   static const commonComplexityHigh = 'common.complexity_high';
   static const commonConfirm = 'common.confirm';
+  static const commonCustom = 'common.custom';
+  static const commonDefault = 'common.default';
   static const commonContent = 'common.content';
   static const commonContinue = 'common.continue';
   static const commonContinueInBackground = 'common.continue_in_background';
@@ -2355,6 +2395,7 @@ abstract final class LocaleKeys {
   static const mediaImportFailed = 'assets.media_import_failed';
   static const mediaLoadFailed = 'assets.media_load_failed';
   static const mediaPreviewFailed = 'assets.media_preview_failed';
+  static const mediaVideoShortcuts = 'assets.media_video_shortcuts';
   static const mediaExportFailed = 'assets.media_export_failed';
   static const mediaDeleteConfirm = 'assets.media_delete_confirm';
   // Detail page
@@ -2469,6 +2510,14 @@ abstract final class LocaleKeys {
   static const editorCoverQualityMedium = 'editor.cover_quality_medium';
   static const editorCoverQualityHigh = 'editor.cover_quality_high';
   static const editorCoverResolution = 'editor.cover_resolution';
+  static const editorImageSize = 'editor.image_size';
+  static const editorImageWidth = 'editor.image_width';
+  static const editorImageHeight = 'editor.image_height';
+  static const editorImageDimensionPositive = 'editor.image_dimension_positive';
+  static const editorImageDimensionsIncomplete =
+      'editor.image_dimensions_incomplete';
+  static const editorImageQualityCustomHint =
+      'editor.image_quality_custom_hint';
   static const editorCoverRatio = 'editor.cover_ratio';
   static const editorCoverAdvanced = 'editor.cover_advanced';
   static const editorCoverInspiration = 'editor.cover_inspiration';
@@ -3779,6 +3828,8 @@ abstract final class LocaleKeys {
   static const readingReadingTime = 'reading.reading_time';
   static const readingSettingsTitle = 'reading.settings_title';
   static const readingExit = 'reading.exit';
+  static const readingNarrationVoice = 'reading.narration_voice';
+  static const readingNarrationComplete = 'reading.narration_complete';
   static const readingBrightness = 'reading.brightness';
   static const readingNightMode = 'reading.night_mode';
   static const readingExitNightMode = 'reading.exit_night_mode';
@@ -3968,6 +4019,8 @@ abstract final class LocaleKeys {
   static const providerDraftBadge = 'provider.draft_badge';
   static const providerNewTitle = 'provider.new_title';
   static const providerTypeOpenaiCompatible = 'provider.type_openai_compatible';
+  static const providerTranscription = 'provider.transcription';
+  static const providerDefaultTranscription = 'provider.default_transcription';
   static const providerAudioModelsLabel = 'provider.audio_models_label';
   static const providerAssetSection = 'provider.asset_section';
   static const providerAssetProjectLabel = 'provider.asset_project_label';
@@ -4403,7 +4456,6 @@ abstract final class LocaleKeys {
   static const narrationTitle = 'screenplay.narration.title';
   static const narrationChooseVoice = 'screenplay.narration.chooseVoice';
   static const narrationUseNarrator = 'screenplay.narration.useNarrator';
-  static const narrationHint = 'screenplay.narration.hint';
   static const narrationNoModels = 'screenplay.narration.noModels';
   static const narrationNoModelsHint = 'screenplay.narration.noModelsHint';
   static const narrationConfigure = 'screenplay.narration.configure';
@@ -5336,6 +5388,7 @@ abstract final class LocaleKeys {
   static const toolRunDirectorPreview = 'tool.run_director_preview';
   static const toolRunDirectorOutput = 'tool.run_director_output';
   static const toolRunDirectorFrames = 'tool.run_director_frames';
+  static const toolRunDebugLog = 'tool.run_debug_log';
   static const toolRunFiles = 'tool.run_files';
   static const toolRunFilesList = 'tool.run_files_list';
   static const toolRunFilesReadText = 'tool.run_files_read_text';
@@ -5625,6 +5678,8 @@ abstract final class LocaleKeys {
   static const workspaceChapterFormatFailed = 'workspace.chapter_format_failed';
   static const workspaceChapterBodyHint = 'workspace.chapter_body_hint';
   static const workspaceChapterCopy = 'workspace.chapter_copy';
+  static const workspaceChapterNarrateSelection =
+      'workspace.chapter_narrate_selection';
   static const workspaceChapterCopyAddRule = 'workspace.chapter_copy_add_rule';
   static const workspaceChapterCopyFrom = 'workspace.chapter_copy_from';
   static const workspaceChapterCopyReplaceTitle =

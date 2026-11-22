@@ -101,6 +101,7 @@ void main() {
       expect(lookupCatalogReasoningEfforts(reasoningModel), isNotEmpty);
       final db = AppDatabase.forTest(NativeDatabase.memory());
       final provider = AiProvider(
+        asrModels: const [],
         id: 'test-provider',
         name: 'Test',
         builtin: false,

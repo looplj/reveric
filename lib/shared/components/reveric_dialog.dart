@@ -17,12 +17,14 @@ import 'reveric_button.dart';
 Future<T?> showRevericDialog<T>({
   required BuildContext context,
   required WidgetBuilder builder,
+  bool useRootNavigator = true,
   bool barrierDismissible = true,
   Color? barrierColor,
 }) {
   final theme = RevericTheme.of(context);
   return showDialog<T>(
     context: context,
+    useRootNavigator: useRootNavigator,
     barrierDismissible: barrierDismissible,
     barrierColor: barrierColor,
     builder: (_) => RevericTheme(

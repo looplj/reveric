@@ -52,6 +52,7 @@ import 'package:reveric/shared/services/production/result_service.dart';
 import 'package:reveric/shared/services/production/generate_orchestrator.dart';
 import 'package:reveric/shared/services/production/library_service.dart';
 import 'package:reveric/shared/services/production/media_service.dart';
+import 'package:reveric/shared/services/production/share_asset_orchestrator.dart';
 import 'package:reveric/shared/services/production/ffmpeg_runner.dart';
 import '../../helpers/media_provider_types.dart';
 
@@ -84,7 +85,12 @@ void main() {
     resolution: '720p',
     ratio: '9:16',
   );
-  Future<void> asset(String id, {String type = 'image'}) async {
+  Future<void> asset(
+    String id, {
+    String type = 'image',
+    String? owner,
+    bool inLibrary = false,
+  }) async {
     final extension = switch (type) {
       'image' => 'png',
       'audio' => 'mp3',
@@ -98,6 +104,8 @@ void main() {
       app.AssetsCompanion.insert(
         id: id,
         type: type,
+        novelId: Value(owner),
+        inLibrary: Value(inLibrary),
         name: Value(id),
         path: Value(relative),
         content: Value(switch (type) {
@@ -166,6 +174,207 @@ void main() {
     await db.close();
     await appDb.close();
     await root.delete(recursive: true);
+  });
+
+  test(
+    'moves the original asset once and keeps both canvases usable',
+    () async {
+      await appDb.novelDao.create(id: 'work', title: 'Source', description: '');
+      await asset('media', owner: 'work', inLibrary: true);
+      final previous = (await appDb.assetDao.getAsset('media'))!;
+      final sourceCanvas = await service.ensureCanvas(episode);
+      final original = await service.addMedia(sourceCanvas.id, previous.id);
+      final targetDb = NovelContentDatabase.forTest(NativeDatabase.memory());
+      addTearDown(targetDb.close);
+      final targetEpisode = await ScreenplayService(
+        targetDb,
+      ).createInitialStructure();
+      final target = ProductionCanvasService(
+        StoryboardService(targetDb),
+        service.library,
+        'other',
+      );
+      final targetCanvas = await target.ensureCanvas(targetEpisode.episodeId);
+      await expectLater(
+        target.addMedia(targetCanvas.id, previous.id),
+        throwsA(isA<StoryboardException>()),
+      );
+
+      Future<app.AssetRow> share() => ShareAssetOrchestrator().run(
+        library: service.library,
+        assetId: previous.id,
+        sourceNovelId: 'work',
+      );
+      final promoted = await Future.wait([share(), share()]);
+      final shared = promoted.first;
+      expect(
+        promoted.map((row) => (row.id, row.path, row.novelId)),
+        everyElement((shared.id, shared.path, null)),
+      );
+      expect(shared.id, previous.id);
+      expect(shared.novelId, isNull);
+      expect(shared.path, startsWith('file_workspaces/shared/images/'));
+      expect(await File(service.library.resolve(shared)).readAsBytes(), [
+        1,
+        2,
+        3,
+      ]);
+      expect(await File(service.library.resolve(previous)).exists(), isFalse);
+      final sharedFolder = File(service.library.resolve(shared)).parent;
+      expect(await sharedFolder.list().length, 1);
+      final assets = await appDb.assetDao.watchAssets().first;
+      expect(assets.single.id, shared.id);
+      expect(assets.single.path, shared.path);
+      expect(
+        (await db.canvasDao.getNodeById(original.id))?.mediaAssetId,
+        shared.id,
+      );
+      expect(
+        (await service.requireAsset(original.mediaAssetId!)).id,
+        shared.id,
+      );
+      expect(
+        (await target.addMedia(targetCanvas.id, shared.id)).mediaAssetId,
+        shared.id,
+      );
+    },
+  );
+
+  test('keeps other records that use the moved file usable', () async {
+    await appDb.novelDao.create(id: 'work', title: 'Source', description: '');
+    await asset('media', owner: 'work', inLibrary: true);
+    final previous = (await appDb.assetDao.getAsset('media'))!;
+    final source = File(service.library.resolve(previous));
+    await appDb.assetDao.insertAsset(
+      previous
+          .toCompanion(true)
+          .copyWith(id: const Value('alias'), path: Value(source.path)),
+    );
+    final orchestrator = ShareAssetOrchestrator();
+    final shared = await orchestrator.run(
+      library: service.library,
+      assetId: previous.id,
+      sourceNovelId: 'work',
+    );
+
+    final alias = await service.requireAsset('alias');
+    expect(alias.novelId, 'work');
+    expect(alias.path, shared.path);
+    expect(await source.exists(), isFalse);
+
+    final sharedAlias = await orchestrator.run(
+      library: service.library,
+      assetId: alias.id,
+      sourceNovelId: 'work',
+    );
+    expect(sharedAlias.novelId, isNull);
+    expect(sharedAlias.path, shared.path);
+    expect(await File(service.library.resolve(shared)).parent.list().length, 1);
+  });
+
+  test(
+    'does not publish a shared asset when its file or database write fails',
+    () async {
+      await appDb.novelDao.create(id: 'work', title: 'Source', description: '');
+      await asset('missing', owner: 'work', inLibrary: true);
+      await asset('blocked', owner: 'work', inLibrary: true);
+      final missing = (await appDb.assetDao.getAsset('missing'))!;
+      final blocked = (await appDb.assetDao.getAsset('blocked'))!;
+      await File(service.library.resolve(missing)).delete();
+      await appDb.customStatement('''
+      CREATE TRIGGER reject_sharing BEFORE UPDATE ON assets
+      WHEN NEW.novel_id IS NULL
+      BEGIN SELECT RAISE(ABORT, 'rejected share'); END
+    ''');
+      for (final row in [missing, blocked]) {
+        await expectLater(
+          ShareAssetOrchestrator().run(
+            library: service.library,
+            assetId: row.id,
+            sourceNovelId: 'work',
+          ),
+          throwsA(anything),
+        );
+        final unchanged = (await appDb.assetDao.getAsset(row.id))!;
+        expect(unchanged.novelId, row.novelId);
+        expect(unchanged.path, row.path);
+        expect(unchanged.inLibrary, isTrue);
+      }
+      expect(await File(service.library.resolve(blocked)).readAsBytes(), [
+        1,
+        2,
+        3,
+      ]);
+      expect(
+        await Directory(
+          p.join(root.path, 'file_workspaces/shared/images'),
+        ).exists(),
+        isFalse,
+      );
+    },
+  );
+
+  test('rolls back the asset update when the destination is blocked', () async {
+    await appDb.novelDao.create(id: 'work', title: 'Source', description: '');
+    await asset('media', owner: 'work', inLibrary: true);
+    final before = (await appDb.assetDao.getAsset('media'))!;
+    final blocker = File(p.join(root.path, 'file_workspaces/shared/images'));
+    await blocker.create(recursive: true);
+
+    await expectLater(
+      ShareAssetOrchestrator().run(
+        library: service.library,
+        assetId: before.id,
+        sourceNovelId: 'work',
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
+    final after = (await appDb.assetDao.getAsset(before.id))!;
+    expect((after.novelId, after.path), (before.novelId, before.path));
+    expect(await File(service.library.resolve(before)).readAsBytes(), [
+      1,
+      2,
+      3,
+    ]);
+    expect(await blocker.exists(), isTrue);
+  });
+
+  test('moves the file back if the database commit fails', () async {
+    await appDb.novelDao.create(id: 'work', title: 'Source', description: '');
+    await asset('media', owner: 'work', inLibrary: true);
+    final before = (await appDb.assetDao.getAsset('media'))!;
+    await appDb.customStatement('PRAGMA foreign_keys = ON');
+    await appDb.customStatement('''
+      CREATE TABLE sharing_guard (asset_id TEXT REFERENCES assets(id)
+        DEFERRABLE INITIALLY DEFERRED)
+    ''');
+    await appDb.customStatement('''
+      CREATE TRIGGER reject_share_commit AFTER UPDATE ON assets
+      WHEN NEW.novel_id IS NULL
+      BEGIN INSERT INTO sharing_guard VALUES ('missing_asset'); END
+    ''');
+
+    await expectLater(
+      ShareAssetOrchestrator().run(
+        library: service.library,
+        assetId: before.id,
+        sourceNovelId: 'work',
+      ),
+      throwsA(anything),
+    );
+    final after = (await appDb.assetDao.getAsset(before.id))!;
+    expect((after.novelId, after.path), (before.novelId, before.path));
+    expect(await File(service.library.resolve(before)).readAsBytes(), [
+      1,
+      2,
+      3,
+    ]);
+    expect(
+      await Directory(
+        p.join(root.path, 'file_workspaces/shared/images'),
+      ).list().toList(),
+      isEmpty,
+    );
   });
 
   test('video preview logs why an 88API model cannot be used', () async {

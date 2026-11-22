@@ -8,6 +8,16 @@ import '../provider_model.dart';
 import '../production/image_request.dart';
 import 'channels.dart';
 
+typedef CustomImageParameters = ({String? quality, String? size});
+
+const CustomImageParameters defaultCustomImageParameters = (
+  quality: null,
+  size: null,
+);
+
+bool supportsCustomImageParameters(AiProvider provider, String model) =>
+    resolveImageModel(provider, model) == null;
+
 class ImageModelChoices {
   ImageModelChoices(this.provider, this.model)
     : capabilities = ProductionImageCapabilities(
@@ -23,6 +33,8 @@ class ImageModelChoices {
   final ImageModelCapabilities capabilities;
   final ImageRequestDefaults defaults;
   final Map<String, dynamic> rawDefaults;
+  bool get supportsCustomParameters =>
+      supportsCustomImageParameters(provider, model);
   List<String> get ratios => capabilities.ratios.toList();
   List<String> get resolutions => capabilities.resolutions.toList();
   List<String> get complexities => capabilities.complexityLevels.toList();
@@ -106,6 +118,12 @@ class ImageModelChoices {
   String? size(String selectedRatio, String selectedResolution) =>
       capabilities.size(ratio(selectedRatio), resolution(selectedResolution)) ??
       defaults.size;
+
+  void validateCustomSize(String? size, {required int references}) {
+    capabilities.validateReferences(references);
+    capabilities.validateSize(size, references: references);
+  }
+
   void validate({
     required String ratio,
     required String resolution,

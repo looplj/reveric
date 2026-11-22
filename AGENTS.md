@@ -69,6 +69,7 @@
 | AI 文本生成或 Agent Read field path | `.agents/rules/ai-calling.md`、`.agents/rules/tools_path.md` |
 | AI 工具行为、参数兼容、描述、input schema 或结果序列化 | `.agents/rules/ai-calling.md`；错误结果再读 `.agents/rules/error-handling.md` |
 | 新增或调整应用内 bundled / official Skill、触发条件、references、注册或加载入口 | `.agents/rules/agent-skills.md` |
+| SQLite / Drift 事务、跨库读写或并发持久化 | `.agents/rules/db-transactions.md` |
 | Drift schema 结构、约束或 migration | `.agents/rules/db-migration.md` |
 | Drift index / timestamp / 聚合 / JSON | 按改动读取 `.agents/rules/db-index-naming.md`、`.agents/rules/db-timestamps.md`、`.agents/rules/db-query-aggregation.md`、`.agents/rules/json.md` |
 | 删除业务数据 | `.agents/rules/data-deletion.md` |
