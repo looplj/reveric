@@ -39,6 +39,7 @@ class FakeObjectStorage extends ObjectStorageService {
     required String mimeType,
     required int fileSize,
     AgentCancellationToken? cancellation,
+    bool forcePresigned = false,
   }) async {
     final result = await _upload!(
       file: file,

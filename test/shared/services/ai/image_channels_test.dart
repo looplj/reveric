@@ -723,6 +723,63 @@ void main() {
     );
   }
 
+  test(
+    '88API validates catalog complexity in prepared image requests',
+    () async {
+      const model = 'gpt-image-2.6-flare';
+      final provider = _provider('api88').copyWith(imageModels: [model]);
+      final capabilities = ProductionImageCapabilities(provider, model);
+      final service = AiImageGenerationService(provider, model: model);
+      final sentBodies = <Map<String, dynamic>>[];
+
+      Future<AiImageGenerationResult> submit(String complexity) =>
+          service.generatePrepared(
+            SubmitImageInput(
+              prompt: 'cover',
+              modelId: model,
+              aspectRatio: '16:9',
+              resolution: '1K',
+              size: capabilities.size('16:9', '1K'),
+              complexity: complexity,
+            ),
+            context: ImageOutputContext(provider),
+            capabilities: capabilities.effectiveCapabilities,
+          );
+
+      await http.runWithClient(
+        () async {
+          await expectLater(
+            submit('invalid'),
+            throwsA(isA<AiImageGenerationException>()),
+          );
+          await submit('medium');
+        },
+        () => MockClient((request) async {
+          sentBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'b64_json': _png},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      expect(sentBodies, [
+        {
+          'model': model,
+          'prompt': 'cover',
+          'n': 1,
+          'response_format': 'b64_json',
+          'size': '1024x576',
+          'complexity': 'medium',
+        },
+      ]);
+    },
+  );
+
   test('OpenRouter honors JPEG-only output and reference order', () async {
     final service = AiImageGenerationService(
       _provider('openrouter'),

@@ -37,7 +37,9 @@ class ImageModelChoices {
       supportsCustomImageParameters(provider, model);
   List<String> get ratios => capabilities.ratios.toList();
   List<String> get resolutions => capabilities.resolutions.toList();
-  List<String> get complexities => capabilities.complexityLevels.toList();
+  List<String> get complexities => supportsCustomParameters
+      ? const []
+      : capabilities.complexityLevels.toList();
   int? get referenceLimit =>
       capabilities.unlimitedReferences ? null : capabilities.maxReferences;
   List<String> get qualities {

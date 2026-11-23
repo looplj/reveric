@@ -5,6 +5,19 @@
 //   lib/shared/models/audio/config.dart
 import 'config.dart';
 
+// https://www.volcengine.com/docs/6561/1257544
+const doubaoTtsVoices = {
+  'seed-tts-2.0': [
+    'zh_female_vv_uranus_bigtts',
+    'zh_female_xiaohe_uranus_bigtts',
+    'zh_male_m191_uranus_bigtts',
+  ],
+  'seed-tts-1.0': [
+    'zh_female_meilinvyou_moon_bigtts',
+    'zh_male_shenyeboke_moon_bigtts',
+  ],
+};
+
 // 模型与预设音色来源：https://openrouter.ai/api/v1/models?output_modalities=speech
 // 单次制作正文限制为 4000 字符；更长内容由用户拆成独立片段。
 const speechModels = <String, AudioModelCapabilities>{

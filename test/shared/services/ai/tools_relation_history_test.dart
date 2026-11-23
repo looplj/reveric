@@ -13,8 +13,6 @@ import 'package:reveric/shared/services/novel_actions.dart';
 import 'package:reveric/shared/services/novel_content.dart';
 import 'package:reveric/shared/services/working_overlay.dart';
 
-import '../../../helpers/resource_contract.dart';
-
 void main() {
   late NovelContentDatabase db;
   late AppDatabase app;
@@ -54,10 +52,7 @@ void main() {
     String name,
     String path, [
     Map<String, dynamic> args = const {},
-  ]) => tools.executeTool(
-    name: name,
-    input: {'path': path, ...args},
-  );
+  ]) => tools.executeTool(name: name, input: {'path': path, ...args});
   Future<String> create({String? chapterId, String status = 'active'}) async {
     final result = await call('Create', '/relations', {
       'fields': {

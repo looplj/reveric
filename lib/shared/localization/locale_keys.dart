@@ -27,6 +27,11 @@ abstract final class LocaleKeys {
   static const audioVoiceMinimaxKindheartedgirl =
       'audio.voice.minimaxKindheartedgirl';
   static const audioVoiceUnnamedPreset = 'audio.voice.unnamedPreset';
+  static const audioVoiceDoubaoVivi = 'audio.voice.doubaoVivi';
+  static const audioVoiceDoubaoXiaohe = 'audio.voice.doubaoXiaohe';
+  static const audioVoiceDoubaoYunzhou = 'audio.voice.doubaoYunzhou';
+  static const audioVoiceDoubaoMeilinvyou = 'audio.voice.doubaoMeilinvyou';
+  static const audioVoiceDoubaoShenyeboke = 'audio.voice.doubaoShenyeboke';
   static const audioVoiceQwenHuan31 = 'audio.voice.qwenHuan31';
   static const audioVoiceQwenLingxin31 = 'audio.voice.qwenLingxin31';
   static const audioVoiceQwenNanchuan31 = 'audio.voice.qwenNanchuan31';
@@ -3828,7 +3833,9 @@ abstract final class LocaleKeys {
   static const readingReadingTime = 'reading.reading_time';
   static const readingSettingsTitle = 'reading.settings_title';
   static const readingExit = 'reading.exit';
-  static const readingNarrationVoice = 'reading.narration_voice';
+  static const readingNarrationDialogueOnly = 'reading.narration_dialogue_only';
+  static const readingNarrationNoDialogue = 'reading.narration_no_dialogue';
+  static const readingNarrationUnattributed = 'reading.narration_unattributed';
   static const readingNarrationComplete = 'reading.narration_complete';
   static const readingBrightness = 'reading.brightness';
   static const readingNightMode = 'reading.night_mode';
@@ -3920,6 +3927,7 @@ abstract final class LocaleKeys {
   static const providerDescriptionMetaso = 'provider.description_metaso';
   static const providerSearchHint = 'provider.search_hint';
   static const providerTypeVolcengine = 'provider.type_volcengine';
+  static const providerTypeDoubaoAudio = 'provider.type_doubao_audio';
   static const providerModelIdHint = 'provider.model_id_hint';
   static const providerVideoModelsLabel = 'provider.video_models_label';
   static const providerVideoHighlightMaxDuration =
@@ -3965,6 +3973,8 @@ abstract final class LocaleKeys {
   static const providerDescriptionDoubao = 'provider.description_doubao';
   static const providerDescriptionVolcengine =
       'provider.description_volcengine';
+  static const providerDescriptionDoubaoAudio =
+      'provider.description_doubao_audio';
   static const providerDescriptionMinimax = 'provider.description_minimax';
   static const providerDescriptionMoss = 'provider.description_moss';
   static const providerDescriptionAgnes = 'provider.description_agnes';
@@ -4012,6 +4022,7 @@ abstract final class LocaleKeys {
   static const providerKindImage = 'provider.kind_image';
   static const providerKindVideo = 'provider.kind_video';
   static const providerKindAudio = 'provider.kind_audio';
+  static const providerKindAsr = 'provider.kind_asr';
   static const providerTypeNoteOpenaiCompatible =
       'provider.type_note_openai_compatible';
   static const providerTypeNoteMinimax = 'provider.type_note_minimax';

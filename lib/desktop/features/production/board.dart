@@ -12,6 +12,8 @@
 //   assets/translations/zh-CN/production.json
 //   assets/translations/en/canvas.json
 //   assets/translations/zh-CN/canvas.json
+//   assets/translations/en/common.json
+//   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 //   .agents/rules/design-system.md
@@ -19,6 +21,7 @@
 
 import '../../../shared/hooks/use_ai_providers.dart';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -116,6 +119,8 @@ class ProductionBoard extends HookConsumerWidget {
     required this.sceneLabels,
     this.onAddSegment,
     required this.onSelect,
+    this.onPaste,
+    this.importProgress,
     this.onContextMenu,
     this.onStoryboardCellContextMenu,
     required this.onClear,
@@ -156,6 +161,8 @@ class ProductionBoard extends HookConsumerWidget {
   /// 场次色带底部的「分镜」：在这一场末尾新建片段。为 null 时不显示。
   final ValueChanged<String>? onAddSegment;
   final ValueChanged<CanvasNode> onSelect;
+  final VoidCallback? onPaste;
+  final ValueListenable<double?>? importProgress;
 
   /// 节点右键：节点已选中，[at] 是全局坐标。
   final void Function(CanvasNode node, Offset at)? onContextMenu;
@@ -261,6 +268,15 @@ class ProductionBoard extends HookConsumerWidget {
       [bands],
     );
     useEffect(() => controller.dispose, [controller]);
+    final paste = useRef<VoidCallback?>(null)
+      ..value = readOnly ? null : onPaste;
+    final pasteLabel = context.t(LocaleKeys.commonPaste);
+    useEffect(() {
+      controller.shortcuts.registerAction(
+        _PasteImageAction(pasteLabel, () => paste.value),
+      );
+      return null;
+    }, [controller, pasteLabel]);
     final textTitle = useMemoized(ProductionNodeTitle.new);
     useEffect(() => textTitle.dispose, [textTitle]);
     // 平移也会换掉 viewport 值；标题只跟放大倍数走，倍数不变时不让每张卡片的标题重建。
@@ -1361,8 +1377,30 @@ class ProductionBoard extends HookConsumerWidget {
       service: service,
       canvasId: canvasId,
       controller: controller,
+      importProgress: importProgress,
       child: board,
     );
+  }
+}
+
+class _PasteImageAction extends flow.NodeFlowAction<String> {
+  const _PasteImageAction(String label, this.callback)
+    : super(id: 'paste', label: label, category: 'Edit');
+
+  final VoidCallback? Function() callback;
+
+  @override
+  bool canExecute(flow.NodeFlowController<String, dynamic> controller) =>
+      callback() != null;
+
+  @override
+  bool execute(
+    flow.NodeFlowController<String, dynamic> controller,
+    BuildContext? context,
+  ) {
+    final paste = callback();
+    paste?.call();
+    return paste != null;
   }
 }
 

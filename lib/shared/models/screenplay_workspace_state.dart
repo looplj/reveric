@@ -11,10 +11,7 @@ enum ScreenplayWorkspaceSection {
   characters,
   foreshadowings,
   lore,
-  items,
-  factions,
-  creatures,
-  skills,
+  compendium,
   maps,
   materials,
   entity_graph,
@@ -124,6 +121,12 @@ ScreenplayWorkspaceState reconcileScreenplayWorkspaceState({
 
 ScreenplayWorkspaceSection _sectionFromName(Object? value) {
   if (value is String) {
+    if (value == 'items' ||
+        value == 'factions' ||
+        value == 'creatures' ||
+        value == 'skills') {
+      return ScreenplayWorkspaceSection.compendium;
+    }
     for (final section in ScreenplayWorkspaceSection.values) {
       if (section.name == value) {
         return section;

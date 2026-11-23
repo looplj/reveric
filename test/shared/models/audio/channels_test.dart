@@ -63,7 +63,11 @@ void main() {
           'qwen/qwen-audio-3.0-tts-plus',
         ]),
       );
-      expect(audioModelsForProvider('volcengine'), [nativeId]);
+      expect(audioModelsForProvider('doubao_audio'), [
+        nativeId,
+        'seed-tts-2.0',
+        'seed-tts-1.0',
+      ]);
     },
   );
 

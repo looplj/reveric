@@ -11,8 +11,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../shared/database/novel_content_database.dart'
     show WorkingChange;
-import '../../../../shared/localization/app_localization.dart';
-import '../../../../shared/localization/locale_keys.dart';
+import '../../../../shared/providers/todo_providers.dart';
 import '../../../../shared/theme/theme.dart';
 import '../../../../shared/widgets/app_background.dart';
 import '../../../../shared/widgets/ai/chat/todo_panel.dart';
@@ -25,24 +24,23 @@ class ChatSidePanel extends HookConsumerWidget {
     required this.databasePath,
     required this.novelId,
     required this.changes,
-    required this.onCollapse,
     this.sessionId,
-    this.headerTrailingInset = 0,
   });
 
   final String? databasePath;
   final String novelId;
   final List<WorkingChange> changes;
-  final VoidCallback onCollapse;
   final String? sessionId;
-
-  /// Extra right padding so header actions clear Windows caption buttons
-  /// (and any collapsed AI rail outside this panel).
-  final double headerTrailingInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
+    final hasTodos = ref.watch(
+      sessionTodosProvider(
+        sessionId,
+      ).select((async) => async.asData?.value.isNotEmpty ?? false),
+    );
+    final hasChanges = databasePath != null && changes.isNotEmpty;
 
     return Container(
       color: appChromeBackgroundColor(
@@ -52,61 +50,43 @@ class ChatSidePanel extends HookConsumerWidget {
       ),
       child: Column(
         children: [
-          Container(
-            height: DesktopWindowFrame.titleBarHeight,
-            padding: EdgeInsets.only(
-              left: RevericSpacing.md,
-              right: RevericSpacing.md + headerTrailingInset,
+          // 与左侧 ChatHeader 等高，避让 Windows 窗口按钮并保持顶部分割线齐平。
+          const SizedBox(height: DesktopWindowFrame.titleBarHeight),
+          Divider(height: RevericSizes.dividerThickness, color: colors.border),
+          if (hasTodos)
+            Expanded(
+              child: RepaintBoundary(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: TodoPanel(initialExpanded: true, sessionId: sessionId),
+                ),
+              ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                IconButton(
-                  tooltip: context.t(LocaleKeys.aiChatCollapse),
-                  onPressed: onCollapse,
-                  iconSize: 16,
-                  padding: const EdgeInsets.all(RevericSpacing.xs),
-                  constraints: const BoxConstraints(
-                    minWidth: 28,
-                    minHeight: 28,
-                  ),
-                  icon: RevericIcon(
-                    RevericIcons.close_fullscreen_rounded,
-                    size: 16,
-                    color: colors.textMuted,
+          if (hasTodos && hasChanges)
+            Divider(
+              height: RevericSizes.dividerThickness,
+              color: colors.border,
+            ),
+          if (hasChanges)
+            Expanded(
+              child: RepaintBoundary(
+                child: SingleChildScrollView(
+                  child: PendingChangesSummaryCard(
+                    novelId: novelId,
+                    databasePath: databasePath!,
+                    changes: changes,
+                    initialExpanded: true,
+                    // 这里卡片直接贴分隔线，顶部补回一格外边距。
+                    margin: const EdgeInsets.fromLTRB(
+                      RevericSpacing.lg,
+                      RevericSpacing.lg,
+                      RevericSpacing.lg,
+                      RevericSpacing.sm,
+                    ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-          Divider(height: RevericSizes.dividerThickness, color: colors.border),
-          Expanded(
-            flex: 1,
-            child: RepaintBoundary(
-              child: TodoPanel(initialExpanded: true, sessionId: sessionId),
-            ),
-          ),
-          Divider(height: RevericSizes.dividerThickness, color: colors.border),
-          Expanded(
-            flex: 1,
-            child: RepaintBoundary(
-              child: databasePath != null && changes.isNotEmpty
-                  ? PendingChangesSummaryCard(
-                      novelId: novelId,
-                      databasePath: databasePath!,
-                      changes: changes,
-                      initialExpanded: true,
-                      // 这里卡片直接贴分隔线，顶部补回一格外边距。
-                      margin: const EdgeInsets.fromLTRB(
-                        RevericSpacing.lg,
-                        RevericSpacing.lg,
-                        RevericSpacing.lg,
-                        RevericSpacing.sm,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ),
         ],
       ),
     );

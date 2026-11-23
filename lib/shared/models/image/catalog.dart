@@ -19,7 +19,7 @@ class ImageModelCatalogEntry {
   final ImageRequestDefaults requestDefaults;
 }
 
-/// 运行时目录：获取模型后可登记站点返回的动态型号。
+/// 图片模型的共享能力目录。
 final imageModelsCatalog = <String, ImageModelCatalogEntry>{
   for (final id in ['midjourney', 'midjourney-v8.2'])
     id: ImageModelCatalogEntry(
@@ -363,12 +363,9 @@ final imageModelsCatalog = <String, ImageModelCatalogEntry>{
   'ming-image-0.1-design': ImageModelCatalogEntry(
     capabilities: _mingImage01DesignCapabilities,
   ),
-  'gpt-image-2.6-sunburst': ImageModelCatalogEntry(
+  'gpt-image-2.6': ImageModelCatalogEntry(
     capabilities: _gptImage26Capabilities,
-    requestDefaults: _gptImage26Defaults,
-  ),
-  'gpt-image-2.6-flare': ImageModelCatalogEntry(
-    capabilities: _gptImage26Capabilities,
+    aliases: {'gpt-image-2.6-flare', 'gpt-image-2.6-sunburst'},
     requestDefaults: _gptImage26Defaults,
   ),
   'gpt-image-2.5-sunburst': ImageModelCatalogEntry(

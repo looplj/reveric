@@ -161,7 +161,7 @@ void main() {
           app.AiProvidersCompanion.insert(
             id: 'audio',
             name: 'Audio',
-            type: 'volcengine',
+            type: 'doubao_audio',
             enabled: const Value(true),
             apiKey: const Value('test'),
             audioModels: const Value(['seed-audio-1.0']),
@@ -760,7 +760,7 @@ void main() {
                 sourceType: 'production_clip',
                 sourceId: node.clipId!,
                 providerId: 'audio',
-                providerType: 'volcengine',
+                providerType: 'doubao_audio',
                 modelId: p.request.modelId,
                 requestJson: AudioGenerationRequest(p.request),
                 status: saving
@@ -859,7 +859,7 @@ void main() {
       final client = SeedAudioClient(
         MockClient((_) async => throw StateError('encode only')),
         'key',
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       final operation = ProductionAudioGenerateOrchestrator();
       final prepared = await operation.prepareReferences(
@@ -917,7 +917,7 @@ void main() {
           SeedAudioClient(
             MockClient((_) async => throw StateError('encode only')),
             'key',
-            providerType: 'volcengine',
+            providerType: 'doubao_audio',
           ).encode(
             p.request,
             references: await ProductionAudioGenerateOrchestrator()
@@ -1364,7 +1364,7 @@ void main() {
               sourceType: 'production_clip',
               sourceId: node.clipId!,
               providerId: 'audio',
-              providerType: 'volcengine',
+              providerType: 'doubao_audio',
               modelId: p.request.modelId,
               requestJson: AudioGenerationRequest(p.request),
               status: GenerationTaskStatus.saving,
@@ -1431,7 +1431,7 @@ void main() {
                 sourceType: 'production_clip',
                 sourceId: node.clipId!,
                 providerId: 'audio',
-                providerType: 'volcengine',
+                providerType: 'doubao_audio',
                 modelId: p.request.modelId,
                 requestJson: AudioGenerationRequest(p.request),
                 status: GenerationTaskStatus.running,

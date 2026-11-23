@@ -59,10 +59,10 @@ void main() {
     narrator: 'narrator',
     voices: {'a': 'voice-a', 'b': 'voice-b'},
   );
-  test('novel snapshots use a single voice and skip blank segments', () {
+  test('novel reads all prose by default and skips blank segments', () {
     final segments = compileNarration(
-      const NovelNarrationSource('　第一句。\n           第二句。　'),
-      NarrationSettings(narrator: 'reader', includeNarration: false),
+      NovelNarrationSource('　第一句。\n           第二句。　'),
+      NarrationSettings(narrator: 'reader'),
       maxCharacters: 5,
       supportsInstructions: true,
     );
@@ -74,7 +74,7 @@ void main() {
     }
     expect(
       () => compileNarration(
-        const NovelNarrationSource('　\n '),
+        NovelNarrationSource('　\n '),
         settings,
         maxCharacters: 500,
         supportsInstructions: true,
@@ -84,6 +84,79 @@ void main() {
           (error) => error.code,
           'code',
           'narration_empty',
+        ),
+      ),
+    );
+  });
+
+  test('novel identifies characters by name and alias across quote styles', () {
+    final source = NovelNarrationSource(
+      '门外落着雨。阿澈低声说：“走吧。”顾骁说：「等一下！」'
+      '\n“我来。”林澈说。\n“知道了。”\n温氏：『进来。』',
+      characters: const [
+        (id: 'a', name: '林澈', aliases: ['阿澈']),
+        (id: 'b', name: '顾骁', aliases: []),
+        (id: 'c', name: '顾', aliases: []),
+        (id: 'd', name: '温氏', aliases: []),
+      ],
+    );
+    expect(source.characterNames, {'a': '林澈', 'b': '顾骁', 'd': '温氏'});
+    expect(source.hasUnattributedDialogue, isTrue);
+    final full = compileNarration(
+      source,
+      settings,
+      maxCharacters: 500,
+      supportsInstructions: false,
+    );
+    expect(
+      full.map((s) => s.text).join().replaceAll('\n', ''),
+      source.text.replaceAll('\n', ''),
+    );
+    expect(full.first.voice, 'narrator');
+    final dialogue = compileNarration(
+      source,
+      NarrationSettings(
+        narrator: 'reader',
+        voices: {...settings.voices, 'd': ''},
+        includeNarration: false,
+      ),
+      maxCharacters: 500,
+      supportsInstructions: false,
+    );
+    expect(dialogue.map((s) => (s.text, s.voice)), [
+      ('走吧。', 'voice-a'),
+      ('等一下！', 'voice-b'),
+      ('我来。', 'voice-a'),
+      ('知道了。', 'reader'),
+      ('进来。', 'reader'),
+    ]);
+  });
+
+  test('novel leaves ambiguous speakers unassigned', () {
+    final source = NovelNarrationSource(
+      '队长说：“等等。”\n她看着林澈：“到了。”',
+      characters: const [
+        (id: 'a', name: '林澈', aliases: ['队长']),
+        (id: 'b', name: '顾骁', aliases: ['队长']),
+      ],
+    );
+    expect(source.characterNames, isEmpty);
+    expect(source.hasUnattributedDialogue, isTrue);
+  });
+
+  test('novel reports an empty dialogue-only selection', () {
+    expect(
+      () => compileNarration(
+        NovelNarrationSource('门外落着雨。'),
+        NarrationSettings(narrator: 'reader', includeNarration: false),
+        maxCharacters: 500,
+        supportsInstructions: false,
+      ),
+      throwsA(
+        isA<AudioException>().having(
+          (error) => error.code,
+          'code',
+          'narration_no_dialogue',
         ),
       ),
     );

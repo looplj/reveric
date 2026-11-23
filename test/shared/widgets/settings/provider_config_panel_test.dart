@@ -28,12 +28,12 @@ void main() {
     () async {
       final provider = aiProviderBuiltinById(
         'openai',
-      )!.copyWith(type: 'volcengine');
+      )!.copyWith(type: 'doubao_audio');
       final models = await fetchProviderModels(provider, kind: AiModelKind.asr);
-      expect(models, const ['volc.bigasr.auc_turbo']);
+      expect(models, const ['volc.seedasr.auc', 'volc.bigasr.auc']);
       expect(
         await fetchProviderModels(
-          provider.copyWith(type: 'openai'),
+          provider.copyWith(type: 'volcengine'),
           kind: AiModelKind.asr,
         ),
         isEmpty,
@@ -257,7 +257,8 @@ void main() {
             'qwen-audio-3.1-tts-next',
           ],
         ),
-        ('volcengine', ['seed-audio-1.0']),
+        ('doubao_audio', ['seed-audio-1.0', 'seed-tts-2.0', 'seed-tts-1.0']),
+        ('volcengine', <String>[]),
         ('minimax', ['speech-2.8-hd', 'music-3.0', 'music-2.6']),
       ]) {
         final provider = aiProviderBuiltinById(

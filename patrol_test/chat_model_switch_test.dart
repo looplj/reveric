@@ -355,6 +355,7 @@ AiProvider _providerFor(AiModelOption option) {
     imageModels: const [],
     audioModels: const [],
     videoModels: const [],
+    asrModels: const [],
     embeddingModels: const [],
     temperature: 0.7,
     maxTurns: 8,

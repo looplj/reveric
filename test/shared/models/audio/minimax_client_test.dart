@@ -181,6 +181,6 @@ void main() {
       'music-3.0',
       'music-2.6',
     ]);
-    expect(audioModelsForProvider('volcengine'), ['seed-audio-1.0']);
+    expect(audioModelsForProvider('doubao_audio'), contains('seed-audio-1.0'));
   });
 }

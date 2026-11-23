@@ -62,6 +62,18 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+  test('the picker offers Doubao Audio under audio and transcription', () {
+    expect(providerTypePickerTypes(), contains('doubao_audio'));
+    expect(providerTypePickerKinds('doubao_audio'), [
+      AiModelKind.audio,
+      AiModelKind.asr,
+    ]);
+    expect(providerTypePickerKinds('volcengine'), [
+      AiModelKind.chat,
+      AiModelKind.image,
+      AiModelKind.video,
+    ]);
+  });
   for (final platform in [
     TargetPlatform.windows,
     TargetPlatform.macOS,
@@ -386,10 +398,7 @@ void main() {
             AiModelKind.video,
             AiModelKind.audio,
           });
-          expect(
-            token91.supportedModelKinds,
-            isNot(contains(AiModelKind.asr)),
-          );
+          expect(token91.supportedModelKinds, isNot(contains(AiModelKind.asr)));
           expect(
             find.text(locale.languageCode == 'zh' ? '推广' : 'Sponsored'),
             findsOneWidget,

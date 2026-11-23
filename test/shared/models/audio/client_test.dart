@@ -88,7 +88,7 @@ void main() {
           ),
         ),
         'test-key',
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       await expectLater(
         client.generate(request()),
@@ -115,7 +115,7 @@ void main() {
       final client = SeedAudioClient(
         MockClient((_) async => throw StateError('encode only')),
         'key',
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       final selected = AudioRequest(
         providerId: 'audio',
@@ -168,7 +168,7 @@ void main() {
             transport,
             'key',
             timeout: const Duration(milliseconds: 30),
-            providerType: 'volcengine',
+            providerType: 'doubao_audio',
           );
           await expectLater(
             api.generate(request()),
@@ -210,7 +210,7 @@ void main() {
           ),
         ),
         'secret',
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       await expectLater(
         client.generate(request()),
@@ -233,7 +233,7 @@ void main() {
         isTrue,
       );
       expect(log, contains('status=503'));
-      expect(log, contains('provider=volcengine'));
+      expect(log, contains('provider=doubao_audio'));
       expect(log, contains('No available channel'));
       expect(log, contains('https://signed.example/?token=private-token'));
       expect(log, contains('[redacted]'));
@@ -276,7 +276,7 @@ void main() {
         final pending = SeedAudioClient(
           transport,
           'key',
-          providerType: 'volcengine',
+          providerType: 'doubao_audio',
         ).generate(request(), abortTrigger: abort.future);
         final result = expectLater(
           pending.timeout(const Duration(seconds: 2)),
@@ -305,7 +305,7 @@ void main() {
         transport,
         'key',
         timeout: const Duration(milliseconds: 100),
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       await expectLater(
         client.generate(request()),
@@ -332,7 +332,7 @@ void main() {
           return http.Response('<html>gateway error</html>', status);
         }),
         'key',
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       await expectLater(
         client.generate(request()),
@@ -373,7 +373,7 @@ void main() {
           );
         }),
         'secret',
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       expect((await client.generate(request())).bytes, wav);
       expect(
@@ -397,7 +397,7 @@ void main() {
         }),
         'key',
         timeout: const Duration(milliseconds: 1),
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       await expectLater(
         client.generate(request()),
@@ -415,7 +415,7 @@ void main() {
         return http.Response('{}', 200);
       }),
       'key',
-      providerType: 'volcengine',
+      providerType: 'doubao_audio',
     );
     final abort = Completer<void>()..complete();
     await expectLater(
@@ -431,7 +431,7 @@ void main() {
       final client = SeedAudioClient(
         MockClient((_) async => throw bug),
         'key',
-        providerType: 'volcengine',
+        providerType: 'doubao_audio',
       );
       await expectLater(client.generate(request()), throwsA(same(bug)));
     },

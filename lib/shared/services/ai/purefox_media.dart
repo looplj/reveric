@@ -1,7 +1,6 @@
-// 职责: 拉取 PureFox 媒体网关的图片/视频模型目录，供设置页“获取模型”和启动时恢复登记使用。
+// 职责: 拉取 PureFox 媒体网关的模型列表，并登记视频模型的规格。
 // 关联文件:
 //   lib/shared/models/ai_provider.dart
-//   lib/shared/models/image/channels.dart
 //   lib/shared/models/video/channels.dart
 //   lib/shared/providers/purefox_media_providers.dart
 //   lib/shared/widgets/settings/provider_config_panel.dart
@@ -10,7 +9,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../models/ai_provider.dart';
-import '../../models/image/channels.dart';
 import '../../models/video/catalog.dart';
 import '../../models/video/channels.dart';
 import '../../models/video/request.dart';
@@ -19,7 +17,7 @@ import 'media_diagnostics.dart';
 
 final _log = AppLogger.forModule('PurefoxMedia');
 
-/// PureFox 型号写入共享目录时使用的前缀：站点型号名与各家官方型号同名，不加前缀
+/// PureFox 视频型号写入共享目录时使用的前缀：站点型号名与各家官方型号同名，不加前缀
 /// 会覆盖其它供应商读取的能力。渠道键保持原始型号名，提交时再剥掉前缀。
 const purefoxMediaCatalogPrefix = 'purefox_media/';
 
@@ -75,9 +73,9 @@ class PurefoxMediaModel {
   final int refVideos;
   final int refAudios;
 
-  /// 图片型号需要档位；视频型号还需要时长，否则无法参与本地参数校验。
+  /// 图片只需要模型 ID；视频需要档位和时长才能参与本地参数校验。
   bool get isUsable => switch (kind) {
-    'image' => qualities.isNotEmpty,
+    'image' => id.trim().isNotEmpty,
     'video' => qualities.isNotEmpty && durations.isNotEmpty,
     'audio' => qualities.isNotEmpty,
     _ => false,
@@ -135,47 +133,25 @@ class PurefoxMediaModelCatalog {
       if (model.kind == kind && model.isUsable) model.id,
   ];
 
-  /// 把站点返回的型号登记进运行时目录：能力写进 model 目录，渠道表只引用 id。
-  /// 目录键统一加 [purefoxMediaCatalogPrefix]：PureFox 代理的正是各家官方型号名
-  /// （gpt-image-*、gemini-*-image 等），直接按原 ID 写入会覆盖其它供应商读取的
-  /// 共享能力。渠道表仍以原始 ID 为键，已保存的选择不受影响。
+  /// 用带前缀的目录键登记视频能力，渠道表以站点原始 ID 为键。
   void register() {
     for (final model in models) {
-      if (!model.isUsable) {
+      if (model.kind != 'video' || !model.isUsable) {
         continue;
       }
       final catalogId = '$purefoxMediaCatalogPrefix${model.id}';
-      switch (model.kind) {
-        case 'image':
-          imageModelsCatalog[catalogId] = ImageModelCatalogEntry(
-            capabilities: ImageModelCapabilities(
-              ratios: model.ratios.isEmpty ? null : model.ratios.toSet(),
-              resolutions: model.qualities.toSet(),
-              maxReferences: model.refImages,
-            ),
-          );
-          purefoxMediaImageModels[model.id] = ImageChannelModel(
-            catalogId: catalogId,
-            includedInPresets: false,
-          );
-        case 'video':
-          videoModelsCatalog[catalogId] = VideoModelCatalogEntry(
-            capabilities: VideoModelCapabilities(
-              ratios: model.ratios.isEmpty ? null : model.ratios.toSet(),
-              resolutions: model.qualities.toSet(),
-              durations: model.durations.toSet(),
-              maxReferences:
-                  model.refImages + model.refVideos + model.refAudios,
-              references: _videoReferences(model),
-            ),
-          );
-          purefoxMediaVideoModels[model.id] = VideoChannelModel(
-            catalogId: catalogId,
-          );
-        case 'audio':
-          // 站点目前没有音频生成端点；有也不登记，音频目录不由本客户端管理。
-          break;
-      }
+      videoModelsCatalog[catalogId] = VideoModelCatalogEntry(
+        capabilities: VideoModelCapabilities(
+          ratios: model.ratios.isEmpty ? null : model.ratios.toSet(),
+          resolutions: model.qualities.toSet(),
+          durations: model.durations.toSet(),
+          maxReferences: model.refImages + model.refVideos + model.refAudios,
+          references: _videoReferences(model),
+        ),
+      );
+      purefoxMediaVideoModels[model.id] = VideoChannelModel(
+        catalogId: catalogId,
+      );
     }
   }
 
@@ -233,7 +209,7 @@ Future<PurefoxMediaModelCatalog> fetchPurefoxMediaModels(
   }
 }
 
-/// 启动时按已保存配置重新登记型号：能力只存在内存目录，冷启动后必须重拉。
+/// 启动时按已保存配置重新登记内存目录中的视频规格。
 ///
 /// 单个供应商失败只记录诊断日志，不影响其它供应商，也不阻塞启动；用户仍可在
 /// 设置页手动“获取模型”重试。

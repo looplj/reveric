@@ -18,14 +18,17 @@ import 'package:reveric/mobile/features/screenplay/script_page.dart';
 import 'package:reveric/shared/widgets/screenplay/document_editor.dart';
 import 'package:reveric/mobile/features/screenplay/assistant_bar.dart';
 import 'package:reveric/mobile/widgets/characters_panel.dart';
+import 'package:reveric/mobile/widgets/compendium_panel.dart';
 import 'package:reveric/mobile/widgets/entity_graph_panel.dart';
-import 'package:reveric/mobile/widgets/section_panel.dart';
+import 'package:reveric/mobile/widgets/section_chips.dart';
+import 'package:reveric/mobile/widgets/workspace_header.dart';
 import 'package:reveric/mobile/pages/entry_editor_page.dart';
 import 'package:reveric/shared/widgets/story_progress_panel.dart';
 import 'package:reveric/shared/widgets/screenplay/character_picker.dart';
 import 'package:reveric/shared/widgets/screenplay/backspace_target.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
+import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/content_kind.dart';
 import 'package:reveric/shared/models/content_status.dart';
@@ -43,6 +46,21 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
+
+  test('groups compendium into a single tab instead of four separate tabs', () {
+    expect(
+      mobileScreenplaySectionLabelKeys[ScreenplayWorkspaceSection.compendium],
+      LocaleKeys.workspaceSidebarCompendium,
+    );
+    for (final key in const [
+      LocaleKeys.workspaceItems,
+      LocaleKeys.workspaceFactions,
+      LocaleKeys.workspaceCreatures,
+      LocaleKeys.workspaceSkills,
+    ]) {
+      expect(mobileScreenplaySectionLabelKeys.values, isNot(contains(key)));
+    }
+  });
 
   testWidgets('adapts season controls and scene editor to available width', (
     tester,
@@ -340,7 +358,7 @@ void main() {
     final before = container.read(workspaceProvider);
     for (final section in [
       ScreenplayWorkspaceSection.characters,
-      ScreenplayWorkspaceSection.skills,
+      ScreenplayWorkspaceSection.compendium,
       ScreenplayWorkspaceSection.entity_graph,
       ScreenplayWorkspaceSection.story_progress,
     ]) {
@@ -351,11 +369,24 @@ void main() {
       switch (section) {
         case ScreenplayWorkspaceSection.characters:
           expect(find.byType(MobileCharactersPanel), findsOneWidget);
-        case ScreenplayWorkspaceSection.skills:
-          final panel = tester.widget<MobileSectionPanel>(
-            find.byType(MobileSectionPanel),
+        case ScreenplayWorkspaceSection.compendium:
+          expect(find.byType(MobileWorkspaceHeader), findsOneWidget);
+          expect(find.byType(MobileSectionChips), findsOneWidget);
+          expect(find.byType(MobileCompendiumPanel), findsOneWidget);
+          // Create action lives in the shared top header (+ icon), not as an
+          // extra top text button row above the panel.
+          expect(find.text('New Compendium Entry'), findsOneWidget);
+          await tester.tap(find.byTooltip('New Compendium Entry'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('New Skill'));
+          await tester.pumpAndSettle();
+          expect(find.byType(MobileEntryEditorPage), findsOneWidget);
+          expect(
+            await contentDb.itemDao.getByType(entityTypeSkill),
+            hasLength(1),
           );
-          expect(panel.section, MobileEditorSection.skills);
+          await tester.pageBack();
+          await tester.pumpAndSettle();
         case ScreenplayWorkspaceSection.entity_graph:
           expect(find.byType(MobileEntityGraphPanel), findsOneWidget);
         case ScreenplayWorkspaceSection.story_progress:

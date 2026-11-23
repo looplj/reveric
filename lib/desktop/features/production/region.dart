@@ -16,9 +16,10 @@
 //   .agents/rules/file-access.md
 import '../../../shared/models/provider_model.dart';
 import 'dart:async';
-import 'package:reveric/shared/models/asset_purpose.dart';
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:super_clipboard/super_clipboard.dart' as clip;
 import '../../../shared/models/ai_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
@@ -26,10 +27,11 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/components/reveric_icon_button.dart';
 import '../../../shared/components/reveric_segmented_control.dart';
-import '../../../shared/database/app_database.dart' show Novel;
+import '../../../shared/database/app_database.dart' show AssetRow, Novel;
 import '../../../shared/database/novel_content_database.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
+import '../../../shared/logger/app_logger.dart';
 import '../../../shared/models/novel_workspace.dart';
 import '../../../shared/models/screenplay.dart';
 import '../../../shared/providers/maps_providers.dart';
@@ -56,7 +58,6 @@ import '../../../shared/services/ai/chat_attachments.dart' show NamedChatFile;
 import '../../../shared/services/ai/media/nodes.dart' show productionNodePath;
 import '../../../shared/services/production/canvas_service.dart';
 import '../../../shared/services/production/staging_export_orchestrator.dart';
-import '../../../shared/services/production/ffmpeg_runner.dart';
 import '../../../shared/theme/theme.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
 import '../../../shared/widgets/screenplay/labels.dart';
@@ -65,6 +66,7 @@ import '../canvas/widgets/floating_cluster.dart';
 import '../screenplay/chrome.dart';
 import '../storyboard/region.dart';
 import 'board.dart';
+import 'drop_orchestrator.dart';
 import 'history_region.dart';
 import 'history_actions.dart';
 import '../editing/shell.dart';
@@ -88,6 +90,8 @@ import 'audio_composer.dart';
 import 'grid.dart';
 import 'scene_recognition.dart';
 import '../../../shared/widgets/screenplay/director_shell.dart';
+
+final _log = AppLogger.forModule('ProductionCanvasImport');
 
 /// 向聊天发一段制片相关的话；带 [files] 时这些文件作为附件放在正文之前。
 /// [send] 为 true 时打开聊天后直接发送，否则只预填、由用户补完再发。
@@ -284,7 +288,6 @@ class ProductionCanvasRegion extends HookConsumerWidget {
     final canvasWork = novel.contentKind == contentKindCanvas;
     final path = novel.contentDatabasePath!;
     final shots = ref.watch(storyboardServiceProvider(path, novelId: novel.id));
-    final library = ref.watch(mediaLibraryServiceProvider);
     final scope = ProductionHistoryScope.of(context);
     final service = scope.service;
     final history = scope.history;
@@ -355,6 +358,7 @@ class ProductionCanvasRegion extends HookConsumerWidget {
         ? clipSnapshot.data
         : null;
     final busy = useState(false);
+    final importProgress = useValueNotifier<double?>(null);
     final registration = useRef(registerFlush)..value = registerFlush;
     useEffect(() {
       Future<void> flush() async {
@@ -717,8 +721,61 @@ class ProductionCanvasRegion extends HookConsumerWidget {
       }
     }
 
+    Future<void> addImportedMedia<T>(
+      List<T> items,
+      Future<AssetRow?> Function(T) importItem,
+    ) async {
+      if (!context.mounted ||
+          items.isEmpty ||
+          !await session.close() ||
+          !context.mounted) {
+        return;
+      }
+      final assets = <AssetRow>[];
+      for (final (index, item) in items.indexed) {
+        if (!context.mounted) {
+          return;
+        }
+        importProgress.value = index / items.length;
+        await productionRun(context, () async {
+          final asset = await importItem(item);
+          if (asset != null) {
+            assets.add(asset);
+          }
+        });
+      }
+      _log.info(
+        'media read completed items=${items.length} assets=${assets.length}',
+      );
+      if (assets.isEmpty || !context.mounted) {
+        return;
+      }
+      final nodes = await ProductionDropOrchestrator().placeMedia(
+        assets: assets,
+        service: service,
+        canvasId: canvas.data!.id,
+        center: camera.center,
+        history: history,
+      );
+      if (context.mounted) {
+        await select(await service.requireNode(nodes.first.id));
+      }
+    }
+
+    Future<void> showImportProgress(Future<void> Function() action) async {
+      importProgress.value = 0;
+      try {
+        await action();
+      } finally {
+        if (context.mounted) {
+          importProgress.value = null;
+        }
+      }
+    }
+
     Future<void> importMedia() async {
-      final file = await openFile(
+      _log.info('select started platform=$defaultTargetPlatform type=media');
+      final files = await openFiles(
         acceptedTypeGroups: [
           const XTypeGroup(
             label: 'Media',
@@ -736,18 +793,40 @@ class ProductionCanvasRegion extends HookConsumerWidget {
           ),
         ],
       );
-      if (file == null) {
+      _log.info('select completed files=${files.length}');
+      if (files.isEmpty || !context.mounted) {
         return;
       }
-      final asset = await library.importFile(
-        File(file.path),
-        name: file.name,
-        novelId: novel.id,
-        purpose: AssetPurpose.production_upload,
-        cancellation: MediaCancellation(),
+      final importer = ProductionDropOrchestrator();
+      await showImportProgress(
+        () => addImportedMedia(
+          files,
+          (file) => importer.importMedia(
+            File(file.path),
+            name: file.name,
+            service: service,
+          ),
+        ),
       );
-      await placeNew(await service.addMedia(canvas.data!.id, asset.id));
     }
+
+    Future<void> pasteMedia() => showImportProgress(() async {
+      final imageName = context.t(LocaleKeys.productionImage);
+      final clipboard = clip.SystemClipboard.instance;
+      if (clipboard == null) {
+        throw UnsupportedError('Image clipboard is unavailable');
+      }
+      final data = await clipboard.read();
+      final importer = ProductionDropOrchestrator();
+      await addImportedMedia(
+        data.items,
+        (reader) => importer.pasteImage(
+          reader: reader,
+          service: service,
+          imageName: imageName,
+        ),
+      );
+    });
 
     // 打开导演台节点对应的调度。
     Future<void> openDirector(CanvasNode node) async {
@@ -1154,6 +1233,8 @@ class ProductionCanvasRegion extends HookConsumerWidget {
                         child: ProductionBoard(
                           service: service,
                           canvasId: canvas.data!.id,
+                          onPaste: () => run(pasteMedia),
+                          importProgress: importProgress,
                           topInset: canvasWork
                               ? 0
                               : ScreenplayRegionToolbar.floatingExtent,

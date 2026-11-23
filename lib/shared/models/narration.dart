@@ -3,8 +3,11 @@
 //   lib/shared/models/screenplay_document.dart
 //   lib/shared/models/screenplay_element.dart
 //   lib/shared/services/screenplay/narration_service.dart
+//   lib/shared/utils/chapter_entity_recognition.dart
 
 import 'package:characters/characters.dart';
+import '../database/novel_content_database.dart' show entityTypeCharacter;
+import '../utils/chapter_entity_recognition.dart';
 import 'audio/exception.dart';
 import 'screenplay_document.dart';
 import 'screenplay_element.dart';
@@ -42,12 +45,32 @@ class NarrationSettings {
 
 sealed class NarrationInput {
   const NarrationInput();
+
+  Map<String, String> get characterNames;
+  Set<String> get characterIds;
 }
 
+typedef NarrationCharacter = ({String id, String name, List<String> aliases});
+
 class NovelNarrationSource extends NarrationInput {
-  const NovelNarrationSource(this.text);
+  NovelNarrationSource(
+    this.text, {
+    Iterable<NarrationCharacter> characters = const [],
+  }) : _characters = List.unmodifiable(characters);
 
   final String text;
+  final List<NarrationCharacter> _characters;
+  late final _reading = _parseNovelNarration(text, _characters);
+
+  @override
+  Map<String, String> get characterNames => _reading.names;
+
+  @override
+  Set<String> get characterIds => characterNames.keys.toSet();
+
+  late final bool hasUnattributedDialogue = _reading.parts.any(
+    (part) => part.dialogue && part.characterId == null,
+  );
 }
 
 class NarrationSource extends NarrationInput {
@@ -60,7 +83,9 @@ class NarrationSource extends NarrationInput {
        locationNames = Map.unmodifiable(locationNames);
 
   final ScreenplayDocument document;
-  final Map<String, String> characterNames, locationNames;
+  @override
+  final Map<String, String> characterNames;
+  final Map<String, String> locationNames;
   final String? startSceneId;
 
   List<ScreenplayElement> get elements {
@@ -76,6 +101,7 @@ class NarrationSource extends NarrationInput {
     return document.elements.sublist(index);
   }
 
+  @override
   Set<String> get characterIds => {
     for (final e in elements)
       if (e.type == ScreenplayElementType.character) e.characterId!,
@@ -105,9 +131,9 @@ List<NarrationSegment> compileNarration(
     throw const AudioException('invalid_config');
   }
   return switch (source) {
-    NovelNarrationSource(:final text) => _compileNovelNarration(
-      text,
-      settings.narrator,
+    NovelNarrationSource() => _compileNovelNarration(
+      source,
+      settings,
       maxCharacters,
     ),
     NarrationSource() => _compileScreenplayNarration(
@@ -120,27 +146,158 @@ List<NarrationSegment> compileNarration(
 }
 
 List<NarrationSegment> _compileNovelNarration(
-  String text,
-  String narrator,
+  NovelNarrationSource source,
+  NarrationSettings settings,
   int maxCharacters,
 ) {
-  final body = text.trim();
-  if (body.isEmpty) {
+  if (source.text.trim().isEmpty) {
     throw const AudioException('narration_empty');
   }
-  final voice = narrator.trim();
-  if (voice.isEmpty) {
+  final narrator = settings.narrator.trim();
+  if (narrator.isEmpty) {
     throw const AudioException('audio_voice_required');
   }
-  final parts = splitNarrationText(
-    body,
-    maxCharacters,
-  ).map((part) => part.trim());
-  return List.unmodifiable([
-    for (final part in parts)
-      if (part.isNotEmpty)
-        NarrationSegment(text: part, voice: voice, sceneId: null),
-  ]);
+  final segments = <NarrationSegment>[];
+  void append(String text, String? characterId) {
+    final selected = settings.voices[characterId]?.trim() ?? '';
+    for (final part in splitNarrationText(text.trim(), maxCharacters)) {
+      if (part.trim().isNotEmpty) {
+        segments.add(
+          NarrationSegment(
+            text: part.trim(),
+            voice: selected.isEmpty ? narrator : selected,
+            sceneId: null,
+            characterId: characterId,
+          ),
+        );
+      }
+    }
+  }
+
+  final prose = StringBuffer();
+  for (final part in source._reading.parts) {
+    if (settings.includeNarration) {
+      if (part.characterId == null) {
+        prose.write(part.text);
+        continue;
+      }
+      append(prose.toString(), null);
+      prose.clear();
+      append(part.text, part.characterId);
+    } else if (part.dialogue) {
+      append(part.text.substring(1, part.text.length - 1), part.characterId);
+    }
+  }
+  append(prose.toString(), null);
+  if (segments.isEmpty) {
+    throw const AudioException('narration_no_dialogue');
+  }
+  return List.unmodifiable(segments);
+}
+
+typedef _NovelPart = ({String text, bool dialogue, String? characterId});
+
+final _dialogueQuotes = RegExp(
+  r'“[^“”]+”|「[^「」]+」|『[^『』]+』|‘[^‘’]+’|"[^"\r\n]+"',
+);
+const _speechVerb =
+    r'(?:说(?:道)?|问(?:道)?|答(?:道)?|回答(?:道)?|喊(?:道)?|叫(?:道)?|'
+    r'应道|念道|笑道|低语|嘀咕(?:道)?|said|asked|replied|answered|'
+    r'whispered|shouted|murmured|muttered|added)';
+const _speechModifier = r'(?:轻声|低声|小声|大声|冷冷地|笑着|低声地|轻轻地)?';
+final _dialogueColon = RegExp(r'[:：][ \t]*$');
+final _prefixStart = RegExp(r'(?:^|[。！？!?.；;，,\r\n])[ \t\u3000]*$');
+final _prefixEnd = RegExp(
+  r'^[ \t]*(?:[:：]|'
+  '$_speechModifier$_speechVerb'
+  r'[ \t]*[:：,，]?)[ \t]*$',
+  caseSensitive: false,
+);
+final _suffixStart = RegExp(r'^[ \t]*[,，]?[ \t]*$');
+final _suffixEnd = RegExp(
+  r'^[ \t]*'
+  '$_speechModifier$_speechVerb'
+  r'(?=$|[ \t。！？!?.；;，,：:\r\n])',
+  caseSensitive: false,
+);
+
+bool _introducesDialogue(String text, ChapterEntityMatch mention) =>
+    _prefixEnd.hasMatch(text.substring(mention.end)) &&
+    _prefixStart.hasMatch(text.substring(0, mention.start));
+
+({List<_NovelPart> parts, Map<String, String> names}) _parseNovelNarration(
+  String text,
+  List<NarrationCharacter> characters,
+) {
+  final namesById = {for (final entry in characters) entry.id: entry.name};
+  final idsByName = <String, Set<String>>{};
+  for (final character in characters) {
+    for (final name in [character.name, ...character.aliases]) {
+      final key = name.trim();
+      if (key.isNotEmpty) {
+        (idsByName[key] ??= {}).add(character.id);
+      }
+    }
+  }
+  final catalog = [
+    for (final entry in idsByName.entries)
+      ChapterEntityMention(
+        entityType: entityTypeCharacter,
+        id: entry.value.first,
+        label: entry.key,
+      ),
+  ]..sort((a, b) => b.label.length.compareTo(a.label.length));
+
+  final quotes = _dialogueQuotes.allMatches(text).iterator;
+  var hasQuote = quotes.moveNext();
+  var offset = 0;
+  var beforeMentions = hasQuote
+      ? findChapterEntityMatches(
+          text.substring(0, quotes.current.start),
+          catalog,
+        )
+      : const <ChapterEntityMatch>[];
+  final parts = <_NovelPart>[];
+  final speakers = <String, String>{};
+  while (hasQuote) {
+    final quote = quotes.current;
+    hasQuote = quotes.moveNext();
+    final before = text.substring(offset, quote.start);
+    final after = text.substring(
+      quote.end,
+      hasQuote ? quotes.current.start : text.length,
+    );
+    final afterMentions = findChapterEntityMatches(after, catalog);
+    final candidates = <String>{};
+    for (final mention in beforeMentions.reversed) {
+      if (_introducesDialogue(before, mention)) {
+        candidates.addAll(idsByName[mention.entity.label]!);
+        break;
+      }
+    }
+    final firstAfter = afterMentions.firstOrNull;
+    if (firstAfter != null &&
+        _suffixStart.hasMatch(after.substring(0, firstAfter.start)) &&
+        _suffixEnd.hasMatch(after.substring(firstAfter.end))) {
+      final introducesNext =
+          hasQuote &&
+          _introducesDialogue(after, firstAfter) &&
+          (_dialogueColon.hasMatch(after) || candidates.isNotEmpty);
+      if (!introducesNext) {
+        candidates.addAll(idsByName[firstAfter.entity.label]!);
+      }
+    }
+    final speaker = candidates.length == 1 ? candidates.single : null;
+    if (speaker != null) {
+      speakers[speaker] = namesById[speaker]!;
+    }
+    parts.add((text: before, dialogue: false, characterId: null));
+    parts.add((text: quote[0]!, dialogue: true, characterId: speaker));
+    offset = quote.end;
+    beforeMentions = afterMentions;
+  }
+  parts.add((text: text.substring(offset), dialogue: false, characterId: null));
+  return (parts: parts, names: Map.unmodifiable(speakers));
 }
 
 List<NarrationSegment> _compileScreenplayNarration(

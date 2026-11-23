@@ -289,7 +289,7 @@ void main() {
       for (final p in [
         ('video', 'doubao', 'doubao-seedance-2-0-260128'),
         ('image', 'openai', 'gpt-image-2'),
-        ('audio', 'volcengine', 'seed-audio-1.0'),
+        ('audio', 'doubao_audio', 'seed-audio-1.0'),
       ]) {
         await main
             .into(main.aiProviders)

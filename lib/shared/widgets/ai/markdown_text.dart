@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
 import '../../logger/app_logger.dart';
+import '../../theme/theme.dart';
 import '../stable_selection_area.dart';
 import 'markdown_code_block.dart';
 
@@ -75,52 +76,118 @@ class AiMarkdownText extends StatelessWidget {
   final int? maxLines;
   final TextOverflow? overflow;
 
+  /// Markdown 表格单列内容宽度上限：短列保持紧凑，长文本列自动折行而非横向截断。
+  static const double _maxTableColumnWidth = 260;
+
   @override
   Widget build(BuildContext context) {
-    Widget markdown = GptMarkdown(
-      _normalizeFullwidthDigits(content.trim()),
-      textDirection: Directionality.of(context),
-      style: style,
-      maxLines: maxLines,
-      overflow: overflow,
-      codeBuilder: buildMarkdownCodeBlock,
-      imageBuilder: loadInlineImages
-          ? null
-          : (_, _, _, _) => const SizedBox.shrink(),
-      onLinkTap: (url, _) => unawaited(_openWebLink(context, url)),
+    final markdown = GptMarkdownTheme(
+      gptThemeData: _buildMarkdownTheme(context, style),
+      child: GptMarkdown(
+        _normalizeFullwidthDigits(content.trim()),
+        textDirection: Directionality.of(context),
+        style: style,
+        maxLines: maxLines,
+        overflow: overflow,
+        codeBuilder: buildMarkdownCodeBlock,
+        imageBuilder: loadInlineImages
+            ? null
+            : (_, _, _, _) => const SizedBox.shrink(),
+        onLinkTap: (url, _) => unawaited(_openWebLink(context, url)),
+      ),
     );
-    final textColor = style.color;
-    if (textColor != null) {
-      markdown = GptMarkdownTheme(
-        gptThemeData: _themeForTextColor(context, textColor),
-        child: markdown,
-      );
-    }
     return StableSelectionArea(selectable: selectable, child: markdown);
   }
 
-  /// 标题与行内代码默认取 Material Theme 的颜色，与调用方给正文的颜色来源不同；
-  /// 统一改用正文颜色，避免两者不一致时在深色背景上看不清。
-  static GptMarkdownThemeData _themeForTextColor(
+  /// 按正文样式统一构造 Markdown 主题：
+  /// 1. 标题与行内代码跟随正文颜色，并按正文字号等比缩放 h1–h6，避免默认 32px
+  ///    headlineLarge 在窄聊天气泡里比例失调；
+  /// 2. 表格表头底色、边框与文字显式绑定主题色，避免深色主题下退化为浅底白字，
+  ///    并通过列宽上限让长文本折行而非横向硬截断。
+  static GptMarkdownThemeData _buildMarkdownTheme(
     BuildContext context,
-    Color textColor,
+    TextStyle bodyStyle,
   ) {
     final base = GptMarkdownTheme.of(context);
+    final revericColors = context
+        .dependOnInheritedWidgetOfExactType<RevericTheme>()
+        ?.data
+        .colors;
+    final textColor =
+        bodyStyle.color ??
+        revericColors?.textPrimary ??
+        Theme.of(context).colorScheme.onSurface;
     // 浅色文字意味着深色背景，沿用 gpt_markdown 深色下更强的底色与描边透明度。
     final onDark =
         ThemeData.estimateBrightnessForColor(textColor) == Brightness.light;
-    TextStyle? heading(TextStyle? s) => s?.copyWith(color: textColor);
+    final matchedColors =
+        revericColors != null && revericColors.isDark == onDark
+        ? revericColors
+        : null;
+    final baseFontSize =
+        bodyStyle.fontSize ??
+        DefaultTextStyle.of(context).style.fontSize ??
+        14.0;
+
+    TextStyle heading(
+      TextStyle? fallback, {
+      required double scale,
+      required FontWeight weight,
+      required double height,
+    }) {
+      return (fallback ?? const TextStyle()).copyWith(
+        color: textColor,
+        fontSize: baseFontSize * scale,
+        fontWeight: weight,
+        height: height,
+      );
+    }
+
+    final tableHeaderBg = matchedColors != null
+        ? (matchedColors.isDark
+              ? matchedColors.surfaceContainerHigh
+              : matchedColors.surfaceDim)
+        : textColor.withValues(alpha: onDark ? 0.12 : 0.08);
+    final tableBorderColor =
+        matchedColors?.border ??
+        textColor.withValues(alpha: onDark ? 0.22 : 0.18);
+    final dividerColor =
+        matchedColors?.borderSubtle ??
+        textColor.withValues(alpha: onDark ? 0.18 : 0.14);
+
     return base.copyWith(
-      h1: heading(base.h1),
-      h2: heading(base.h2),
-      h3: heading(base.h3),
-      h4: heading(base.h4),
-      h5: heading(base.h5),
-      h6: heading(base.h6),
+      h1: heading(base.h1, scale: 1.45, weight: FontWeight.w700, height: 1.35),
+      h2: heading(base.h2, scale: 1.30, weight: FontWeight.w700, height: 1.35),
+      h3: heading(base.h3, scale: 1.15, weight: FontWeight.w600, height: 1.40),
+      h4: heading(base.h4, scale: 1.05, weight: FontWeight.w600, height: 1.45),
+      h5: heading(base.h5, scale: 1.00, weight: FontWeight.w600, height: 1.50),
+      h6: heading(base.h6, scale: 0.95, weight: FontWeight.w600, height: 1.50),
+      hrLineColor: dividerColor,
+      autoAddDividerLineAfterH1: false,
       inlineCode: base.inlineCode.copyWith(
         color: textColor,
         backgroundColor: textColor.withValues(alpha: onDark ? 0.14 : 0.10),
         borderColor: textColor.withValues(alpha: onDark ? 0.34 : 0.28),
+      ),
+      styleSheet: base.styleSheet.copyWith(
+        table: TableStyle(
+          borderColor: tableBorderColor,
+          borderWidth: RevericSizes.dividerThickness,
+          borderRadius: const Radius.circular(RevericRadius.medium),
+          cellPadding: const EdgeInsets.symmetric(
+            horizontal: RevericSpacing.md,
+            vertical: RevericSpacing.xs,
+          ),
+          headerBackground: tableHeaderBg,
+          headerTextStyle: TextStyle(
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
+          columnWidth: const MinColumnWidth(
+            CustomTableColumnWidth(),
+            FixedColumnWidth(_maxTableColumnWidth),
+          ),
+        ),
       ),
     );
   }

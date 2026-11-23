@@ -161,6 +161,18 @@ final audioModelsCatalog = <String, AudioModelCatalogEntry>{
       sampleRate: ConfigValue(24000),
     ),
   ),
+  for (final entry in doubaoTtsVoices.entries)
+    entry.key: AudioModelCatalogEntry(
+      capabilities: AudioModelCapabilities(
+        speech: true,
+        maxPromptCharacters: 3000,
+        voices: entry.value,
+      ),
+      requestDefaults: AudioRequestDefaults(
+        voice: ConfigValue(entry.value.first),
+        responseFormat: ConfigValue('mp3'),
+      ),
+    ),
   for (final entry in speechModels.entries)
     entry.key: AudioModelCatalogEntry(
       capabilities: entry.value,

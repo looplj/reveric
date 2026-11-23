@@ -2,6 +2,7 @@
 // 关联文件:
 //   lib/shared/providers/production_audio.dart
 //   lib/shared/services/ai/audio/seed.dart
+//   lib/shared/services/ai/audio/doubao_tts.dart
 //   lib/shared/models/audio/request.dart
 // 遵循的 Rules:
 //   .agents/rules/testing.md
@@ -228,11 +229,104 @@ void main() {
     },
   );
 
+  for (final (model, voice) in [
+    ('seed-tts-1.0', 'zh_female_meilinvyou_moon_bigtts'),
+    ('seed-tts-2.0', 'zh_female_vv_uranus_bigtts'),
+  ]) {
+    test('Doubao $model sends the version and joins speech events', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final provider = aiProviderBuiltinById('openai')!.copyWith(
+        type: 'doubao_audio',
+        apiKey: 'speech-key',
+        audioModels: [model],
+      );
+      final result = await http.runWithClient(
+        () => container.read(productionAudioInvokeProvider)(
+          provider,
+          AudioRequest(
+            providerId: provider.id,
+            modelId: model,
+            prompt: '你好',
+            originalPrompt: '你好',
+          ),
+          [],
+          Completer<void>().future,
+        ),
+        () => MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(
+            request.url.toString(),
+            'https://openspeech.bytedance.com/api/v3/tts/unidirectional/sse',
+          );
+          expect(request.headers['x-api-key'], 'speech-key');
+          expect(request.headers['x-api-resource-id'], model);
+          expect(jsonDecode(utf8.decode(request.bodyBytes)), {
+            'user': {'uid': provider.id},
+            'req_params': {
+              'text': '你好',
+              'speaker': voice,
+              'audio_params': {'format': 'mp3'},
+            },
+          });
+          return http.Response(
+            'event: 352\ndata: {"code":0,"data":"SUQz"}\n\n'
+            'event: 351\ndata: {"code":0,"data":null,"sentence":{}}\n\n'
+            'event: 352\ndata: {"code":0,"data":"AQI="}\n\n'
+            'event: 152\ndata: {"code":20000000,"data":null}\n\n',
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          );
+        }),
+      );
+      expect(result.bytes, [0x49, 0x44, 0x33, 1, 2]);
+    });
+  }
+
+  test('Doubao does not publish partial speech after an SSE error', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    const model = 'seed-tts-2.0';
+    final provider = aiProviderBuiltinById('openai')!.copyWith(
+      type: 'doubao_audio',
+      apiKey: 'speech-key',
+      audioModels: [model],
+    );
+    await expectLater(
+      http.runWithClient(
+        () => container.read(productionAudioInvokeProvider)(
+          provider,
+          AudioRequest(
+            providerId: provider.id,
+            modelId: model,
+            prompt: 'Hello',
+            originalPrompt: 'Hello',
+          ),
+          [],
+          Completer<void>().future,
+        ),
+        () => MockClient(
+          (_) async => http.Response(
+            'event: 352\ndata: {"code":0,"data":"SUQz"}\n\n'
+            'event: 153\ndata: {"code":45000000,"message":"speaker permission denied"}\n\n',
+            200,
+            headers: {'content-type': 'text/event-stream'},
+          ),
+        ),
+      ),
+      throwsA(
+        isA<AudioException>()
+            .having((error) => error.code, 'code', 'rejected')
+            .having((error) => error.providerCode, 'provider code', 45000000),
+      ),
+    );
+  });
+
   final wav = Uint8List(44)
     ..setRange(0, 4, ascii.encode('RIFF'))
     ..setRange(8, 12, ascii.encode('WAVE'));
 
-  for (final (type, host) in [('volcengine', 'openspeech.bytedance.com')]) {
+  for (final (type, host) in [('doubao_audio', 'openspeech.bytedance.com')]) {
     for (final status in [200, 401]) {
       test('$type routes audio to $host and handles HTTP $status', () async {
         final container = ProviderContainer();

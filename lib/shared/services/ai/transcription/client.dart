@@ -33,9 +33,8 @@ class TranscriptionClient {
 
   Uri get _atlas => Uri.parse('https://api.atlascloud.ai/api/v1/model/');
   Uri get _qwen => wanVideoEndpoint(provider.effectiveBaseUrl);
-  Uri get _volc => Uri.parse(
-    'https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash',
-  );
+  Uri get _volc =>
+      _append(Uri.parse(provider.effectiveBaseUrl), 'auc/bigmodel');
 
   Map<String, String> get _auth => {
     'Authorization': 'Bearer ${provider.effectiveApiKey}',
@@ -84,7 +83,7 @@ class TranscriptionClient {
         );
         return (
           remoteId: null,
-          transcript: decodeOpenAiTranscript(await _send(request)),
+          transcript: decodeOpenAiTranscript(_decode(await _send(request))),
         );
       case TranscriptionProtocol.dashscope_file:
         if (sourceUrl == null) {
@@ -104,34 +103,24 @@ class TranscriptionClient {
           remoteId: _receipt(response['output'], 'task_id'),
           transcript: null,
         );
-      case TranscriptionProtocol.volcengine_flash:
-        final response = await _request(
-          'POST',
-          _volc,
-          headers: {
-            'X-Api-Key': provider.effectiveApiKey,
-            'X-Api-Resource-Id': model.id,
-            'X-Api-Request-Id': const Uuid().v4(),
-            'X-Api-Sequence': '-1',
-          },
+      case TranscriptionProtocol.volcengine_standard:
+        if (sourceUrl == null) {
+          throw const TranscriptionException('object_storage_required');
+        }
+        final requestId = const Uuid().v4();
+        await _volcRequest(
+          requestId,
           body: {
-            'user': {'uid': 'reveric'},
-            'audio': {
-              'data': base64Encode(await file.readAsBytes()),
-              'format': format,
-            },
+            'user': {'uid': provider.id},
+            'audio': {'url': sourceUrl.toString(), 'format': format},
             'request': {
               'model_name': 'bigmodel',
               'show_utterances': true,
               'enable_punc': true,
             },
           },
-          volcengine: true,
         );
-        return (
-          remoteId: null,
-          transcript: decodeVolcengineTranscript(response),
-        );
+        return (remoteId: requestId, transcript: null);
       case TranscriptionProtocol.atlascloud:
         final response = await _request(
           'POST',
@@ -205,8 +194,13 @@ class TranscriptionClient {
             tryReadProviderMessage(data),
           ),
         };
-      case TranscriptionProtocol.openai_multipart ||
-          TranscriptionProtocol.volcengine_flash:
+      case TranscriptionProtocol.volcengine_standard:
+        final response = await _volcRequest(remoteId);
+        return switch (response.headers['x-api-status-code']) {
+          '20000001' || '20000002' => null,
+          _ => decodeVolcengineTranscript(_decode(response)),
+        };
+      case TranscriptionProtocol.openai_multipart:
         throw const TranscriptionException('invalid_config');
     }
   }
@@ -230,27 +224,65 @@ class TranscriptionClient {
     return response['data'] as JsonObject? ?? response;
   }
 
+  Future<http.Response> _volcRequest(
+    String requestId, {
+    JsonObject? body,
+  }) async {
+    final query = body == null;
+    final response = await _send(
+      _jsonRequest('POST', _append(_volc, query ? 'query' : 'submit'), {
+        'X-Api-Key': provider.effectiveApiKey,
+        'X-Api-Resource-Id': model.id,
+        'X-Api-Request-Id': requestId,
+        if (!query) 'X-Api-Sequence': '-1',
+      }, body ?? const {}),
+      readOnly: query,
+    );
+    final status = response.headers['x-api-status-code'];
+    if (status == '20000000' ||
+        (query && (status == '20000001' || status == '20000002'))) {
+      return response;
+    }
+    throw TranscriptionException(switch (status) {
+      '20000003' => 'no_speech',
+      null => query ? 'unavailable' : 'submission_unknown',
+      _ when status.startsWith('55') =>
+        query ? 'unavailable' : 'submission_unknown',
+      _ => 'rejected',
+    }, response.headers['x-api-message']);
+  }
+
   Future<JsonObject> _request(
     String method,
     Uri uri, {
     Map<String, String> headers = const {},
     JsonObject? body,
-    bool volcengine = false,
-  }) {
+  }) async => _decode(await _send(_jsonRequest(method, uri, headers, body)));
+
+  http.AbortableRequest _jsonRequest(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    JsonObject? body,
+  ) {
     final request = http.AbortableRequest(method, uri, abortTrigger: abort)
       ..headers.addAll(headers);
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
     }
-    return _send(request, volcengine: volcengine);
+    return request;
   }
 
-  Future<JsonObject> _send(
+  static JsonObject _decode(http.Response response) =>
+      jsonDecode(utf8.decode(response.bodyBytes)) as JsonObject;
+
+  Future<http.Response> _send(
     http.BaseRequest request, {
-    bool volcengine = false,
+    bool readOnly = false,
   }) async {
     request.followRedirects = false;
+    final submission = request.method == 'POST' && !readOnly;
     final target = '${request.url.origin}${request.url.path}';
     final response =
         await (() async => http.Response.fromStream(
@@ -260,7 +292,7 @@ class TranscriptionClient {
           onTimeout: () {
             transport.close();
             throw TranscriptionException(
-              request.method == 'POST' ? 'submission_unknown' : 'unavailable',
+              submission ? 'submission_unknown' : 'unavailable',
             );
           },
         );
@@ -273,8 +305,7 @@ class TranscriptionClient {
       final code = switch (response.statusCode) {
         401 || 403 => 'authentication',
         429 => 'rate_limited',
-        >= 500 =>
-          request.method == 'POST' ? 'submission_unknown' : 'unavailable',
+        >= 500 => submission ? 'submission_unknown' : 'unavailable',
         _ => 'rejected',
       };
       throw TranscriptionException(
@@ -282,18 +313,6 @@ class TranscriptionClient {
         tryReadProviderMessage((message: response.body)),
       );
     }
-    if (volcengine) {
-      final status = response.headers['x-api-status-code'];
-      if (status == '20000003') {
-        throw const TranscriptionException('no_speech');
-      }
-      if (status != '20000000') {
-        throw TranscriptionException(
-          'rejected',
-          response.headers['x-api-message'],
-        );
-      }
-    }
-    return jsonDecode(utf8.decode(response.bodyBytes)) as JsonObject;
+    return response;
   }
 }

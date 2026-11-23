@@ -6,6 +6,7 @@
 //   lib/desktop/widgets/desktop_window_frame.dart
 //   lib/desktop/pages/novel_editor.dart
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../../shared/database/app_database.dart' show Novel;
 
 import '../../../../shared/database/novel_content_database.dart'
@@ -13,18 +14,58 @@ import '../../../../shared/database/novel_content_database.dart'
 import '../../../../shared/models/novel_workspace.dart';
 import '../../../../shared/models/ai_session_mode.dart';
 import '../../../../shared/models/feature_id.dart';
+import '../../../../shared/providers/ai_providers.dart'
+    show aiChatSessionProvider;
+import '../../../../shared/providers/todo_providers.dart'
+    show sessionTodosProvider;
 import '../../../../shared/theme/theme.dart';
-import '../../desktop_window_frame.dart';
 import 'panel.dart';
 import 'chat_side_panel.dart';
 
 const _expandedChatMotionDuration = Duration(milliseconds: 220);
 const _expandedChatCollapseDuration = Duration(milliseconds: 160);
 
+/// 展开聊天显示右侧面板时，左侧聊天正文区需保留的最小可读宽度。
+const double kExpandedChatMinWidthWithSidePanel = 500;
+
+/// 右侧 Todo / 变更面板的最小与目标比例宽度（上限为 [RevericSizes.chatPanelWidth]）。
+const double kExpandedChatSidePanelMinWidth = 260;
+const double kExpandedChatSidePanelWidthFraction = 0.30;
+
+/// 根据展开区域可用宽度与内容状态计算右侧面板宽度。
+///
+/// 无 Todo 且无待处理变更时返回 `null`（不渲染空面板）；有内容但可用宽度不足以
+/// 同时保证聊天列 ≥ 500px 与侧栏 ≥ 260px 时同样返回 `null`，由 [AiChatPanel]
+/// 自动回退为内嵌展示。
+double? resolveExpandedChatSidePanelWidth(
+  double availableWidth, {
+  required bool hasSidePanelContent,
+}) {
+  if (!hasSidePanelContent) {
+    return null;
+  }
+  final minTotalWidth =
+      kExpandedChatMinWidthWithSidePanel +
+      kExpandedChatSidePanelMinWidth +
+      RevericSizes.dividerThickness;
+  if (availableWidth < minTotalWidth) {
+    return null;
+  }
+  final preferred = availableWidth * kExpandedChatSidePanelWidthFraction;
+  final maxByChatBudget =
+      availableWidth -
+      kExpandedChatMinWidthWithSidePanel -
+      RevericSizes.dividerThickness;
+  final upperBound = maxByChatBudget < RevericSizes.chatPanelWidth
+      ? maxByChatBudget
+      : RevericSizes.chatPanelWidth;
+  return preferred.clamp(kExpandedChatSidePanelMinWidth, upperBound);
+}
+
 typedef _ExpandedChatContentBuilder =
     Widget Function(BuildContext context, VoidCallback onCollapse);
 
-class ExpandedChatArea extends StatelessWidget {
+class ExpandedChatArea extends ConsumerWidget {
   const ExpandedChatArea({
     super.key,
     required this.novel,
@@ -55,6 +96,7 @@ class ExpandedChatArea extends StatelessWidget {
     this.onActiveSessionIdChanged,
     this.onOpenSessionReference,
     this.onOpenFeature,
+    this.headerActionsGestureExclusionKey,
     required this.pendingAiChanges,
     required this.onCollapse,
   });
@@ -96,75 +138,103 @@ class ExpandedChatArea extends StatelessWidget {
 
   /// 透传给 [AiChatPanel]：跳到圆桌 / 小剧场 / 封面工作台。
   final void Function(FeatureId feature, String? seedText)? onOpenFeature;
+
+  /// 注册在页面根 [DesktopWindowFrame.titleBarGestureExclusionKeys] 中的 key，
+  /// 防止双击聊天顶栏操作按钮触发窗口最大化。
+  final GlobalKey? headerActionsGestureExclusionKey;
   final List<WorkingChange> pendingAiChanges;
   final VoidCallback onCollapse;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
-    // Immersive chat is rightmost: ChatSidePanel clears Windows caption buttons.
-    final sidePanelTrailingInset = DesktopWindowFrame.trailingInset;
+    final persistedSessionId = ref.watch(
+      aiChatSessionProvider(
+        activeSessionId,
+      ).select((session) => session.sessionId),
+    );
+    final effectiveSessionId = persistedSessionId ?? activeSessionId;
+    final hasTodos = ref.watch(
+      sessionTodosProvider(
+        effectiveSessionId,
+      ).select((async) => async.asData?.value.isNotEmpty ?? false),
+    );
+    final hasChanges = databasePath != null && pendingAiChanges.isNotEmpty;
+    final hasSidePanelContent = hasTodos || hasChanges;
 
     return _ExpandedChatMotion(
       onCollapse: onCollapse,
       builder: (context, animatedCollapse) {
-        return Row(
-          children: [
-            Expanded(
-              child: RepaintBoundary(
-                child: AiChatPanel(
-                  isExpanded: true,
-                  avoidWindowCaption: false,
-                  novel: novel,
-                  chapterId: chapterId,
-                  chapterTitle: chapterTitle,
-                  chapterNumber: chapterNumber,
-                  databasePath: databasePath,
-                  workspaceSection: workspaceSection,
-                  workspaceItemId: workspaceItemId,
-                  workspaceTitle: workspaceTitle,
-                  workspaceContent: workspaceContent,
-                  workspaceMetaTitle: workspaceMetaTitle,
-                  workspaceMetaContent: workspaceMetaContent,
-                  onApplyGeneratedContent: onApplyGeneratedContent,
-                  onSetAsAvatar: onSetAsAvatar,
-                  onAddPhoto: onAddPhoto,
-                  composerHint: composerHint,
-                  draftMessage: draftMessage,
-                  handoffDraft: handoffDraft,
-                  onRequestHandoff: onRequestHandoff,
-                  shortcutDraft: shortcutDraft,
-                  onHandoffDraftConsumed: onHandoffDraftConsumed,
-                  onShortcutDraftConsumed: onShortcutDraftConsumed,
-                  activeSessionId: activeSessionId,
-                  onRequestNewSession: onRequestNewSession,
-                  onEditingStateChanged: onEditingStateChanged,
-                  onSessionRestored: onSessionRestored,
-                  onActiveSessionIdChanged: onActiveSessionIdChanged,
-                  onOpenSessionReference: onOpenSessionReference,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final sidePanelWidth = resolveExpandedChatSidePanelWidth(
+              constraints.maxWidth,
+              hasSidePanelContent: hasSidePanelContent,
+            );
+            final showSidePanel = sidePanelWidth != null;
 
-                  onOpenFeature: onOpenFeature,
+            return Row(
+              children: [
+                Expanded(
+                  child: RepaintBoundary(
+                    child: AiChatPanel(
+                      isExpanded: showSidePanel,
+                      avoidWindowCaption: false,
+                      clearWindowCaptionTrailing: !showSidePanel,
+                      onCollapse: animatedCollapse,
+                      headerActionsGestureExclusionKey:
+                          headerActionsGestureExclusionKey,
+                      novel: novel,
+                      chapterId: chapterId,
+                      chapterTitle: chapterTitle,
+                      chapterNumber: chapterNumber,
+                      databasePath: databasePath,
+                      workspaceSection: workspaceSection,
+                      workspaceItemId: workspaceItemId,
+                      workspaceTitle: workspaceTitle,
+                      workspaceContent: workspaceContent,
+                      workspaceMetaTitle: workspaceMetaTitle,
+                      workspaceMetaContent: workspaceMetaContent,
+                      onApplyGeneratedContent: onApplyGeneratedContent,
+                      onSetAsAvatar: onSetAsAvatar,
+                      onAddPhoto: onAddPhoto,
+                      composerHint: composerHint,
+                      draftMessage: draftMessage,
+                      handoffDraft: handoffDraft,
+                      onRequestHandoff: onRequestHandoff,
+                      shortcutDraft: shortcutDraft,
+                      onHandoffDraftConsumed: onHandoffDraftConsumed,
+                      onShortcutDraftConsumed: onShortcutDraftConsumed,
+                      activeSessionId: activeSessionId,
+                      onRequestNewSession: onRequestNewSession,
+                      onEditingStateChanged: onEditingStateChanged,
+                      onSessionRestored: onSessionRestored,
+                      onActiveSessionIdChanged: onActiveSessionIdChanged,
+                      onOpenSessionReference: onOpenSessionReference,
+                      onOpenFeature: onOpenFeature,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Container(
-              width: RevericSizes.dividerThickness,
-              color: colors.border,
-            ),
-            SizedBox(
-              width: RevericSizes.chatPanelWidth,
-              child: RepaintBoundary(
-                child: ChatSidePanel(
-                  novelId: novel.id,
-                  databasePath: databasePath,
-                  changes: pendingAiChanges,
-                  sessionId: activeSessionId,
-                  headerTrailingInset: sidePanelTrailingInset,
-                  onCollapse: animatedCollapse,
-                ),
-              ),
-            ),
-          ],
+                if (showSidePanel) ...[
+                  Container(
+                    width: RevericSizes.dividerThickness,
+                    color: colors.border,
+                  ),
+                  SizedBox(
+                    width: sidePanelWidth,
+                    child: RepaintBoundary(
+                      child: ChatSidePanel(
+                        novelId: novel.id,
+                        databasePath: databasePath,
+                        changes: pendingAiChanges,
+                        sessionId: effectiveSessionId,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
         );
       },
     );

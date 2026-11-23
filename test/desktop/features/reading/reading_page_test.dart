@@ -211,6 +211,9 @@ Future<void> _pumpReadingPage(
           appBackgroundThemeProvider.overrideWithValue(null),
           readingFontSizeProvider.overrideWithValue(30),
           readingMarginProvider.overrideWithValue(24),
+          characterProfilesProvider(
+            'reading_test_db',
+          ).overrideWith((ref) => Stream.value(const [])),
           chapterTreeProvider('reading_test_db').overrideWith(
             // 章号只由章节树计算；正文详情直查原表，chapterNum 为空。
             (ref) => Stream.value([

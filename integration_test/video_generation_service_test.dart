@@ -56,7 +56,7 @@ void main() {
                 uploads++;
                 return (url: 'https://reference.test/input', expiresAt: null);
               }),
-              probe: (_) async => const MediaInfo(
+              probe: (_, {cancellation}) async => const MediaInfo(
                 duration: Duration.zero,
                 hasAudio: false,
                 hasVideo: true,

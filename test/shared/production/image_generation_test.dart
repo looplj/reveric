@@ -2119,6 +2119,87 @@ void main() {
       expect(container.exists(imageTaskServiceProvider), true);
     },
   );
+
+  test(
+    'preview resolves default complexity for catalog models and clears stale complexity',
+    () async {
+      final api88 = aiProviderBuiltinById('api88')!.copyWith(
+        id: 'api88-image',
+        enabled: true,
+        apiKey: 'key',
+        imageModels: const ['gpt-image-2.6-flare'],
+      );
+      final purefox = aiProviderBuiltinById('purefox_media')!.copyWith(
+        id: 'purefox-image',
+        enabled: true,
+        apiKey: 'key',
+        imageModels: const ['gpt-image-2.6'],
+      );
+      await appDb.aiProviderDao.upsert(api88);
+      await appDb.aiProviderDao.upsert(purefox);
+
+      Future<void> configure({
+        required String providerId,
+        required String modelId,
+        ImageGenerationPreset? preset,
+      }) async {
+        final clip = (await canvas.shots.getShot(node.clipId!))!;
+        await canvas.shots.apply(clip.id, {
+          ...canvas.shots.snapshot(clip),
+          'prompt': 'A quiet harbor',
+          'provider_id': providerId,
+          'model_id': modelId,
+          'ratio': '16:9',
+          'resolution': '1K',
+        });
+        if (preset != null) {
+          await db.canvasDao.updateActiveNodeFields(
+            node.id,
+            CanvasNodesCompanion(
+              style: Value({'imageGeneration': preset.toJson()}),
+            ),
+          );
+        }
+      }
+
+      await configure(
+        providerId: 'api88-image',
+        modelId: 'gpt-image-2.6-flare',
+      );
+      final defaulted = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      expect(defaulted.request.complexity, 'high');
+      expect(defaulted.request.capabilities!.complexityLevels, {
+        'low',
+        'medium',
+        'high',
+      });
+
+      await configure(
+        providerId: 'api88-image',
+        modelId: 'gpt-image-2.6-flare',
+        preset: const ImageGenerationPreset(complexity: 'medium'),
+      );
+      final explicit = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      expect(explicit.request.complexity, 'medium');
+
+      await configure(
+        providerId: 'purefox-image',
+        modelId: 'gpt-image-2.6',
+        preset: const ImageGenerationPreset(complexity: 'medium'),
+      );
+      final cleared = await ProductionImageGenerateOrchestrator().preview(
+        canvas,
+        node.id,
+      );
+      expect(cleared.request.complexity, isNull);
+    },
+  );
 }
 
 class _RecordFailJobs extends ImageTaskService {

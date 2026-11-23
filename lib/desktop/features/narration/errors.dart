@@ -4,6 +4,8 @@
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/screenplay.json
 //   assets/translations/zh-CN/screenplay.json
+//   assets/translations/en/reading.json
+//   assets/translations/zh-CN/reading.json
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
 
@@ -19,6 +21,8 @@ String narrationErrorText(BuildContext context, Object error) {
           error.messageKey ??
               switch (error.code) {
                 'narration_empty' => LocaleKeys.narrationEmpty,
+                'narration_no_dialogue' =>
+                  LocaleKeys.readingNarrationNoDialogue,
                 'narration_character_missing' =>
                   LocaleKeys.narrationMissingCharacter,
                 'narration_location_missing' ||

@@ -9,7 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../models/ai_provider.dart';
 import '../models/audio/channels.dart';
+import '../models/audio/speech.dart';
 import '../services/ai/audio/client.dart';
+import '../services/ai/audio/doubao_tts.dart';
 import '../services/ai/audio/seed.dart';
 import '../services/ai/audio/moss.dart';
 import '../services/ai/audio/minimax.dart';
@@ -42,6 +44,14 @@ final productionAudioInvokeProvider = Provider<ProductionAudioInvoke>(
           apiKey,
           providerType: type,
         ),
+        AudioProtocol.seed_audio
+            when doubaoTtsVoices.containsKey(request.modelId) =>
+          DoubaoTtsClient(
+            httpClient,
+            apiKey,
+            providerType: type,
+            resourceId: request.modelId,
+          ),
         AudioProtocol.seed_audio => SeedAudioClient(
           httpClient,
           apiKey,

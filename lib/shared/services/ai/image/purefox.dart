@@ -24,11 +24,8 @@ class PurefoxImageClient extends ImageClient {
     final channel = validatedChannel(request);
     final caps = channel?.capabilities;
     if (caps != null) {
-      // 站点目录只给 quality 档位，不给比例；未声明比例的型号由服务端校验。
-      final ratios = caps.ratios;
       if (request.aspectRatio != null &&
-          ratios.length > 1 &&
-          !ratios.contains(request.aspectRatio)) {
+          !caps.ratios.contains(request.aspectRatio)) {
         throw invalidImageParameter();
       }
       if (request.resolution != null &&
@@ -80,9 +77,14 @@ class PurefoxImageClient extends ImageClient {
     if (tier != null && tier.isNotEmpty) {
       return tier;
     }
-    if (resolution != null && resolution.isNotEmpty) {
+    if (resolution != null && resolution.isNotEmpty && resolution != 'auto') {
       return resolution;
     }
-    return supported?.first ?? '1K';
+    for (final value in supported ?? const <String>{}) {
+      if (value != 'auto') {
+        return value;
+      }
+    }
+    return '1K';
   }
 }

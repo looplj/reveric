@@ -2,6 +2,7 @@
 // 关联文件:
 //   lib/mobile/features/screenplay/editor_page.dart
 //   lib/mobile/widgets/section_panel.dart
+//   lib/mobile/widgets/compendium_panel.dart
 //   lib/mobile/widgets/characters_panel.dart
 //   lib/mobile/widgets/entity_graph_panel.dart
 //   lib/shared/widgets/story_progress_panel.dart
@@ -19,6 +20,8 @@
 //   .agents/rules/state-management.md
 //   .agents/rules/design-system.md
 //   .agents/rules/error-handling.md
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -39,6 +42,7 @@ import '../../../shared/widgets/relation_edit_dialog.dart';
 import '../../../shared/widgets/story_progress_panel.dart';
 import '../../pages/character_editor_page.dart';
 import '../../pages/foreshadowing_editor_page.dart';
+import '../../widgets/compendium_panel.dart';
 import '../../widgets/foreshadowings_panel.dart';
 import '../../pages/entry_editor_page.dart';
 import '../../pages/location_editor_page.dart';
@@ -49,15 +53,39 @@ import '../../widgets/section_panel.dart';
 
 final _log = AppLogger.forModule('MobileScreenplaySharedContent');
 
+/// 返回共享分区对应的新建文案 key；无新建入口的分区返回 null。
+String? mobileScreenplayCreateLabelKey(ScreenplayWorkspaceSection section) {
+  return switch (section) {
+    ScreenplayWorkspaceSection.characters => LocaleKeys.workspaceNewCharacter,
+    ScreenplayWorkspaceSection.foreshadowings =>
+      LocaleKeys.workspaceNewForeshadowing,
+    ScreenplayWorkspaceSection.lore => MobileEditorSection.lore.newLabelKey,
+    ScreenplayWorkspaceSection.compendium =>
+      LocaleKeys.workspaceNewCompendiumEntry,
+    ScreenplayWorkspaceSection.maps => LocaleKeys.mapEditorCreateWorldTitle,
+    ScreenplayWorkspaceSection.materials =>
+      MobileEditorSection.materials.newLabelKey,
+    ScreenplayWorkspaceSection.entity_graph =>
+      LocaleKeys.entityGraphAddRelation,
+    _ => null,
+  };
+}
+
 class MobileScreenplaySharedContent extends HookConsumerWidget {
   const MobileScreenplaySharedContent({
     super.key,
     required this.novel,
     required this.section,
+    required this.registerCreate,
   });
 
   final Novel novel;
   final ScreenplayWorkspaceSection section;
+  final void Function(
+    ScreenplayWorkspaceSection section,
+    Future<void> Function()? handler,
+  )
+  registerCreate;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -66,21 +94,8 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
     final creating = useState(false);
     final simple = switch (section) {
       ScreenplayWorkspaceSection.lore => MobileEditorSection.lore,
-      ScreenplayWorkspaceSection.items => MobileEditorSection.items,
-      ScreenplayWorkspaceSection.factions => MobileEditorSection.factions,
-      ScreenplayWorkspaceSection.creatures => MobileEditorSection.creatures,
-      ScreenplayWorkspaceSection.skills => MobileEditorSection.skills,
       ScreenplayWorkspaceSection.materials => MobileEditorSection.materials,
       _ => null,
-    };
-    final createLabel = switch (section) {
-      ScreenplayWorkspaceSection.characters => LocaleKeys.workspaceNewCharacter,
-      ScreenplayWorkspaceSection.foreshadowings =>
-        LocaleKeys.workspaceNewForeshadowing,
-      ScreenplayWorkspaceSection.maps => LocaleKeys.mapEditorCreateWorldTitle,
-      ScreenplayWorkspaceSection.entity_graph =>
-        LocaleKeys.entityGraphAddRelation,
-      _ => simple?.newLabelKey,
     };
 
     void openGraph() {
@@ -97,7 +112,7 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
           );
     }
 
-    Future<void> create() async {
+    Future<void> create({MobileEditorSection? compendiumSection}) async {
       if (creating.value) {
         return;
       }
@@ -152,8 +167,13 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
             novelId: novel.id,
             locationId: id,
           );
-        } else {
-          final entrySection = simple!;
+        } else if (section == ScreenplayWorkspaceSection.compendium) {
+          final entrySection =
+              compendiumSection ??
+              await showMobileCompendiumCreateSheet(context);
+          if (entrySection == null || !context.mounted) {
+            return;
+          }
           final id = await service.createItem(
             type: entrySection.typeValue,
             defaultTitle: context.t(entrySection.newLabelKey),
@@ -164,6 +184,8 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
             section: entrySection,
             entryId: id,
           );
+        } else {
+          throw StateError('Unsupported create screenplay section: $section');
         }
         if (context.mounted) {
           await Navigator.of(
@@ -188,66 +210,65 @@ class MobileScreenplaySharedContent extends HookConsumerWidget {
       }
     }
 
-    final Widget body;
+    final createRef = useRef<Future<void> Function()>(create);
+    createRef.value = create;
+    final registerCreateRef = useRef(registerCreate);
+    registerCreateRef.value = registerCreate;
+    useEffect(() {
+      if (mobileScreenplayCreateLabelKey(section) == null) {
+        registerCreateRef.value(section, null);
+        return null;
+      }
+      Future<void> dispatch() => createRef.value();
+      registerCreateRef.value(section, dispatch);
+      return () => registerCreateRef.value(section, null);
+    }, [section]);
+
     if (simple != null) {
-      body = MobileSectionPanel(
+      return MobileSectionPanel(
         novelId: novel.id,
         databasePath: path,
         section: simple,
         onCreate: create,
         onRegisterDocumentCreate: (handler) => documentCreate.value = handler,
       );
-    } else {
-      body = switch (section) {
-        ScreenplayWorkspaceSection.foreshadowings => MobileForeshadowingsPanel(
-          novelId: novel.id,
-          databasePath: path,
-          onCreate: create,
-        ),
-        ScreenplayWorkspaceSection.characters => MobileCharactersPanel(
-          novelId: novel.id,
-          databasePath: path,
-          onCreate: create,
-          onOpenGraph: openGraph,
-          isScreenplay: true,
-        ),
-        ScreenplayWorkspaceSection.maps => MobileMapsPanel(
-          novelId: novel.id,
-          databasePath: path,
-          onCreate: create,
-        ),
-        ScreenplayWorkspaceSection.entity_graph => MobileEntityGraphPanel(
-          novelId: novel.id,
-          databasePath: path,
-          onCreate: create,
-        ),
-        ScreenplayWorkspaceSection.story_progress => StoryProgressPanel(
-          databasePath: path,
-          chapters: ref.watch(chaptersProvider(path)).value ?? const [],
-          padding: const EdgeInsets.all(RevericSpacing.x2l),
-        ),
-        _ => throw StateError(
-          'Unsupported shared screenplay section: $section',
-        ),
-      };
     }
-    return Column(
-      children: [
-        if (createLabel != null)
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: RevericSpacing.lg,
-              ),
-              child: TextButton(
-                onPressed: creating.value ? null : create,
-                child: Text(context.t(createLabel)),
-              ),
-            ),
-          ),
-        Expanded(child: body),
-      ],
-    );
+    return switch (section) {
+      ScreenplayWorkspaceSection.foreshadowings => MobileForeshadowingsPanel(
+        novelId: novel.id,
+        databasePath: path,
+        onCreate: create,
+      ),
+      ScreenplayWorkspaceSection.characters => MobileCharactersPanel(
+        novelId: novel.id,
+        databasePath: path,
+        onCreate: create,
+        onOpenGraph: openGraph,
+        isScreenplay: true,
+      ),
+      ScreenplayWorkspaceSection.compendium => MobileCompendiumPanel(
+        novelId: novel.id,
+        databasePath: path,
+        onCreate: (entrySection) {
+          unawaited(create(compendiumSection: entrySection));
+        },
+      ),
+      ScreenplayWorkspaceSection.maps => MobileMapsPanel(
+        novelId: novel.id,
+        databasePath: path,
+        onCreate: create,
+      ),
+      ScreenplayWorkspaceSection.entity_graph => MobileEntityGraphPanel(
+        novelId: novel.id,
+        databasePath: path,
+        onCreate: create,
+      ),
+      ScreenplayWorkspaceSection.story_progress => StoryProgressPanel(
+        databasePath: path,
+        chapters: ref.watch(chaptersProvider(path)).value ?? const [],
+        padding: const EdgeInsets.all(RevericSpacing.x2l),
+      ),
+      _ => throw StateError('Unsupported shared screenplay section: $section'),
+    };
   }
 }

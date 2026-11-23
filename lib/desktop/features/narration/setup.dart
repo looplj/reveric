@@ -74,7 +74,8 @@ class NarrationSetup extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final input = source;
-    final screenplay = input is NarrationSource ? input : null;
+    final novel = input is NovelNarrationSource ? input : null;
+    final characterIds = source.characterIds;
     final form = useForm<_Field>(
       initialValues: {
         _Field.model: (initial.providerId, initial.modelId),
@@ -107,9 +108,19 @@ class NarrationSetup extends HookConsumerWidget {
             selected.provider.type,
             selected.id,
           )!.capabilities;
-    final voices = form.getValue<Map<String, String>>(_Field.voices)!;
     final narrator = form.getValue<String>(_Field.narrator)!;
     final include = form.getValue<bool>(_Field.includeNarration)!;
+    final checked = novel == null ? include : !include;
+    final characterPresets = [
+      for (final voice in capability?.voices ?? const <String>[])
+        if (voice != narrator) voice,
+    ];
+    final voices = {
+      if (novel != null && characterPresets.isNotEmpty)
+        for (final (index, id) in characterIds.indexed)
+          id: characterPresets[index % characterPresets.length],
+      ...form.getValue<Map<String, String>>(_Field.voices)!,
+    };
     final typo = RevericTheme.typographyOf(context);
     final colors = RevericTheme.colorsOf(context);
 
@@ -127,7 +138,9 @@ class NarrationSetup extends HookConsumerWidget {
           narrator: narrator,
           includeNarration: include,
           voices: Map.fromEntries(
-            voices.entries.where((e) => e.value.trim().isNotEmpty),
+            voices.entries.where(
+              (e) => novel != null || e.value.trim().isNotEmpty,
+            ),
           ),
         );
         final segments = compileNarration(
@@ -201,9 +214,8 @@ class NarrationSetup extends HookConsumerWidget {
         )!.capabilities.voices;
         form.updateValue(_Field.narrator, available.firstOrNull ?? '');
         form.updateValue(_Field.voices, <String, String>{
-          for (final (index, id)
-              in (screenplay?.characterIds ?? const <String>{}).indexed)
-            if (available.isNotEmpty)
+          if (novel == null && available.isNotEmpty)
+            for (final (index, id) in characterIds.indexed)
               id: available[(index + 1) % available.length],
         });
       },
@@ -234,9 +246,7 @@ class NarrationSetup extends HookConsumerWidget {
                                 ignoring: busy.value,
                                 child: NarrationVoiceSelect(
                                   label: context.t(
-                                    screenplay == null
-                                        ? LocaleKeys.readingNarrationVoice
-                                        : LocaleKeys.narrationNarrator,
+                                    LocaleKeys.narrationNarrator,
                                   ),
                                   allowNarrator: false,
                                   value: narrator,
@@ -249,7 +259,7 @@ class NarrationSetup extends HookConsumerWidget {
                             ),
                         ],
                       ),
-                      if (capability != null && screenplay != null) ...[
+                      if (capability != null || novel != null) ...[
                         const SizedBox(height: RevericSpacing.sm),
                         MergeSemantics(
                           child: InkWell(
@@ -267,19 +277,24 @@ class NarrationSetup extends HookConsumerWidget {
                             child: Row(
                               children: [
                                 RevericCheckbox(
-                                  value: include,
+                                  value: checked,
                                   onChanged: busy.value
                                       ? null
                                       : (value) {
                                           form.updateValue(
                                             _Field.includeNarration,
-                                            value,
+                                            novel == null ? value : !value,
                                           );
                                         },
                                 ),
                                 Expanded(
                                   child: Text(
-                                    context.t(LocaleKeys.narrationInclude),
+                                    context.t(
+                                      novel == null
+                                          ? LocaleKeys.narrationInclude
+                                          : LocaleKeys
+                                                .readingNarrationDialogueOnly,
+                                    ),
                                     style: typo.ui.copyWith(
                                       color: colors.textSecondary,
                                     ),
@@ -289,7 +304,14 @@ class NarrationSetup extends HookConsumerWidget {
                             ),
                           ),
                         ),
-                        if (screenplay.characterIds.isNotEmpty) ...[
+                        if (novel?.hasUnattributedDialogue ?? false)
+                          Text(
+                            context.t(LocaleKeys.readingNarrationUnattributed),
+                            style: typo.uiSmall.copyWith(
+                              color: colors.textMuted,
+                            ),
+                          ),
+                        if (capability != null && characterIds.isNotEmpty) ...[
                           const SizedBox(height: RevericSpacing.x2l),
                           Divider(height: 1, color: colors.borderSubtle),
                           const SizedBox(height: RevericSpacing.x2l),
@@ -304,14 +326,14 @@ class NarrationSetup extends HookConsumerWidget {
                             spacing: RevericSpacing.x2l,
                             runSpacing: RevericSpacing.lg,
                             children: [
-                              for (final id in screenplay.characterIds)
+                              for (final id in characterIds)
                                 SizedBox(
                                   width: cell,
                                   child: IgnorePointer(
                                     ignoring: busy.value,
                                     child: NarrationVoiceSelect(
                                       label:
-                                          screenplay.characterNames[id] ??
+                                          source.characterNames[id] ??
                                           context.t(
                                             LocaleKeys
                                                 .screenplayDeletedCharacter,

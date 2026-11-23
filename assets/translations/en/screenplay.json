@@ -721,7 +721,7 @@
   "screenplay.production.transcriptionReady": "Transcript added to the canvas",
   "screenplay.production.transcriptionFailed": "Transcription failed",
   "screenplay.production.transcriptionConfig": "Configure a transcription model in AI provider settings",
-  "screenplay.production.transcriptionStorage": "Qwen file transcription requires object storage",
+  "screenplay.production.transcriptionStorage": "The selected transcription model requires object storage",
   "screenplay.production.transcriptionNoSpeech": "No speech was recognized",
   "screenplay.production.transcriptionLimit": "The audio exceeds the selected model’s size or duration limit",
   "screenplay.production.transcriptionUnknown": "Submission receipt missing. Check the task status with the provider."
