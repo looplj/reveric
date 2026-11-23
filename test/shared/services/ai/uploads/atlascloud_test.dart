@@ -14,6 +14,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/production/media.dart';
@@ -63,6 +64,7 @@ void main() {
     test(
       'native queued upload isolates cancellation first=$cancelFirst',
       () async {
+        await file.writeAsBytes(img.encodePng(img.Image(width: 2, height: 3)));
         final entered = Completer<void>();
         final release = Completer<void>();
         var uploads = 0;

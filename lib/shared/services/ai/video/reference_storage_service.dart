@@ -20,6 +20,7 @@ import 'package:uuid/uuid.dart';
 import 'dart:io';
 import 'dart:async';
 import '../../production/ffmpeg_runner.dart';
+import '../../production/image_dimensions.dart';
 import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:http/http.dart' as http;
@@ -503,42 +504,56 @@ class ReferenceStorageService {
     if (inputs.isEmpty) {
       return [];
     }
-    final target = transport == ImageReferenceTransport.url
-        ? await _storageTarget(cancellation: cancellation)
-        : null;
-    if (transport == ImageReferenceTransport.url && target == null) {
-      throw _storageRequired();
-    }
-    // Validate the whole group before the first external upload.
-    for (final (_, file, mime) in inputs) {
-      if (!mime.startsWith('image/') ||
-          !await file.exists() ||
-          await file.length() < 1) {
-        throw const VideoException(
-          VideoErrorCode.invalid_request,
-          field: 'reference_image',
-        );
-      }
-      final info = await _probeInfo(file, cancellation: cancellation);
-      if ((info.width ?? 0) < 1 || (info.height ?? 0) < 1) {
-        throw const VideoException(
-          VideoErrorCode.invalid_request,
-          field: 'reference_image',
-        );
-      }
-      if (transport == ImageReferenceTransport.uploaded) {
-        _validateUpload(provider, mime, await file.length());
-        await _contextHash(provider, mime);
-      }
-    }
-    final result = <Map<String, dynamic>>[];
-    for (final (reference, file, mime) in inputs) {
+    void checkActive() {
       if (_disposed || cancellation?.isCancellationRequested == true) {
         throw PluginHostError(
           'cancelled',
           'Image reference preparation cancelled',
         );
       }
+    }
+
+    checkActive();
+    final target = transport == ImageReferenceTransport.url
+        ? await _storageTarget(cancellation: cancellation)
+        : null;
+    checkActive();
+    if (transport == ImageReferenceTransport.url && target == null) {
+      throw _storageRequired();
+    }
+    // Validate the whole group before the first external upload.
+    for (final (_, file, mime) in inputs) {
+      checkActive();
+      if (!mime.startsWith('image/') || !await file.exists()) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'reference_image',
+        );
+      }
+      final size = await file.length();
+      if (size < 1) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'reference_image',
+        );
+      }
+      if (transport == ImageReferenceTransport.uploaded) {
+        _validateUpload(provider, mime, size);
+        await _contextHash(provider, mime);
+        checkActive();
+      }
+      final dimensions = await readImageDimensions(file);
+      checkActive();
+      if (dimensions == null) {
+        throw const VideoException(
+          VideoErrorCode.invalid_request,
+          field: 'reference_image',
+        );
+      }
+    }
+    final result = <Map<String, dynamic>>[];
+    for (final (reference, file, mime) in inputs) {
+      checkActive();
       final Map<String, dynamic> source;
       switch (transport) {
         case ImageReferenceTransport.file:
