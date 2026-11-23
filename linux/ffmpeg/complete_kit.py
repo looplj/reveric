@@ -34,7 +34,7 @@ ARCHIVE_URL = (
 ARCHIVE_SHA256 = (
     "1e64357ee5effd3a69334acdd7655fb648607898f65ac6b851ee8acb46f5815d"
 )
-SCRIPT_REVISION = "3"
+SCRIPT_REVISION = "4"
 UBUNTU = "https://archive.ubuntu.com/ubuntu"
 DIST_ORDER = ("jammy", "jammy-updates", "jammy-security")
 PACKAGE_COMPONENTS = ("main", "universe", "multiverse")
@@ -62,6 +62,10 @@ SYSTEM_SONAMES = frozenset(
         "libpango-1.0.so.0",
         "libpangocairo-1.0.so.0",
         "libgdk_pixbuf-2.0.so.0",
+        # libass pulls this in through the jammy archive. Bundling jammy's 2.7.4
+        # shadows the newer system build that Pango 1.52 requires, so keep the
+        # soname on the system like the rest of the GTK stack.
+        "libharfbuzz.so.0",
     }
 )
 
