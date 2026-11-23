@@ -22,6 +22,7 @@ import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/services/canvas_gallery/service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/app_background.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -48,6 +49,7 @@ void main() {
             appBackgroundActiveProvider.overrideWithValue(false),
             appSettingsProvider.overrideWith(_StaticSettingsNotifier.new),
             canvasGalleryServiceProvider.overrideWithValue(_FakeService()),
+            guideTourAutoTriggerProvider.overrideWithValue(false),
           ],
           child: EasyLocalization(
             supportedLocales: const [Locale('en')],

@@ -24,7 +24,7 @@ const guideTourStateKeyPrefix = 'guide_tour_seen.';
 enum GuideTourId {
   home('home'),
   aiProviders('ai_providers'),
-  modelSettings('model_settings');
+  skills('skills');
 
   const GuideTourId(this.keySuffix);
 
@@ -44,6 +44,7 @@ class GuideStep {
     this.primaryActionLabel,
     this.onPrimaryAction,
     this.onBeforeEnter,
+    this.childTours = const [],
     this.highlightPadding = 6.0,
     this.highlightRadius = RevericRadius.large,
   });
@@ -58,12 +59,18 @@ class GuideStep {
   /// 可选 Phosphor 图标路径（来自 [RevericIcons]）。
   final String? icon;
 
-  /// 可选额外跳转按钮（例如「去配置供应商」「去看看模型设置」）。
+  /// 可选额外跳转按钮（例如「去看看模型设置」）。
   final String? primaryActionLabel;
   final VoidCallback? onPrimaryAction;
 
-  /// 进入该步骤前执行的可选准备动作（如展开面板）。
+  /// 进入该步骤前执行的可选准备动作（如展开面板或切换页签）。
   final VoidCallback? onBeforeEnter;
+
+  /// 点击「下一步」离开当前步骤后，需要先依次完成的子页面引导。
+  ///
+  /// 子页面引导全部完成后会自动回到当前引导的下一步继续；
+  /// 若用户在任一子页面中途跳过或关闭，则中止后续流程。
+  final List<GuideTourId> childTours;
 
   final double highlightPadding;
   final double highlightRadius;

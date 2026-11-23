@@ -25,6 +25,7 @@ import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/models/marketplace_agent_skill.dart';
 import 'package:reveric/shared/widgets/agent_skill_import_source_form.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -181,6 +182,7 @@ Future<void> _pumpPanel(
         agentSkillCatalogServiceProvider.overrideWithValue(
           catalog ?? _EmptyCatalogService(),
         ),
+        guideTourAutoTriggerProvider.overrideWithValue(false),
       ],
       child: EasyLocalization(
         supportedLocales: const [Locale('en')],

@@ -4,7 +4,6 @@
 //   lib/mobile/features/agent_skills/import_flow.dart
 //   lib/mobile/features/agent_skills/category_filter_bar.dart
 //   lib/mobile/features/agent_skills/tab_states.dart
-//   lib/mobile/widgets/section_scaffold.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/agent_skill.json
 //   assets/translations/zh-CN/agent_skill.json

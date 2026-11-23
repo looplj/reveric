@@ -20,8 +20,6 @@
 //   .agents/rules/hooks.md
 //   .agents/rules/widget-decomposition.md
 
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -39,7 +37,6 @@ import '../../localization/locale_keys.dart';
 import '../../models/ai_provider.dart';
 import '../../providers/settings_providers.dart';
 import '../../theme/theme.dart';
-import '../guide/overlay.dart';
 import '../guide/tour.dart';
 import '../guide/trigger.dart';
 import '../unsaved_changes_dialog.dart';
@@ -133,7 +130,7 @@ class _DesktopProviders extends HookConsumerWidget {
       ),
     );
     final hasConfigured = hasConfiguredAiProvider(settings.aiSettings);
-    final guide = useAutoGuideTour(
+    useAutoGuideTour(
       ref: ref,
       tourId: GuideTourId.aiProviders,
       eligible: !hasConfigured,
@@ -271,7 +268,6 @@ class _DesktopProviders extends HookConsumerWidget {
             selectedId: effectiveSelectedId,
             listKey: listGuideKey,
             addButtonKey: addGuideKey,
-            onReplayGuide: () => unawaited(guide.replay()),
             onSelect: (id) async {
               if (id == effectiveSelectedId || !await confirmLeave()) {
                 return;
@@ -342,7 +338,7 @@ class _MobileProviders extends HookConsumerWidget {
     final listGuideKey = useMemoized(GlobalKey.new);
     final addGuideKey = useMemoized(GlobalKey.new);
     final hasConfigured = hasConfiguredAiProvider(settings.aiSettings);
-    final guide = useAutoGuideTour(
+    useAutoGuideTour(
       ref: ref,
       tourId: GuideTourId.aiProviders,
       eligible: !hasConfigured,
@@ -391,7 +387,6 @@ class _MobileProviders extends HookConsumerWidget {
       selectedId: null,
       listKey: listGuideKey,
       addButtonKey: addGuideKey,
-      onReplayGuide: () => unawaited(guide.replay()),
 
       onSelect: (id) {
         final config = settings.aiSettings.findConfigById(id);
@@ -403,7 +398,6 @@ class _MobileProviders extends HookConsumerWidget {
             builder: (_) => _ProviderConfigRoute(
               title: localizedAiProviderName(context, config),
               providerId: config.id,
-              onOpenModelSettings: onOpenModelSettings,
             ),
           ),
         );
@@ -424,71 +418,16 @@ class _MobileProviders extends HookConsumerWidget {
   }
 }
 
-class _ProviderConfigRoute extends HookWidget {
-  const _ProviderConfigRoute({
-    required this.title,
-    required this.providerId,
-    this.onOpenModelSettings,
-  });
+class _ProviderConfigRoute extends StatelessWidget {
+  const _ProviderConfigRoute({required this.title, required this.providerId});
 
   final String title;
   final String providerId;
-  final VoidCallback? onOpenModelSettings;
 
   @override
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final guideKeys = useMemoized(
-      () => ProviderConfigGuideKeys(
-        credentials: GlobalKey(),
-        models: GlobalKey(),
-        enableSwitch: GlobalKey(),
-      ),
-    );
-
-    void replayDetailGuide() {
-      unawaited(
-        showGuideTour(
-          context,
-          steps: [
-            GuideStep(
-              id: 'mobile_provider_credentials',
-              targetKey: guideKeys.credentials,
-              icon: RevericIcons.lock_key,
-              title: context.t(
-                LocaleKeys.onboardingGuideProvidersCredentialsTitle,
-              ),
-              description: context.t(
-                LocaleKeys.onboardingGuideProvidersCredentialsBody,
-              ),
-            ),
-            GuideStep(
-              id: 'mobile_provider_models',
-              targetKey: guideKeys.models,
-              icon: RevericIcons.auto_awesome_outlined,
-              title: context.t(LocaleKeys.onboardingGuideProvidersModelsTitle),
-              description: context.t(
-                LocaleKeys.onboardingGuideProvidersModelsBody,
-              ),
-            ),
-            GuideStep(
-              id: 'mobile_provider_enable',
-              targetKey: guideKeys.enableSwitch,
-              icon: RevericIcons.tune,
-              title: context.t(LocaleKeys.onboardingGuideProvidersEnableTitle),
-              description: context.t(
-                LocaleKeys.onboardingGuideProvidersEnableBody,
-              ),
-              primaryActionLabel: onOpenModelSettings != null
-                  ? context.t(LocaleKeys.onboardingGuideGoModelSettings)
-                  : null,
-              onPrimaryAction: onOpenModelSettings,
-            ),
-          ],
-        ),
-      );
-    }
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -503,14 +442,9 @@ class _ProviderConfigRoute extends HookWidget {
           title,
           style: typo.heading2.copyWith(color: colors.textPrimary),
         ),
-        actions: [
-          GuideReplayButton(onPressed: replayDetailGuide),
-          const SizedBox(width: RevericSpacing.xs),
-        ],
       ),
       body: ProviderConfigPanel(
         providerId: providerId,
-        guideKeys: guideKeys,
         onDeleted: () => Navigator.of(context).pop(),
       ),
     );
@@ -626,7 +560,6 @@ class ProviderList extends HookWidget {
     this.draft,
     this.listKey,
     this.addButtonKey,
-    this.onReplayGuide,
   });
   final List<AiProvider> configs;
   final String? selectedId;
@@ -637,7 +570,6 @@ class ProviderList extends HookWidget {
   final AiProvider? draft;
   final GlobalKey? listKey;
   final GlobalKey? addButtonKey;
-  final VoidCallback? onReplayGuide;
 
   @override
   Widget build(BuildContext context) {
@@ -667,10 +599,6 @@ class ProviderList extends HookWidget {
                     hint: context.t(LocaleKeys.providerSearchHint),
                   ),
                 ),
-                if (onReplayGuide != null) ...[
-                  const SizedBox(width: RevericSpacing.xxs),
-                  GuideReplayButton(onPressed: onReplayGuide),
-                ],
                 const SizedBox(width: RevericSpacing.xxs),
                 RevericPopover(
                   trigger: (context, open, toggle) => RevericIconButton(

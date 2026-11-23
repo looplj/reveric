@@ -15,6 +15,7 @@
 //   lib/shared/components/reveric_search_field.dart
 //   lib/shared/widgets/confirm_dialog.dart
 //   lib/shared/components/reveric_text_field.dart
+//   lib/shared/widgets/guide/trigger.dart
 //   lib/shared/localization/locale_keys.dart
 //   lib/shared/logger/app_logger.dart
 //   lib/desktop/features/agent_skills/source_card.dart
@@ -26,6 +27,8 @@
 //   lib/desktop/widgets/desktop_window_frame.dart
 //   assets/translations/en/agent_skill.json
 //   assets/translations/zh-CN/agent_skill.json
+//   assets/translations/en/onboarding.json
+//   assets/translations/zh-CN/onboarding.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -62,6 +65,8 @@ import '../../../shared/widgets/agent_skill_export_dialog.dart';
 import '../../../shared/widgets/agent_skill_import_dialog.dart';
 import '../../../shared/widgets/agent_skill_import_source_form.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
+import '../../../shared/widgets/guide/tour.dart';
+import '../../../shared/widgets/guide/trigger.dart';
 import '../../widgets/desktop_window_frame.dart';
 import 'catalog_detail_panel.dart';
 import 'installed_skill_detail_panel.dart';
@@ -111,6 +116,38 @@ class SkillSetupPanel extends HookConsumerWidget {
     final catalogDetail = useState<AgentSkillCatalogDetailTarget?>(null);
     // 非 null 时整页切换为已安装技能只读详情。
     final installedDetail = useState<NovelAgentSkillModel?>(null);
+    final listGuideKey = useMemoized(GlobalKey.new);
+    final marketGuideKey = useMemoized(GlobalKey.new);
+    final guideReady =
+        catalogDetail.value == null && installedDetail.value == null;
+    useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.skills,
+      ready: guideReady,
+      keys: [guideReady],
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'skills_list',
+          targetKey: listGuideKey,
+          icon: RevericIcons.layers_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideSkillsListTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideSkillsListBody),
+          onBeforeEnter: () {
+            tab.value = _SkTab.installed;
+          },
+        ),
+        GuideStep(
+          id: 'skills_market',
+          targetKey: marketGuideKey,
+          icon: RevericIcons.storefront,
+          title: ctx.t(LocaleKeys.onboardingGuideSkillsMarketTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideSkillsMarketBody),
+          onBeforeEnter: () {
+            tab.value = _SkTab.market;
+          },
+        ),
+      ],
+    );
     // 非 null 时整页切换为上传表单。
 
     final installed =
@@ -422,50 +459,53 @@ class SkillSetupPanel extends HookConsumerWidget {
             ),
           Expanded(
             child: switch (tab.value) {
-              _SkTab.installed => _InstalledList(
-                items: installed,
-                onToggle: (id) async {
-                  await ref
-                      .read(installedAgentSkillsProvider.notifier)
-                      .toggleEnabled(id);
-                },
-                onAction: (action, item) async {
-                  switch (action) {
-                    case _RowAction.remove:
-                      final confirmed = await showConfirmDialog(
-                        context,
-                        title: context.t(LocaleKeys.commonDelete),
-                        message: context.t(
-                          LocaleKeys.agentSkillDeleteConfirm,
-                          namedArgs: {'name': item.name},
-                        ),
-                        confirmLabel: context.t(LocaleKeys.agentSkillRemove),
-                        variant: ConfirmDialogVariant.error,
-                      );
-                      if (!confirmed) {
-                        return;
-                      }
-                      await ref
-                          .read(installedAgentSkillsProvider.notifier)
-                          .remove(item.id);
-                      if (!context.mounted) {
-                        return;
-                      }
-                      await flash(
-                        context.t(
-                          LocaleKeys.agentSkillToastRemoved,
-                          namedArgs: {'name': item.name},
-                        ),
-                      );
-                    case _RowAction.revoked:
-                      dialog.value = _SkDialog.revoked(item: item);
-                  }
-                },
-                onCreate: onCreateInstalledSkill,
-                onOpen: onOpenInstalledSkill,
-                onOpenDetail: (item) {
-                  installedDetail.value = item;
-                },
+              _SkTab.installed => KeyedSubtree(
+                key: listGuideKey,
+                child: _InstalledList(
+                  items: installed,
+                  onToggle: (id) async {
+                    await ref
+                        .read(installedAgentSkillsProvider.notifier)
+                        .toggleEnabled(id);
+                  },
+                  onAction: (action, item) async {
+                    switch (action) {
+                      case _RowAction.remove:
+                        final confirmed = await showConfirmDialog(
+                          context,
+                          title: context.t(LocaleKeys.commonDelete),
+                          message: context.t(
+                            LocaleKeys.agentSkillDeleteConfirm,
+                            namedArgs: {'name': item.name},
+                          ),
+                          confirmLabel: context.t(LocaleKeys.agentSkillRemove),
+                          variant: ConfirmDialogVariant.error,
+                        );
+                        if (!confirmed) {
+                          return;
+                        }
+                        await ref
+                            .read(installedAgentSkillsProvider.notifier)
+                            .remove(item.id);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        await flash(
+                          context.t(
+                            LocaleKeys.agentSkillToastRemoved,
+                            namedArgs: {'name': item.name},
+                          ),
+                        );
+                      case _RowAction.revoked:
+                        dialog.value = _SkDialog.revoked(item: item);
+                    }
+                  },
+                  onCreate: onCreateInstalledSkill,
+                  onOpen: onOpenInstalledSkill,
+                  onOpenDetail: (item) {
+                    installedDetail.value = item;
+                  },
+                ),
               ),
               _SkTab.official => OfficialCatalogTab(
                 flash: flash,
@@ -473,8 +513,11 @@ class SkillSetupPanel extends HookConsumerWidget {
                   catalogDetail.value = OfficialSkillCatalogDetail(skill);
                 },
               ),
-              _SkTab.market => MarketplaceCatalogTab(
-                onImport: (url) => importInstalledSkills(initialUrl: url),
+              _SkTab.market => KeyedSubtree(
+                key: marketGuideKey,
+                child: MarketplaceCatalogTab(
+                  onImport: (url) => importInstalledSkills(initialUrl: url),
+                ),
               ),
             },
           ),

@@ -915,8 +915,12 @@ class NovelHomePage extends HookConsumerWidget {
         screenplay: GlobalKey(),
         canvas: GlobalKey(),
         models: GlobalKey(),
+        skills: GlobalKey(),
+        plugins: GlobalKey(),
+        usage: GlobalKey(),
       ),
     );
+    final galleryGuideKey = useMemoized(GlobalKey.new);
     useAutoGuideTour(
       ref: ref,
       tourId: GuideTourId.home,
@@ -927,6 +931,11 @@ class NovelHomePage extends HookConsumerWidget {
           icon: RevericIcons.menu_book_rounded,
           title: ctx.t(LocaleKeys.onboardingGuideHomeNovelTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeNovelBody),
+          onBeforeEnter: () {
+            unawaited(
+              selectContent(const _HomeLibrarySelection(contentKindNovel)),
+            );
+          },
         ),
         GuideStep(
           id: 'home_screenplay',
@@ -934,6 +943,11 @@ class NovelHomePage extends HookConsumerWidget {
           icon: RevericIcons.movie_outlined,
           title: ctx.t(LocaleKeys.onboardingGuideHomeScreenplayTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeScreenplayBody),
+          onBeforeEnter: () {
+            unawaited(
+              selectContent(const _HomeLibrarySelection(contentKindScreenplay)),
+            );
+          },
         ),
         GuideStep(
           id: 'home_canvas',
@@ -941,6 +955,23 @@ class NovelHomePage extends HookConsumerWidget {
           icon: RevericIcons.flow_arrow,
           title: ctx.t(LocaleKeys.onboardingGuideHomeCanvasTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeCanvasBody),
+          onBeforeEnter: () {
+            unawaited(
+              selectContent(const _HomeLibrarySelection(contentKindCanvas)),
+            );
+          },
+        ),
+        GuideStep(
+          id: 'home_gallery',
+          targetKey: galleryGuideKey,
+          icon: RevericIcons.public,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeGalleryTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeGalleryBody),
+          onBeforeEnter: () {
+            unawaited(
+              selectContent(const _HomeLibrarySelection(contentKindCanvas)),
+            );
+          },
         ),
         GuideStep(
           id: 'home_models',
@@ -948,15 +979,60 @@ class NovelHomePage extends HookConsumerWidget {
           icon: RevericIcons.hub_outlined,
           title: ctx.t(LocaleKeys.onboardingGuideHomeModelsTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeModelsBody),
-          primaryActionLabel: selection.value is! _HomeAiProvidersSelection
-              ? ctx.t(LocaleKeys.onboardingGuideGoProviders)
-              : null,
-          onPrimaryAction: selection.value is! _HomeAiProvidersSelection
-              ? () => selectContent(const _HomeAiProvidersSelection())
-              : null,
+          onBeforeEnter: () {
+            unawaited(selectContent(const _HomeAiProvidersSelection()));
+          },
+          childTours: const [GuideTourId.aiProviders],
+        ),
+        GuideStep(
+          id: 'home_skills',
+          targetKey: homeGuideKeys.skills,
+          icon: RevericIcons.auto_awesome_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeSkillsTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeSkillsBody),
+          onBeforeEnter: () {
+            unawaited(selectContent(const _HomeSkillListSelection()));
+          },
+          childTours: const [GuideTourId.skills],
+        ),
+        GuideStep(
+          id: 'home_plugins',
+          targetKey: homeGuideKeys.plugins,
+          icon: RevericIcons.layers_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideHomePluginsTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomePluginsBody),
+          onBeforeEnter: () {
+            unawaited(selectContent(const _HomePluginsSelection()));
+          },
+        ),
+        GuideStep(
+          id: 'home_usage',
+          targetKey: homeGuideKeys.usage,
+          icon: RevericIcons.bar_chart_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideHomeUsageTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideHomeUsageBody),
+          onBeforeEnter: () {
+            unawaited(selectContent(const _HomeUsageSelection()));
+          },
         ),
       ],
+      onClosed: (completed) {
+        if (!completed) {
+          return;
+        }
+        unawaited(selectContent(const _HomeLibrarySelection(contentKindNovel)));
+      },
     );
+    useOnListenableChange(guideTourChain.current, () {
+      switch (guideTourChain.current.value) {
+        case GuideTourId.aiProviders:
+          unawaited(selectContent(const _HomeAiProvidersSelection()));
+        case GuideTourId.skills:
+          unawaited(selectContent(const _HomeSkillListSelection()));
+        case GuideTourId.home || null:
+          break;
+      }
+    });
 
     HomeLibraryPanel buildLibraryPanel(String contentKind) {
       return HomeLibraryPanel(
@@ -975,6 +1051,9 @@ class NovelHomePage extends HookConsumerWidget {
                   builder: (_) => const CanvasGalleryPage(),
                 ),
               )
+            : null,
+        galleryGuideKey: contentKind == contentKindCanvas
+            ? galleryGuideKey
             : null,
         onImportScreenplay: importScreenplay,
         onCreateDemoNovel: () => createDemoNovelWithNavigation(context, ref),
@@ -1238,6 +1317,9 @@ class NovelHomePage extends HookConsumerWidget {
       GlobalKey screenplay,
       GlobalKey canvas,
       GlobalKey models,
+      GlobalKey skills,
+      GlobalKey plugins,
+      GlobalKey usage,
     })
     homeGuideKeys,
   }) {
@@ -1363,6 +1445,7 @@ class NovelHomePage extends HookConsumerWidget {
                 ),
                 _buildLeafNavItem(
                   context,
+                  itemKey: homeGuideKeys.skills,
                   icon: RevericIcons.auto_awesome_outlined,
                   title: context.t(LocaleKeys.agentSkillTitle),
                   isSelected: skillsSelected,
@@ -1490,6 +1573,7 @@ class NovelHomePage extends HookConsumerWidget {
                 ),
                 _buildLeafNavItem(
                   context,
+                  itemKey: homeGuideKeys.plugins,
                   icon: RevericIcons.layers_outlined,
                   title: context.t(LocaleKeys.settingsPlugins),
                   isSelected: selection is _HomePluginsSelection,
@@ -1499,6 +1583,7 @@ class NovelHomePage extends HookConsumerWidget {
                 ),
                 _buildLeafNavItem(
                   context,
+                  itemKey: homeGuideKeys.usage,
                   icon: RevericIcons.bar_chart_outlined,
                   title: context.t(LocaleKeys.homeUsage),
                   isSelected: selection is _HomeUsageSelection,

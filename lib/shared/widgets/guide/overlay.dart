@@ -28,16 +28,63 @@ import '../../localization/locale_keys.dart';
 import '../../theme/theme.dart';
 import 'tour.dart';
 
-/// 显示一套分步锚点高亮引导；在用户完成、跳过或按 Esc 关闭后返回。
-Future<void> showGuideTour(
+/// 等到当前帧的 post-frame。build 阶段调用时，回调落在这一帧结束之后。
+Future<void> _afterCurrentFrame() {
+  final done = Completer<void>();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!done.isCompleted) {
+      done.complete();
+    }
+  });
+  WidgetsBinding.instance.ensureVisualUpdate();
+  return done.future;
+}
+
+/// 分步引导遮罩的关闭结果。
+sealed class GuideTourResult {
+  const GuideTourResult();
+}
+
+/// 走到最后一步并按下完成（或子引导链中的下一步）。
+final class GuideTourCompleted extends GuideTourResult {
+  const GuideTourCompleted();
+}
+
+/// 跳过、关闭、按 Esc 或点击额外跳转按钮离开引导。
+final class GuideTourDismissed extends GuideTourResult {
+  const GuideTourDismissed();
+}
+
+/// 当前步骤声明了 [GuideStep.childTours]，需先暂停当前遮罩去展示子页面引导，
+/// 子引导全部完成后从 [resumeStepIndex] 继续。
+final class GuideTourPausedForChildren extends GuideTourResult {
+  const GuideTourPausedForChildren({
+    required this.childTours,
+    required this.resumeStepIndex,
+  });
+
+  final List<GuideTourId> childTours;
+  final int resumeStepIndex;
+}
+
+/// 显示一套分步锚点高亮引导。
+///
+/// [initialStepIndex] 指定起始步骤（用于从子页面引导返回后恢复）；
+/// [hasFollowingTour] 为 true 时，最后一步主按钮显示「下一步」而非「完成」。
+Future<GuideTourResult> showGuideTour(
   BuildContext context, {
   required List<GuideStep> steps,
+  int initialStepIndex = 0,
+  bool hasFollowingTour = false,
 }) async {
-  if (steps.isEmpty || !context.mounted) {
-    return;
+  if (steps.isEmpty ||
+      initialStepIndex < 0 ||
+      initialStepIndex >= steps.length ||
+      !context.mounted) {
+    return const GuideTourDismissed();
   }
   final themeData = RevericTheme.of(context);
-  await showGeneralDialog<void>(
+  final result = await showGeneralDialog<GuideTourResult>(
     context: context,
     useRootNavigator: true,
     barrierDismissible: false,
@@ -46,21 +93,32 @@ Future<void> showGuideTour(
     transitionDuration: const Duration(milliseconds: 180),
     pageBuilder: (dialogContext, _, _) => RevericTheme(
       data: themeData,
-      child: _GuideTourOverlay(steps: steps),
+      child: _GuideTourOverlay(
+        steps: steps,
+        initialStepIndex: initialStepIndex,
+        hasFollowingTour: hasFollowingTour,
+      ),
     ),
     transitionBuilder: (_, animation, _, child) => FadeTransition(
       opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
       child: child,
     ),
   );
+  return result ?? const GuideTourDismissed();
 }
 
 enum _BubblePlacement { below, above, right, left, center }
 
 class _GuideTourOverlay extends HookWidget {
-  const _GuideTourOverlay({required this.steps});
+  const _GuideTourOverlay({
+    required this.steps,
+    required this.initialStepIndex,
+    required this.hasFollowingTour,
+  });
 
   final List<GuideStep> steps;
+  final int initialStepIndex;
+  final bool hasFollowingTour;
 
   @override
   Widget build(BuildContext context) {
@@ -70,16 +128,24 @@ class _GuideTourOverlay extends HookWidget {
     final viewport = media.size;
     final padding = media.padding;
 
-    final stepIndex = useState(0);
+    final stepIndex = useState(initialStepIndex);
     final targetRect = useState<Rect?>(null);
     final measureToken = useState(0);
     final currentStep = steps[stepIndex.value];
     final isFirst = stepIndex.value == 0;
     final isLast = stepIndex.value == steps.length - 1;
+    final isFinalStep =
+        isLast && !hasFollowingTour && currentStep.childTours.isEmpty;
 
     Future<void> resolveTarget(GuideStep step, int expectedIndex) async {
+      // useEffect 在 build 里同步执行。准备动作会改父页面状态，
+      // 和 onPrimaryAction 一样延到这一帧结束之后。
+      await _afterCurrentFrame();
+      if (!context.mounted || stepIndex.value != expectedIndex) {
+        return;
+      }
       step.onBeforeEnter?.call();
-      await WidgetsBinding.instance.endOfFrame;
+      await _afterCurrentFrame();
       if (!context.mounted || stepIndex.value != expectedIndex) {
         return;
       }
@@ -121,11 +187,14 @@ class _GuideTourOverlay extends HookWidget {
       return null;
     }, [stepIndex.value, measureToken.value, viewport.width, viewport.height]);
 
-    void closeTour() {
-      if (Navigator.of(context, rootNavigator: true).canPop()) {
-        Navigator.of(context, rootNavigator: true).pop();
+    void closeWithResult(GuideTourResult result) {
+      final navigator = Navigator.of(context, rootNavigator: true);
+      if (navigator.canPop()) {
+        navigator.pop(result);
       }
     }
+
+    void closeTour() => closeWithResult(const GuideTourDismissed());
 
     void goBack() {
       if (stepIndex.value > 0) {
@@ -134,10 +203,19 @@ class _GuideTourOverlay extends HookWidget {
     }
 
     void goNext() {
+      if (currentStep.childTours.isNotEmpty) {
+        closeWithResult(
+          GuideTourPausedForChildren(
+            childTours: currentStep.childTours,
+            resumeStepIndex: stepIndex.value + 1,
+          ),
+        );
+        return;
+      }
       if (stepIndex.value < steps.length - 1) {
         stepIndex.value = stepIndex.value + 1;
       } else {
-        closeTour();
+        closeWithResult(const GuideTourCompleted());
       }
     }
 
@@ -224,7 +302,7 @@ class _GuideTourOverlay extends HookWidget {
                       totalSteps: steps.length,
                       width: cardWidth,
                       isFirst: isFirst,
-                      isLast: isLast,
+                      isLast: isFinalStep,
                       colors: colors,
                       typo: typo,
                       onClose: closeTour,
@@ -253,7 +331,7 @@ class _GuideTourOverlay extends HookWidget {
                       totalSteps: steps.length,
                       width: cardWidth,
                       isFirst: isFirst,
-                      isLast: isLast,
+                      isLast: isFinalStep,
                       colors: colors,
                       typo: typo,
                       onClose: closeTour,
@@ -653,9 +731,7 @@ class _GuideCard extends StatelessWidget {
               height: 1.55,
             ),
           ),
-          if (!isLast &&
-              step.primaryActionLabel != null &&
-              onPrimaryAction != null) ...[
+          if (step.primaryActionLabel != null && onPrimaryAction != null) ...[
             const SizedBox(height: RevericSpacing.md),
             RevericButton.secondary(
               size: RevericButtonSize.compact,
@@ -672,13 +748,6 @@ class _GuideCard extends StatelessWidget {
                   size: RevericButtonSize.compact,
                   label: context.t(LocaleKeys.onboardingSkip),
                   onPressed: onClose,
-                )
-              else if (step.primaryActionLabel != null &&
-                  onPrimaryAction != null)
-                RevericButton.text(
-                  size: RevericButtonSize.compact,
-                  label: context.t(LocaleKeys.onboardingGuideDone),
-                  onPressed: onClose,
                 ),
               const Spacer(),
               if (!isFirst) ...[
@@ -689,23 +758,13 @@ class _GuideCard extends StatelessWidget {
                 ),
                 const SizedBox(width: RevericSpacing.sm),
               ],
-              if (isLast &&
-                  step.primaryActionLabel != null &&
-                  onPrimaryAction != null)
-                RevericButton.primary(
-                  size: RevericButtonSize.compact,
-                  label: step.primaryActionLabel!,
-                  icon: RevericIcons.arrow_forward,
-                  onPressed: onPrimaryAction,
-                )
-              else
-                RevericButton.primary(
-                  size: RevericButtonSize.compact,
-                  label: isLast
-                      ? context.t(LocaleKeys.onboardingGuideDone)
-                      : context.t(LocaleKeys.onboardingNext),
-                  onPressed: onNext,
-                ),
+              RevericButton.primary(
+                size: RevericButtonSize.compact,
+                label: isLast
+                    ? context.t(LocaleKeys.onboardingGuideDone)
+                    : context.t(LocaleKeys.onboardingNext),
+                onPressed: onNext,
+              ),
             ],
           ),
         ],

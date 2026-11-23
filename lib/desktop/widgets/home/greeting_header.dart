@@ -41,6 +41,7 @@ class GreetingHeader extends StatelessWidget {
     required this.onImport,
     required this.importLabel,
     this.onOpenCanvasGallery,
+    this.galleryGuideKey,
     required this.username,
     required this.featuredTitle,
     required this.headerGestureExclusionKey,
@@ -55,6 +56,7 @@ class GreetingHeader extends StatelessWidget {
   final VoidCallback? onImport;
   final String importLabel;
   final VoidCallback? onOpenCanvasGallery;
+  final GlobalKey? galleryGuideKey;
   final String? username;
   final String? featuredTitle;
   final GlobalKey headerGestureExclusionKey;
@@ -132,10 +134,13 @@ class GreetingHeader extends StatelessWidget {
               runSpacing: RevericSpacing.sm,
               children: [
                 if (onOpenCanvasGallery case final openGallery?)
-                  RevericButton.secondary(
-                    label: context.t(LocaleKeys.productionCanvasGallery),
-                    icon: RevericIcons.public,
-                    onPressed: openGallery,
+                  KeyedSubtree(
+                    key: galleryGuideKey,
+                    child: RevericButton.secondary(
+                      label: context.t(LocaleKeys.productionCanvasGallery),
+                      icon: RevericIcons.public,
+                      onPressed: openGallery,
+                    ),
                   ),
                 if (onImport != null)
                   OutlinedButton.icon(

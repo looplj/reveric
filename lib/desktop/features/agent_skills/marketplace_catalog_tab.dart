@@ -4,7 +4,6 @@
 //   lib/desktop/features/agent_skills/catalog_filter_bar.dart
 //   lib/desktop/features/agent_skills/source_card.dart
 //   lib/desktop/features/agent_skills/catalog_states.dart
-//   lib/desktop/features/agent_skills/setup_panel.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/agent_skill.json
 //   assets/translations/zh-CN/agent_skill.json

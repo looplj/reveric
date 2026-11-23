@@ -107,6 +107,19 @@ class CanvasGalleryPage extends HookConsumerWidget {
     );
 
     final visible = items.value;
+    CanvasGalleryItem? featured;
+    var rest = const <CanvasGalleryItem>[];
+    if (visible != null && visible.isNotEmpty) {
+      featured =
+          visible.where((item) => item.pinned).firstOrNull ??
+          visible.reduce(
+            (a, b) => b.publishedAt.isAfter(a.publishedAt) ? b : a,
+          );
+      rest = [
+        for (final item in visible)
+          if (item.id != featured.id) item,
+      ];
+    }
     final Widget body;
     if (visible == null && loading.value) {
       body = _GalleryScroll(
@@ -136,21 +149,12 @@ class CanvasGalleryPage extends HookConsumerWidget {
         ),
       );
     } else {
+      final hero = featured!;
       void open(CanvasGalleryItem item) => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => CanvasGalleryDetailPage(item: item),
         ),
       );
-      // 置顶优先；没有置顶就选已加载里最新发布的一张，其余按服务端顺序进网格。
-      final hero =
-          visible.where((item) => item.pinned).firstOrNull ??
-          visible.reduce(
-            (a, b) => b.publishedAt.isAfter(a.publishedAt) ? b : a,
-          );
-      final rest = [
-        for (final item in visible)
-          if (item.id != hero.id) item,
-      ];
       body = _GalleryScroll(
         controller: scroll,
         slivers: [

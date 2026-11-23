@@ -2,7 +2,6 @@
 // 关联文件:
 //   lib/shared/widgets/settings/plugins/row.dart
 //   lib/shared/widgets/settings/plugins/install_button.dart
-//   lib/shared/widgets/settings/plugins/navigation.dart
 //   lib/shared/providers/plugin_providers.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json

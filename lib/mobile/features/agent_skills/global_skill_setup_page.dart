@@ -3,9 +3,12 @@
 //   lib/mobile/features/agent_skills/novel_agent_skill_manage_page.dart
 //   lib/mobile/features/agent_skills/official_tab.dart
 //   lib/mobile/features/agent_skills/marketplace_tab.dart
+//   lib/shared/widgets/guide/trigger.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/agent_skill.json
 //   assets/translations/zh-CN/agent_skill.json
+//   assets/translations/en/onboarding.json
+//   assets/translations/zh-CN/onboarding.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -22,6 +25,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/theme/theme.dart';
+import '../../../shared/widgets/guide/tour.dart';
+import '../../../shared/widgets/guide/trigger.dart';
 import 'novel_agent_skill_manage_page.dart';
 import 'official_tab.dart';
 import 'marketplace_tab.dart';
@@ -34,7 +39,39 @@ class GlobalSkillSetupPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tabController = useTabController(initialLength: 3);
+    final listGuideKey = useMemoized(GlobalKey.new);
+    final marketGuideKey = useMemoized(GlobalKey.new);
     final colors = RevericTheme.colorsOf(context);
+    useAutoGuideTour(
+      ref: ref,
+      tourId: GuideTourId.skills,
+      buildSteps: (ctx) => [
+        GuideStep(
+          id: 'skills_list',
+          targetKey: listGuideKey,
+          icon: RevericIcons.layers_outlined,
+          title: ctx.t(LocaleKeys.onboardingGuideSkillsListTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideSkillsListBody),
+          onBeforeEnter: () {
+            if (tabController.index != 0) {
+              tabController.index = 0;
+            }
+          },
+        ),
+        GuideStep(
+          id: 'skills_market',
+          targetKey: marketGuideKey,
+          icon: RevericIcons.storefront,
+          title: ctx.t(LocaleKeys.onboardingGuideSkillsMarketTitle),
+          description: ctx.t(LocaleKeys.onboardingGuideSkillsMarketBody),
+          onBeforeEnter: () {
+            if (tabController.index != 2) {
+              tabController.index = 2;
+            }
+          },
+        ),
+      ],
+    );
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -52,10 +89,16 @@ class GlobalSkillSetupPage extends HookConsumerWidget {
             Expanded(
               child: TabBarView(
                 controller: tabController,
-                children: const [
-                  NovelInstalledSkillsView(),
-                  OfficialAgentSkillTab(),
-                  MarketplaceAgentSkillTab(),
+                children: [
+                  KeyedSubtree(
+                    key: listGuideKey,
+                    child: const NovelInstalledSkillsView(),
+                  ),
+                  const OfficialAgentSkillTab(),
+                  KeyedSubtree(
+                    key: marketGuideKey,
+                    child: const MarketplaceAgentSkillTab(),
+                  ),
                 ],
               ),
             ),

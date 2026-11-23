@@ -26,6 +26,7 @@ import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/providers/plugin_marketplace_providers.dart';
 import 'package:reveric/shared/providers/plugin_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:reveric/shared/services/plugins/host.dart';
 import 'package:reveric/shared/services/plugins/installer.dart';
 import 'package:reveric/shared/services/plugins/marketplace_service.dart';
@@ -98,6 +99,7 @@ Future<void> _pumpApp(
       overrides: [
         pluginHostServiceProvider.overrideWithValue(host),
         pluginMarketplaceServiceProvider.overrideWithValue(marketplaceService),
+        guideTourAutoTriggerProvider.overrideWithValue(false),
         aiSettingsProvider.overrideWithValue(AiSettings.defaults()),
       ],
       child: EasyLocalization(

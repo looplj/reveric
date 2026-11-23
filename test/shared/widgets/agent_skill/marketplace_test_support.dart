@@ -21,6 +21,7 @@ import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
 import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/agent_skill/marketplace_browser.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class TestMarketplaceService extends AgentSkillCatalogService {
@@ -101,6 +102,7 @@ void marketplaceInteractionTests(
           ProviderScope(
             overrides: [
               agentSkillCatalogServiceProvider.overrideWithValue(service),
+              guideTourAutoTriggerProvider.overrideWithValue(false),
               marketplaceLinkLauncherProvider.overrideWithValue((uri) async {
                 opened = uri;
                 return true;
@@ -162,6 +164,7 @@ void marketplaceInteractionTests(
       ProviderScope(
         overrides: [
           agentSkillCatalogServiceProvider.overrideWithValue(service),
+          guideTourAutoTriggerProvider.overrideWithValue(false),
           marketplaceLinkLauncherProvider.overrideWithValue(
             (uri) async => false,
           ),

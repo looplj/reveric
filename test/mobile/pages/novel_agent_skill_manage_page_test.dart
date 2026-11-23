@@ -26,6 +26,7 @@ import 'package:reveric/shared/providers/dictionary_providers.dart';
 import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/agent_skill_import_source_form.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
 import '../../shared/widgets/agent_skill/marketplace_test_support.dart';
@@ -63,6 +64,7 @@ void main() {
 
             skillCategoriesProvider.overrideWith((ref) async => const []),
             skillTagsProvider.overrideWith((ref) async => const []),
+            guideTourAutoTriggerProvider.overrideWithValue(false),
           ],
           child: _wrap(const GlobalSkillSetupPage()),
         ),

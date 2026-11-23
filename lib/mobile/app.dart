@@ -22,6 +22,7 @@ import '../shared/models/content_kind.dart';
 import '../shared/theme/theme.dart';
 import '../shared/widgets/guide/tour.dart';
 import '../shared/widgets/guide/trigger.dart';
+import 'features/agent_skills/global_skill_setup_page.dart';
 import 'pages/ai_providers_settings_page.dart';
 import 'pages/library_page.dart';
 import 'pages/chat_page.dart';
@@ -50,6 +51,7 @@ class MobileApp extends HookConsumerWidget {
           icon: RevericIcons.menu_book_rounded,
           title: ctx.t(LocaleKeys.onboardingGuideHomeNovelTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeNovelBody),
+          onBeforeEnter: () => ref.read(mobileTabIndexProvider.notifier).set(0),
         ),
         GuideStep(
           id: 'mobile_home_screenplay',
@@ -59,6 +61,7 @@ class MobileApp extends HookConsumerWidget {
           description: ctx.t(
             LocaleKeys.onboardingGuideHomeMobileScreenplayBody,
           ),
+          onBeforeEnter: () => ref.read(mobileTabIndexProvider.notifier).set(1),
         ),
         GuideStep(
           id: 'mobile_home_assistant',
@@ -66,9 +69,8 @@ class MobileApp extends HookConsumerWidget {
           icon: RevericIcons.auto_awesome,
           title: ctx.t(LocaleKeys.onboardingGuideHomeMobileAssistantTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeMobileAssistantBody),
-          primaryActionLabel: ctx.t(LocaleKeys.onboardingGuideGoProviders),
-          onPrimaryAction: () =>
-              unawaited(openMobileAiProvidersSettingsPage(context)),
+          onBeforeEnter: () => ref.read(mobileTabIndexProvider.notifier).set(2),
+          childTours: const [GuideTourId.aiProviders, GuideTourId.skills],
         ),
         GuideStep(
           id: 'mobile_home_settings',
@@ -76,9 +78,55 @@ class MobileApp extends HookConsumerWidget {
           icon: RevericIcons.settings_outlined,
           title: ctx.t(LocaleKeys.onboardingGuideHomeMobileSettingsTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeMobileSettingsBody),
+          onBeforeEnter: () => ref.read(mobileTabIndexProvider.notifier).set(3),
         ),
       ],
+      onClosed: (completed) {
+        if (!completed) {
+          return;
+        }
+        ref.read(mobileTabIndexProvider.notifier).set(0);
+      },
     );
+    final followUpRoute = useRef<Route<void>?>(null);
+    useOnListenableChange(guideTourChain.current, () {
+      if (!context.mounted) {
+        return;
+      }
+      final navigator = Navigator.of(context);
+      final target = guideTourChain.current.value;
+      final previous = followUpRoute.value;
+      if (previous != null) {
+        followUpRoute.value = null;
+        if (!guideTourChain.lastEndedByCancel && previous.isActive) {
+          if (previous.isCurrent) {
+            navigator.pop();
+          } else {
+            navigator.removeRoute(previous);
+          }
+        }
+      }
+      final Widget? page = switch (target) {
+        GuideTourId.aiProviders => const MobileAiProvidersSettingsPage(),
+        GuideTourId.skills => const GlobalSkillSetupPage(),
+        GuideTourId.home || null => null,
+      };
+      if (page == null) {
+        return;
+      }
+      final route = MaterialPageRoute<void>(builder: (_) => page);
+      followUpRoute.value = route;
+      unawaited(
+        navigator.push(route).whenComplete(() {
+          if (followUpRoute.value == route) {
+            followUpRoute.value = null;
+          }
+          if (guideTourChain.current.value == target) {
+            guideTourChain.cancel();
+          }
+        }),
+      );
+    });
 
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {

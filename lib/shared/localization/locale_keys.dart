@@ -3611,7 +3611,6 @@ abstract final class LocaleKeys {
       'onboarding.model_defaults_description';
   static const onboardingGuideReplayTooltip = 'onboarding.guide.replay_tooltip';
   static const onboardingGuideDone = 'onboarding.guide.done';
-  static const onboardingGuideGoProviders = 'onboarding.guide.go_providers';
   static const onboardingGuideGoModelSettings =
       'onboarding.guide.go_model_settings';
   static const onboardingGuideProvidersListTitle =
@@ -3642,18 +3641,6 @@ abstract final class LocaleKeys {
       'onboarding.guide.providers.mobile_models_title';
   static const onboardingGuideProvidersMobileModelsBody =
       'onboarding.guide.providers.mobile_models_body';
-  static const onboardingGuideModelSettingsChatTitle =
-      'onboarding.guide.model_settings.chat_title';
-  static const onboardingGuideModelSettingsChatBody =
-      'onboarding.guide.model_settings.chat_body';
-  static const onboardingGuideModelSettingsImageTitle =
-      'onboarding.guide.model_settings.image_title';
-  static const onboardingGuideModelSettingsImageBody =
-      'onboarding.guide.model_settings.image_body';
-  static const onboardingGuideModelSettingsAgentsTitle =
-      'onboarding.guide.model_settings.agents_title';
-  static const onboardingGuideModelSettingsAgentsBody =
-      'onboarding.guide.model_settings.agents_body';
   static const onboardingGuideHomeNovelTitle =
       'onboarding.guide.home.novel_title';
   static const onboardingGuideHomeNovelBody =
@@ -3670,6 +3657,10 @@ abstract final class LocaleKeys {
       'onboarding.guide.home.models_title';
   static const onboardingGuideHomeModelsBody =
       'onboarding.guide.home.models_body';
+  static const onboardingGuideHomeSkillsTitle =
+      'onboarding.guide.home.skills_title';
+  static const onboardingGuideHomeSkillsBody =
+      'onboarding.guide.home.skills_body';
   static const onboardingGuideHomeMobileScreenplayBody =
       'onboarding.guide.home.mobile_screenplay_body';
   static const onboardingGuideHomeMobileAssistantTitle =
@@ -3680,6 +3671,26 @@ abstract final class LocaleKeys {
       'onboarding.guide.home.mobile_settings_title';
   static const onboardingGuideHomeMobileSettingsBody =
       'onboarding.guide.home.mobile_settings_body';
+  static const onboardingGuideSkillsListTitle =
+      'onboarding.guide.skills.list_title';
+  static const onboardingGuideSkillsListBody =
+      'onboarding.guide.skills.list_body';
+  static const onboardingGuideSkillsMarketTitle =
+      'onboarding.guide.skills.market_title';
+  static const onboardingGuideSkillsMarketBody =
+      'onboarding.guide.skills.market_body';
+  static const onboardingGuideHomeGalleryTitle =
+      'onboarding.guide.home.gallery_title';
+  static const onboardingGuideHomeGalleryBody =
+      'onboarding.guide.home.gallery_body';
+  static const onboardingGuideHomePluginsTitle =
+      'onboarding.guide.home.plugins_title';
+  static const onboardingGuideHomePluginsBody =
+      'onboarding.guide.home.plugins_body';
+  static const onboardingGuideHomeUsageTitle =
+      'onboarding.guide.home.usage_title';
+  static const onboardingGuideHomeUsageBody =
+      'onboarding.guide.home.usage_body';
   // ── plugin ────────────────────────────────────────
   static const pluginDescription = 'plugin.description';
   static const pluginEmpty = 'plugin.empty';

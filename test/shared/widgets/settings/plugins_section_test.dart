@@ -22,6 +22,7 @@ import 'package:reveric/shared/models/plugin/manifest.dart';
 import 'package:reveric/shared/services/plugins/registry.dart';
 import 'package:reveric/shared/components/reveric_button.dart';
 import 'package:reveric/shared/widgets/settings/plugins/preview_page.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:reveric/shared/widgets/settings/plugins/section.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/theme/theme.dart';
@@ -239,6 +240,7 @@ Widget wrapPluginSettings(
 }) => ProviderScope(
   overrides: [
     pluginHostServiceProvider.overrideWithValue(host),
+    guideTourAutoTriggerProvider.overrideWithValue(false),
     // 列表据 AI 设置提示已失效的模型；测试不打开真实设置库。
     aiSettingsProvider.overrideWithValue(AiSettings.defaults()),
   ],

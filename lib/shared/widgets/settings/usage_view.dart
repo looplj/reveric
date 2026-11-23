@@ -12,6 +12,7 @@
 //   .agents/rules/design-system.md
 //   .agents/rules/icons.md
 //   .agents/rules/hooks.md
+//   .agents/rules/state-management.md
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -35,7 +36,7 @@ const double _narrowBreakpoint = 600;
 enum _UsageTab { overview, sessions }
 
 /// Usage 统计视图（无 Scaffold）：承载平台特定的滚动内容，桌面/移动端响应式自适应。
-class UsageView extends HookWidget {
+class UsageView extends HookConsumerWidget {
   const UsageView({super.key, this.showHeader = true, this.initialSessionId});
 
   /// 是否渲染页内大标题与说明。桌面端为 true；移动端由 AppBar 承载标题，传 false。
@@ -45,7 +46,7 @@ class UsageView extends HookWidget {
   final String? initialSessionId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final selectedTab = useState(
@@ -101,8 +102,8 @@ class UsageView extends HookWidget {
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 180),
                 child: selectedTab.value == _UsageTab.overview
-                    ? const _UsageOverviewView(
-                        key: ValueKey(_UsageTab.overview),
+                    ? _UsageOverviewView(
+                        key: const ValueKey(_UsageTab.overview),
                       )
                     : UsageSessionsView(
                         key: const ValueKey(_UsageTab.sessions),
