@@ -111,6 +111,31 @@ final audioModelsCatalog = <String, AudioModelCatalogEntry>{
       sampleRate: ConfigValue(24000),
     ),
   ),
+  // 同一条渠道上的 3.0 Plus：Token Plan 目前只开放这一个语音合成型号，
+  // 系统音色仅 longanhuan_v3.6（其它 v3.1/v3.6 音色会返回 cosyvoice 411）。
+  'qwen-audio-3.0-tts-plus': AudioModelCatalogEntry(
+    capabilities: AudioModelCapabilities(
+      speech: true,
+      supportsInstructions: true,
+      maxPromptCharacters: 20000,
+      voices: [
+        'longanhuan_v3.6',
+        // 基础音色（音色复刻生成的 500+ 音色，调用方式与系统音色一致）：
+        // 男声候选，按年龄与特质挑选，供角色配音使用。
+        'qwen-audio-3.0-tts-plus-longhuifengyi',
+        'qwen-audio-3.0-tts-plus-longyanhuilu',
+        'qwen-audio-3.0-tts-plus-longnixiulian',
+        'qwen-audio-3.0-tts-plus-longyingsongliu',
+        'qwen-audio-3.0-tts-plus-longmeixiaolan',
+        'qwen-audio-3.0-tts-plus-longyimuling',
+      ],
+    ),
+    requestDefaults: AudioRequestDefaults(
+      voice: ConfigValue('longanhuan_v3.6'),
+      responseFormat: ConfigValue('wav'),
+      sampleRate: ConfigValue(24000),
+    ),
+  ),
   // https://platform.qianwenai.com/docs/api-reference/audio-generation
   'qwen-audio-3.1-tts-next': AudioModelCatalogEntry(
     capabilities: AudioModelCapabilities(

@@ -13,23 +13,38 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:drift/drift.dart' show Variable;
+import 'package:drift/drift.dart' show Value, Variable;
 
-import '../shared/database/novel_content_database.dart' show CharacterProfile, NovelContentDatabase;
+import '../shared/database/app_database.dart';
+import '../shared/database/novel_content_database.dart'
+    show CharacterProfile, ItemsCompanion, NovelContentDatabase;
 import '../shared/logger/app_logger.dart';
 import '../shared/models/ai_chat_models.dart';
 import '../shared/models/screenplay_element.dart';
+import '../shared/models/asset_purpose.dart';
+import '../shared/models/subject_photo.dart';
+import '../shared/models/narration.dart';
 import '../shared/providers/ai_providers.dart';
+import '../shared/providers/production_audio.dart';
+import '../shared/providers/video_tasks.dart';
+import '../shared/providers/storyboard.dart';
+import '../shared/providers/production_media.dart';
 import '../shared/providers/novel_providers.dart';
 import '../shared/providers/screenplay_providers.dart';
 import '../shared/services/ai/headless_session_turn.dart';
 import '../shared/services/ai/image.dart';
 import '../shared/services/novel_content.dart';
+import '../shared/services/production/canvas_service.dart';
+import '../shared/services/production/generate_orchestrator.dart';
+import '../shared/services/production/ffmpeg_runner.dart';
+import '../shared/services/screenplay/narration_service.dart';
 import '../shared/services/screenplay_metrics.dart';
+import '../shared/services/storyboard/service.dart';
 import '../shared/utils/storage_paths.dart';
 
 final _log = AppLogger.forModule('DebugControl');
@@ -143,6 +158,27 @@ class DebugControlServer {
           return;
         case '/avatars/batch':
           await _writeJson(response, HttpStatus.ok, await _avatarsBatch(body));
+          return;
+        case '/audio/tts':
+          await _writeJson(response, HttpStatus.ok, await _speak(body));
+          return;
+        case '/production/item-clip':
+          await _writeJson(response, HttpStatus.ok, await _itemClip(body));
+          return;
+        case '/production/prop':
+          await _writeJson(response, HttpStatus.ok, await _createProp(body));
+          return;
+        case '/production/import-audio':
+          await _writeJson(response, HttpStatus.ok, await _importAudio(body));
+          return;
+        case '/production/generate-video':
+          await _writeJson(response, HttpStatus.ok, await _generateVideo(body));
+          return;
+        case '/production/shots':
+          await _writeJson(response, HttpStatus.ok, await _createShots(body));
+          return;
+        case '/production/clip-image':
+          await _writeJson(response, HttpStatus.ok, await _clipImage(body));
           return;
         case '/screenplay/check':
           await _writeJson(response, HttpStatus.ok, await _checkScreenplay(body));
@@ -760,6 +796,521 @@ class DebugControlServer {
     return filtered;
   }
 
+  /// 为画布上的一个 production clip 生成参考图并采用。
+  ///
+  /// 角色 clip 默认以该角色头像作为图生图参考，地点 clip 用地点名与描述走文生图，
+  /// 两者都拼上统一的风格文本（默认 3D 半写实 CG），保证与角色头像风格一致。
+  Future<Map<String, dynamic>> _clipImage(Map<String, dynamic> body) async {
+    final workId = _stringOption(body, 'workId');
+    final clipId = _stringOption(body, 'clipId');
+    final dryRun = body['dryRun'] == true;
+    final apply = body['apply'] != false;
+    final work = await _requireWork(workId);
+    final database = _container.read(
+      novelContentDatabaseProvider(work.databasePath),
+    );
+    final clip = await database.customSelect(
+      "SELECT c.id, c.title, c.character_id, c.location_id, c.ratio, "
+      "(SELECT id FROM canvas_nodes n WHERE n.ref_id = c.id "
+      " AND n.ref_type = 'production_clip' AND n.deleted_at = 0 LIMIT 1) AS node_id "
+      "FROM production_clips c WHERE c.id = ? AND c.deleted_at = 0",
+      variables: [Variable.withString(clipId)],
+    ).getSingleOrNull();
+    if (clip == null) {
+      throw _ControlError('clip_not_found', 'No production clip $clipId');
+    }
+    final nodeId = clip.read<String?>('node_id');
+    final characterId = clip.read<String?>('character_id');
+    final locationId = clip.read<String?>('location_id');
+    final ratio = _stringOption(body, 'ratio', fallback: clip.read<String?>('ratio') ?? '1:1');
+    final style = _resolveStyle(body);
+
+    String? referenceAssetId = _stringOption(body, 'referenceAssetId', fallback: '');
+    if (referenceAssetId.isEmpty) referenceAssetId = null;
+
+    final buffer = StringBuffer();
+    final given = _stringOption(body, 'prompt');
+    if (given.isNotEmpty) {
+      buffer.write(given);
+    } else if (characterId != null) {
+      final service = _contentService(work.databasePath);
+      final character = await service.getCharacterProfileById(characterId);
+      if (character == null) {
+        throw _ControlError('character_not_found', 'No character $characterId');
+      }
+      // 图生图在该网关上很容易超时（5 分钟），默认走文生图；需要严格同一张脸时
+      // 传 useReference=true 再强制用头像做参考。
+      if (referenceAssetId == null && body['useReference'] == true) {
+        final avatar = character.avatarAssetId;
+        if (avatar != null && avatar.isNotEmpty) referenceAssetId = avatar;
+      }
+      final appearance = _sentence(character.appearance.split('\n').first);
+      final identity = _sentence(character.identity);
+      buffer
+        ..write('「${character.name}」角色参考图，与项目中的角色头像为同一人物，')
+        ..write('保持脸型、发型、发色与常穿服装一致。')
+        ..write(appearance);
+      if (identity.isNotEmpty) buffer.write('身份：$identity');
+      buffer.write('半身到膝上定妆参考照，纯深灰背景，柔和三点布光，画面干净。');
+    } else if (locationId != null) {
+      final row = await database.customSelect(
+        'SELECT name, description FROM locations WHERE id = ? AND deleted_at = 0',
+        variables: [Variable.withString(locationId)],
+      ).getSingleOrNull();
+      if (row == null) {
+        throw _ControlError('location_not_found', 'No location $locationId');
+      }
+      final name = row.read<String>('name');
+      final description = _sentence(row.read<String?>('description') ?? '');
+      buffer.write('「$name」场景空镜参考图：无人物的环境全景，电影级布景与真实材质细节。');
+      if (description.isNotEmpty) buffer.write(description);
+      buffer.write('画面干净，柔和自然光，留出人物站位空间。');
+    } else {
+      throw _ControlError(
+        'clip_has_no_subject',
+        'Clip $clipId has neither character nor location',
+      );
+    }
+    buffer.write(style);
+    final prompt = buffer.toString();
+
+    if (dryRun) {
+      return {
+        'dryRun': true,
+        'clipId': clipId,
+        'title': clip.read<String>('title'),
+        'nodeId': nodeId,
+        'referenceAssetId': referenceAssetId,
+        'ratio': ratio,
+        'prompt': prompt,
+      };
+    }
+
+    final result = await _generateImage(
+      workId,
+      prompt,
+      ratio: ratio,
+      referenceAssetId: referenceAssetId,
+    );
+    final assetId = result.assetId;
+    if (assetId == null || assetId.isEmpty) {
+      throw const _ControlError('asset_missing', 'Image generation returned no registered asset');
+    }
+    var adopted = false;
+    if (apply && nodeId != null) {
+      final production = ProductionCanvasService(
+        StoryboardService(database, contentKind: work.contentKind),
+        _container.read(mediaLibraryServiceProvider),
+        workId,
+      );
+      await production.adopt(nodeId, assetId);
+      adopted = true;
+    }
+    return {
+      'clipId': clipId,
+      'title': clip.read<String>('title'),
+      'nodeId': nodeId,
+      'assetId': assetId,
+      'adopted': adopted,
+      'referenceAssetId': referenceAssetId,
+      'ratio': ratio,
+      'prompt': prompt,
+    };
+  }
+
+  /// 用应用自己的音频通道合成一句台词，返回落盘路径与实测时长。
+  Future<Map<String, dynamic>> _speak(Map<String, dynamic> body) async {
+    final text = _stringOption(body, 'text');
+    if (text.trim().isEmpty) {
+      throw const _ControlError('text_required', 'text is required');
+    }
+    final voice = _stringOption(body, 'voice', fallback: 'longanhuan_v3.6');
+    final instruction = _stringOption(body, 'instruction');
+    final database = _container.read(appDatabaseProvider);
+    var providerId = _stringOption(body, 'providerId');
+    var modelId = _stringOption(body, 'modelId');
+    final providers = await (database.select(
+      database.aiProviders,
+    )..where((table) => table.enabled.equals(true))).get();
+    final provider = providerId.isEmpty
+        ? providers.firstWhere(
+            (row) => _audioModelsOf(row).isNotEmpty,
+            orElse: () => throw const _ControlError(
+              'audio_model_not_configured',
+              'No enabled provider with an audio model',
+            ),
+          )
+        : providers.firstWhere(
+            (row) => row.id == providerId,
+            orElse: () => throw _ControlError(
+              'provider_not_found',
+              'No enabled provider $providerId',
+            ),
+          );
+    providerId = provider.id;
+    if (modelId.isEmpty) modelId = _audioModelsOf(provider).first;
+    final service = NarrationService(
+      database: database,
+      invoke: _container.read(productionAudioInvokeProvider),
+    );
+    final audio = await service.generate(
+      NarrationSettings(providerId: providerId, modelId: modelId),
+      NarrationSegment(
+        text: text,
+        voice: voice,
+        sceneId: '',
+        instructions: instruction,
+      ),
+      Completer<void>().future,
+    );
+    final directory = Directory(
+      p.join(RevericPaths.supportRoot, 'debug', 'tts'),
+    );
+    await directory.create(recursive: true);
+    final path = p.join(
+      directory.path,
+      'tts_${DateTime.now().microsecondsSinceEpoch}.${audio.extension}',
+    );
+    await File(path).writeAsBytes(audio.bytes, flush: true);
+    return {
+      'path': path,
+      'bytes': audio.bytes.length,
+      'extension': audio.extension,
+      'voice': voice,
+      'modelId': modelId,
+      'providerId': providerId,
+      'characters': text.runes.length,
+      'durationMs': _waveDurationMs(audio.bytes),
+    };
+  }
+
+
+  List<String> _audioModelsOf(AiProvider row) => row.audioModels;
+
+  /// 解析 WAV 头得到毫秒时长；非 WAV 返回 null。
+  int? _waveDurationMs(Uint8List bytes) {
+    if (bytes.length < 44 ||
+        !_asciiEquals(bytes, 0, 'RIFF') ||
+        !_asciiEquals(bytes, 8, 'WAVE')) {
+      return null;
+    }
+    var offset = 12;
+    var byteRate = 0;
+    while (offset + 8 <= bytes.length) {
+      final size = ByteData.sublistView(
+        bytes,
+        offset + 4,
+        offset + 8,
+      ).getUint32(0, Endian.little);
+      if (_asciiEquals(bytes, offset, 'fmt ') && offset + 20 <= bytes.length) {
+        byteRate = ByteData.sublistView(
+          bytes,
+          offset + 16,
+          offset + 20,
+        ).getUint32(0, Endian.little);
+      } else if (_asciiEquals(bytes, offset, 'data')) {
+        if (byteRate == 0) return null;
+        final available = bytes.length - (offset + 8);
+        final dataSize = size < available ? size : available;
+        return (dataSize * 1000 / byteRate).round();
+      }
+      offset += 8 + size + (size & 1);
+    }
+    return null;
+  }
+
+  bool _asciiEquals(Uint8List bytes, int offset, String expected) {
+    if (offset + expected.length > bytes.length) return false;
+    for (var i = 0; i < expected.length; i++) {
+      if (bytes[offset + i] != expected.codeUnitAt(i)) return false;
+    }
+    return true;
+  }
+
+  /// 在指定场次下批量创建分镜（video 类 production clip），并放到画布上。
+  Future<Map<String, dynamic>> _createShots(Map<String, dynamic> body) async {
+    final workId = _stringOption(body, 'workId');
+    final shots = body['shots'];
+    if (shots is! List || shots.isEmpty) {
+      throw const _ControlError('shots_required', 'shots is required');
+    }
+    final work = await _requireWork(workId);
+    final episodeId = _stringOption(body, 'episodeId');
+    final service = _container.read(
+      storyboardServiceProvider(work.databasePath),
+    );
+    final created = <Map<String, dynamic>>[];
+    for (final raw in shots) {
+      if (raw is! Map) continue;
+      final shot = Map<String, dynamic>.from(raw);
+      final sceneId = _stringOption(shot, 'sceneId');
+      if (sceneId.isEmpty) {
+        throw const _ControlError('scene_required', 'shot.sceneId is required');
+      }
+      final kind = _stringOption(shot, 'kind', fallback: 'video');
+      final values = <String, dynamic>{
+        'kind': kind,
+        'title': _stringOption(shot, 'title'),
+        'prompt': _stringOption(shot, 'prompt'),
+        if (shot['durationMs'] is num)
+          'duration_ms': (shot['durationMs'] as num).round(),
+        if (shot['characterId'] is String) 'character_id': shot['characterId'],
+        if (shot['locationId'] is String) 'location_id': shot['locationId'],
+        if (shot['ratio'] is String) 'ratio': shot['ratio'],
+        if (shot['resolution'] is String) 'resolution': shot['resolution'],
+        if (shot['generateAudio'] is bool)
+          'generate_audio': shot['generateAudio'],
+      };
+      final row = kind == 'image'
+          ? await service.createImage(
+              _stringOption(shot, 'episodeId', fallback: episodeId),
+              values: values,
+            )
+          : await service.create(sceneId, values: values);
+      final node = await service.ensureClipNode(row.id);
+      created.add({
+        'clipId': row.id,
+        'nodeId': node.id,
+        'sceneId': sceneId,
+        'title': row.title,
+        'durationMs': row.durationMs,
+      });
+    }
+    return {'created': created, 'count': created.length};
+  }
+
+  /// 建一个图鉴道具条目并生成参考图，结果写回条目的照片集。
+  Future<Map<String, dynamic>> _createProp(Map<String, dynamic> body) async {
+    final workId = _stringOption(body, 'workId');
+    final title = _stringOption(body, 'title');
+    if (title.isEmpty) {
+      throw const _ControlError('title_required', 'title is required');
+    }
+    final content = _stringOption(body, 'content');
+    final prompt = _stringOption(body, 'prompt');
+    final dryRun = body['dryRun'] == true;
+    final work = await _requireWork(workId);
+    final database = _container.read(
+      novelContentDatabaseProvider(work.databasePath),
+    );
+    final existing = await database.customSelect(
+      "SELECT id FROM items WHERE title = ? AND deleted_at = 0 LIMIT 1",
+      variables: [Variable.withString(title)],
+    ).getSingleOrNull();
+    var itemId = existing?.read<String>('id');
+    final fullPrompt = prompt.isEmpty
+        ? '「$title」道具参考图：$content。单独静物，简洁深灰背景，柔和侧光，材质细节清晰。${_resolveStyle(body)}'
+        : '$prompt${_resolveStyle(body)}';
+    if (dryRun) {
+      return {
+        'dryRun': true,
+        'title': title,
+        'itemId': itemId,
+        'prompt': fullPrompt,
+      };
+    }
+    if (itemId == null) {
+      itemId = 'itm_${_randomToken().substring(0, 10)}';
+      await database.into(database.items).insert(
+        ItemsCompanion.insert(
+          id: itemId,
+          type: 'item',
+          title: title,
+          content: Value(content),
+        ),
+      );
+    }
+    final result = await _generateImage(workId, fullPrompt, ratio: '1:1');
+    final assetId = result.assetId;
+    if (assetId == null || assetId.isEmpty) {
+      throw const _ControlError('asset_missing', 'Image generation returned no registered asset');
+    }
+    final row = await (database.select(
+      database.items,
+    )..where((table) => table.id.equals(itemId!))).getSingle();
+    final photos = [
+      ...row.photos ?? const <SubjectPhoto>[],
+      SubjectPhoto(assetId: assetId, name: title),
+    ];
+    await (database.update(database.items)
+          ..where((table) => table.id.equals(itemId!)))
+        .write(ItemsCompanion(photos: Value(photos)));
+    return {
+      'itemId': itemId,
+      'title': title,
+      'assetId': assetId,
+      'photoCount': photos.length,
+    };
+  }
+
+  /// 把本地音频导入作品素材库，并建成该集的音频片段。
+  Future<Map<String, dynamic>> _importAudio(Map<String, dynamic> body) async {
+    final workId = _stringOption(body, 'workId');
+    final episodeId = _stringOption(body, 'episodeId');
+    final items = body['files'];
+    if (items is! List || items.isEmpty) {
+      throw const _ControlError('files_required', 'files is required');
+    }
+    final work = await _requireWork(workId);
+    final library = _container.read(mediaLibraryServiceProvider);
+    final service = _container.read(
+      storyboardServiceProvider(work.databasePath),
+    );
+    final production = ProductionCanvasService(
+      StoryboardService(
+        _container.read(novelContentDatabaseProvider(work.databasePath)),
+        contentKind: work.contentKind,
+      ),
+      library,
+      workId,
+    );
+    final created = <Map<String, dynamic>>[];
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final entry = Map<String, dynamic>.from(raw);
+      final path = _stringOption(entry, 'path');
+      final name = _stringOption(entry, 'name');
+      final asset = await library.importFile(
+        File(path),
+        name: name,
+        novelId: workId,
+        purpose: AssetPurpose.production_upload,
+        cancellation: MediaCancellation(),
+        addToLibrary: true,
+      );
+      if (body['asClip'] == false) {
+        created.add({'assetId': asset.id, 'title': name});
+        continue;
+      }
+      final clip = await service.createAudio(
+        episodeId,
+        values: {
+          'title': name,
+          if (entry['durationMs'] is num)
+            'duration_ms': (entry['durationMs'] as num).round(),
+        },
+      );
+      final node = await service.ensureClipNode(clip.id);
+      await production.adopt(node.id, asset.id);
+      created.add({'clipId': clip.id, 'assetId': asset.id, 'title': name});
+    }
+    return {'created': created, 'count': created.length};
+  }
+
+  /// 为图鉴条目建一个画布图片节点（图鉴类素材），并采用它已有的照片。
+  Future<Map<String, dynamic>> _itemClip(Map<String, dynamic> body) async {
+    final workId = _stringOption(body, 'workId');
+    final episodeId = _stringOption(body, 'episodeId');
+    final itemId = _stringOption(body, 'itemId');
+    final work = await _requireWork(workId);
+    final database = _container.read(
+      novelContentDatabaseProvider(work.databasePath),
+    );
+    final item = await database.customSelect(
+      'SELECT id, title, photos FROM items WHERE id = ? AND deleted_at = 0',
+      variables: [Variable.withString(itemId)],
+    ).getSingleOrNull();
+    if (item == null) {
+      throw _ControlError('item_not_found', 'No compendium item $itemId');
+    }
+    final service = _container.read(
+      storyboardServiceProvider(work.databasePath),
+    );
+    final clip = await service.createImage(
+      episodeId,
+      values: {'title': item.read<String>('title'), 'item_id': itemId},
+    );
+    final node = await service.ensureClipNode(clip.id);
+    final photos = jsonDecode(item.read<String?>('photos') ?? '[]') as List;
+    String? adopted;
+    if (photos.isNotEmpty && photos.first is Map) {
+      final assetId = (photos.first as Map)['asset_id'] as String?;
+      if (assetId != null && assetId.isNotEmpty) {
+        final production = ProductionCanvasService(
+          StoryboardService(
+            database,
+            contentKind: work.contentKind,
+          ),
+          _container.read(mediaLibraryServiceProvider),
+          workId,
+        );
+        await production.adopt(node.id, assetId);
+        adopted = assetId;
+      }
+    }
+    return {
+      'clipId': clip.id,
+      'nodeId': node.id,
+      'itemId': itemId,
+      'adoptedAssetId': adopted,
+    };
+  }
+
+  /// 走真实制作管线提交一个分镜的视频生成并等待结果（参考上传→提交→轮询→采用）。
+  Future<Map<String, dynamic>> _generateVideo(Map<String, dynamic> body) async {
+    final workId = _stringOption(body, 'workId');
+    final clipId = _stringOption(body, 'clipId');
+    final timeoutSec = (body['timeoutSec'] as num?)?.toInt() ?? 600;
+    final adopt = body['adopt'] != false;
+    final work = await _requireWork(workId);
+    final database = _container.read(
+      novelContentDatabaseProvider(work.databasePath),
+    );
+    final service = ProductionCanvasService(
+      StoryboardService(database, contentKind: work.contentKind),
+      _container.read(mediaLibraryServiceProvider),
+      workId,
+    );
+    final tasks = await _container.read(videoTaskServiceProvider.future);
+    final node = await service.shots.ensureClipNode(clipId);
+    final orchestrator = ProductionGenerateOrchestrator();
+    final preview = await orchestrator.preview(service, node.id);
+    final taskId = await orchestrator.submit(
+      service,
+      tasks,
+      preview,
+      acknowledgeReferenceUpload: true,
+    );
+    final appDb = _container.read(appDatabaseProvider);
+    final deadline = DateTime.now().add(Duration(seconds: timeoutSec));
+    GenerationTask? task;
+    while (DateTime.now().isBefore(deadline)) {
+      task = await appDb.generationTaskDao.getById(taskId);
+      if (task != null && task.status.isTerminal) break;
+      await Future<void>.delayed(const Duration(seconds: 3));
+    }
+    task ??= await appDb.generationTaskDao.getById(taskId);
+    if (task == null) {
+      throw _ControlError('task_missing', 'Generation task $taskId not found');
+    }
+    final done = task;
+    String? path;
+    var adopted = false;
+    if (done.status == GenerationTaskStatus.completed &&
+        done.resultAssetId != null) {
+      if (adopt) {
+        await service.adopt(node.id, done.resultAssetId!);
+        adopted = true;
+      }
+      final asset = await (appDb.select(
+        appDb.assets,
+      )..where((t) => t.id.equals(done.resultAssetId!))).getSingleOrNull();
+      if (asset?.path != null) {
+        path = _container.read(mediaLibraryServiceProvider).resolvePath(asset!.path!);
+      }
+    }
+    return {
+      'taskId': taskId,
+      'clipId': clipId,
+      'status': done.status.name,
+      'resultAssetId': done.resultAssetId,
+      'adopted': adopted,
+      'path': path,
+      'errorCode': done.errorCode,
+      'errorMessage': done.errorMessage,
+    };
+  }
+
   // ---------------------------------------------------------------- 内部工具
 
   /// 3D 半写实 CG 的完整风格文本；与 `cover_style.dart` 里的预设保持一致。
@@ -819,10 +1370,34 @@ class DebugControlServer {
   }
 
   /// 生成一张图。autoDispose 的回调 provider 用订阅持有，避免异步中被销毁。
+  ///
+  /// [referenceAssetId] 非空时走图生图（把该资产作为参考图），用于保持同一人物/场景。
   Future<AiImageGenerationResult> _generateImage(
     String workId,
-    String prompt,
-  ) async {
+    String prompt, {
+    String ratio = '1:1',
+    String? referenceAssetId,
+  }) async {
+    final options = ImageInvocationOptions(preferredRatio: ratio);
+    if (referenceAssetId != null && referenceAssetId.isNotEmpty) {
+      final subscription = _container.listen(
+        imageEditCallbackProvider(workId),
+        (_, _) {},
+      );
+      try {
+        final edit = subscription.read();
+        if (edit == null) {
+          throw const _ControlError(
+            'image_model_not_configured',
+            'No default image model; set one in 设置 → 模型设置',
+          );
+        }
+        final path = await _assetFilePath(referenceAssetId);
+        return await edit(prompt, imageData: path, options: options);
+      } finally {
+        subscription.close();
+      }
+    }
     final subscription = _container.listen(
       imageGenerationCallbackProvider(workId),
       (_, _) {},
@@ -830,18 +1405,32 @@ class DebugControlServer {
     try {
       final callback = subscription.read();
       if (callback == null) {
-        throw _ControlError(
+        throw const _ControlError(
           'image_model_not_configured',
           'No default image model; set one in 设置 → 模型设置',
         );
       }
-      return await callback(
-        prompt,
-        options: const ImageInvocationOptions(preferredRatio: '1:1'),
-      );
+      return await callback(prompt, options: options);
     } finally {
       subscription.close();
     }
+  }
+
+  /// 把作品资产解析成本机绝对路径，供图生图参考使用。
+  Future<String> _assetFilePath(String assetId) async {
+    final database = _container.read(appDatabaseProvider);
+    final row = await (database.select(database.assets)
+          ..where((table) => table.id.equals(assetId)))
+        .getSingleOrNull();
+    final stored = row?.path;
+    if (stored == null || stored.isEmpty) {
+      throw _ControlError('asset_file_missing', 'Asset $assetId has no local file');
+    }
+    final resolved = RevericPaths.resolveStored(stored);
+    if (resolved == null) {
+      throw _ControlError('asset_file_missing', 'Cannot resolve $stored');
+    }
+    return resolved;
   }
 
   Future<_WorkRef> _requireWork(String workId) async {
@@ -859,7 +1448,12 @@ class DebugControlServer {
     if (databasePath == null || databasePath.isEmpty) {
       throw _ControlError('work_has_no_content', 'Work $workId has no content database');
     }
-    return _WorkRef(id: row.id, title: row.title, databasePath: databasePath);
+    return _WorkRef(
+      id: row.id,
+      title: row.title,
+      databasePath: databasePath,
+      contentKind: row.contentKind,
+    );
   }
 
   NovelContentService _contentService(String databasePath) =>
@@ -889,11 +1483,17 @@ class DebugControlServer {
 }
 
 class _WorkRef {
-  const _WorkRef({required this.id, required this.title, required this.databasePath});
+  const _WorkRef({
+    required this.id,
+    required this.title,
+    required this.databasePath,
+    required this.contentKind,
+  });
 
   final String id;
   final String title;
   final String databasePath;
+  final String contentKind;
 }
 
 /// 端点业务错误：带稳定 error code，方便外部脚本判断。

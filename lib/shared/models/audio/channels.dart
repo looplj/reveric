@@ -85,6 +85,7 @@ final audioChannelModels = <AudioProtocol, Map<String, AudioChannelModel>>{
       'qwen-audio-3.1-tts-plus',
       'qwen-audio-3.0-tts-flash',
       'qwen-audio-3.1-tts-next',
+      'qwen-audio-3.0-tts-plus',
     ])
       id: AudioChannelModel(
         catalogId: id,
