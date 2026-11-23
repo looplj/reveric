@@ -49,7 +49,7 @@ class McpPage extends StatelessWidget {
       headerGestureExclusionKey: headerGestureExclusionKey,
       headerTrailingInset: headerTrailingInset,
       secondaryAction: headerAction,
-      icon: RevericIcons.hub_outlined,
+      icon: RevericIcons.link,
       titleKey: LocaleKeys.settingsMcp,
       child: const McpServersRegion(),
     );

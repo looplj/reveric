@@ -80,7 +80,7 @@
   "provider.video_highlight_priority": "优先通道",
   "provider.video_notice_priority_billing": "优先安排生成，视频费用按当前价格的 2 倍计费。",
   "provider.title": "AI 供应商",
-  "provider.summary": "{total} 个 · {connected} 已连接",
+  "provider.summary": "{total} 个 · {configured} 个已配置并启用",
   "provider.name_label": "名称",
   "provider.name_hint": "输入提供商名称",
   "provider.type_label": "提供商类型",

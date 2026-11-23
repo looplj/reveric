@@ -80,7 +80,7 @@
   "provider.video_highlight_priority": "Priority",
   "provider.video_notice_priority_billing": "Generation is scheduled first; video is billed at 2× the current price.",
   "provider.title": "AI Providers",
-  "provider.summary": "{total} · {connected} connected",
+  "provider.summary": "{total} total · {configured} configured and enabled",
   "provider.name_label": "Name",
   "provider.name_hint": "Enter provider name",
   "provider.type_label": "Provider Type",

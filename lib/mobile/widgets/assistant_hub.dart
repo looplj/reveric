@@ -1,4 +1,4 @@
-// 职责: 移动端「助手」Hub 专用 UI — 主入口卡、AI 模式占位网格、管理列表行，及发起对话/选择作品的交互。
+// 职责: 移动端「助手」Hub 专用 UI — 主入口卡、AI 模式网格，以及发起对话/选择作品的交互。
 // 关联文件:
 //   lib/mobile/pages/chat_page.dart
 //   lib/mobile/pages/novel_chat_page.dart
@@ -279,9 +279,7 @@ class _ModeCard extends ConsumerWidget {
                     height: 32,
                     decoration: BoxDecoration(
                       color: tint.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(
-                        RevericRadius.medium,
-                      ),
+                      borderRadius: BorderRadius.circular(RevericRadius.medium),
                     ),
                     alignment: Alignment.center,
                     child: RevericIcon(mode.icon, size: 17, color: tint),
@@ -309,70 +307,6 @@ class _ModeCard extends ConsumerWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 管理列表行（slist `.srow`）：图标 + 标签 + 右侧值 + chevron。
-class AssistantManageRow extends StatelessWidget {
-  const AssistantManageRow({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String icon;
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: RevericSpacing.lg,
-          vertical: RevericSpacing.md,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: colors.accent.withValues(alpha: 0.13),
-                borderRadius: BorderRadius.circular(RevericRadius.medium),
-              ),
-              alignment: Alignment.center,
-              child: RevericIcon(icon, size: 18, color: colors.accentWarm),
-            ),
-            const SizedBox(width: RevericSpacing.md),
-            Expanded(
-              child: Text(
-                label,
-                style: typo.uiMedium.copyWith(color: colors.textPrimary),
-              ),
-            ),
-            if (value.isNotEmpty) ...[
-              Text(
-                value,
-                style: typo.uiSmall.copyWith(color: colors.textMuted),
-              ),
-              const SizedBox(width: RevericSpacing.xs),
-            ],
-            RevericIcon(
-              RevericIcons.chevron_right,
-              size: 18,
-              color: colors.textSubtle,
-            ),
-          ],
         ),
       ),
     );

@@ -1,4 +1,4 @@
-// 职责: 移动端设置页面 — 顶部用户资料卡 + 分组列表（偏好/AI/数据/社区/系统，行右侧显示当前值），路由到共享 section；含 10 次点击关于解锁调试。
+// 职责: 移动端设置页面 — 顶部用户资料卡 + 分组列表（偏好/管理/数据/社区/系统，行右侧显示当前值），路由到共享 section；含 10 次点击关于解锁调试。
 // 关联文件:
 //   lib/shared/components/reveric_dialog.dart
 //   lib/shared/widgets/user_profile_edit_dialog.dart
@@ -18,7 +18,7 @@
 //   lib/shared/widgets/settings/debug_settings_section.dart
 //   lib/shared/app_config.dart
 //   lib/shared/providers/settings_providers.dart
-//   lib/shared/providers/ai_providers.dart
+//   lib/mobile/widgets/detail_scaffold.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/en/provider.json
@@ -66,6 +66,7 @@ import '../../shared/widgets/settings/usage_settings_section.dart';
 import '../../shared/widgets/settings/usage_view.dart';
 import '../../shared/components/reveric_dialog.dart';
 import '../../shared/components/reveric_icon_button.dart';
+import '../widgets/detail_scaffold.dart';
 
 /// 从更新提醒直达现有关于详情页。
 Future<void> showMobileAboutPage(BuildContext context) {
@@ -122,7 +123,7 @@ class SettingsPage extends HookConsumerWidget {
   static const _generalItem = _SettingsNavItem(
     id: 'general',
     labelKey: LocaleKeys.settingsGeneral,
-    icon: RevericIcons.public,
+    icon: RevericIcons.settings_outlined,
   );
   static const _appearanceItem = _SettingsNavItem(
     id: 'appearance',
@@ -157,7 +158,7 @@ class SettingsPage extends HookConsumerWidget {
   static const _mcpItem = _SettingsNavItem(
     id: 'mcp',
     labelKey: LocaleKeys.settingsMcp,
-    icon: RevericIcons.hub_outlined,
+    icon: RevericIcons.link,
   );
   static const _pluginsItem = _SettingsNavItem(
     id: 'plugins',
@@ -212,7 +213,6 @@ class SettingsPage extends HookConsumerWidget {
     final debugPageUnlocked = ref.watch(appDebugPageUnlockedProvider);
     final settings = ref.watch(appSettingsProvider).asData?.value;
 
-    final aiSettings = ref.watch(aiSettingsProvider);
     final aboutTapCount = useState(0);
     final showDebugNav = debugMode || debugPageUnlocked;
 
@@ -264,18 +264,19 @@ class SettingsPage extends HookConsumerWidget {
     final readingValue = settings == null
         ? null
         : '${settings.readingFontFamily} · ${settings.readingFontSize}px';
-    final providersValue = context.t(
-      LocaleKeys.providerSummary,
-      namedArgs: {
-        'total': '${aiSettings.providers.length}',
-        'connected': '${aiSettings.enabledConfigs.length}',
-      },
-    );
-
     final hasUpdate = ref.watch(availableUpdateProvider) != null;
     final aboutValue = hasUpdate
         ? context.t(LocaleKeys.settingsAboutUpdateAvailable)
         : 'v$appVersion';
+
+    Widget navRow(_SettingsNavItem item, {String? value}) {
+      return MobileDetailNavRow(
+        icon: item.icon,
+        label: context.t(item.labelKey),
+        value: value,
+        onTap: () => handleTap(item),
+      );
+    }
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -283,9 +284,9 @@ class SettingsPage extends HookConsumerWidget {
         bottom: false,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
-            RevericSpacing.x3l,
+            RevericSpacing.x4l,
             RevericSpacing.lg,
-            RevericSpacing.x3l,
+            RevericSpacing.x4l,
             RevericSpacing.x5l,
           ),
           children: [
@@ -307,178 +308,44 @@ class SettingsPage extends HookConsumerWidget {
               ),
             ),
             const SizedBox(height: RevericSpacing.x2l),
-            _buildGroup(
-              context,
-              colors,
-              typo,
-              LocaleKeys.settingsGroupPreferences,
-              [
-                _valueRow(
-                  context,
-                  colors,
-                  typo,
-                  icon: _generalItem.icon,
-                  tint: colors.accentWarm,
-                  label: context.t(LocaleKeys.settingsLanguage),
-                  value: languageValue,
-                  onTap: () => handleTap(_generalItem),
-                ),
-                _valueRow(
-                  context,
-                  colors,
-                  typo,
-                  icon: _appearanceItem.icon,
-                  tint: colors.accentWarm,
-                  label: context.t(_appearanceItem.labelKey),
-                  value: themeValue,
-                  onTap: () => handleTap(_appearanceItem),
-                ),
-                _valueRow(
-                  context,
-                  colors,
-                  typo,
-                  icon: _editorItem.icon,
-                  tint: colors.accentWarm,
-                  label: context.t(_editorItem.labelKey),
-                  value: editorValue,
-                  onTap: () => handleTap(_editorItem),
-                ),
-                _valueRow(
-                  context,
-                  colors,
-                  typo,
-                  icon: _readingItem.icon,
-                  tint: colors.accentWarm,
-                  label: context.t(_readingItem.labelKey),
-                  value: readingValue,
-                  onTap: () => handleTap(_readingItem),
-                ),
-              ],
-            ),
+            _buildGroup(context, LocaleKeys.settingsGroupPreferences, [
+              navRow(_generalItem, value: languageValue),
+              navRow(_appearanceItem, value: themeValue),
+              navRow(_editorItem, value: editorValue),
+              navRow(_readingItem, value: readingValue),
+            ]),
             const SizedBox(height: RevericSpacing.x2l),
-            _buildGroup(context, colors, typo, LocaleKeys.settingsGroupAi, [
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _mcpItem.icon,
-                tint: colors.accentWarm,
-                label: context.t(_mcpItem.labelKey),
-                onTap: () => handleTap(_mcpItem),
+            _buildGroup(context, LocaleKeys.settingsGroupManagement, [
+              navRow(_usageItem),
+              navRow(_pluginsItem),
+            ]),
+            const SizedBox(height: RevericSpacing.x2l),
+            _buildGroup(context, LocaleKeys.settingsGroupData, [
+              navRow(_backupItem),
+              navRow(_trashItem),
+            ]),
+            const SizedBox(height: RevericSpacing.x2l),
+            _buildGroup(context, LocaleKeys.settingsGroupCommunity, [
+              MobileDetailNavRow(
+                icon: RevericIcons.qq_logo,
+                label: context.t(LocaleKeys.settingsAboutJoinQqGroup),
+                trailing: RevericIconButton(
+                  icon: RevericIcons.copy,
+                  tooltip: context.t(LocaleKeys.commonCopy),
+                  onPressed: () => copyQqGroupNumber(context),
+                ),
+                onTap: () => openQqGroup(context),
               ),
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _pluginsItem.icon,
-                tint: colors.accentWarm,
-                label: context.t(_pluginsItem.labelKey),
-                onTap: () => handleTap(_pluginsItem),
-              ),
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _providersItem.icon,
-                tint: colors.accent,
-                label: context.t(_providersItem.labelKey),
-                value: providersValue,
-                onTap: () => handleTap(_providersItem),
-              ),
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _aiAgentsItem.icon,
-                tint: colors.accent,
-                label: context.t(_aiAgentsItem.labelKey),
-                onTap: () => handleTap(_aiAgentsItem),
+              MobileDetailNavRow(
+                icon: RevericIcons.github_logo,
+                label: context.t(LocaleKeys.settingsAboutGithubRepository),
+                onTap: () => openGitHubRepo(context),
               ),
             ]),
             const SizedBox(height: RevericSpacing.x2l),
-            _buildGroup(context, colors, typo, LocaleKeys.settingsGroupData, [
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _usageItem.icon,
-                tint: colors.success,
-                label: context.t(_usageItem.labelKey),
-                onTap: () => handleTap(_usageItem),
-              ),
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _backupItem.icon,
-                tint: colors.success,
-                label: context.t(_backupItem.labelKey),
-                onTap: () => handleTap(_backupItem),
-              ),
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _trashItem.icon,
-                tint: colors.success,
-                label: context.t(_trashItem.labelKey),
-                onTap: () => handleTap(_trashItem),
-              ),
-            ]),
-            const SizedBox(height: RevericSpacing.x2l),
-            _buildGroup(
-              context,
-              colors,
-              typo,
-              LocaleKeys.settingsGroupCommunity,
-              [
-                _valueRow(
-                  context,
-                  colors,
-                  typo,
-                  icon: RevericIcons.qq_logo,
-                  tint: colors.accentAmber,
-                  label: context.t(LocaleKeys.settingsAboutJoinQqGroup),
-                  trailing: RevericIconButton(
-                    icon: RevericIcons.copy,
-                    tooltip: context.t(LocaleKeys.commonCopy),
-                    onPressed: () => copyQqGroupNumber(context),
-                  ),
-                  onTap: () => openQqGroup(context),
-                ),
-                _valueRow(
-                  context,
-                  colors,
-                  typo,
-                  icon: RevericIcons.github_logo,
-                  tint: colors.textSecondary,
-                  label: context.t(LocaleKeys.settingsAboutGithubRepository),
-                  onTap: () => openGitHubRepo(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: RevericSpacing.x2l),
-            _buildGroup(context, colors, typo, LocaleKeys.settingsGroupSystem, [
-              _valueRow(
-                context,
-                colors,
-                typo,
-                icon: _aboutItem.icon,
-                tint: colors.textMuted,
-                label: context.t(_aboutItem.labelKey),
-                value: aboutValue,
-                onTap: () => handleTap(_aboutItem),
-              ),
-              if (showDebugNav)
-                _valueRow(
-                  context,
-                  colors,
-                  typo,
-                  icon: _debugNavItem.icon,
-                  tint: colors.error,
-                  label: context.t(_debugNavItem.labelKey),
-                  onTap: () => handleTap(_debugNavItem),
-                ),
+            _buildGroup(context, LocaleKeys.settingsGroupSystem, [
+              navRow(_aboutItem, value: aboutValue),
+              if (showDebugNav) navRow(_debugNavItem),
             ]),
             const SizedBox(height: RevericSpacing.x3l),
             Center(
@@ -559,125 +426,13 @@ class SettingsPage extends HookConsumerWidget {
     );
   }
 
-  /// 分组：标题 + 卡片（卡片内行用分隔线隔开）。
-  Widget _buildGroup(
-    BuildContext context,
-    RevericColors colors,
-    RevericTypography typo,
-    String titleKey,
-    List<Widget> rows,
-  ) {
+  Widget _buildGroup(BuildContext context, String titleKey, List<Widget> rows) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            RevericSpacing.xs,
-            0,
-            RevericSpacing.xs,
-            RevericSpacing.sm,
-          ),
-          child: Text(
-            context.t(titleKey),
-            style: typo.uiSmallSemibold.copyWith(color: colors.textSubtle),
-          ),
-        ),
-        Container(
-          clipBehavior: Clip.hardEdge,
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(RevericRadius.x2l),
-            border: Border.all(color: colors.borderSubtle),
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < rows.length; i++) ...[
-                if (i > 0)
-                  Divider(height: 1, thickness: 1, color: colors.borderSubtle),
-                rows[i],
-              ],
-            ],
-          ),
-        ),
+        MobileDetailSectionLabel(text: context.t(titleKey)),
+        MobileDetailFieldList(children: rows),
       ],
-    );
-  }
-
-  /// 单行：彩色图标底 + 标签(+副标题) + 右侧值/开关/箭头。
-  Widget _valueRow(
-    BuildContext context,
-    RevericColors colors,
-    RevericTypography typo, {
-    required String icon,
-    required Color tint,
-    required String label,
-    String? value,
-    String? subtitle,
-    Widget? trailing,
-    Color? backgroundColor,
-    VoidCallback? onTap,
-  }) {
-    return Container(
-      color: backgroundColor,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: RevericSpacing.xl,
-            vertical: RevericSpacing.lg,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: tint.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(RevericRadius.large),
-                ),
-                child: Center(child: RevericIcon(icon, size: 18, color: tint)),
-              ),
-              const SizedBox(width: RevericSpacing.lg),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: typo.ui.copyWith(color: colors.textPrimary),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: typo.uiTiny.copyWith(color: colors.textSubtle),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (value != null) ...[
-                const SizedBox(width: RevericSpacing.sm),
-                Text(
-                  value,
-                  style: typo.uiSmall.copyWith(color: colors.textMuted),
-                ),
-              ],
-              if (trailing != null)
-                trailing
-              else
-                Padding(
-                  padding: const EdgeInsets.only(left: RevericSpacing.xs),
-                  child: RevericIcon(
-                    RevericIcons.keyboard_arrow_right,
-                    size: 18,
-                    color: colors.textSubtle,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

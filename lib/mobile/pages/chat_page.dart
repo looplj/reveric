@@ -1,9 +1,10 @@
-// 职责: 移动端「助手」Tab Hub — 主入口对话、AI 模式、模型设置/专家团/技能管理入口、最近对话列表。
+// 职责: 移动端 AI Tab — 对话入口、AI 模式、模型与智能体管理、最近对话。
 // 关联文件:
 //   lib/mobile/widgets/assistant_hub.dart
 //   lib/mobile/widgets/delete_confirm.dart
 //   lib/mobile/widgets/detail_scaffold.dart
 //   lib/mobile/pages/agent_model_settings_page.dart
+//   lib/mobile/pages/settings_page.dart
 //   lib/mobile/pages/subagent_manage_page.dart
 //   lib/mobile/features/agent_skills/global_skill_setup_page.dart
 //   lib/mobile/pages/novel_chat_page.dart
@@ -24,6 +25,10 @@
 //   assets/translations/zh-CN/agent_skill.json
 //   assets/translations/en/home.json
 //   assets/translations/zh-CN/home.json
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
+//   assets/translations/en/settings.json
+//   assets/translations/zh-CN/settings.json
 //   assets/translations/en/common.json
 //   assets/translations/zh-CN/common.json
 // 遵循的 Rules:
@@ -55,6 +60,7 @@ import '../features/council/page.dart';
 import '../features/monologue/page.dart';
 import 'novel_chat_page.dart';
 import 'agent_model_settings_page.dart';
+import 'settings_page.dart';
 import 'subagent_manage_page.dart';
 
 class MobileChatPage extends ConsumerWidget {
@@ -97,9 +103,29 @@ class MobileChatPage extends ConsumerWidget {
                   const AssistantModeGrid(),
                   const SizedBox(height: RevericSpacing.x2l),
                   MobileDetailSectionLabel(
-                    text: context.t(LocaleKeys.mobileAssistantManageSection),
+                    text: context.t(LocaleKeys.homeSectionModel),
                   ),
-                  const _ManageList(),
+                  MobileDetailFieldList(
+                    children: [
+                      MobileDetailNavRow(
+                        icon: RevericIcons.hub_outlined,
+                        label: context.t(LocaleKeys.providerTitle),
+                        onTap: () =>
+                            showMobileSettingsPage(context, 'providers'),
+                      ),
+                      MobileDetailNavRow(
+                        key: const ValueKey('mobile_model_settings_entry'),
+                        icon: RevericIcons.tune,
+                        label: context.t(LocaleKeys.agentStudioModelSettings),
+                        onTap: () => openMobileAgentModelSettingsPage(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: RevericSpacing.x2l),
+                  MobileDetailSectionLabel(
+                    text: context.t(LocaleKeys.homeSectionAgent),
+                  ),
+                  const _AgentManagementList(),
                   const SizedBox(height: RevericSpacing.x2l),
                   MobileDetailSectionLabel(
                     text: context.t(LocaleKeys.mobileAssistantRecentSection),
@@ -157,9 +183,8 @@ class _HubHeader extends StatelessWidget {
   }
 }
 
-/// 管理入口列表：模型设置 / 智能体技能 / 专家团。
-class _ManageList extends ConsumerWidget {
-  const _ManageList();
+class _AgentManagementList extends ConsumerWidget {
+  const _AgentManagementList();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -181,25 +206,28 @@ class _ManageList extends ConsumerWidget {
 
     return MobileDetailFieldList(
       children: [
-        AssistantManageRow(
-          key: const ValueKey('mobile_model_settings_entry'),
-          icon: RevericIcons.tune,
-          label: context.t(LocaleKeys.agentStudioModelSettings),
-          value: '',
-          onTap: () => push(const MobileAgentModelSettingsPage()),
+        MobileDetailNavRow(
+          icon: RevericIcons.smart_toy_outlined,
+          label: context.t(LocaleKeys.settingsAiAgents),
+          onTap: () => showMobileSettingsPage(context, 'ai_agents'),
         ),
-        AssistantManageRow(
+        MobileDetailNavRow(
           icon: RevericIcons.auto_awesome_outlined,
           label: context.t(LocaleKeys.agentSkillTitle),
           value: count(skills),
           onTap: () => push(const GlobalSkillSetupPage()),
         ),
-        AssistantManageRow(
+        MobileDetailNavRow(
           key: const ValueKey('mobile_expert_team_entry'),
           icon: RevericIcons.groups_outlined,
           label: context.t(LocaleKeys.agentStudioExpertTeam),
           value: count(subagents),
           onTap: () => push(const MobileExpertTeamPage()),
+        ),
+        MobileDetailNavRow(
+          icon: RevericIcons.link,
+          label: context.t(LocaleKeys.settingsMcp),
+          onTap: () => showMobileSettingsPage(context, 'mcp'),
         ),
       ],
     );

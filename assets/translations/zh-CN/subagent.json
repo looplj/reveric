@@ -22,7 +22,7 @@
   "subagent.model_not_selected": "未选择",
   "subagent.name_required": "名称不能为空",
   "subagent.prompt_required": "提示词不能为空",
-  "subagent.no_models_available": "未配置 AI 模型，请先在设置中配置 AI 提供商。",
+  "subagent.no_models_available": "未配置 AI 模型，请先在 AI 供应商页添加模型。",
   "subagent.defaults.review.name": "内容核验",
   "subagent.defaults.review.description": "核验情节逻辑、角色一致性、世界观规则及规则符合度。",
   "subagent.defaults.style_polish.name": "文风润色",

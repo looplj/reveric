@@ -1,4 +1,4 @@
-// 职责: 验证设置导航在各平台打开真实存储表单，保存和关闭不产生后台任务。
+// 职责: 验证跨平台设置导航、Android 入口归类，以及存储表单的保存和关闭。
 // 关联文件:
 //   lib/settings_navigation_host.dart
 //   lib/shared/providers/settings_navigation.dart
@@ -17,19 +17,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/settings_navigation_host.dart';
 import 'package:reveric/desktop/widgets/settings/settings_dialog.dart';
 import 'package:reveric/desktop/widgets/agent_management/ai_providers_page.dart';
+import 'package:reveric/desktop/pages/settings/usage_page.dart';
+import 'package:reveric/mobile/pages/chat_page.dart';
 import 'package:reveric/mobile/pages/settings_page.dart';
+import 'package:reveric/mobile/widgets/detail_scaffold.dart';
+import 'package:reveric/shared/widgets/settings/ai_providers_section.dart';
 import 'package:reveric/shared/widgets/settings/general_settings_section.dart';
+import 'package:reveric/shared/widgets/settings/usage_view.dart';
+import 'package:reveric/shared/components/reveric_segmented_control.dart';
 import 'package:reveric/shared/database/app_database.dart' show AppDatabase;
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/object_storage_config.dart';
 import 'package:reveric/shared/models/ai_provider.dart' show AiSettings;
 import 'package:reveric/shared/models/tool_permission.dart';
+import 'package:reveric/shared/providers/agent_skill_providers.dart';
 import 'package:reveric/shared/providers/settings_navigation.dart';
 import 'package:reveric/shared/providers/object_storage.dart';
+import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/providers/update_providers.dart';
 import 'package:reveric/shared/services/object_storage/service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
+import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:reveric/shared/widgets/settings/object_storage_form.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -40,6 +50,27 @@ const config = ObjectStorageConfig(
   accessKeyId: 'key',
   secretAccessKey: 'secret',
 );
+
+void _expectChartModePlacement(WidgetTester tester, {required bool narrow}) {
+  final title = tester.getRect(find.text('Daily Token Usage'));
+  final date = tester.getRect(find.text('Last 30 days'));
+  final control = tester.getRect(
+    find.ancestor(
+      of: find.text('By token type'),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is RevericSegmentedControl<Object>,
+      ),
+    ),
+  );
+  if (narrow) {
+    expect(control.top, greaterThan(date.bottom));
+    expect(control.left, closeTo(title.left, 0.5));
+  } else {
+    final view = tester.getRect(find.byType(UsageView));
+    expect(control.right, closeTo(view.right - (title.left - view.left), 0.5));
+    expect(control.center.dy, closeTo((title.top + date.bottom) / 2, 0.5));
+  }
+}
 
 class _Storage extends ObjectStorageService {
   _Storage(AppDatabase database) : super(database: database);
@@ -113,12 +144,13 @@ void main() {
         'storage',
         'remote',
       });
-      // 桌面端 AI 管理页已移到首页，设置弹窗不再承载它们。
+      // 首页独立入口仍可直达，但不出现在桌面设置分区列表中。
       expect(
         SettingsRegion.navigableSections.intersection({
           'ai_agents',
           'providers',
           'mcp',
+          'usage',
         }),
         isEmpty,
       );
@@ -148,6 +180,10 @@ void main() {
           ProviderScope(
             overrides: [
               settingsNavigationProvider.overrideWithValue(navigation),
+              appDatabaseProvider.overrideWithValue(db),
+              agentSkillAppDatabaseProvider.overrideWithValue(db),
+              availableUpdateProvider.overrideWith((_) => null),
+              guideTourAutoTriggerProvider.overrideWithValue(false),
               appSettingsProvider.overrideWith(_Settings.new),
               objectStorageServiceProvider.overrideWithValue(storage),
               objectStorageConfigProvider.overrideWith(
@@ -181,7 +217,7 @@ void main() {
                       ],
                     ),
                   ),
-                  home: const Scaffold(),
+                  home: mobile ? const SettingsPage() : const Scaffold(),
                 ),
               ),
             ),
@@ -210,6 +246,34 @@ void main() {
         navigatorKey.currentState!.pop();
         await tester.pumpAndSettle();
         if (mobile) {
+          expect(find.text('General'), findsOneWidget);
+          expect(find.text('AI Providers'), findsNothing);
+          expect(find.text('MCP'), findsNothing);
+          await tester.scrollUntilVisible(find.text('AI Usage'), 160);
+          double arrowRight(String label) {
+            final row = find.ancestor(
+              of: find.text(label),
+              matching: find.byType(MobileDetailNavRow),
+            );
+            final arrow = find.descendant(
+              of: row,
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is RevericIcon &&
+                    widget.assetPath == RevericIcons.chevron_right,
+              ),
+            );
+            return tester.getRect(arrow).right;
+          }
+
+          expect(arrowRight('General'), closeTo(arrowRight('AI Usage'), 0.5));
+          await tester.tap(find.text('AI Usage'));
+          await tester.pumpAndSettle();
+          expect(find.byType(UsageView), findsOneWidget);
+          _expectChartModePlacement(tester, narrow: true);
+          navigatorKey.currentState!.pop();
+          await tester.pumpAndSettle();
+
           expect(
             () => navigation.open('storage'),
             throwsA(
@@ -221,11 +285,52 @@ void main() {
             ),
           );
           expect(find.byType(ObjectStorageForm), findsNothing);
+          navigatorKey.currentState!.push(
+            MaterialPageRoute<void>(builder: (_) => const MobileChatPage()),
+          );
+          await tester.pumpAndSettle();
+          final aiTabScroll = find.descendant(
+            of: find.byType(MobileChatPage),
+            matching: find.byType(Scrollable),
+          );
+          await tester.scrollUntilVisible(
+            find.text('AI Providers'),
+            160,
+            scrollable: aiTabScroll,
+          );
+          expect(find.text('Models'), findsOneWidget);
+          expect(find.text('Model Settings'), findsOneWidget);
+          await tester.tap(find.text('AI Providers'));
+          await tester.pumpAndSettle();
+          expect(find.byType(AiProvidersSection), findsOneWidget);
+          expect(
+            find.text('0 total · 0 configured and enabled'),
+            findsOneWidget,
+          );
+          navigatorKey.currentState!.pop();
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.text('MCP'),
+            160,
+            scrollable: aiTabScroll,
+          );
+          expect(find.text('Agents'), findsOneWidget);
+          expect(find.text('AI Assistant'), findsOneWidget);
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pumpAndSettle();
           debugDefaultTargetPlatformOverride = null;
           return;
         }
+        navigation.open('usage');
+        await tester.pumpAndSettle();
+        expect(find.byType(UsagePage), findsOneWidget);
+        expect(find.byType(UsageView), findsOneWidget);
+        _expectChartModePlacement(tester, narrow: false);
+        expect(find.byType(SettingsRegion), findsNothing);
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        expect(find.byType(UsagePage), findsNothing);
+
         navigation.open('providers');
         await tester.pumpAndSettle();
         expect(find.byType(AiProvidersPage), findsOneWidget);

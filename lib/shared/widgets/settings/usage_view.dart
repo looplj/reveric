@@ -1422,7 +1422,7 @@ class _UsageChartSection extends HookWidget {
     return _SurfaceCard(
       colors: colors,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Title row
           Wrap(

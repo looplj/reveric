@@ -4,7 +4,7 @@
   "onboarding.language_title": "Choose Language",
   "onboarding.language_description": "Select your preferred interface language. You can change this later in settings.",
   "onboarding.ai_provider_title": "Configure AI Provider",
-  "onboarding.ai_provider_description": "Add your own AI provider, or skip this step and configure one later in settings.",
+  "onboarding.ai_provider_description": "Add your own AI provider, or skip this step and configure one later on the AI Providers page.",
   "onboarding.provider_status_ready": "Ready",
   "onboarding.provider_status_needs_setup": "Needs setup",
   "onboarding.provider_status_disabled": "Off",
@@ -71,7 +71,7 @@
   "onboarding.guide.home.models_body": "Set up API keys and chat, image, video, and audio models here, then pick defaults in Model Settings. No key yet? You can explore first.",
   "onboarding.guide.home.mobile_screenplay_body": "Organize seasons, episodes, scenes, and dialogue with AI assistance. Full visual canvas production is available on desktop.",
   "onboarding.guide.home.mobile_assistant_title": "AI Assistant & Models",
-  "onboarding.guide.home.mobile_assistant_body": "Start AI chats, switch agents, and jump straight to Model Settings to configure defaults.",
-  "onboarding.guide.home.mobile_settings_title": "Settings & AI Providers",
-  "onboarding.guide.home.mobile_settings_body": "Go to Settings → AI Providers to configure API keys and chat, image, video, and audio models."
+  "onboarding.guide.home.mobile_assistant_body": "Start AI chats, add providers or choose defaults under Models, and manage assistants, skills, and MCP under Agents.",
+  "onboarding.guide.home.mobile_settings_title": "App Settings",
+  "onboarding.guide.home.mobile_settings_body": "Adjust interface and reading preferences, check AI usage, and manage plugins and backups."
 }

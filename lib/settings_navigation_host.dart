@@ -29,7 +29,7 @@ class SettingsNavigationHost extends HookConsumerWidget {
   final GlobalKey<NavigatorState> navigatorKey;
   final bool mobile;
 
-  /// 桌面端已移到首页的 AI 管理页，沿用原分区 ID，以独立弹窗打开。
+  /// 桌面端的首页管理页沿用原分区 ID，以独立弹窗打开。
   static final Map<String, Future<void> Function(BuildContext)>
   _desktopPageDialogs = {
     'ai_agents': showAiAssistantSettingsDialog,
@@ -41,6 +41,7 @@ class SettingsNavigationHost extends HookConsumerWidget {
   static Set<String> get desktopNavigableSections => {
     ...SettingsRegion.navigableSections,
     ..._desktopPageDialogs.keys,
+    'usage',
   };
 
   @override

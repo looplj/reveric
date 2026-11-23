@@ -4,7 +4,7 @@
   "onboarding.language_title": "选择语言",
   "onboarding.language_description": "选择你偏好的界面语言，随时可以在设置中更改。",
   "onboarding.ai_provider_title": "配置 AI 提供商",
-  "onboarding.ai_provider_description": "添加自己的 AI 提供商，也可以跳过，稍后在设置中配置。",
+  "onboarding.ai_provider_description": "添加自己的 AI 供应商，也可以跳过，稍后在 AI 供应商页配置。",
   "onboarding.provider_status_ready": "已就绪",
   "onboarding.provider_status_needs_setup": "待配置",
   "onboarding.provider_status_disabled": "已关闭",
@@ -71,7 +71,7 @@
   "onboarding.guide.home.models_body": "在这里配置 API Key 及聊天、图像、视频、音频模型，并在「模型设置」里选择默认模型。暂时没有 Key 也可以先逛逛。",
   "onboarding.guide.home.mobile_screenplay_body": "面向短剧与影视的剧本库，按季/集管理场次与对白，随时让 AI 辅助创作（完整制作画布可在桌面端体验）。",
   "onboarding.guide.home.mobile_assistant_title": "AI 助手与模型设置",
-  "onboarding.guide.home.mobile_assistant_body": "快速发起 AI 对话、切换智能体，也可以从这里进入「模型设置」分配默认模型。",
-  "onboarding.guide.home.mobile_settings_title": "设置与 AI 供应商",
-  "onboarding.guide.home.mobile_settings_body": "在「设置 → AI 供应商」中配置 API Key 与聊天、图像、视频、音频模型。"
+  "onboarding.guide.home.mobile_assistant_body": "发起 AI 对话，在「模型」中添加供应商或选择默认模型，在「智能体」中管理助手、技能和 MCP。",
+  "onboarding.guide.home.mobile_settings_title": "应用设置",
+  "onboarding.guide.home.mobile_settings_body": "调整界面和阅读偏好、查看 AI 用量、管理插件和备份。"
 }
