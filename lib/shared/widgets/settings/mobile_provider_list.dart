@@ -39,7 +39,6 @@ import 'ai_providers_section.dart';
 import 'provider_actions.dart';
 
 /// 移动端供应商列表：全宽分组卡片，每行下钻到配置页。
-/// 与 `lib/mobile/pages/settings_page.dart` 主设置列表保持一致的视觉规范。
 class MobileProviderList extends HookConsumerWidget {
   final List<AiProvider> configs;
 
@@ -69,6 +68,7 @@ class MobileProviderList extends HookConsumerWidget {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
     final search = useDebouncedSearch();
+    final configuredCount = configs.where((config) => config.isValid).length;
     final filtered = configs
         .where(
           (config) =>
@@ -106,6 +106,17 @@ class MobileProviderList extends HookConsumerWidget {
               onPressed: onAddCustom,
             ),
           ],
+        ),
+        const SizedBox(height: RevericSpacing.sm),
+        Text(
+          context.t(
+            LocaleKeys.providerSummary,
+            namedArgs: {
+              'total': '${configs.length}',
+              'configured': '$configuredCount',
+            },
+          ),
+          style: typo.uiSmall.copyWith(color: colors.textMuted),
         ),
         const SizedBox(height: RevericSpacing.lg),
         if (filtered.isEmpty)

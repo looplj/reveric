@@ -99,6 +99,7 @@ import '../widgets/user_profile_bar.dart';
 import '../widgets/update_entry.dart';
 import 'home_management_lists.dart';
 import '../features/reading/reading_page.dart';
+import 'settings/usage_page.dart';
 import 'workspace_editor_page.dart';
 import '../../shared/components/reveric_dialog.dart';
 
@@ -165,6 +166,10 @@ final class _HomePluginsSelection extends _HomeContentSelection {
 
 final class _HomeSettingsSelection extends _HomeContentSelection {
   const _HomeSettingsSelection();
+}
+
+final class _HomeUsageSelection extends _HomeContentSelection {
+  const _HomeUsageSelection();
 }
 
 final class _HomeSkillListSelection extends _HomeContentSelection {
@@ -745,6 +750,7 @@ class NovelHomePage extends HookConsumerWidget {
         (_HomeMcpSelection(), _HomeMcpSelection()) => true,
         (_HomePluginsSelection(), _HomePluginsSelection()) => true,
         (_HomeSettingsSelection(), _HomeSettingsSelection()) => true,
+        (_HomeUsageSelection(), _HomeUsageSelection()) => true,
         (_HomeSkillListSelection(), _HomeSkillListSelection()) => true,
         (
           _HomeGlobalSkillSelection(skill: final currentSkill),
@@ -1037,6 +1043,10 @@ class NovelHomePage extends HookConsumerWidget {
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
       ),
+      _HomeUsageSelection() => UsagePage(
+        headerGestureExclusionKey: editPanelHeaderKey,
+        headerTrailingInset: DesktopWindowFrame.trailingInset,
+      ),
       _HomeExpertTeamSelection() => AgentExpertTeamPage(
         headerGestureExclusionKey: editPanelHeaderKey,
         headerTrailingInset: DesktopWindowFrame.trailingInset,
@@ -1260,7 +1270,6 @@ class NovelHomePage extends HookConsumerWidget {
       child: Column(
         children: [
           SizedBox(height: DesktopWindowFrame.sidebarTopInset),
-          const SizedBox(height: RevericSpacing.md),
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -1372,7 +1381,7 @@ class NovelHomePage extends HookConsumerWidget {
                 ),
                 _buildLeafNavItem(
                   context,
-                  icon: RevericIcons.hub_outlined,
+                  icon: RevericIcons.link,
                   title: context.t(LocaleKeys.settingsMcp),
                   isSelected: selection is _HomeMcpSelection,
                   onTap: () {
@@ -1464,11 +1473,11 @@ class NovelHomePage extends HookConsumerWidget {
                     ],
                   ),
                 ),
-                // Section 5: 设置
+                // Section 5: 系统
                 const SizedBox(height: RevericSpacing.md),
                 _buildSectionGroupHeader(
                   context,
-                  title: context.t(LocaleKeys.homeSectionSettings),
+                  title: context.t(LocaleKeys.settingsGroupSystem),
                 ),
                 _buildLeafNavItem(
                   context,
@@ -1487,6 +1496,13 @@ class NovelHomePage extends HookConsumerWidget {
                   onTap: () {
                     onContentSelected(const _HomePluginsSelection());
                   },
+                ),
+                _buildLeafNavItem(
+                  context,
+                  icon: RevericIcons.bar_chart_outlined,
+                  title: context.t(LocaleKeys.homeUsage),
+                  isSelected: selection is _HomeUsageSelection,
+                  onTap: () => onContentSelected(const _HomeUsageSelection()),
                 ),
               ],
             ),

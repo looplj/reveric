@@ -22,7 +22,7 @@
   "subagent.model_not_selected": "Not selected",
   "subagent.name_required": "Name is required",
   "subagent.prompt_required": "Prompt is required",
-  "subagent.no_models_available": "No AI models configured. Please configure AI providers in settings.",
+  "subagent.no_models_available": "No AI models configured. Add a model on the AI Providers page.",
   "subagent.defaults.review.name": "Content Review",
   "subagent.defaults.review.description": "Verify plot logic, character consistency, world-building rules, and user-defined rule compliance.",
   "subagent.defaults.style_polish.name": "Style Polish",

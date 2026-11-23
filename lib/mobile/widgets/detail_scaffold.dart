@@ -51,6 +51,81 @@ class MobileDetailFieldList extends StatelessWidget {
   }
 }
 
+/// 设置与 AI 管理页共用的导航行。
+class MobileDetailNavRow extends StatelessWidget {
+  const MobileDetailNavRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.value,
+    this.trailing,
+  });
+
+  final String icon;
+  final String label;
+  final VoidCallback onTap;
+  final String? value;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = RevericTheme.colorsOf(context);
+    final typo = RevericTheme.typographyOf(context);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minHeight: RevericSizes.touchTargetSize,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(RevericSpacing.lg),
+            child: Row(
+              children: [
+                RevericIcon(
+                  icon,
+                  size: RevericSizes.iconButtonIconSize,
+                  color: colors.textSecondary,
+                ),
+                const SizedBox(width: RevericSpacing.lg),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    label,
+                    style: typo.ui.copyWith(color: colors.textPrimary),
+                  ),
+                ),
+                if (value case final value? when value.isNotEmpty) ...[
+                  const SizedBox(width: RevericSpacing.sm),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      value,
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: typo.uiSmall.copyWith(color: colors.textMuted),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: RevericSpacing.xs),
+                trailing ??
+                    RevericIcon(
+                      RevericIcons.chevron_right,
+                      size: RevericSizes.iconButtonIconSize,
+                      color: colors.textSubtle,
+                    ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// slist 单行：左侧标签 + 右侧值（对齐 mock `.srow`）。
 class MobileDetailFieldRow extends StatelessWidget {
   const MobileDetailFieldRow({

@@ -5,6 +5,9 @@
 //   lib/mobile/pages/library_page.dart
 //   lib/mobile/pages/chat_page.dart
 //   lib/mobile/pages/settings_page.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/onboarding.json
+//   assets/translations/zh-CN/onboarding.json
 // 遵循的 Rules:
 //   .agents/rules/hooks.md
 import 'dart:async';
@@ -63,6 +66,9 @@ class MobileApp extends HookConsumerWidget {
           icon: RevericIcons.auto_awesome,
           title: ctx.t(LocaleKeys.onboardingGuideHomeMobileAssistantTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeMobileAssistantBody),
+          primaryActionLabel: ctx.t(LocaleKeys.onboardingGuideGoProviders),
+          onPrimaryAction: () =>
+              unawaited(openMobileAiProvidersSettingsPage(context)),
         ),
         GuideStep(
           id: 'mobile_home_settings',
@@ -70,9 +76,6 @@ class MobileApp extends HookConsumerWidget {
           icon: RevericIcons.settings_outlined,
           title: ctx.t(LocaleKeys.onboardingGuideHomeMobileSettingsTitle),
           description: ctx.t(LocaleKeys.onboardingGuideHomeMobileSettingsBody),
-          primaryActionLabel: ctx.t(LocaleKeys.onboardingGuideGoProviders),
-          onPrimaryAction: () =>
-              unawaited(openMobileAiProvidersSettingsPage(context)),
         ),
       ],
     );

@@ -94,7 +94,7 @@ class McpSettingsSection extends ConsumerWidget {
                     children: [
                       Center(
                         child: RevericPlaceholder.empty(
-                          icon: RevericIcons.hub_outlined,
+                          icon: RevericIcons.link,
                           description: context.t(LocaleKeys.settingsMcpEmpty),
                         ),
                       ),

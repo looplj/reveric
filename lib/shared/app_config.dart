@@ -10,7 +10,7 @@
 /// 应用版本号。
 /// 与 pubspec.yaml 的 version 字段保持同步，由 release.sh 一同更新。
 /// 供需要同步获取版本号的场景使用（如匿名上报），避免 PackageInfo 异步调用。
-const appVersion = '0.10.4';
+const appVersion = '0.10.5';
 
 /// 匿名 Agent 诊断服务根地址。
 const anonymousReportingBaseUrl = 'https://anonymous-api.reveric.app';

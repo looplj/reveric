@@ -2981,8 +2981,8 @@ abstract final class LocaleKeys {
   static const homeSectionAgent = 'home.section_agent';
   static const homeSectionChat = 'home.section_chat';
   static const homeSectionModel = 'home.section_model';
-  static const homeSectionSettings = 'home.section_settings';
   static const homeSectionWorks = 'home.section_works';
+  static const homeUsage = 'home.usage';
   static const homeNavWorks = 'home.nav_works';
   static const homeResumeEyebrow = 'home.resume_eyebrow';
   static const homeResumeRecent = 'home.resume_recent';
@@ -3517,7 +3517,6 @@ abstract final class LocaleKeys {
   static const mobileEditorTocTitle = 'mobile.editor_toc_title';
   static const mobileEditorWordCount = 'mobile.editor_word_count';
   static const mobileAssistantModesSection = 'mobile.assistant_modes_section';
-  static const mobileAssistantManageSection = 'mobile.assistant_manage_section';
   static const mobileAssistantRecentSection = 'mobile.assistant_recent_section';
   static const mobileAssistantPrimarySubtitle =
       'mobile.assistant_primary_subtitle';
@@ -4866,9 +4865,9 @@ abstract final class LocaleKeys {
   static const settingsAppBackgroundFailed = 'settings.app_background_failed';
   static const settingsEnglish = 'settings.english';
   static const settingsGeneral = 'settings.general';
-  static const settingsGroupAi = 'settings.group_ai';
   static const settingsGroupCommunity = 'settings.group_community';
   static const settingsGroupData = 'settings.group_data';
+  static const settingsGroupManagement = 'settings.group_management';
   static const settingsGroupPreferences = 'settings.group_preferences';
   static const settingsGroupSystem = 'settings.group_system';
   static const settingsLanguage = 'settings.language';

@@ -7,7 +7,6 @@
 //   lib/shared/widgets/settings/appearance_settings_section.dart
 //   lib/shared/widgets/settings/editor_settings_section.dart
 //   lib/shared/widgets/settings/reading_settings_section.dart
-//   lib/shared/widgets/settings/usage_settings_section.dart
 //   lib/shared/widgets/settings/about_settings_section.dart
 //   lib/shared/widgets/settings/debug_settings_section.dart
 //   lib/shared/providers/settings_providers.dart
@@ -41,7 +40,6 @@ import '../../../shared/widgets/settings/leave_guard.dart';
 import '../../../shared/widgets/settings/backup_settings_section.dart';
 import '../../../shared/widgets/settings/remote_bridge_settings_section.dart';
 import '../../../shared/widgets/settings/trash_settings_section.dart';
-import '../../../shared/widgets/settings/usage_settings_section.dart';
 import '../../pages/settings/usage_page.dart';
 import '../agent_management/home_management_cards.dart';
 import '../agent_management/page_dialog.dart';
@@ -50,7 +48,6 @@ import 'settings_storage_section.dart';
 part 'settings_general_section.dart';
 part 'settings_appearance_section.dart';
 part 'settings_remote_section.dart';
-part 'settings_usage_section.dart';
 part 'settings_editor_section.dart';
 part 'settings_reading_section.dart';
 part 'settings_backup_section.dart';
@@ -61,6 +58,9 @@ part 'settings_debug_section.dart';
 /// 首页之外的入口（关于菜单、更新提示、编辑器、Agent 跳转）只需某一分区，
 /// 以独立弹窗单独展示该分区，不带设置导航。
 Future<void> showSettingsSectionDialog(BuildContext context, String section) {
+  if (section == 'usage') {
+    return showUsageSettingsDialog(context);
+  }
   final item = SettingsRegion._navItemOf(section);
   return showManagementPageDialog(
     context,
@@ -142,11 +142,6 @@ class SettingsRegion extends HookConsumerWidget {
       id: 'reading',
       labelKey: LocaleKeys.settingsReading,
       icon: RevericIcons.book_open,
-    ),
-    _SettingsNavItem(
-      id: 'usage',
-      labelKey: LocaleKeys.settingsUsage,
-      icon: RevericIcons.bar_chart_outlined,
     ),
     _SettingsNavItem(
       id: 'remote',
@@ -343,7 +338,6 @@ class SettingsRegion extends HookConsumerWidget {
       'general' => const _GeneralSettingsSection(),
       'appearance' => const _AppearanceSettingsSection(),
       'remote' => _RemoteSettingsSection(),
-      'usage' => const _UsageSettingsSection(),
       'editor' => const _EditorSettingsSection(),
       'reading' => const _ReadingSettingsSection(),
       'storage' => const StorageSettingsSection(),
