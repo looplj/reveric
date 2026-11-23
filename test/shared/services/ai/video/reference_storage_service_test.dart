@@ -13,12 +13,15 @@ import 'dart:io';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/production/media.dart';
 import 'package:reveric/shared/models/video/request.dart';
 import 'package:reveric/shared/models/video/task_result.dart';
 import 'package:reveric/shared/services/ai/video/reference_storage_service.dart';
+import 'package:reveric/shared/services/plugins/runtime.dart';
+import 'package:reveric/shared/services/production/image_dimensions.dart';
 
 import '../../../../helpers/fake_object_storage.dart';
 
@@ -375,56 +378,193 @@ void main() {
       );
     },
   );
-  test(
-    'image preparation cancels an active media probe before upload',
-    () async {
-      final entered = Completer<void>();
-      final stopped = Completer<void>();
-      final storage = FakeObjectStorage(db, null);
-      final references = ReferenceStorageService(
+  group('image preparation without a media runtime', () {
+    final provider = aiProviderBuiltinById('openai')!;
+    late ReferenceStorageService references;
+    late PluginFileScope scope;
+    late int uploads;
+    late File png;
+
+    setUp(() async {
+      uploads = 0;
+      references = ReferenceStorageService(
         database: db,
-        storage: storage,
-        probe: (_, {cancellation}) async {
-          final result = Completer<MediaInfo>();
-          await cancellation!.bind(() async {
-            stopped.complete();
-            result.completeError(const MediaException(MediaFailure.cancelled));
-          });
-          entered.complete();
-          return result.future;
-        },
+        storage: FakeObjectStorage(db, ({
+          required file,
+          required sha256,
+          required mimeType,
+          required fileSize,
+        }) async {
+          uploads++;
+          return (url: 'https://storage.example/image', expiresAt: null);
+        }),
+        probe: (_, {cancellation}) async =>
+            throw UnsupportedError('Desktop media runtime unavailable'),
       );
-      addTearDown(references.dispose);
-      final provider = aiProviderBuiltinById('openai')!;
-      final cancellation = AgentCancellationController();
-      final scope = PluginFileScope(
+      scope = PluginFileScope(
         pluginId: provider.type,
         providerId: provider.id,
-        taskId: 'probe',
+        taskId: 'image-preparation',
       );
-      final pending = references.prepareImages(
-        [(const ProductionImageReference(assetId: 'asset'), file, 'image/png')],
+      png = await File(
+        '${directory.path}/valid.png',
+      ).writeAsBytes(img.encodePng(img.Image(width: 2, height: 3)));
+    });
+
+    tearDown(() {
+      scope.revoke();
+      references.dispose();
+    });
+
+    test('prepares PNG and GIF references without probing video', () async {
+      final gif = await File(
+        '${directory.path}/reference',
+      ).writeAsBytes(img.encodeGif(img.Image(width: 4, height: 3)));
+      final prepared = await references.prepareImages(
+        [
+          (const ProductionImageReference(assetId: 'png'), png, 'image/png'),
+          (const ProductionImageReference(assetId: 'gif'), gif, 'image/gif'),
+        ],
         provider: provider,
         transport: ImageReferenceTransport.file,
         files: scope,
-        taskId: 'probe',
-        cancellation: cancellation.token,
+        taskId: scope.taskId,
       );
-      final failed = expectLater(
-        pending,
+      expect(prepared.map((image) => image['assetId']), ['png', 'gif']);
+      expect(prepared.map((image) => image['source']['kind']), [
+        'file',
+        'file',
+      ]);
+    });
+
+    test('rejects an invalid image before uploading any reference', () async {
+      await expectLater(
+        references.prepareImages(
+          [
+            (
+              const ProductionImageReference(assetId: 'valid'),
+              png,
+              'image/png',
+            ),
+            (
+              const ProductionImageReference(assetId: 'invalid'),
+              file,
+              'image/png',
+            ),
+          ],
+          provider: provider,
+          transport: ImageReferenceTransport.url,
+          files: scope,
+          taskId: scope.taskId,
+        ),
         throwsA(
-          isA<MediaException>().having(
-            (error) => error.reason,
-            'cancelled probe',
-            MediaFailure.cancelled,
+          isA<VideoException>().having(
+            (error) => error.field,
+            'field',
+            'reference_image',
           ),
         ),
       );
-      await entered.future;
+      expect(uploads, 0);
+    });
+
+    test('cancellation during preparation stops before upload', () async {
+      final cancellation = AgentCancellationController();
+      final pending = references.prepareImages(
+        [(const ProductionImageReference(assetId: 'asset'), png, 'image/png')],
+        provider: provider,
+        transport: ImageReferenceTransport.url,
+        files: scope,
+        taskId: scope.taskId,
+        cancellation: cancellation.token,
+      );
       cancellation.cancel();
-      await stopped.future.timeout(const Duration(seconds: 1));
-      await failed.timeout(const Duration(seconds: 1));
-      expect(storage.loads, 0);
-    },
-  );
+      await expectLater(
+        pending,
+        throwsA(
+          isA<PluginHostError>().having((e) => e.code, 'code', 'cancelled'),
+        ),
+      );
+      expect(uploads, 0);
+    });
+
+    test(
+      'cancellation while loading unconfigured storage still reports cancelled',
+      () async {
+        final cancellation = AgentCancellationController();
+        final unconfigured = ReferenceStorageService(
+          database: db,
+          storage: FakeObjectStorage(db, null),
+          probe: (_, {cancellation}) async =>
+              throw UnsupportedError('Desktop media runtime unavailable'),
+        );
+        addTearDown(unconfigured.dispose);
+        final pending = unconfigured.prepareImages(
+          [
+            (
+              const ProductionImageReference(assetId: 'asset'),
+              png,
+              'image/png',
+            ),
+          ],
+          provider: provider,
+          transport: ImageReferenceTransport.url,
+          files: scope,
+          taskId: scope.taskId,
+          cancellation: cancellation.token,
+        );
+        cancellation.cancel();
+        await expectLater(
+          pending,
+          throwsA(
+            isA<PluginHostError>().having((e) => e.code, 'code', 'cancelled'),
+          ),
+        );
+      },
+    );
+
+    test(
+      'uploaded transport rejects oversized reference before reading image bytes',
+      () async {
+        final purefox = provider.copyWith(type: 'purefox_media', apiKey: 'key');
+        final oversized = File('${directory.path}/oversized.png');
+        final handle = await oversized.open(mode: FileMode.write);
+        await handle.truncate(21 * 1024 * 1024);
+        await handle.close();
+        await expectLater(
+          references.prepareImages(
+            [
+              (
+                const ProductionImageReference(assetId: 'oversized'),
+                oversized,
+                'image/png',
+              ),
+            ],
+            provider: purefox,
+            transport: ImageReferenceTransport.uploaded,
+            files: scope,
+            taskId: scope.taskId,
+          ),
+          throwsA(
+            isA<VideoException>()
+                .having((e) => e.code, 'code', VideoErrorCode.invalid_request)
+                .having((e) => e.field, 'field', 'reference_upload')
+                .having((e) => e.detail, 'detail', 'file'),
+          ),
+        );
+      },
+    );
+
+    test(
+      'readImageDimensions returns null for missing or over-limit files',
+      () async {
+        expect(await readImageDimensions(png), (2, 3));
+        expect(await readImageDimensions(png, maxBytes: 1), isNull);
+        expect(
+          await readImageDimensions(File('${directory.path}/missing.png')),
+          isNull,
+        );
+      },
+    );
+  });
 }

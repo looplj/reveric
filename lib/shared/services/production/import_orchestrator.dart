@@ -11,7 +11,6 @@ import 'dart:io';
 import 'package:reveric/shared/models/production/asset_content.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
-import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import '../../database/app_database.dart';
 import '../../logger/app_logger.dart';
@@ -20,6 +19,7 @@ import '../../models/production/media.dart';
 import '../../utils/random_id.dart';
 import '../../utils/storage_paths.dart';
 import 'ffmpeg_runner.dart';
+import 'image_dimensions.dart';
 import 'media_service.dart';
 import 'media_file.dart';
 
@@ -99,7 +99,10 @@ class MediaImportOrchestrator {
       final int? width;
       final int? height;
       if (format.$1 == 'image') {
-        final dimensions = await _imageDimensions(staged, extension);
+        final dimensions = await readImageDimensions(
+          staged,
+          expectedExtension: extension,
+        );
         if (dimensions == null) {
           throw const MediaException(MediaFailure.invalid_media);
         }
@@ -309,35 +312,5 @@ class MediaImportOrchestrator {
       }
       await temporary?.delete(recursive: true);
     }
-  }
-
-  /// 扩展名对应的解码器能识别文件头时返回宽高；否则视为无效图片。
-  Future<(int, int)?> _imageDimensions(File file, String extension) async {
-    final img.Decoder? decoder = switch (extension) {
-      '.png' => img.PngDecoder(),
-      '.jpg' || '.jpeg' => img.JpegDecoder(),
-      '.webp' => img.WebPDecoder(),
-      _ => null,
-    };
-    if (decoder == null) {
-      return null;
-    }
-    final bytes = await file.readAsBytes();
-    final img.DecodeInfo? info;
-    try {
-      // 解码器遇到截断的文件头会直接抛越界异常，而不是返回 null。
-      info = decoder.isValidFile(bytes) ? decoder.startDecode(bytes) : null;
-    } catch (error, stack) {
-      _log.error(
-        'image header unreadable extension=$extension',
-        error: error,
-        stackTrace: stack,
-      );
-      return null;
-    }
-    if (info == null || info.width <= 0 || info.height <= 0) {
-      return null;
-    }
-    return (info.width, info.height);
   }
 }
