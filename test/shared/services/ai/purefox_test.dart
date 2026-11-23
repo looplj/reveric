@@ -283,53 +283,56 @@ void main() {
     );
   });
 
-  test('image request sends quality tier and aspect ratio', () async {
-    const model = 'gpt-image-2.6';
-    final provider = _media().copyWith(imageModels: [model]);
-    final capabilities = ProductionImageCapabilities(provider, model);
-    expect(capabilities.ratios, contains('16:9'));
-    expect(capabilities.resolutions, ['1K', '2K', '4K']);
-    expect(capabilities.size('16:9', '1K'), isNull);
-    final seen = <http.Request>[];
-    await http.runWithClient(
-      () async {
-        final service = AiImageGenerationService(provider, model: model);
-        final result = await service.generateImage(
-          'a cat',
-          size: capabilities.size('16:9', '1K'),
-          aspectRatio: '16:9',
-          resolution: '1K',
-        );
-        expect(
-          File(result.localFilePath!).readAsBytesSync(),
-          base64Decode(_png),
-        );
-      },
-      () => MockClient((request) async {
-        seen.add(request);
-        return http.Response(
-          jsonEncode({
-            'data': [
-              {'url': 'data:image/png;base64,$_png'},
-            ],
-          }),
-          200,
-        );
-      }),
-    );
-    expect(
-      seen.single.url.toString(),
-      'https://img.purefox.org/v1/images/generations',
-    );
-    expect(jsonDecode(seen.single.body), {
-      'model': model,
-      'prompt': 'a cat',
-      'n': 1,
-      'response_format': 'url',
-      'quality': '1K',
-      'aspect_ratio': '16:9',
-    });
-  });
+  test(
+    'image request sends pixel size for the selected tier and ratio',
+    () async {
+      const model = 'gpt-image-2.6';
+      final provider = _media().copyWith(imageModels: [model]);
+      final capabilities = ProductionImageCapabilities(provider, model);
+      expect(capabilities.ratios, contains('16:9'));
+      expect(capabilities.resolutions, ['1K', '2K', '4K']);
+      expect(capabilities.size('16:9', '1K'), '1536x864');
+      expect(capabilities.size('3:4', '2K'), '1536x2048');
+      final seen = <http.Request>[];
+      await http.runWithClient(
+        () async {
+          final service = AiImageGenerationService(provider, model: model);
+          final result = await service.generateImage(
+            'a cat',
+            aspectRatio: '3:4',
+            resolution: '2K',
+          );
+          expect(
+            File(result.localFilePath!).readAsBytesSync(),
+            base64Decode(_png),
+          );
+        },
+        () => MockClient((request) async {
+          seen.add(request);
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'url': 'data:image/png;base64,$_png'},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      expect(
+        seen.single.url.toString(),
+        'https://img.purefox.org/v1/images/generations',
+      );
+      expect(jsonDecode(seen.single.body), {
+        'model': model,
+        'prompt': 'a cat',
+        'n': 1,
+        'response_format': 'url',
+        'size': '1536x2048',
+        'aspect_ratio': '3:4',
+      });
+    },
+  );
 
   test(
     'image rejects unsupported resolution and ratio before network',
@@ -738,7 +741,7 @@ void main() {
       'prompt': 'a cat',
       'n': 1,
       'response_format': 'url',
-      'quality': '1K',
+      'size': '1024x576',
       'aspect_ratio': '16:9',
     });
 

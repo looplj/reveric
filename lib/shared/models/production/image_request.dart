@@ -164,7 +164,6 @@ class ProductionImageCapabilities {
   bool get _usesRatioParameters =>
       provider.typeConfig.imageProtocol == ImageProtocol.openrouter_image ||
       provider.typeConfig.imageProtocol == ImageProtocol.gemini_image ||
-      provider.typeConfig.imageProtocol == ImageProtocol.purefox_media ||
       (provider.typeConfig.imageProtocol == ImageProtocol.new_api_images &&
           model.startsWith('gemini-'));
 

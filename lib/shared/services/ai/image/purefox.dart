@@ -7,14 +7,17 @@
 //   assets/translations/en/ai.json
 //   assets/translations/zh-CN/ai.json
 import '../../../models/ai_provider.dart';
+import '../../../models/image/config.dart';
 import '../purefox_media.dart';
 import 'client.dart';
 
-/// 网关用 quality 档位（1K/2K/4K）而不是像素尺寸；传了 size 时由服务端忽略档位。
+/// 网关按像素 `size` 决定画幅与清晰度档位；`quality` 只接受真实的 OpenAI
+/// 质量档位（low/medium/high）。把 1K/2K/4K 当 quality 发过去会被上游忽略，
+/// 出图回落到 1:1。
 class PurefoxImageClient extends ImageClient {
   PurefoxImageClient(super.config);
 
-  static const _qualityTiers = {'low': '1K', 'medium': '2K', 'high': '4K'};
+  static const _qualityTiers = {'low', 'medium', 'high'};
 
   @override
   Future<ProviderSubmitResult> submit(
@@ -25,10 +28,12 @@ class PurefoxImageClient extends ImageClient {
     final caps = channel?.capabilities;
     if (caps != null) {
       if (request.aspectRatio != null &&
+          request.aspectRatio != 'auto' &&
           !caps.ratios.contains(request.aspectRatio)) {
         throw invalidImageParameter();
       }
       if (request.resolution != null &&
+          request.resolution != 'auto' &&
           !caps.resolutions.contains(request.resolution)) {
         throw invalidImageParameter();
       }
@@ -40,15 +45,13 @@ class PurefoxImageClient extends ImageClient {
       'n': 1,
       'response_format': 'url',
     };
-    final size = request.size;
-    if (size != null && size.isNotEmpty && size != 'auto') {
+    final size = _pixelSize(request, caps);
+    if (size != null) {
       body['size'] = size;
-    } else {
-      body['quality'] = _quality(
-        request.quality,
-        request.resolution,
-        caps?.resolutions,
-      );
+    }
+    final quality = _quality(request.quality);
+    if (quality != null) {
+      body['quality'] = quality;
     }
     if (request.aspectRatio != null && request.aspectRatio != 'auto') {
       body['aspect_ratio'] = request.aspectRatio;
@@ -71,20 +74,27 @@ class PurefoxImageClient extends ImageClient {
     );
   }
 
-  String _quality(String? quality, String? resolution, Set<String>? supported) {
-    final tier =
-        _qualityTiers[quality?.toLowerCase()] ?? quality?.toUpperCase();
-    if (tier != null && tier.isNotEmpty) {
-      return tier;
+  String? _quality(String? quality) {
+    final value = quality?.trim().toLowerCase();
+    return value != null && _qualityTiers.contains(value) ? value : null;
+  }
+
+  String? _pixelSize(
+    SubmitImageInput request,
+    ImageModelCapabilities? capabilities,
+  ) {
+    final explicit = request.size;
+    if (explicit != null && explicit.isNotEmpty && explicit != 'auto') {
+      return explicit;
     }
-    if (resolution != null && resolution.isNotEmpty && resolution != 'auto') {
-      return resolution;
+    final resolution = request.resolution;
+    if (resolution == null || resolution.isEmpty || resolution == 'auto') {
+      return null;
     }
-    for (final value in supported ?? const <String>{}) {
-      if (value != 'auto') {
-        return value;
-      }
-    }
-    return '1K';
+    final ratio = request.aspectRatio;
+    final aspect = ratio == null || ratio.isEmpty || ratio == 'auto'
+        ? '1:1'
+        : ratio;
+    return capabilities?.sizes[resolution]?[aspect];
   }
 }
