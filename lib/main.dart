@@ -59,6 +59,8 @@ import 'shared/providers/production_audio.dart';
 import 'shared/providers/agent_skill_catalog_providers.dart';
 import 'shared/providers/official_skill_sync_providers.dart';
 import 'shared/providers/anonymous_reporting_providers.dart';
+import 'shared/providers/device_id_providers.dart';
+import 'shared/services/app_activity_reporter.dart';
 import 'shared/providers/purefox_media_providers.dart';
 import 'shared/providers/remote_bridge_providers.dart';
 import 'shared/providers/settings_providers.dart';
@@ -761,9 +763,14 @@ class _AppLifecycleWatcherState extends ConsumerState<AppLifecycleWatcher>
   void _flushPendingReports() {
     // 等用户同意状态加载完成后再按上报条件投递；
     // 不阻塞 UI —— 仅异步 then，失败静默。
-    ref.read(anonymousReportingConsentProvider.future).then((_) {
+    ref.read(anonymousReportingConsentProvider.future).then((_) async {
       if (!mounted) return;
-      unawaited(ref.read(anonymousOutboxServiceProvider).flush());
+      await reportAppLaunch(
+        deviceIdService: ref.read(deviceIdServiceProvider),
+        outbox: ref.read(anonymousOutboxServiceProvider),
+      );
+      if (!mounted) return;
+      await ref.read(anonymousOutboxServiceProvider).flush();
     });
   }
 

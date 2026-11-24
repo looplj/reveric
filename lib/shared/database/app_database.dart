@@ -197,7 +197,7 @@ class AppSettings extends Table {
   Set<Column<Object>> get primaryKey => {key};
 }
 
-/// 匿名诊断和用量事件共用的本地可靠投递队列。
+/// 匿名诊断和应用活动事件的本地可靠投递队列。
 class AnonymousOutboxEvents extends Table {
   @override
   String get tableName => 'anonymous_outbox_events';

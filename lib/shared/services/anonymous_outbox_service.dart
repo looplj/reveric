@@ -1,4 +1,4 @@
-// 职责: 持久化并串行投递匿名 Agent 诊断事件。
+// 职责: 持久化并串行投递匿名诊断和应用活动事件。
 // 关联文件:
 //   lib/shared/database/daos/anonymous_outbox_dao.dart
 //   lib/shared/services/ai/trace_reporter_service.dart
@@ -18,7 +18,7 @@ import '../logger/app_logger.dart';
 final _log = AppLogger.forModule('AnonymousOutbox');
 
 enum AnonymousOutboxChannel {
-  usage(priority: 1, maxEvents: 1024),
+  activity(priority: 1, maxEvents: 1024),
   trace(priority: 2, maxEvents: 4096),
   toolError(priority: 3, maxEvents: 2048),
   requestError(priority: 4, maxEvents: 2048);
@@ -33,8 +33,8 @@ enum AnonymousOutboxChannel {
 }
 
 enum AnonymousOutboxEndpoint {
-  // 旧队列可能含用量事件，Reveric 只发送诊断事件。
-  usage(null),
+  // 应用活动，例如启动。不含模型请求和 token。
+  activity('/v1/analysis/activity/events'),
   trace('/v1/analysis/traces/events'),
   toolError('/v1/analysis/tool-call-errors'),
   requestError('/v1/analysis/request-errors');
@@ -42,6 +42,14 @@ enum AnonymousOutboxEndpoint {
   const AnonymousOutboxEndpoint(this.path);
 
   final String? path;
+}
+
+/// 队列里的 endpoint 名。`usage` 是改名前写入的应用活动事件。
+AnonymousOutboxEndpoint _storedEndpoint(String name) {
+  if (name == 'usage') {
+    return AnonymousOutboxEndpoint.activity;
+  }
+  return AnonymousOutboxEndpoint.values.byName(name);
 }
 
 enum _DeliveryResult { accepted, rejected, retry }
@@ -311,7 +319,7 @@ class AnonymousOutboxService {
     List<AnonymousOutboxEvent> batch,
   ) async {
     final first = batch.first;
-    final endpoint = AnonymousOutboxEndpoint.values.byName(first.endpoint);
+    final endpoint = _storedEndpoint(first.endpoint);
     final path = endpoint.path;
     if (path == null) {
       return _DeliveryResult.rejected;

@@ -244,7 +244,7 @@ void main() {
     expect(remaining, isEmpty);
   });
 
-  test('trace capacity evicts its oldest event without affecting usage', () async {
+  test('trace capacity evicts its oldest event without affecting activity events', () async {
     for (var index = 0; index < 4097; index += 1) {
       await outbox.enqueue(
         AnonymousOutboxEventInput(
@@ -260,9 +260,9 @@ void main() {
     }
     await outbox.enqueue(
       AnonymousOutboxEventInput(
-        channel: AnonymousOutboxChannel.usage,
-        endpoint: AnonymousOutboxEndpoint.usage,
-        deviceId: 'usage-device',
+        channel: AnonymousOutboxChannel.activity,
+        endpoint: AnonymousOutboxEndpoint.activity,
+        deviceId: 'activity-device',
         occurredAt: DateTime.utc(2026, 7, 15),
         payload: {'event_type': 'app_launch'},
       ),
@@ -273,14 +273,14 @@ void main() {
           "SELECT COUNT(*) AS event_count FROM anonymous_outbox_events WHERE channel = 'trace'",
         )
         .getSingle();
-    final usageCount = await database
+    final activityCount = await database
         .customSelect(
-          "SELECT COUNT(*) AS event_count FROM anonymous_outbox_events WHERE channel = 'usage'",
+          "SELECT COUNT(*) AS event_count FROM anonymous_outbox_events WHERE channel = 'activity'",
         )
         .getSingle();
 
     expect(traceCount.read<int>('event_count'), 4096);
-    expect(usageCount.read<int>('event_count'), 1);
+    expect(activityCount.read<int>('event_count'), 1);
   });
 
   test('shares backoff across endpoints and stops after two retries', () async {
@@ -339,17 +339,35 @@ void main() {
     expect(remaining, isEmpty);
   });
 
-  test('permanent rejections and legacy usage are never retried', () async {
-    httpClient.statusCode = 400;
-    await outbox.enqueue(
-      AnonymousOutboxEventInput(
-        channel: AnonymousOutboxChannel.usage,
-        endpoint: AnonymousOutboxEndpoint.usage,
-        deviceId: 'test-device',
-        occurredAt: now,
-        payload: {'event_type': 'app_launch'},
-      ),
+  test('app launch is posted on the activity endpoint, including a legacy usage row', () async {
+    httpClient.statusCode = 204;
+    await database.anonymousOutboxDao.enqueue(
+      eventId: 'legacy-usage',
+      channel: 'usage',
+      priority: AnonymousOutboxChannel.activity.priority,
+      endpoint: 'usage',
+      deviceId: 'test-device',
+      payloadJson:
+          '{"device_id":"test-device","event_type":"app_launch","occurred_at":"2026-11-24T00:00:00.000Z"}',
+      occurredAt: now,
     );
+    await outbox.flush();
+
+    final request = httpClient.requests.single;
+    expect(request.url.path, '/v1/analysis/activity/events');
+    final payload = jsonDecode(request.body) as Map<String, dynamic>;
+    final event = payload['events'].single as Map<String, dynamic>;
+    expect(event['event_type'], 'app_launch');
+    expect(event.containsKey('input_tokens'), isFalse);
+    expect(event.containsKey('model'), isFalse);
+    expect(
+      await database.select(database.anonymousOutboxEvents).get(),
+      isEmpty,
+    );
+  });
+
+  test('permanent rejections are never retried', () async {
+    httpClient.statusCode = 400;
     await outbox.enqueue(
       AnonymousOutboxEventInput(
         channel: AnonymousOutboxChannel.requestError,
