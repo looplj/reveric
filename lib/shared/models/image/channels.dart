@@ -153,8 +153,11 @@ final imageChannelModels = <ImageProtocol, Map<String, ImageChannelModel>>{
       id: const ImageChannelModel(
         catalogId: 'gpt-image-2.6',
         includedInPresets: false,
-        capabilities: ImageModelCapabilities(complexityLevels: {}),
-        requestDefaults: ImageRequestDefaults(complexity: ConfigValue(null)),
+        capabilities: _purefoxImageCapabilities,
+        requestDefaults: ImageRequestDefaults(
+          complexity: ConfigValue(null),
+          size: ConfigValue(null),
+        ),
       ),
   },
   // https://platform.minimax.io/docs/api-reference/image-generation-h3-generations
@@ -1051,4 +1054,40 @@ const _atlasGptImage25Capabilities = ImageModelCapabilities(
 const _atlasGptImage25Defaults = ImageRequestDefaults(
   size: ConfigValue('1024x1024'),
   outputFormat: ConfigValue('png'),
+);
+
+/// PureFox 媒体网关按像素 `size` 决定画幅与清晰度档位；`quality` 传 1K/2K/4K
+/// 时上游不识别，会回落 1:1。画幅取站点 `/v1/models` 声明的集合。
+const _purefoxImageCapabilities = ImageModelCapabilities(
+  ratios: {'1:1', '4:3', '3:4', '16:9', '9:16', '21:9'},
+  resolutions: {'1K', '2K', '4K'},
+  maxReferences: 4,
+  // 这组端点没有复杂度档位，空集盖掉目录里 2.6 的复杂度档位。
+  complexityLevels: {},
+  sizes: {
+    '1K': {
+      '1:1': '1024x1024',
+      '4:3': '1024x768',
+      '3:4': '768x1024',
+      '16:9': '1536x864',
+      '9:16': '864x1536',
+      '21:9': '1536x658',
+    },
+    '2K': {
+      '1:1': '2048x2048',
+      '4:3': '2048x1536',
+      '3:4': '1536x2048',
+      '16:9': '2048x1152',
+      '9:16': '1152x2048',
+      '21:9': '3072x1316',
+    },
+    '4K': {
+      '1:1': '4096x4096',
+      '4:3': '4096x3072',
+      '3:4': '3072x4096',
+      '16:9': '4096x2304',
+      '9:16': '2304x4096',
+      '21:9': '6144x2632',
+    },
+  },
 );

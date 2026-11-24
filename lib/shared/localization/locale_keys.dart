@@ -4040,6 +4040,10 @@ abstract final class LocaleKeys {
   static const providerDescriptionPurefox = 'provider.description_purefox';
   static const providerDescriptionPurefoxMedia =
       'provider.description_purefox_media';
+  static const providerPurefoxPromoListTagline =
+      'provider.purefox_promo_list_tagline';
+  static const providerPurefoxMediaPromoListTagline =
+      'provider.purefox_media_promo_list_tagline';
 
   // ── relation ────────────────────────────────────────
   static const relationCharacterAlterEgo = 'relation.character.alter_ego';

@@ -810,6 +810,7 @@ class ProviderListItem extends StatelessWidget {
                       const SizedBox(height: RevericSpacing.xxs),
                       Text(
                         showcase?.listTagline?.call(context) ??
+                            providerListTaglines[config.type]?.call(context) ??
                             providerCapabilitySummary(context, config),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

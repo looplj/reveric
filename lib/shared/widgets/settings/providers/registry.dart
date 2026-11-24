@@ -4,9 +4,14 @@
 //   lib/shared/widgets/settings/provider_overview.dart
 //   lib/shared/widgets/settings/ai_providers_section.dart
 //   lib/shared/widgets/settings/mobile_provider_list.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/provider.json
+//   assets/translations/zh-CN/provider.json
 
 import 'package:flutter/widgets.dart';
 
+import '../../../localization/app_localization.dart';
+import '../../../localization/locale_keys.dart';
 import 'api88.dart';
 import 'apikey.dart';
 import 'infistar.dart';
@@ -31,3 +36,15 @@ const providerShowcases = <String, ProviderShowcase>{
   'apikey': apikeyShowcase,
   'infistar': infistarShowcase,
 };
+
+/// 供应商列表中的促销标语；未登记时回退到能力摘要。
+const providerListTaglines = <String, String Function(BuildContext context)>{
+  'purefox': _purefoxListTagline,
+  'purefox_media': _purefoxMediaListTagline,
+};
+
+String _purefoxListTagline(BuildContext context) =>
+    context.t(LocaleKeys.providerPurefoxPromoListTagline);
+
+String _purefoxMediaListTagline(BuildContext context) =>
+    context.t(LocaleKeys.providerPurefoxMediaPromoListTagline);

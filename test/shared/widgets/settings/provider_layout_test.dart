@@ -317,6 +317,7 @@ void main() {
               AiModelKind.video,
               AiModelKind.audio,
             });
+            expect(draft.supportedModelKinds, isNot(contains(AiModelKind.asr)));
             final types = providerTypePickerTypes();
             expect(
               types.indexOf(type),
@@ -397,6 +398,7 @@ void main() {
             AiModelKind.video,
             AiModelKind.audio,
           });
+          expect(token91.supportedModelKinds, isNot(contains(AiModelKind.asr)));
           expect(
             find.text(locale.languageCode == 'zh' ? '推广' : 'Sponsored'),
             findsOneWidget,
@@ -778,6 +780,153 @@ void _draftFlowTests() {
     variant: TargetPlatformVariant.only(TargetPlatform.android),
     timeout: const Timeout(Duration(minutes: 2)),
   );
+
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.android,
+  ]) {
+    for (final locale in [const Locale('en'), const Locale('zh', 'CN')]) {
+      testWidgets(
+        'PureFox promo copy and web links on $platform in $locale',
+        (tester) async {
+          final mobile = platform == TargetPlatform.android;
+          await tester.binding.setSurfaceSize(Size(mobile ? 360 : 900, 900));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final launched = <String>[];
+          const channel = MethodChannel('plugins.flutter.io/url_launcher');
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            channel,
+            (call) async {
+              if (call.method == 'launch') {
+                launched.add((call.arguments as Map)['url'] as String);
+              }
+              return true;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(channel, null),
+          );
+          final purefox = aiProviderBuiltinById('purefox')!;
+          final media = aiProviderBuiltinById('purefox_media')!;
+          expect(purefox.effectiveBaseUrl, 'https://vip.purefox.org/v1');
+          expect(media.effectiveBaseUrl, 'https://img.purefox.org/v1');
+          final zh = locale.languageCode == 'zh';
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              child: _wrap(
+                SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final config in [purefox, media])
+                        ProviderOverview(config: config),
+                    ],
+                  ),
+                ),
+                false,
+                locale: locale,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.text(
+              zh
+                  ? 'PureFox 中转站：一个 Key 畅用 GPT、Claude、Gemini 等主流模型，接入稳定省心。'
+                  : 'PureFox relay: use GPT, Claude, and Gemini with one key and a hassle-free setup.',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
+              zh
+                  ? 'PureFox 生图站：Nano Banana、GPT Image、Seedream 一站直连，灵感即出图。'
+                  : 'PureFox image studio: Nano Banana, GPT Image, and Seedream direct for faster visuals.',
+            ),
+            findsOneWidget,
+          );
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              child: _wrap(
+                SizedBox(
+                  width: mobile ? 360 : 320,
+                  child: Column(
+                    children: [
+                      for (final config in [purefox, media])
+                        ProviderListItem(
+                          config: config,
+                          isSelected: false,
+                          onTap: () {},
+                        ),
+                    ],
+                  ),
+                ),
+                false,
+                locale: locale,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.text(
+              zh
+                  ? '多模型一号通吃 · 接入省心'
+                  : 'One key, leading models · hassle-free setup',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
+              zh
+                  ? '直连主流生图模型 · 专注出图'
+                  : 'Direct image models · made for creating',
+            ),
+            findsOneWidget,
+          );
+          final buttons = find.byType(RevericButton);
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              child: _wrap(
+                SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final config in [purefox, media])
+                        ProviderOverview(config: config),
+                    ],
+                  ),
+                ),
+                false,
+                locale: locale,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(buttons, findsNWidgets(2));
+          for (var i = 0; i < 2; i++) {
+            await tester.ensureVisible(buttons.at(i));
+            await tester.tap(buttons.at(i));
+            await tester.pumpAndSettle();
+          }
+          expect(launched, [
+            providerChannelUrls['purefox'],
+            providerChannelUrls['purefox_media'],
+          ]);
+          expect(launched.first, 'https://purefox.org/keys');
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        },
+        variant: TargetPlatformVariant.only(platform),
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+    }
+  }
 }
 
 Widget _wrap(Widget child, bool dark, {Locale locale = const Locale('en')}) {

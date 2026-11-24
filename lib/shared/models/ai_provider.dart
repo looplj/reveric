@@ -359,7 +359,7 @@ String aiProviderFixedBaseUrl(AiProviderType type) => switch (type) {
   AiProviderType.openrouter => 'https://openrouter.ai/api/v1',
   AiProviderType.volcengine => 'https://ark.cn-beijing.volces.com/api/v3',
   AiProviderType.doubao_audio => 'https://openspeech.bytedance.com/api/v3',
-  AiProviderType.purefox => 'https://purefox.org/v1',
+  AiProviderType.purefox => 'https://vip.purefox.org/v1',
   AiProviderType.purefox_media => 'https://img.purefox.org/v1',
   _ => '',
 };

@@ -17,6 +17,7 @@ import 'package:http/testing.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/image/channels.dart';
 import 'package:reveric/shared/models/production/image_request.dart';
+import 'package:reveric/shared/models/provider_brand.dart';
 import 'package:reveric/shared/models/video/catalog.dart';
 import 'package:reveric/shared/models/video/channels.dart';
 import 'package:reveric/shared/models/video/request.dart';
@@ -36,6 +37,7 @@ const _imageId = 'site-image-model';
 const _collidingImageId = 'gemini-3-pro-image-preview';
 const _collidingVideoId = 'kwaivgi-kling-v4.0';
 const _openAiImageId = 'gpt-image-2';
+const _noRatiosVideoId = 'site-video-without-ratios';
 
 String _catalogId(String modelId) => '$purefoxMediaCatalogPrefix$modelId';
 
@@ -48,6 +50,7 @@ String _payload() => jsonEncode({
       'id': _videoId,
       'kind': 'video',
       'qualities': ['720p'],
+      'ratios': ['16:9', '9:16', '21:9'],
       'duration': {
         'mode': 'options',
         'options': [5, 6],
@@ -62,6 +65,16 @@ String _payload() => jsonEncode({
       'kind': 'video',
       'qualities': ['720p'],
       'refImages': 2,
+    },
+    // 旧网关或未声明画幅的视频型号：保留本地默认，不能被空列表覆盖。
+    {
+      'id': _noRatiosVideoId,
+      'kind': 'video',
+      'qualities': ['720p'],
+      'duration': {
+        'mode': 'options',
+        'options': [5],
+      },
     },
   ],
 });
@@ -171,6 +184,8 @@ void main() {
         );
     purefoxMediaVideoModels.remove(_videoId);
     videoModelsCatalog.remove(_catalogId(_videoId));
+    purefoxMediaVideoModels.remove(_noRatiosVideoId);
+    videoModelsCatalog.remove(_catalogId(_noRatiosVideoId));
     purefoxMediaVideoModels.remove(_collidingVideoId);
     videoModelsCatalog.remove(_catalogId(_collidingVideoId));
     await support.delete(recursive: true);
@@ -179,12 +194,14 @@ void main() {
   test('providers are built in but not seeded', () {
     expect(
       aiProviderFixedBaseUrl(AiProviderType.purefox),
-      'https://purefox.org/v1',
+      'https://vip.purefox.org/v1',
     );
     expect(
       aiProviderFixedBaseUrl(AiProviderType.purefox_media),
       'https://img.purefox.org/v1',
     );
+    expect(providerChannelUrls['purefox'], 'https://purefox.org/keys');
+    expect(providerChannelUrls['purefox_media'], 'https://img.purefox.org/');
     expect(imageModelsForProvider('purefox_media'), isEmpty);
     expect(videoModelsForProvider('purefox_media'), isEmpty);
   });
@@ -192,13 +209,14 @@ void main() {
   test('models come from /v1/models and are split by kind', () async {
     final catalog = await _registerCatalog();
     expect(catalog.idsOfKind('image'), [_imageId]);
-    expect(catalog.idsOfKind('video'), [_videoId]);
+    expect(catalog.idsOfKind('video'), [_videoId, _noRatiosVideoId]);
 
     expect(lookupImageChannelModel('purefox_media', _imageId), isNull);
 
     final video = lookupVideoChannelModel('purefox_media', _videoId);
     expect(video, isNotNull);
     expect(video!.capabilities.resolutions, {'720p'});
+    expect(video.capabilities.ratios, {'16:9', '9:16', '21:9'});
     expect(video.capabilities.durations, {5, 6});
     expect(video.capabilities.maxReferences, 7);
 
@@ -207,6 +225,11 @@ void main() {
       lookupVideoChannelModel('purefox_media', 'no-duration-video'),
       isNull,
     );
+
+    // 缺少 ratios 的视频沿用本地默认画幅。
+    final noRatios = lookupVideoChannelModel('purefox_media', _noRatiosVideoId);
+    expect(noRatios, isNotNull);
+    expect(noRatios!.capabilities.ratios, videoRatios);
   });
 
   test(
@@ -260,53 +283,56 @@ void main() {
     );
   });
 
-  test('image request sends quality tier and aspect ratio', () async {
-    const model = 'gpt-image-2.6';
-    final provider = _media().copyWith(imageModels: [model]);
-    final capabilities = ProductionImageCapabilities(provider, model);
-    expect(capabilities.ratios, contains('16:9'));
-    expect(capabilities.resolutions, ['1K', '2K', '4K']);
-    expect(capabilities.size('16:9', '1K'), isNull);
-    final seen = <http.Request>[];
-    await http.runWithClient(
-      () async {
-        final service = AiImageGenerationService(provider, model: model);
-        final result = await service.generateImage(
-          'a cat',
-          size: capabilities.size('16:9', '1K'),
-          aspectRatio: '16:9',
-          resolution: '1K',
-        );
-        expect(
-          File(result.localFilePath!).readAsBytesSync(),
-          base64Decode(_png),
-        );
-      },
-      () => MockClient((request) async {
-        seen.add(request);
-        return http.Response(
-          jsonEncode({
-            'data': [
-              {'url': 'data:image/png;base64,$_png'},
-            ],
-          }),
-          200,
-        );
-      }),
-    );
-    expect(
-      seen.single.url.toString(),
-      'https://img.purefox.org/v1/images/generations',
-    );
-    expect(jsonDecode(seen.single.body), {
-      'model': model,
-      'prompt': 'a cat',
-      'n': 1,
-      'response_format': 'url',
-      'quality': '1K',
-      'aspect_ratio': '16:9',
-    });
-  });
+  test(
+    'image request sends pixel size for the selected tier and ratio',
+    () async {
+      const model = 'gpt-image-2.6';
+      final provider = _media().copyWith(imageModels: [model]);
+      final capabilities = ProductionImageCapabilities(provider, model);
+      expect(capabilities.ratios, contains('16:9'));
+      expect(capabilities.resolutions, ['1K', '2K', '4K']);
+      expect(capabilities.size('16:9', '1K'), '1536x864');
+      expect(capabilities.size('3:4', '2K'), '1536x2048');
+      final seen = <http.Request>[];
+      await http.runWithClient(
+        () async {
+          final service = AiImageGenerationService(provider, model: model);
+          final result = await service.generateImage(
+            'a cat',
+            aspectRatio: '3:4',
+            resolution: '2K',
+          );
+          expect(
+            File(result.localFilePath!).readAsBytesSync(),
+            base64Decode(_png),
+          );
+        },
+        () => MockClient((request) async {
+          seen.add(request);
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'url': 'data:image/png;base64,$_png'},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      expect(
+        seen.single.url.toString(),
+        'https://img.purefox.org/v1/images/generations',
+      );
+      expect(jsonDecode(seen.single.body), {
+        'model': model,
+        'prompt': 'a cat',
+        'n': 1,
+        'response_format': 'url',
+        'size': '1536x2048',
+        'aspect_ratio': '3:4',
+      });
+    },
+  );
 
   test(
     'image rejects unsupported resolution and ratio before network',
@@ -715,7 +741,7 @@ void main() {
       'prompt': 'a cat',
       'n': 1,
       'response_format': 'url',
-      'quality': '1K',
+      'size': '1024x576',
       'aspect_ratio': '16:9',
     });
 
