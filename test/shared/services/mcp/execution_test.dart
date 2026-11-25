@@ -3,7 +3,9 @@
 //   lib/shared/services/mcp/tool_dispatcher.dart
 //   lib/shared/services/mcp/result_adapter.dart
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:mcp_dart/mcp_dart.dart' as sdk;
 import 'package:reveric/shared/models/mcp/config.dart';
 import 'package:reveric/shared/models/mcp/call_result.dart';
@@ -290,7 +292,7 @@ void main() {
   test('unsupported and oversized success stays successful and valid JSON', () {
     final result = McpResultAdapter.normalize({
       'content': [
-        {'type': 'image', 'data': 'private'},
+        {'type': 'audio', 'data': 'private'},
         {'type': 'text', 'text': '界😀' * 300000},
       ],
       'structuredContent': {
@@ -302,9 +304,62 @@ void main() {
     expect(result.ok, true);
     expect((result.structuredContent!['large'] as String).length, 600000);
     expect(result.text.first, '界😀' * 300000);
-    expect(result.text.last, '[Unsupported MCP content omitted: image]');
+    expect(result.text.last, '[Unsupported MCP content omitted: audio]');
     final model = McpResultAdapter.limit(result, McpResultAdapter.modelBudget);
     expect(model.ok, true);
     expect(model.jsonBytes, lessThanOrEqualTo(McpResultAdapter.modelBudget));
+  });
+
+  test(
+    'image data survives the separate model text budget and JSON round trip',
+    () {
+      final pixels = img.Image(width: 128, height: 128);
+      for (final pixel in pixels) {
+        pixel.setRgb(pixel.x, pixel.y, pixel.x ^ pixel.y);
+      }
+      final image = {
+        'type': 'image',
+        'mimeType': 'image/png',
+        'data': base64Encode(img.encodePng(pixels, level: 0)),
+      };
+      final result = McpResultAdapter.normalize({
+        'content': [
+          {'type': 'text', 'text': 'start ${'x' * 50000} end'},
+          image,
+        ],
+        'structuredContent': {'id': '123'},
+      });
+      final preview = McpResultAdapter.limit(
+        result,
+        McpResultAdapter.modelBudget,
+      );
+      final persisted = jsonDecode(jsonEncode(preview)) as Map<String, dynamic>;
+      expect(McpCallResult.fromJson(persisted).toJson(), persisted);
+      expect((persisted['content'] as List).last, image);
+      expect(preview.text.single, contains('[truncated]'));
+      expect(preview.structuredContent, {'id': '123'});
+      expect(preview.jsonBytes, greaterThan(McpResultAdapter.modelBudget));
+      expect(
+        preview.textJsonBytes,
+        lessThanOrEqualTo(McpResultAdapter.modelBudget),
+      );
+    },
+  );
+
+  test('unusable MCP images preserve text and tool execution state', () {
+    final result = McpResultAdapter.normalize({
+      'content': [
+        {'type': 'text', 'text': 'screenshot attempt'},
+        {'type': 'image', 'mimeType': 'image/png', 'data': '%%%%'},
+        {'type': 'image', 'mimeType': 'image/svg+xml', 'data': 'eA=='},
+        {'type': 'image', 'mimeType': 'image/jpeg', 'data': 'eA=='},
+      ],
+    });
+    expect(result.ok, true);
+    expect(result.content.whereType<sdk.ImageContent>(), isEmpty);
+    expect(result.text.first, 'screenshot attempt');
+    expect(result.text.last, contains('invalid base64'));
+    expect(result.text.last, contains('unsupported image MIME type'));
+    expect(result.text.last, contains('unreadable image'));
   });
 }

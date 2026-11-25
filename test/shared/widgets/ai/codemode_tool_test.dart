@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:image/image.dart' as img;
 import 'package:reveric/shared/components/reveric_spinner.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/ai_message_block.dart';
@@ -36,28 +37,110 @@ void main() {
   });
   setUp(() => rootBundle.clear());
 
-  testWidgets('debug log shows truncation outside the log preview', (
-    tester,
-  ) async {
-    final output = '${'x' * 4096} [truncated]\n';
-    await tester.pumpWidget(
-      _wrap(
-        AiToolDetailBody(
-          block: AiToolCallBlock(
-            id: 'debug-log',
-            callId: 'debug-log',
-            toolName: 'Run',
-            arguments: const {'command': 'debug', 'subcommand': 'log'},
-            status: AiToolCallStatus.success,
-            result: {'ok': true, 'output': output, 'truncated': true},
+  testWidgets(
+    'long MCP tool name fits a 238-pixel step row',
+    (tester) async {
+      const toolName = 'mcp__astra_image_test__generate_image';
+      await tester.pumpWidget(
+        _wrap(
+          const Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 238,
+              child: TickerMode(
+                enabled: false,
+                child: AiToolStepList(
+                  blocks: [
+                    AiToolCallBlock(
+                      id: 'image',
+                      callId: 'image',
+                      toolName: toolName,
+                      arguments: {'prompt': 'Three red apples'},
+                      status: AiToolCallStatus.running,
+                      metadata: {
+                        'tool_source': 'mcp',
+                        'mcp_server': 'astra_image_test',
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text(toolName), findsOneWidget);
 
-    expect(find.text('Truncated'), findsOneWidget);
-  }, timeout: const Timeout(Duration(seconds: 20)));
+      await tester.tap(find.text(toolName));
+      await tester.pumpAndSettle();
+      expect(find.text('astra_image_test'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    timeout: const Timeout(Duration(seconds: 20)),
+  );
+
+  testWidgets(
+    'MCP tool history displays a returned image on a narrow screen',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final data = base64Encode(img.encodePng(img.Image(width: 2, height: 2)));
+      await tester.pumpWidget(
+        _wrap(
+          AiToolDetailBody(
+            block: AiToolCallBlock(
+              id: 'capture',
+              callId: 'capture',
+              toolName: 'Run',
+              arguments: const {'command': 'mcp', 'subcommand': 'call'},
+              status: AiToolCallStatus.success,
+              result: {
+                'ok': true,
+                'executionState': 'succeeded',
+                'content': [
+                  {'type': 'text', 'text': 'Screenshot taken'},
+                  {'type': 'image', 'mimeType': 'image/png', 'data': data},
+                ],
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('Screenshot taken'), findsOneWidget);
+      expect(find.textContaining(data), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+    timeout: const Timeout(Duration(seconds: 20)),
+  );
+
+  testWidgets(
+    'debug log shows truncation outside the log preview',
+    (tester) async {
+      final output = '${'x' * 4096} [truncated]\n';
+      await tester.pumpWidget(
+        _wrap(
+          AiToolDetailBody(
+            block: AiToolCallBlock(
+              id: 'debug-log',
+              callId: 'debug-log',
+              toolName: 'Run',
+              arguments: const {'command': 'debug', 'subcommand': 'log'},
+              status: AiToolCallStatus.success,
+              result: {'ok': true, 'output': output, 'truncated': true},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Truncated'), findsOneWidget);
+    },
+    timeout: const Timeout(Duration(seconds: 20)),
+  );
 
   for (final width in [390.0, 1000.0]) {
     testWidgets('completed waits stop spinning at $width', (tester) async {

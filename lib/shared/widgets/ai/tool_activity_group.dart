@@ -546,6 +546,14 @@ class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
         ? context.t(LocaleKeys.aiRunAwaitingSubcommand)
         : localizedToolCallTitle(context, block);
     final canOpen = !awaitingRunSubcommand;
+    final titleLabel = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: typo.uiSemibold.copyWith(
+        color: canOpen ? colors.textPrimary : colors.textSecondary,
+      ),
+    );
     final isCodemode = block.toolName == 'Codemode';
     final isSpawnAgent = block.toolName == 'SpawnAgent';
     // SpawnAgent 的笔名作为主语，职能与模型信息放在身份 chip 中。
@@ -594,33 +602,38 @@ class _ToolStepRowState extends ConsumerState<_ToolStepRow> {
                       roleLabel: spawnAgentRoleLabel(block),
                     ),
                   )
-                else ...[
-                  Flexible(
-                    flex: 0,
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: typo.uiSemibold.copyWith(
-                        color: canOpen
-                            ? colors.textPrimary
-                            : colors.textSecondary,
-                      ),
-                    ),
+                else
+                  Expanded(
+                    child: target == null || target.isEmpty
+                        ? titleLabel
+                        : LayoutBuilder(
+                            builder: (context, constraints) => Row(
+                              children: [
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: constraints.maxWidth,
+                                  ),
+                                  child: titleLabel,
+                                ),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                      start: RevericSpacing.sm,
+                                    ),
+                                    child: Text(
+                                      target,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: typo.uiSmall.copyWith(
+                                        color: colors.textMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                   ),
-                  if (target != null && target.isNotEmpty) ...[
-                    const SizedBox(width: RevericSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        target,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: typo.uiSmall.copyWith(color: colors.textMuted),
-                      ),
-                    ),
-                  ] else
-                    const Spacer(),
-                ],
                 if (canOpen)
                   RevericIcon(
                     isCodemode

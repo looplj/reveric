@@ -18,6 +18,7 @@ import '../../mcp/tool_dispatcher.dart';
 import '../../mcp/result_adapter.dart';
 import '../../mcp/diagnostics.dart';
 import '../codemode/tool.dart' show codemodeToolNames;
+import '../files/attachments.dart' show prepareToolResult;
 import '../tool_catalog.dart';
 import 'run_command_handler.dart';
 
@@ -242,7 +243,9 @@ class McpAgentToolDispatcher
           },
         };
         context?.lifecycleObserver?.onFinished?.call(payload, null);
-        return payload;
+        return context?.parentToolCallId == null
+            ? await prepareToolResult(payload)
+            : payload;
       } finally {
         unlink?.call();
         cancellation.abort();

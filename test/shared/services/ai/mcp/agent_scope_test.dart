@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:drift/native.dart';
+import 'package:image/image.dart' as img;
 import 'package:mcp_dart/mcp_dart.dart' as sdk;
 import 'package:reveric/shared/agent/agent_event.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,7 +17,9 @@ import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:reveric/shared/agent/fake_agent.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/database/app_database.dart';
+import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/models/mcp/config.dart';
+import 'package:reveric/shared/services/ai/agent_message_mapping.dart';
 import 'package:reveric/shared/services/mcp/settings_orchestrator.dart';
 import 'package:reveric/shared/services/mcp/settings_service.dart';
 import 'package:reveric/shared/services/ai/mcp/agent_dispatcher.dart';
@@ -144,6 +147,24 @@ class LargeResultConnection extends ExecutionConnection {
       {'type': 'text', 'text': 'large result'},
     ],
     'structuredContent': {'data': 'x' * 600000},
+  };
+}
+
+class ImageResultConnection extends ExecutionConnection {
+  final data = base64Encode(img.encodePng(img.Image(width: 2, height: 2)));
+
+  @override
+  Future<Map<String, dynamic>> callTool(
+    String name,
+    Map<String, dynamic> arguments, {
+    sdk.AbortSignal? signal,
+    void Function(sdk.Progress)? onProgress,
+  }) async => {
+    'content': [
+      {'type': 'text', 'text': 'Screenshot taken'},
+      {'type': 'image', 'mimeType': 'image/png', 'data': data},
+    ],
+    'structuredContent': {'id': 'capture'},
   };
 }
 
@@ -299,6 +320,69 @@ void main() {
     await service.close();
     await db.close();
   });
+  for (final useRun in [false, true]) {
+    test(
+      'MCP ${useRun ? 'Run' : 'direct'} images reach the model and replay',
+      () async {
+        final imageConnection = ImageResultConnection();
+        connection = imageConnection;
+        final dispatcher = McpAgentToolDispatcher(
+          inner: inner,
+          runTools: inner,
+          service: service,
+          isEnabled: () => true,
+        );
+        final client = FakeProviderClient(
+          responses: [
+            FakeProviderClientResponse.toolCalls([
+              ToolCall(
+                callId: 'image',
+                toolName: useRun ? 'Run' : 'mcp__notes__write',
+                arguments: useRun
+                    ? {
+                        'command': 'mcp',
+                        'subcommand': 'call',
+                        'options': {
+                          'name': 'mcp__notes__write',
+                          'arguments': {'number': 1},
+                        },
+                      }
+                    : {'number': 1},
+              ),
+            ]),
+            const FakeProviderClientResponse.text('done'),
+          ],
+        );
+        final agent = FakeAgent.create(client: client, toolManager: dispatcher);
+        final events = await agent.process('capture').toList();
+        expect(events.whereType<AgentError>(), isEmpty);
+        final messages = client.capturedStreamRequests.last.messages;
+        void expectImage(Iterable<AgentMessage> history) {
+          final result = history
+              .expand((m) => m.blocks)
+              .whereType<ToolResultBlock>()
+              .single;
+          final image = result.content.whereType<ImageBlock>().single;
+          expect(image.data, imageConnection.data);
+          expect(image.mimeType, 'image/png');
+          final text = result.content.whereType<TextBlock>().single.text;
+          expect(text, contains('Screenshot taken'));
+          expect(text, contains('capture'));
+          expect(text, isNot(contains(imageConnection.data)));
+        }
+
+        expectImage(messages);
+        final persisted = prepareSpawnAgentRunMessagesForPersistence(messages)
+            .map(
+              (message) => AiMessage.fromJson(
+                jsonDecode(jsonEncode(message.toJson()))
+                    as Map<String, dynamic>,
+              ),
+            );
+        expectImage(await restoreAgentMessages(persisted));
+      },
+    );
+  }
   test(
     'nested MCP calls receive full data while direct replies are bounded',
     () async {

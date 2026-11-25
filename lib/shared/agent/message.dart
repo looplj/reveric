@@ -56,11 +56,15 @@ class ToolResultBlock extends MessageBlock {
   final String toolName;
   final bool isError;
   final List<MessageBlock> content;
+
+  /// JSON result for history when provider-facing content has been transformed.
+  final Map<String, dynamic>? payload;
   const ToolResultBlock({
     required this.toolCallId,
     required this.toolName,
     required this.content,
     this.isError = false,
+    this.payload,
   });
 }
 

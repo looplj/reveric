@@ -1805,6 +1805,7 @@ class Agent {
             toolCallId: call.callId,
             toolName: call.toolName,
             isError: !ok,
+            payload: structured != null ? modelResult : null,
             content: structured?.content.isNotEmpty == true
                 ? structured!.content
                 : [TextBlock(jsonEncode(modelResult))],

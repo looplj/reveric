@@ -216,11 +216,14 @@ AiMessage convertAgentMessageToAiMessage(AgentMessage message) {
         :final toolName,
         :final isError,
         :final content,
+        :final payload,
       ):
         metadata['tool_call_id'] = toolCallId;
         metadata['tool_name'] = toolName;
         metadata['is_error'] = isError;
-        if (content.isNotEmpty &&
+        if (payload != null) {
+          textBuffer.write(jsonEncode(payload));
+        } else if (content.isNotEmpty &&
             content.first is TextBlock &&
             _isFileResultText((content.first as TextBlock).text)) {
           textBuffer.write((content.first as TextBlock).text);
@@ -492,6 +495,7 @@ Future<List<AgentMessage>> restoreAgentMessages(
               toolName: block.toolName,
               isError: block.isError,
               content: await assembleToolResultContent(payload, root: root),
+              payload: payload,
             ),
           );
         } else {

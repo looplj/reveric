@@ -144,6 +144,10 @@ Future<List<MessageBlock>> assembleToolResultContent(
   Map<String, dynamic> payload, {
   String? root,
 }) async {
+  final mcpContent = _assembleMcpToolResult(payload);
+  if (mcpContent != null) {
+    return mcpContent;
+  }
   final result = fileContentPayload(payload);
   if (result == null) {
     return [TextBlock(jsonEncode(payload))];
@@ -198,9 +202,40 @@ Future<List<MessageBlock>> assembleToolResultContent(
   return blocks.isEmpty ? [TextBlock(jsonEncode(payload))] : blocks;
 }
 
+List<MessageBlock>? _assembleMcpToolResult(Map<String, dynamic> payload) {
+  if (payload['executionState'] is! String || payload['content'] is! List) {
+    return null;
+  }
+  final images = <ImageBlock>[];
+  final summary = <Object?>[];
+  for (final item in payload['content'] as List) {
+    if (item case {
+      'type': 'image',
+      'mimeType': final String mimeType,
+      'data': final String data,
+    }) {
+      images.add(ImageBlock(data: data, mimeType: mimeType));
+      summary.add({'type': 'image', 'mimeType': mimeType});
+    } else {
+      summary.add(item);
+    }
+  }
+  if (images.isEmpty) {
+    return null;
+  }
+  final modelPayload = {...payload, 'content': summary}..remove('_metadata');
+  return [TextBlock(jsonEncode(modelPayload)), ...images];
+}
+
 Future<Map<String, dynamic>> prepareToolResult(
   Map<String, dynamic> result,
 ) async {
+  if (result is StructuredToolResult) {
+    return result;
+  }
+  if (_assembleMcpToolResult(result) case final content?) {
+    return StructuredToolResult(result, content: content);
+  }
   if (fileContentPayload(result) == null) {
     return result;
   }

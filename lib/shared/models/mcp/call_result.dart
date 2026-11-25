@@ -4,27 +4,30 @@
 //   lib/shared/services/mcp/tool_dispatcher.dart
 
 import 'dart:convert';
+import 'package:mcp_dart/mcp_dart.dart' as sdk;
 
 enum McpExecutionState { not_started, succeeded, failed, unknown }
 
 class McpCallResult {
   McpCallResult({
     required this.executionState,
-    List<String> text = const [],
+    List<sdk.Content> content = const [],
     this.structuredContent,
     this.errorCode,
     this.error,
     this.recovery,
     this.cancelled = false,
     this.rejected = false,
-  }) : text = List.unmodifiable(text) {
+  }) : content = List.unmodifiable(content) {
     if (executionState != McpExecutionState.succeeded &&
         (errorCode == null || error == null)) {
       throw ArgumentError('Unsuccessful MCP results require diagnostics');
     }
   }
   final McpExecutionState executionState;
-  final List<String> text;
+  final List<sdk.Content> content;
+  List<String> get text =>
+      content.whereType<sdk.TextContent>().map((item) => item.text).toList();
   final Map<String, dynamic>? structuredContent;
   final String? errorCode;
   final String? error;
@@ -45,12 +48,25 @@ class McpCallResult {
       'content': {
         'type': 'array',
         'items': {
-          'type': 'object',
-          'properties': {
-            'type': {'const': 'text'},
-            'text': {'type': 'string'},
-          },
-          'required': ['type', 'text'],
+          'oneOf': [
+            {
+              'type': 'object',
+              'properties': {
+                'type': {'const': 'text'},
+                'text': {'type': 'string'},
+              },
+              'required': ['type', 'text'],
+            },
+            {
+              'type': 'object',
+              'properties': {
+                'type': {'const': 'image'},
+                'mimeType': {'type': 'string'},
+                'data': {'type': 'string'},
+              },
+              'required': ['type', 'mimeType', 'data'],
+            },
+          ],
         },
       },
       'structuredContent': _nestSchema(structuredSchema ?? {'type': 'object'}),
@@ -66,10 +82,20 @@ class McpCallResult {
     'additionalProperties': true,
   };
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool includeImageData = true}) => {
     'ok': ok,
     'executionState': executionState.name,
-    'content': text.map((t) => {'type': 'text', 'text': t}).toList(),
+    'content': [
+      for (final item in content)
+        if (item is sdk.ImageContent)
+          {
+            'type': 'image',
+            'mimeType': item.mimeType,
+            if (includeImageData) 'data': item.data,
+          }
+        else
+          item.toJson(),
+    ],
     if (structuredContent != null) 'structuredContent': structuredContent,
     if (!ok) 'error_code': errorCode,
     if (!ok) 'error': error,
@@ -81,8 +107,8 @@ class McpCallResult {
     executionState: McpExecutionState.values.byName(
       json['executionState'] as String,
     ),
-    text: (json['content'] as List)
-        .map((item) => (item as Map)['text'] as String)
+    content: (json['content'] as List)
+        .map((item) => sdk.Content.fromJson(item as Map<String, dynamic>))
         .toList(),
     structuredContent: json['structuredContent'] as Map<String, dynamic>?,
     errorCode: json['error_code'] as String?,
@@ -92,6 +118,8 @@ class McpCallResult {
     rejected: json['rejected'] == true,
   );
   int get jsonBytes => utf8.encode(jsonEncode(toJson())).length;
+  int get textJsonBytes =>
+      utf8.encode(jsonEncode(toJson(includeImageData: false))).length;
 }
 
 // 嵌入后本地 JSON Pointer 仍须指向服务 schema，不能解析到宿主外层。

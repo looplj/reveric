@@ -3,6 +3,8 @@
 //   lib/shared/models/ai_message_block.dart
 //   lib/shared/widgets/ai/tools/tool_detail_body.dart
 //   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/ai.json
+//   assets/translations/zh-CN/ai.json
 //   assets/translations/en/settings.json
 //   assets/translations/zh-CN/settings.json
 //   assets/translations/en/tool.json
@@ -54,6 +56,10 @@ class McpToolCardBody extends StatelessWidget {
             maxLines: 8,
             monospace: texts.isEmpty,
           ),
+        if (content is List)
+          for (final item in content)
+            if (item case {'type': 'image', 'data': final String data})
+              _imagePreview(context, data),
         if (result != null &&
             !result.containsKey('executionState') &&
             !result.containsKey('mcp_progress') &&
@@ -66,5 +72,31 @@ class McpToolCardBody extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  Widget _imagePreview(BuildContext context, String data) {
+    final unavailable = Text(
+      context.t(LocaleKeys.aiAttachmentUnavailable),
+      style: RevericTheme.typographyOf(context).ui,
+    );
+    try {
+      return Padding(
+        padding: const EdgeInsets.only(top: RevericSpacing.sm),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxHeight: RevericSizes.mediaPreviewMaxHeight,
+          ),
+          child: Image.memory(
+            base64Decode(data),
+            fit: BoxFit.contain,
+            cacheHeight: RevericSizes.mediaPreviewMaxHeight.toInt(),
+            semanticLabel: context.t(LocaleKeys.toolPreview),
+            errorBuilder: (_, _, _) => unavailable,
+          ),
+        ),
+      );
+    } on FormatException {
+      return unavailable;
+    }
   }
 }

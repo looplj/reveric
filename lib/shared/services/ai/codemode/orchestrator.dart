@@ -339,7 +339,7 @@ class CodemodeOrchestrator {
                 ? McpResultAdapter.limit(
                     McpCallResult.fromJson(business),
                     McpResultAdapter.modelBudget,
-                  ).toJson()
+                  ).toJson(includeImageData: false)
                 : (Map<String, dynamic>.from(business)..remove('_metadata'));
             operation.finished = true;
             operation.record = operation.record.copyWith(

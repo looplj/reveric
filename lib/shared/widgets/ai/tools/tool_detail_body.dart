@@ -39,6 +39,12 @@ import 'plugin_tool_card_body.dart';
 import 'plugin_tool_display.dart';
 import 'write_tool_card_body.dart';
 
+bool _isMcpTool(AiToolCallBlock block) =>
+    block.source == 'mcp' ||
+    (block.result?['executionState'] is String &&
+        (block.toolName.startsWith('mcp__') ||
+            (block.toolName == 'Run' && block.arguments['command'] == 'mcp')));
+
 Widget? aiToolBodyFor(
   BuildContext context,
   AiToolCallBlock block, {
@@ -49,7 +55,7 @@ Widget? aiToolBodyFor(
   if (isPluginToolBlock(block)) {
     return PluginToolCardBody(block: block);
   }
-  if (block.source == 'mcp') {
+  if (_isMcpTool(block)) {
     return McpToolCardBody(block: block);
   }
   final toolName = block.toolName;
@@ -145,7 +151,7 @@ class AiToolDetailBody extends ConsumerWidget {
           };
     final showErrorDetails =
         hasError &&
-        block.source != 'mcp' &&
+        !_isMcpTool(block) &&
         (debugMode ||
             isIncompleteToolCall ||
             aiToolOperationResult(block) != null);

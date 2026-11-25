@@ -8,6 +8,7 @@ import '../../../agent/agent_tool_dispatcher.dart';
 import '../../mcp/tool_dispatcher.dart';
 import '../../mcp/runtime.dart';
 import '../../mcp/result_adapter.dart';
+import '../files/attachments.dart' show prepareToolResult;
 import '../tool_catalog.dart';
 
 const mcpRunHelp = '''MCP commands:
@@ -112,7 +113,7 @@ class McpRunCommandHandler {
       };
     }
     final tool = catalog.runtime.knownTools[options['name']];
-    return {
+    return prepareToolResult({
       ...payload,
       '_metadata': {
         'tool_source': 'mcp',
@@ -131,6 +132,6 @@ class McpRunCommandHandler {
       'command': 'mcp $action',
       'exit_code': payload['ok'] == false ? 1 : 0,
       'duration_ms': watch.elapsedMilliseconds,
-    };
+    });
   }
 }
