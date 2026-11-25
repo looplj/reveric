@@ -223,11 +223,11 @@ const List<BundledOfficialSkillSpec> bundledOfficialSkillSpecs = [
       'assets/official_skills/screenplay-production/references/video-prompts.md',
       'assets/official_skills/screenplay-production/references/wan-prompts.md',
     ],
-    version: 7,
+    version: 8,
     contentHash:
-        '26db6e1851aa54ad7ec91422b7bffd727483888a12209af635f6d37f17c37d48',
+        'c7c74ad61a5d464c332616c8b09edb5fd695d113fe8473f2a3893d4a20dfef12',
     sortOrder: 12,
-    updatedAt: '2026-11-19T02:34:41+08:00',
+    updatedAt: '2026-11-26T00:43:50+08:00',
   ),
 ];
 

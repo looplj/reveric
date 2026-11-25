@@ -2328,7 +2328,11 @@ void main() {
         assetHelp.toString(),
         contains('assets certify: id and provider_id required'),
       );
-      expect(assetHelp.toString(), isNot(contains('asset_id required')));
+      expect(assetHelp['output'], contains('assets view-image: id required'));
+      expect(
+        assetHelp['output'],
+        contains('assets resolve-path: asset_id required'),
+      );
       TestWidgetsFlutterBinding.ensureInitialized();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
@@ -2472,6 +2476,83 @@ void main() {
                 .map((row) => row.data)
                 .toList(),
     };
+
+    test(
+      'Agent writes identify invalid clip fields and input sources',
+      () async {
+        final target = await create({'episode_id': episode, 'kind': 'video'});
+        final image = await create({'episode_id': episode, 'kind': 'image'});
+        expect(target['ok'], true, reason: '$target');
+        expect(image['ok'], true, reason: '$image');
+        final imageNode = await service.shots.ensureClipNode(
+          image['id'] as String,
+        );
+        final episodeRow = (await db.screenplayDao.getEpisode(episode))!;
+        final otherEpisode = await ScreenplayService(
+          db,
+        ).createEpisode(seasonId: episodeRow.seasonId, title: 'Other canvas');
+        final otherImage = await create({
+          'episode_id': otherEpisode,
+          'kind': 'image',
+        });
+        expect(otherImage['ok'], true, reason: '$otherImage');
+        final otherNode = await service.shots.ensureClipNode(
+          otherImage['id'] as String,
+        );
+
+        final path = 'clips/${target['id']}';
+        const input = {'id': 'ref', 'ref_type': 'node'};
+        final before = await snapshot();
+        for (final (fields, field, reason) in [
+          ({'ratio': 'wide'}, 'ratio', '16:9'),
+          ({'resolution': ''}, 'resolution', 'non-empty'),
+          ({'provider_id': 'provider'}, 'model_id', 'provider_id and model_id'),
+          for (final (refId, role, field, reason) in [
+            ('missing-node', 'reference_image', 'ref_id', 'was not found'),
+            (otherNode.id, 'reference_image', 'ref_id', 'another canvas'),
+            (imageNode.id, 'reference_video', 'role', 'requires a video'),
+          ])
+            (
+              {
+                'inputs': [
+                  {...input, 'ref_id': refId, 'role': role},
+                ],
+              },
+              'inputs[0].$field',
+              reason,
+            ),
+        ]) {
+          final result = await tools.executeTool(
+            name: 'Write',
+            input: {'path': path, 'fields': fields},
+          );
+          expect(result['error_code'], 'invalid_argument', reason: '$result');
+          expect(
+            result['field_constraint'],
+            isA<Map>().having(
+              (constraint) => constraint['field'],
+              'field',
+              field,
+            ),
+          );
+          expect(result['error'], contains(reason));
+          expect(await snapshot(), before);
+        }
+
+        final saved = await tools.executeTool(
+          name: 'Write',
+          input: {
+            'path': path,
+            'fields': {
+              'inputs': [
+                {...input, 'ref_id': imageNode.id, 'role': 'reference_image'},
+              ],
+            },
+          },
+        );
+        expect(saved['updated'], true, reason: '$saved');
+      },
+    );
 
     test(
       'creates referenced clips and allows prompt reference changes',

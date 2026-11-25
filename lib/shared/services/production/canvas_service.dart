@@ -1679,7 +1679,12 @@ class ProductionCanvasService {
     while (pending.isNotEmpty) {
       final current = pending.removeLast();
       if (current == sourceId) {
-        throw const StoryboardException.field('invalid_reference', 'cycle');
+        throw StoryboardException.field(
+          'invalid_reference',
+          'cycle',
+          'Using canvas node "$sourceId" as an input to "$targetId" would '
+              'create a cycle. Use a source that does not depend on this clip.',
+        );
       }
       if (!visited.add(current)) {
         continue;
@@ -1908,7 +1913,14 @@ class ProductionCanvasService {
             ? null
             : await library.database.aiProviderDao.getById(providerId);
         if (provider == null) {
-          throw const StoryboardException.field('invalid_config', 'model');
+          throw StoryboardException.field(
+            'invalid_config',
+            'model',
+            providerId == null
+                ? 'Set provider_id and model_id together.'
+                : 'Provider "$providerId" was not found. Select an available '
+                      'provider_id and model_id.',
+          );
         }
         AudioCapabilities.forProvider(model, provider).validateSelection(
           inputs.where((i) => !i.isPrompt).map((i) => i.role.kind.name),
@@ -1921,12 +1933,25 @@ class ProductionCanvasService {
     }
     ProductionInput.validateList(inputs);
     final existing = await this.inputs(node.id);
-    for (final input in inputs) {
+    for (final (index, input) in inputs.indexed) {
+      final inputPath = 'inputs[$index]';
       if (input.isPrompt) {
         final source = await requireNode(input.refId);
-        if (source.type != canvasNodeTypeText ||
-            source.canvasId != node.canvasId) {
-          throw const StoryboardException('invalid_reference');
+        if (source.canvasId != node.canvasId) {
+          throw StoryboardException.field(
+            'invalid_reference',
+            '$inputPath.ref_id',
+            'Input "${input.id}" uses node "${source.id}" from another canvas. '
+                'Use a text node from the same canvas as this clip.',
+          );
+        }
+        if (source.type != canvasNodeTypeText) {
+          throw StoryboardException.field(
+            'invalid_reference',
+            '$inputPath.role',
+            'Input "${input.id}" with the prompt role requires a text node. '
+                'Canvas node "${source.id}" is ${source.type}.',
+          );
         }
         continue;
       }
@@ -1954,16 +1979,40 @@ class ProductionCanvasService {
       }
       if (input.refType == ProductionInputType.node) {
         final source = await db.canvasDao.getNodeById(input.refId);
-        if (source == null && unchanged) {
-          continue;
+        if (source == null) {
+          if (unchanged) {
+            continue;
+          }
+          throw StoryboardException.field(
+            'invalid_reference',
+            '$inputPath.ref_id',
+            'Canvas node "${input.refId}" for input "${input.id}" was not found. '
+                'Use an existing node ID from this canvas.',
+          );
         }
-        if (source == null ||
-            source.canvasId != node.canvasId ||
-            (!source.isGenerationNode && source.mediaAssetId == null)) {
-          throw const StoryboardException('invalid_reference');
+        if (source.canvasId != node.canvasId) {
+          throw StoryboardException.field(
+            'invalid_reference',
+            '$inputPath.ref_id',
+            'Input "${input.id}" uses node "${source.id}" from another canvas. '
+                'Use a node from the same canvas as this clip.',
+          );
+        }
+        if (!source.isGenerationNode && source.mediaAssetId == null) {
+          throw StoryboardException.field(
+            'invalid_reference',
+            '$inputPath.ref_id',
+            'Canvas node "${source.id}" for input "${input.id}" has no media. '
+                'Select a ${input.role.kind.name} source for ${input.roleName}.',
+          );
         }
         if (source.isGenerationNode && source.type != input.role.kind.name) {
-          throw const StoryboardException('invalid_reference');
+          throw StoryboardException.field(
+            'invalid_reference',
+            '$inputPath.role',
+            'Input "${input.id}" with role ${input.roleName} requires a ${input.role.kind.name} '
+                'source. Canvas node "${source.id}" is ${source.type}.',
+          );
         }
         if (!unchanged && source.mediaAssetId != null) {
           await requireAsset(source.mediaAssetId!, type: input.role.kind.name);

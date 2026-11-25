@@ -342,11 +342,47 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
     } on ToolOperationException catch (error) {
       return {'ok': false, 'error_code': error.code, 'error': error.message};
     } on StoryboardException catch (e) {
-      return _resourceError(
-        parsed.displayPath,
-        ToolErrorCode.invalid_argument,
-        [
-          switch (e.code) {
+      final (field, message) = switch ((e.code, e.field)) {
+        ('invalid_config', 'model') => (
+          'model_id',
+          'Set provider_id and model_id together, or clear both.',
+        ),
+        ('invalid_config', 'ratio') => (
+          'ratio',
+          'Use a width:height ratio such as 16:9, or adaptive. '
+              'Image clips also accept auto.',
+        ),
+        ('invalid_config', 'resolution') => (
+          'resolution',
+          'resolution must be a non-empty value supported by the model.',
+        ),
+        ('invalid_config', 'duration') => (
+          'duration_ms',
+          'duration_ms must be a positive number of milliseconds.',
+        ),
+        ('invalid_config', 'reference_mode') => (
+          'reference_mode',
+          'Use reference or first_last_frame for reference_mode.',
+        ),
+        ('invalid_config', 'duplicate') => (
+          'inputs',
+          'Use a unique id for each entry in inputs.',
+        ),
+        ('invalid_reference', 'cycle') => (
+          'inputs',
+          'Use a source that does not depend on this clip.',
+        ),
+        ('invalid_reference', 'image_only') => (
+          'inputs',
+          'Image clips accept reference_image and prompt inputs.',
+        ),
+        ('audio_reference_format', _) => (
+          'inputs',
+          'Audio clips accept reference_audio, reference_image, and prompt inputs.',
+        ),
+        (final code, final field) => (
+          field,
+          switch (code) {
             'source_missing' => 'The source scene or episode is unavailable.',
             'invalid_asset' =>
               'The referenced asset is missing or unavailable.',
@@ -356,9 +392,25 @@ extension _StoryboardTools on _AiToolManagerScreenplayMixin {
               'Moving a clip across episodes is not supported. Create a copy in the destination scene.',
             _ => 'Invalid production settings.',
           },
-          ?e.detail,
-        ].join(' '),
+        ),
+      };
+      final error = _resourceError(
+        parsed.displayPath,
+        ToolErrorCode.invalid_argument,
+        e.detail ?? message,
       );
+      if (field == null) {
+        return error;
+      }
+      // Prompt-only edits validate a subset of stored inputs. Its indices do not
+      // correspond to the clip's complete inputs array.
+      final reportedField =
+          field.startsWith('inputs[') && !fields.containsKey('inputs')
+          ? 'inputs'
+          : field;
+      return _resourceValidationResult(parsed, operation.tool, [
+        _ResourceInputIssue(e.code, field: reportedField),
+      ], error: error);
     } on FormatException catch (e) {
       return _resourceError(
         parsed.displayPath,

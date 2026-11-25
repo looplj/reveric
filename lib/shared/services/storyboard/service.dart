@@ -23,7 +23,7 @@ import '../../utils/short_entity_id_allocator.dart';
 
 class StoryboardException implements Exception {
   const StoryboardException(this.code, [this.detail]) : field = null;
-  const StoryboardException.field(this.code, this.field) : detail = null;
+  const StoryboardException.field(this.code, this.field, [this.detail]);
   final String code;
 
   /// 校验失败的字段或引用条件，供界面映射可操作的提示。
@@ -36,9 +36,9 @@ class StoryboardException implements Exception {
   String get reason => detail == null ? code : '$code: $detail';
 
   @override
-  String toString() => detail == null
-      ? 'StoryboardException($code${field == null ? '' : ', field=$field'})'
-      : 'StoryboardException($code): $detail';
+  String toString() =>
+      'StoryboardException($code${field == null ? '' : ', field=$field'})'
+      '${detail == null ? '' : ': $detail'}';
 }
 
 class StoryboardService {

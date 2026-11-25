@@ -1,6 +1,6 @@
 ---
 name: 剧本制片
-when_to_use: 适用于剧本和画布作品：从剧本或创意规划短片与拆分镜，设计人物选角造型、场景/道具/定妆/首尾帧等图像资产，编排导演台预演，编写、改写，审查，优化模型的图像与视频提示词，选配参考素材与模型能力，以及检查和补拍返修生成片段时使用。
+when_to_use: 适用于剧本和画布作品。遇到以下任一任务，一定要先加载本技能，再规划或执行：从剧本或创意制作短片、接手已有作品完成整片、拆分镜，设计人物选角造型、场景/道具/定妆/首尾帧等图像资产，编排导演台预演，编写、改写、审查或优化模型的图像与视频提示词，选配参考素材与模型能力，以及检查和补拍返修生成片段。
 description: 将剧本或创意转成可制作的分镜，提供人物与场景图片配方、分模型图像与视频提示词写法、镜头案例、整场制作流程及结果诊断对照。
 metadata:
   category: 剧本
@@ -24,17 +24,17 @@ metadata:
 
 | 用户任务 | 首先读取 | 条件追加与后续路线 |
 |---|---|---|
+| 从剧本或创意制作短片，或接手已有作品完成整片 | [制片流程](references/production.md) 的风格与共用素材两节 | 先定风格，再准备角色与共用素材。后续按阶段读取下方附件。全流程参考见 [整场制作案例](references/examples/scene-example.md) |
 | 设计或调整人物外貌、服装与气质 | [人物选角与造型](references/character-design.md) | 写图像成稿时进入下方人物场景图或定妆图路线 |
 | 已有造型，制作人物与环境同框的图片 | [人物场景图、复杂姿态与镜面构图](references/image-scene-portrait.md) | 用已有素材时追加 [图片资产与参考](references/image-references.md)；成稿按 [图像模型提示词适配](references/image-prompts.md) 选模型附件 |
-| 制作或修改定妆板、转面图或状态变体 | [图片资产与参考](references/image-references.md) → [人物定妆、转面与状态变体](references/image-character-sheets.md) | 需重新定造型先走人物设计路线；成稿按 [图像模型提示词适配](references/image-prompts.md) |
+| 制作或修改人物定妆板（含四宫格）、转面图或状态变体 | [图片资产与参考](references/image-references.md) → [人物定妆、转面与状态变体](references/image-character-sheets.md) | 需重新定造型先走人物设计路线；成稿按 [图像模型提示词适配](references/image-prompts.md) |
+| 设计或修正连续走位、绕障碍、跨镜接位，或用导演台布景、排机位、预演 | [分镜指南](references/storyboard.md) 的占位与导演台节 | 决定参考方式前先读。使用 3D 导演台时，再读「工具技能」的导演文档附件 |
 | 制作场景图、道具图、站位图、首尾帧或分镜拼图 | [图片资产与参考](references/image-references.md) → [图片提示词配方](references/image-recipes.md) | 站位/起点未定时读 [分镜指南](references/storyboard.md)；成稿按 [图像模型提示词适配](references/image-prompts.md) |
 | 拆分镜，调整站位、动作、景别或切点 | [分镜指南](references/storyboard.md) | 涉及跨段接缝、依赖或总时长读 [制片流程](references/production.md)；写正文时入视频路线 |
 | 编写、实质改写或审查视频提示词 | [视频提示词](references/video-prompts.md) → [镜头任务配方](references/shot-recipes.md) | 涉及空间与镜头设计变化先读 [分镜指南](references/storyboard.md)；具体案例按配方表取用，模型格式查 `video-prompts.md` 对照表 |
 | 仅更换模型、画幅、时长或输入方式 | [模型能力与配置](references/model-capabilities.md) | 图片入 [图像模型提示词适配](references/image-prompts.md)，视频入 [视频提示词](references/video-prompts.md) 按新模型重排 |
-| 使用导演台布景、摆姿态、排机位或预演 | [分镜指南](references/storyboard.md) 占位与导演台节 | 操作前必读「工具技能」导演文档附件；成片参考绑定入上方图片/参考路线 |
 | 提交生成、绑定参考、采用结果 | [制片流程](references/production.md) 依赖与核对节 | 操作前必读「工具技能」分镜与媒体节点附件；模型未核查时读 [模型能力与配置](references/model-capabilities.md) |
 | 检查、补拍或返修生成结果 | [结果诊断与改写对照](references/troubleshooting.md) → [制片流程](references/production.md) 验收与替换节 | 读帧/音轨/接缝对比用「媒体处理与剪辑」；纯提交故障先按「工具技能」查配置与输入 |
-| 从剧本或创意制作整段短片 | [制片流程](references/production.md) | 按阶段依上述各行按需加载；全流程参考读 [整场制作案例](references/examples/scene-example.md) |
 
 调用 `<skill_resources>` 时 `name` 使用「剧本制片」，按上表精确路径直接 `reference-get`；未知附件路径时再 `reference-list`。
 

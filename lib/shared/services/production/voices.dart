@@ -164,14 +164,28 @@ extension ProductionVoices on ProductionCanvasService {
     bool requireBinding = false,
   }) async {
     final character = await inputCharacter(input);
-    if (character == null ||
-        input.voiceAssetId == null ||
-        (requireBinding &&
-            !(character.voices ?? const []).any(
-              (v) => v.assetId == input.voiceAssetId,
-            ))) {
+    if (character == null) {
+      throw StoryboardException(
+        'invalid_reference',
+        'Input "${input.id}" cannot use voice_asset_id because image node '
+            '"${input.refId}" is not linked to a valid character profile. '
+            'Use an image node linked to the intended character.',
+      );
+    }
+
+    final voiceAssetId = input.voiceAssetId;
+    if (voiceAssetId == null) {
       throw const StoryboardException('invalid_reference');
     }
-    await requireAsset(input.voiceAssetId!, type: 'audio');
+    if (requireBinding &&
+        !(character.voices ?? const []).any((v) => v.assetId == voiceAssetId)) {
+      throw StoryboardException(
+        'invalid_reference',
+        'The voice_asset_id "$voiceAssetId" on input "${input.id}" is not '
+            'registered in characters/${character.id}/voices. '
+            'Register the audio asset there or select an existing voice.',
+      );
+    }
+    await requireAsset(voiceAssetId, type: 'audio');
   }
 }

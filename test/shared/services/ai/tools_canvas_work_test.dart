@@ -636,14 +636,18 @@ void main() {
       '${root.path}/file_workspaces/work',
     ).create(recursive: true);
     try {
-      for (final type in ['image', 'audio']) {
+      for (final (assetId, type) in [
+        ('image', 'image'),
+        ('audio', 'audio'),
+        ('unregistered_audio', 'audio'),
+      ]) {
         final file = File(
-          '${temp.path}/$type.${type == 'image' ? 'png' : 'wav'}',
+          '${temp.path}/$assetId.${type == 'image' ? 'png' : 'wav'}',
         );
         await file.writeAsBytes([1, 2, 3]);
         await app.assetDao.insertAsset(
           AssetsCompanion.insert(
-            id: type,
+            id: assetId,
             type: type,
             name: Value(type),
             path: Value(file.path.substring(root.path.length + 1)),
@@ -704,8 +708,51 @@ void main() {
         ],
       });
       expect(video['ok'], true, reason: '$video');
-      final detail = await call('Read', 'production/clips/${video['id']}');
-      expect((detail['inputs'] as List).single['voice_asset_id'], 'audio');
+      final videoPath = 'production/clips/${video['id']}';
+      final detail = await call('Read', videoPath);
+      final input = (detail['inputs'] as List).single as Map<String, dynamic>;
+      expect(input['voice_asset_id'], 'audio');
+
+      final unlinkedImage = await call('Create', 'production/clips', {
+        'kind': 'image',
+      });
+      expect(unlinkedImage['ok'], true, reason: '$unlinkedImage');
+      final unlinkedNode = await call('Create', 'production/canvas/nodes', {
+        'type': 'image',
+        'ref_id': unlinkedImage['id'],
+      });
+      expect(unlinkedNode['ok'], true, reason: '$unlinkedNode');
+      final unlinkedAdoption = await call(
+        'Write',
+        'production/clips/${unlinkedImage['id']}',
+        {'adopted_asset_id': 'image'},
+      );
+      expect(unlinkedAdoption['ok'], true, reason: '$unlinkedAdoption');
+
+      for (final (change, reason) in [
+        (
+          {'ref_id': unlinkedNode['id']},
+          'is not linked to a valid character profile',
+        ),
+        (
+          {'voice_asset_id': 'unregistered_audio'},
+          'is not registered in characters/$id/voices',
+        ),
+      ]) {
+        final rejected = await call('Write', videoPath, {
+          'inputs': [
+            {...input, ...change},
+          ],
+        });
+        expect(rejected['ok'], false, reason: '$rejected');
+        expect(rejected['error_code'], 'invalid_argument');
+        expect(
+          rejected['error'],
+          allOf(contains('voice_asset_id'), contains(reason)),
+        );
+        expect((await call('Read', videoPath))['inputs'], [input]);
+      }
+
       final invalid = await call('Write', 'characters/$id', {
         'voices': [
           {'asset_id': 'image', 'name': 'Wrong type'},
