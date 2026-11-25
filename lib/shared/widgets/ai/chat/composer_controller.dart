@@ -139,12 +139,22 @@ class ChatComposerController extends TextEditingController {
     return token;
   }
 
-  void insertFiles(Iterable<XFile> files) {
-    final selected = files.toList();
-    for (final file in selected) {
-      if (!chatFileExtensions.contains(
-        p.extension(file.name).toLowerCase().replaceFirst('.', ''),
-      )) {
+  void insertFiles(Iterable<XFile> files, {bool allowPathReferences = false}) {
+    final selected = files.map((file) {
+      final extension = p.extension(file.name).toLowerCase();
+      return (
+        attachment: ChatDraftAttachment(file),
+        inline:
+            extension.isNotEmpty &&
+            chatFileExtensions.contains(extension.substring(1)),
+      );
+    }).toList();
+    if (selected.isEmpty) {
+      return;
+    }
+    for (final item in selected) {
+      if (!item.inline &&
+          (!allowPathReferences || !p.isAbsolute(item.attachment.file.path))) {
         throw const ChatAttachmentException('unsupported');
       }
     }
@@ -152,12 +162,27 @@ class ChatComposerController extends TextEditingController {
         .where((a) => a.isImage)
         .length;
     if (existingCount +
-            selected.where((f) => ChatDraftAttachment(f).isImage).length >
+            selected.where((item) => item.attachment.isImage).length >
         chatImageMaxCount) {
       throw const ChatAttachmentException('too_many');
     }
+    final parts = [
+      for (final item in selected)
+        item.inline ? register(item.attachment) : item.attachment.file.path,
+    ];
+    if (selected.every((item) => item.inline)) {
+      insertText(parts.join());
+      return;
+    }
+    final range = selection.isValid
+        ? selection
+        : TextSelection.collapsed(offset: text.length);
     insertText(
-      selected.map((file) => register(ChatDraftAttachment(file))).join(),
+      [
+        if (range.start > 0 && text[range.start - 1] != '\n') '',
+        ...parts,
+        if (range.end == text.length || text[range.end] != '\n') '',
+      ].join('\n'),
     );
   }
 

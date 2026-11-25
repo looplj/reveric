@@ -1,4 +1,4 @@
-// 职责: 将系统文件选择、剪贴板和拖放接入聊天输入框中的原子文件块。
+// 职责: 将系统文件选择、剪贴板和拖放接入聊天输入框的附件与文件路径。
 // 关联文件:
 //   lib/shared/widgets/ai/chat/composer_controller.dart
 //   lib/shared/services/ai/chat_attachments.dart
@@ -9,6 +9,7 @@
 //   .agents/rules/hooks.md
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
@@ -50,37 +51,47 @@ const _draftFormat = clip.SimpleValueFormat<String>(
   ),
 );
 
+bool get _isDesktop => switch (defaultTargetPlatform) {
+  TargetPlatform.macOS ||
+  TargetPlatform.windows ||
+  TargetPlatform.linux => true,
+  _ => false,
+};
+
 Future<void> pickChatAttachments(
   BuildContext context,
   ChatComposerController controller,
 ) async {
   try {
-    _log.info('select started platform=$defaultTargetPlatform');
+    final platform = defaultTargetPlatform;
+    final desktop = _isDesktop;
+    _log.info('select started platform=$platform');
     final files = await openFiles(
       acceptedTypeGroups: [
-        XTypeGroup(
-          label: context.t(LocaleKeys.aiAttachFile),
-          extensions: chatFileExtensions,
-          mimeTypes: [
-            'image/png',
-            'image/jpeg',
-            'image/webp',
-            'text/plain',
-            'text/markdown',
-            'text/csv',
-          ],
-          uniformTypeIdentifiers: [
-            'public.png',
-            'public.jpeg',
-            'org.webmproject.webp',
-            'public.text',
-          ],
-        ),
+        if (!desktop)
+          XTypeGroup(
+            label: context.t(LocaleKeys.aiAttachFile),
+            extensions: chatFileExtensions,
+            mimeTypes: [
+              'image/png',
+              'image/jpeg',
+              'image/webp',
+              'text/plain',
+              'text/markdown',
+              'text/csv',
+            ],
+            uniformTypeIdentifiers: [
+              'public.png',
+              'public.jpeg',
+              'org.webmproject.webp',
+              'public.text',
+            ],
+          ),
       ],
     );
     _log.info('select completed files=${files.length}');
     if (context.mounted) {
-      controller.insertFiles(files);
+      controller.insertFiles(files, allowPathReferences: desktop);
     }
   } catch (error, stack) {
     if (context.mounted) {
@@ -106,9 +117,30 @@ void _report(BuildContext context, Object error, StackTrace stack) {
 Future<XFile?> readChatAttachmentData(
   clip.DataReader reader, {
   bool allowTextFile = true,
-}) {
-  final completer = Completer<XFile?>();
-  final format = reader.canProvide(clip.Formats.fileUri)
+  bool useLocalFilePath = false,
+}) async {
+  final hasFileUri = reader.canProvide(clip.Formats.fileUri);
+  if (useLocalFilePath && hasFileUri) {
+    final uriResult = Completer<Uri?>();
+    final progress = reader.getValue(
+      clip.Formats.fileUri,
+      uriResult.complete,
+      onError: uriResult.completeError,
+    );
+    if (progress != null) {
+      final uri = await uriResult.future;
+      if (uri != null && uri.scheme == 'file') {
+        final path = uri.toFilePath();
+        if (await FileSystemEntity.type(path) != FileSystemEntityType.file) {
+          throw const ChatAttachmentException('read_failed');
+        }
+        return XFile(path);
+      }
+    }
+  }
+
+  final readFileUri = hasFileUri && !useLocalFilePath;
+  final format = readFileUri
       ? null
       : reader.canProvide(clip.Formats.png)
       ? clip.Formats.png
@@ -119,9 +151,10 @@ Future<XFile?> readChatAttachmentData(
       : allowTextFile && reader.canProvide(clip.Formats.plainTextFile)
       ? clip.Formats.plainTextFile
       : null;
-  if (format == null && !reader.canProvide(clip.Formats.fileUri)) {
-    return Future.value(null);
+  if (format == null && !readFileUri) {
+    return null;
   }
+  final completer = Completer<XFile?>();
   final progress = reader.getFile(format, (file) async {
     try {
       final builder = BytesBuilder(copy: false);
@@ -181,11 +214,7 @@ class ChatAttachmentInput extends HookWidget {
     }
     final key = useMemoized(GlobalKey.new);
     final importing = useRef(false);
-    final desktop = {
-      TargetPlatform.macOS,
-      TargetPlatform.windows,
-      TargetPlatform.linux,
-    }.contains(defaultTargetPlatform);
+    final desktop = _isDesktop;
 
     int offsetAt(Offset position) {
       RenderEditable? editable;
@@ -354,11 +383,17 @@ class ChatAttachmentInput extends HookWidget {
           );
           final files = await Future.wait(
             event.session.items.map(
-              (item) => readChatAttachmentData(item.dataReader!),
+              (item) => readChatAttachmentData(
+                item.dataReader!,
+                useLocalFilePath: true,
+              ),
             ),
           );
           if (context.mounted) {
-            editor.insertFiles(files.whereType<XFile>());
+            editor.insertFiles(
+              files.whereType<XFile>(),
+              allowPathReferences: true,
+            );
             focusNode.requestFocus();
           }
         } catch (error, stack) {
