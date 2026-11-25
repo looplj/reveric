@@ -124,7 +124,7 @@ class RevericSelect<T> extends StatefulWidget {
   /// 内容靠右（前导图标/色点随文字一起靠右），用于「左标签 + 右值」的设置行。
   final bool alignEnd;
 
-  /// 菜单向上展开（触发器贴近屏幕底部时，如画布上的生成输入框底栏）。
+  /// 优先向上展开（如画布上的生成输入框底栏）。空间不足时尝试另一侧。
   final bool dropUp;
 
   /// 菜单顶部显示搜索框，按标题和副标题过滤。长列表（如模型）才打开。
@@ -357,24 +357,35 @@ class _RevericSelectState<T> extends State<RevericSelect<T>> {
   }
 }
 
-/// 菜单左缘对齐触发器，按 [dropUp] 贴在触发器上方或下方。
+/// 菜单左缘对齐触发器，并根据实际高度和浮层边界选择展开方向。
 class _RevericSelectMenuLayout extends SingleChildLayoutDelegate {
   const _RevericSelectMenuLayout({required this.anchor, required this.dropUp});
 
+  static const _gap = RevericSpacing.xs;
   final Rect anchor;
   final bool dropUp;
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      constraints.loosen();
+      constraints.loosen().deflate(const EdgeInsets.symmetric(vertical: _gap));
 
   @override
-  Offset getPositionForChild(Size size, Size childSize) => Offset(
-    anchor.left,
-    dropUp
-        ? anchor.top - RevericSpacing.xs - childSize.height
-        : anchor.bottom + RevericSpacing.xs,
-  );
+  Offset getPositionForChild(Size size, Size childSize) {
+    final remainingHeight = size.height - childSize.height;
+    final minTop = (remainingHeight / 2).clamp(0.0, _gap);
+    final maxTop = remainingHeight - minTop;
+    final above = anchor.top - _gap - childSize.height;
+    final below = anchor.bottom + _gap;
+    final preferred = dropUp ? above : below;
+    final alternate = dropUp ? below : above;
+    if (preferred >= minTop && preferred <= maxTop) {
+      return Offset(anchor.left, preferred);
+    }
+    final top = alternate >= minTop && alternate <= maxTop
+        ? alternate
+        : preferred.clamp(minTop, maxTop);
+    return Offset(anchor.left, top);
+  }
 
   @override
   bool shouldRelayout(_RevericSelectMenuLayout oldDelegate) =>

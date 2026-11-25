@@ -1,4 +1,4 @@
-// 职责: 验证下拉菜单按标题和副标题过滤选项，无匹配时给出空结果。
+// 职责: 验证下拉菜单的定位、选择及搜索过滤。
 // 关联文件:
 //   lib/shared/components/reveric_select.dart
 //   lib/shared/localization/locale_keys.dart
@@ -24,6 +24,51 @@ void main() {
   });
 
   setUp(rootBundle.clear);
+
+  for (final (edge, alignment, dropUp) in [
+    ('bottom', Alignment.bottomCenter, false),
+    ('top', Alignment.topCenter, true),
+  ]) {
+    testWidgets('opens toward available space at the $edge of the window', (
+      tester,
+    ) async {
+      String? selected;
+      await tester.pumpWidget(
+        _wrap(
+          RevericSelect<String>(
+            value: 'allow',
+            dropUp: dropUp,
+            items: const [
+              RevericSelectItem(value: 'allow', label: 'Allow'),
+              RevericSelectItem(value: 'ask', label: 'Ask each time'),
+              RevericSelectItem(value: 'deny', label: 'Deny'),
+            ],
+            onChanged: (value) => selected = value,
+          ),
+          alignment: alignment,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final trigger = find.byType(RevericSelect<String>);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+
+      final deny = find.text('Deny').hitTestable();
+      expect(find.text('Ask each time').hitTestable(), findsOneWidget);
+      expect(deny, findsOneWidget);
+      final triggerRect = tester.getRect(trigger);
+      final optionRect = tester.getRect(deny);
+      expect(
+        dropUp
+            ? optionRect.top - triggerRect.bottom
+            : triggerRect.top - optionRect.bottom,
+        greaterThan(0),
+      );
+      await tester.tap(deny);
+      expect(selected, 'deny');
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  }
 
   testWidgets(
     'search keeps items whose label or subtitle matches',
@@ -99,7 +144,7 @@ Future<void> _settleSearch(WidgetTester tester) async {
   await tester.pump();
 }
 
-Widget _wrap(Widget child) {
+Widget _wrap(Widget child, {Alignment alignment = Alignment.center}) {
   return EasyLocalization(
     supportedLocales: const [Locale('en')],
     path: 'assets/translations',
@@ -116,7 +161,10 @@ Widget _wrap(Widget child) {
           home: RevericTheme(
             data: RevericThemeData.reveric,
             child: Scaffold(
-              body: Center(child: SizedBox(width: 240, child: child)),
+              body: Align(
+                alignment: alignment,
+                child: SizedBox(width: 240, child: child),
+              ),
             ),
           ),
         );
