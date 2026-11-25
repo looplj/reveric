@@ -650,6 +650,8 @@ class SpawnAgentHandler {
         'The model context window was exhausted; reduce the task context or start a new sub-session.',
       AiRunFailureKind.incompleteResponse =>
         'The model returned an incomplete response.',
+      AiRunFailureKind.invalid_conversation_history =>
+        'The conversation history could not be sent to the model; start a new sub-session.',
       AiRunFailureKind.requestFailed =>
         'The model request failed; check the application logs for details.',
     };

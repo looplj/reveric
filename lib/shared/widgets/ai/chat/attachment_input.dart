@@ -95,20 +95,26 @@ Future<void> pickChatAttachments(
     }
   } catch (error, stack) {
     if (context.mounted) {
-      _report(context, error, stack);
+      _report(context, error, stack, LocaleKeys.aiAttachmentPickerFailed);
     }
   }
 }
 
-void _report(BuildContext context, Object error, StackTrace stack) {
+void _report(
+  BuildContext context,
+  Object error,
+  StackTrace stack,
+  String fallbackKey,
+) {
+  final failure = error is ChatAttachmentException ? error : null;
   _log.error(
-    'attachment input failed type=${error.runtimeType}',
-    error: error is ChatAttachmentException ? error : null,
+    'attachment input failed action=$fallbackKey type=${error.runtimeType}',
+    error: failure,
     stackTrace: stack,
   );
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.t(LocaleKeys.aiAttachmentFailed))),
+      SnackBar(content: Text(context.t(failure?.messageKey ?? fallbackKey))),
     );
   }
 }
@@ -132,7 +138,9 @@ Future<XFile?> readChatAttachmentData(
       if (uri != null && uri.scheme == 'file') {
         final path = uri.toFilePath();
         if (await FileSystemEntity.type(path) != FileSystemEntityType.file) {
-          throw const ChatAttachmentException('read_failed');
+          throw const ChatAttachmentException(
+            ChatAttachmentFailure.read_failed,
+          );
         }
         return XFile(path);
       }
@@ -160,7 +168,7 @@ Future<XFile?> readChatAttachmentData(
       final builder = BytesBuilder(copy: false);
       await for (final chunk in file.getStream()) {
         if (builder.length + chunk.length > 32 * 1024 * 1024) {
-          throw const ChatAttachmentException('too_large');
+          throw const ChatAttachmentException(ChatAttachmentFailure.too_large);
         }
         builder.add(chunk);
       }
@@ -242,7 +250,9 @@ class ChatAttachmentInput extends HookWidget {
       try {
         final clipboard = clip.SystemClipboard.instance;
         if (clipboard == null) {
-          throw const ChatAttachmentException('clipboard_unavailable');
+          throw const ChatAttachmentException(
+            ChatAttachmentFailure.clipboard_unavailable,
+          );
         }
         final reader = await clipboard.read();
         final id = await reader.readValue(_draftFormat);
@@ -254,7 +264,9 @@ class ChatAttachmentInput extends HookWidget {
           return;
         }
         if (reader.items.length > 16) {
-          throw const ChatAttachmentException('too_many');
+          throw const ChatAttachmentException(
+            ChatAttachmentFailure.too_many_attachments,
+          );
         }
         final files = await Future.wait(
           reader.items.map(
@@ -275,7 +287,7 @@ class ChatAttachmentInput extends HookWidget {
         }
       } catch (error, stack) {
         if (context.mounted) {
-          _report(context, error, stack);
+          _report(context, error, stack, LocaleKeys.aiAttachmentPasteFailed);
         }
       } finally {
         importing.value = false;
@@ -292,7 +304,9 @@ class ChatAttachmentInput extends HookWidget {
       try {
         final clipboard = clip.SystemClipboard.instance;
         if (clipboard == null) {
-          throw const ChatAttachmentException('clipboard_unavailable');
+          throw const ChatAttachmentException(
+            ChatAttachmentFailure.clipboard_unavailable,
+          );
         }
         final id = buildRandomId('clipboard');
         final item = clip.DataWriterItem()
@@ -316,7 +330,7 @@ class ChatAttachmentInput extends HookWidget {
         }
       } catch (error, stack) {
         if (context.mounted) {
-          _report(context, error, stack);
+          _report(context, error, stack, LocaleKeys.aiClipboardWriteFailed);
         }
       }
     }
@@ -376,7 +390,9 @@ class ChatAttachmentInput extends HookWidget {
         importing.value = true;
         try {
           if (event.session.items.length > 16) {
-            throw const ChatAttachmentException('too_many');
+            throw const ChatAttachmentException(
+              ChatAttachmentFailure.too_many_attachments,
+            );
           }
           editor.selection = TextSelection.collapsed(
             offset: offsetAt(event.position.global),
@@ -398,7 +414,7 @@ class ChatAttachmentInput extends HookWidget {
           }
         } catch (error, stack) {
           if (context.mounted) {
-            _report(context, error, stack);
+            _report(context, error, stack, LocaleKeys.aiAttachmentDropFailed);
           }
         } finally {
           importing.value = false;

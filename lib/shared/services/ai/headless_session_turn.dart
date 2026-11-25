@@ -298,19 +298,21 @@ Future<ChatTurnOutcome> runHeadlessSessionTurn(
       _excludePrePersistedSeedFromAgentHistory(container, sessionId: sessionId);
     }
 
-    aiService = await runner.resolveAiService(
+    final resolution = await runner.resolveAiService(
       requestId: requestId,
       sessionId: sessionId,
     );
+    aiService = resolution.client;
     if (aiService == null) {
       _log.error('headless AI service unavailable session=$sessionId');
       return ChatTurnOutcome.failed(
         sessionId: sessionId,
         requestId: requestId,
-        error: const ChatTurnError(
+        error: ChatTurnError(
           kind: ChatTurnErrorKind.serviceUnavailable,
           safeMessage: '',
-          technicalMessage: 'resolveAiService returned null',
+          technicalMessage:
+              'resolveAiService blocked: ${resolution.block!.name}',
         ),
       );
     }

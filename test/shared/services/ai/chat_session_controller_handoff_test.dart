@@ -12,6 +12,7 @@ import 'package:reveric/shared/agent/agent.dart';
 import 'package:reveric/shared/agent/fake_agent.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
+import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/ai_session_mode.dart';
@@ -81,6 +82,7 @@ void main() {
   late Agent agent;
   late String composer;
   late List<String> adopted;
+  late List<String> warnings;
   var rejectAdoption = false;
   setUp(() async {
     final tempDir = await Directory.systemTemp.createTemp(
@@ -131,6 +133,7 @@ void main() {
 
     activeId = signal;
     adopted = [];
+    warnings = [];
     rejectAdoption = false;
     composer = 'Work on the next scene';
     client = FakeProviderClient(
@@ -192,6 +195,7 @@ void main() {
       resetScroll: () {},
       isMounted: () => true,
       restoreComposerText: (text) => composer = text,
+      onComposerWarning: warnings.add,
       onActiveSessionIdChanged: (id) async {
         if (rejectAdoption) {
           throw StateError('adoption failed');
@@ -263,6 +267,7 @@ void main() {
     () async {
       rejectAdoption = true;
       await controller().send(composer);
+      expect(warnings, [LocaleKeys.aiChatSessionOpenFailed]);
       expect(composer, 'Work on the next scene');
       expect(store.pendingHandoff!.sourceSessionId, 'source');
       expect(
@@ -277,6 +282,54 @@ void main() {
         hasLength(2),
       );
       expect(store.pendingHandoff, isNull);
+    },
+  );
+  test(
+    'failed chat creation reports the failed operation and keeps the draft',
+    () async {
+      await appDb.customStatement("""
+      CREATE TRIGGER reject_chat_create BEFORE INSERT ON ai_chat_sessions
+      BEGIN SELECT RAISE(ABORT, 'test chat create failure'); END
+      """);
+
+      await controller().send(composer);
+
+      expect(warnings, [LocaleKeys.aiChatSessionCreateFailed]);
+      expect(composer, 'Work on the next scene');
+      expect(adopted, isEmpty);
+    },
+  );
+
+  test(
+    'failed model change reports the save error and keeps the old model and draft',
+    () async {
+      await controller().send(composer);
+      expect(
+        (await appDb.aiChatSessionDao.getById(activeId))?.model,
+        _materializationModel,
+      );
+      warnings.clear();
+      composer = 'Try a different model';
+      await appDb.customStatement("""
+      CREATE TRIGGER reject_model_change BEFORE UPDATE OF model ON ai_chat_sessions
+      BEGIN SELECT RAISE(ABORT, 'test model update failure'); END
+      """);
+
+      await controller().send(
+        composer,
+        pendingModelSelection: PendingChatModelSelection(
+          providerId: _materializationProvider.id,
+          model: 'different-model',
+          reasoningEffort: null,
+        ),
+      );
+
+      expect(warnings, [LocaleKeys.aiChatModelSwitchSaveFailed]);
+      expect(composer, 'Try a different model');
+      expect(
+        (await appDb.aiChatSessionDao.getById(activeId))?.model,
+        _materializationModel,
+      );
     },
   );
   test(

@@ -30,6 +30,7 @@ import 'package:reveric/shared/agent/fake_agent.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/database/app_database.dart' hide AiChatSession;
 import 'package:reveric/shared/database/novel_content_database.dart';
+import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/content_kind.dart';
@@ -1863,6 +1864,44 @@ void main() {
           ),
           isTrue,
         );
+      },
+    );
+
+    test(
+      'unreadable recorded attachment reports the file problem before calling the model',
+      () async {
+        final container = buildTestContainer();
+        addTearDown(container.dispose);
+        final client = FakeProviderClient(
+          responses: const [FakeProviderClientResponse.text('unused')],
+        );
+        final seeded = seedSession(
+          container,
+          sessionId: 'sess_bad_attachment',
+          agent: FakeAgent.create(client: client),
+        );
+        final userMessage = container
+            .read(aiChatSessionProvider(seeded.sessionId).notifier)
+            .addUserMessage(
+              'Read the attachment',
+              blocks: const [
+                AiAttachmentBlock(
+                  id: 'attachment',
+                  name: 'notes.txt',
+                  path: 'outside-session/notes.txt',
+                  mimeType: 'text/plain',
+                ),
+              ],
+            );
+        final outcome = await buildRunner(container).runTurn(
+          userMessage.content,
+          requestId: seeded.requestId,
+          sessionId: seeded.sessionId,
+          userMessageId: userMessage.id,
+        );
+
+        expect(outcome.error?.safeMessage, LocaleKeys.aiAttachmentReadFailed);
+        expect(client.capturedStreamRequests, isEmpty);
       },
     );
 

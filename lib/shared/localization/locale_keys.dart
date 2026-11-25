@@ -1316,7 +1316,20 @@ abstract final class LocaleKeys {
   static const aiAssistantWelcomeTitle = 'ai.assistant_welcome_title';
   static const aiAddSelectionToChat = 'ai.add_selection_to_chat';
   static const aiImageAttachmentLabel = 'ai.image_attachment_label';
-  static const aiAttachmentFailed = 'ai.attachment_failed';
+  static const aiAttachmentUnsupported = 'ai.attachment_unsupported';
+  static const aiAttachmentTooLarge = 'ai.attachment_too_large';
+  static const aiAttachmentTooMany = 'ai.attachment_too_many';
+  static const aiAttachmentTooManyImages = 'ai.attachment_too_many_images';
+  static const aiAttachmentTextLimit = 'ai.attachment_text_limit';
+  static const aiAttachmentEmpty = 'ai.attachment_empty';
+  static const aiAttachmentInvalidImage = 'ai.attachment_invalid_image';
+  static const aiAttachmentReadFailed = 'ai.attachment_read_failed';
+  static const aiAttachmentSaveFailed = 'ai.attachment_save_failed';
+  static const aiAttachmentPickerFailed = 'ai.attachment_picker_failed';
+  static const aiAttachmentPasteFailed = 'ai.attachment_paste_failed';
+  static const aiAttachmentDropFailed = 'ai.attachment_drop_failed';
+  static const aiClipboardUnavailable = 'ai.clipboard_unavailable';
+  static const aiClipboardWriteFailed = 'ai.clipboard_write_failed';
   static const aiAttachmentModelUnsupported = 'ai.attachment_model_unsupported';
   static const aiAttachmentUnavailable = 'ai.attachment_unavailable';
   static const aiAttachFile = 'ai.attach_file';
@@ -1397,6 +1410,19 @@ abstract final class LocaleKeys {
   static const aiCodexImageNeedsChatModel = 'ai.codex_image_needs_chat_model';
   static const aiModelUnavailable = 'ai.model_unavailable';
   static const aiModelUnavailableReselect = 'ai.model_unavailable_reselect';
+  static const aiChatSessionUnavailable = 'ai.chat_session_unavailable';
+  static const aiChatSessionCreateFailed = 'ai.chat_session_create_failed';
+  static const aiChatSessionOpenFailed = 'ai.chat_session_open_failed';
+  static const aiChatWorkUnavailable = 'ai.chat_work_unavailable';
+  static const aiChatModelSwitchSaveFailed = 'ai.chat_model_switch_save_failed';
+  static const aiChatHistoryInvalid = 'ai.chat_history_invalid';
+  static const aiChatModelNotSelected = 'ai.chat_model_not_selected';
+  static const aiChatProviderMissing = 'ai.chat_provider_missing';
+  static const aiChatProviderDisabled = 'ai.chat_provider_disabled';
+  static const aiChatProviderUnsupported = 'ai.chat_provider_unsupported';
+  static const aiChatProviderUnavailable = 'ai.chat_provider_unavailable';
+  static const aiChatProviderBaseUrlMissing =
+      'ai.chat_provider_base_url_missing';
   static const aiImageNoResult = 'ai.image_no_result';
   static const aiImagePathEmpty = 'ai.image_path_empty';
   static const aiImagePromptEmpty = 'ai.image_prompt_empty';
@@ -1459,6 +1485,8 @@ abstract final class LocaleKeys {
       'ai.provider_trial_quota_exhausted';
   static const aiProviderChannelUnavailable = 'ai.provider_channel_unavailable';
   static const aiProviderQuotaExceeded = 'ai.provider_quota_exceeded';
+  static const aiProviderServerError = 'ai.provider_server_error';
+  static const aiProviderGatewayTimeout = 'ai.provider_gateway_timeout';
   static const aiNotificationSessionCompletedBody =
       'ai.notification_session_completed_body';
   static const aiNotificationSessionCompletedTitle =

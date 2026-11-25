@@ -29,5 +29,6 @@ const _$AiRunFailureKindEnumMap = {
   AiRunFailureKind.streamInterrupted: 'streamInterrupted',
   AiRunFailureKind.contextWindowExhausted: 'contextWindowExhausted',
   AiRunFailureKind.incompleteResponse: 'incompleteResponse',
+  AiRunFailureKind.invalid_conversation_history: 'invalid_conversation_history',
   AiRunFailureKind.requestFailed: 'requestFailed',
 };

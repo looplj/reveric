@@ -123,7 +123,9 @@ class ChatComposerController extends TextEditingController {
     bool preserveImageNumber = false,
   }) {
     if (_nextToken > 0xf8ff) {
-      throw const ChatAttachmentException('too_many');
+      throw const ChatAttachmentException(
+        ChatAttachmentFailure.too_many_attachments,
+      );
     }
     if (attachment.isImage) {
       final number = preserveImageNumber && (attachment.imageNumber ?? 0) > 0
@@ -155,7 +157,7 @@ class ChatComposerController extends TextEditingController {
     for (final item in selected) {
       if (!item.inline &&
           (!allowPathReferences || !p.isAbsolute(item.attachment.file.path))) {
-        throw const ChatAttachmentException('unsupported');
+        throw const ChatAttachmentException(ChatAttachmentFailure.unsupported);
       }
     }
     final existingCount = snapshot().attachments.values
@@ -164,7 +166,9 @@ class ChatComposerController extends TextEditingController {
     if (existingCount +
             selected.where((item) => item.attachment.isImage).length >
         chatImageMaxCount) {
-      throw const ChatAttachmentException('too_many');
+      throw const ChatAttachmentException(
+        ChatAttachmentFailure.too_many_images,
+      );
     }
     final parts = [
       for (final item in selected)

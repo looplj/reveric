@@ -21,11 +21,13 @@ import 'package:reveric/shared/agent/agent_tool_dispatcher.dart';
 import 'package:reveric/shared/agent/client.dart';
 import 'package:reveric/shared/agent/client/openai_client.dart';
 import 'package:reveric/shared/agent/client/openai_responses_client.dart';
+import 'package:reveric/shared/agent/client/provider_history_preflight.dart';
 import 'package:reveric/shared/agent/fake_agent.dart';
 import 'package:reveric/shared/agent/message.dart';
 import 'package:reveric/shared/agent/token_estimator.dart';
 import 'package:reveric/shared/models/ai_run_failure.dart';
 import 'package:reveric/shared/localization/ai_run_failure_localization.dart';
+import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/services/ai/trace_reporter_service.dart';
 
 /// A provider client that returns ThinkingDelta + TextDelta in its stream.
@@ -1858,6 +1860,34 @@ void main() {
         AiRunFailureKind.network,
       );
     });
+
+    test(
+      'invalid provider history keeps its specific error and does not retry',
+      () async {
+        final client = _FlakyStreamClient([
+          const _StreamScript(
+            error: ProviderHistoryValidationException(
+              protocol: ProviderHistoryProtocol.openAiChat,
+              issue: ProviderHistoryIssue.missingToolResult,
+              messageIndex: 1,
+              blockIndex: 0,
+              pendingCallCount: 1,
+            ),
+          ),
+        ]);
+        final events = await build(client).process('Continue').toList();
+
+        expect(client.calls, 1);
+        expect(events.whereType<AgentRoundRetry>(), isEmpty);
+        final error = events.whereType<AgentError>().single;
+        expect(error.technicalMessage, contains('missing_tool_result'));
+        final failure = AiRunFailure.fromJson(error.failure.toJson());
+        expect(
+          localizeAiRunFailure(failure, (key) => key),
+          LocaleKeys.aiChatHistoryInvalid,
+        );
+      },
+    );
 
     test(
       'silent provider stream times out instead of leaving the round pending',

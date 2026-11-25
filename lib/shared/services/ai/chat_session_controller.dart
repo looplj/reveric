@@ -270,28 +270,6 @@ class ChatScope {
   final String? workspaceTitle;
 }
 
-/// 将聊天发送门禁原因归类为稳定的失败码。
-@visibleForTesting
-String classifyChatBlockedFailureCode({
-  required String? providerId,
-  required String? model,
-  required AiProvider? config,
-}) {
-  if (providerId == null || model == null) {
-    return 'model_unavailable';
-  }
-  if (config == null || !config.enabled) {
-    return 'feature_not_enabled';
-  }
-  if (!config.hasCredentialConfiguration) {
-    return 'api_key_missing';
-  }
-  if (!config.availableModels.contains(model)) {
-    return 'model_unavailable';
-  }
-  return 'feature_not_enabled';
-}
-
 /// 真正触碰 UI 的副作用 + 平台专属动作，注入回调；移动端给空/部分实现。
 class ChatHost {
   const ChatHost({
@@ -476,10 +454,11 @@ class ChatSessionController {
     if (saved.isNotEmpty || draft == null || draft.attachments.isEmpty) {
       return saved;
     }
+    if (sessionId == null || isTemporaryAiChatSessionId(sessionId)) {
+      host.onComposerWarning?.call(tr(LocaleKeys.aiChatSessionUnavailable));
+      return null;
+    }
     try {
-      if (sessionId == null || isTemporaryAiChatSessionId(sessionId)) {
-        throw const ChatAttachmentException('session_missing');
-      }
       final prepared = await ChatAttachmentOrchestrator().prepare(
         sessionId,
         ChatDraft(text, draft.attachments),
@@ -487,8 +466,8 @@ class ChatSessionController {
       );
       await hydrateChatBlocks(prepared, strict: true);
       return prepared;
-    } on ChatAttachmentException {
-      host.onComposerWarning?.call(tr(LocaleKeys.aiAttachmentFailed));
+    } on ChatAttachmentException catch (error) {
+      host.onComposerWarning?.call(tr(error.messageKey));
       return null;
     }
   }
@@ -693,8 +672,8 @@ class ChatSessionController {
         modelBlocks = blocks.isEmpty
             ? <MessageBlock>[]
             : await hydrateChatBlocks(blocks, strict: true);
-      } on ChatAttachmentException {
-        host.onComposerWarning?.call(tr(LocaleKeys.aiAttachmentFailed));
+      } on ChatAttachmentException catch (error) {
+        host.onComposerWarning?.call(tr(error.messageKey));
         return;
       } finally {
         runtime.isPreparingQueuedMessage = false;
@@ -848,7 +827,7 @@ class ChatSessionController {
           error: error,
           stackTrace: stackTrace,
         );
-        host.onComposerWarning?.call(tr(LocaleKeys.aiRequestFailed));
+        host.onComposerWarning?.call(tr(LocaleKeys.aiChatSessionOpenFailed));
         runtime.markRequestIdle(requestId, notifyOnComplete: false);
         sessionKeepAlive.close();
         return;
@@ -864,17 +843,18 @@ class ChatSessionController {
     var restoreContinuation = false;
     var sentBlocks = const <AiMessageBlock>[];
     try {
-      aiService = await runner.resolveAiService(
+      final resolution = await runner.resolveAiService(
         requestId: requestId,
         sessionId: targetSessionId,
       );
+      aiService = resolution.client;
       if (runtime.cancelledRequestIds.contains(requestId)) {
         aiService?.dispose();
         aiService = null;
         return;
       }
       if (aiService == null) {
-        _notifySendBlocked(currentSession);
+        _notifySendBlocked(currentSession, resolution.block!);
         return;
       }
 
@@ -1061,7 +1041,7 @@ class ChatSessionController {
         'cannot materialize chat session: missing novel persistence '
         'temporarySessionId=$currentId novelId=$novelId',
       );
-      host.onComposerWarning?.call(tr(LocaleKeys.aiRequestFailed));
+      host.onComposerWarning?.call(tr(LocaleKeys.aiChatWorkUnavailable));
       return null;
     }
 
@@ -1078,7 +1058,7 @@ class ChatSessionController {
         'cannot materialize chat session without an adoption callback '
         'temporarySessionId=$signal novelId=$novelId',
       );
-      host.onComposerWarning?.call(tr(LocaleKeys.aiRequestFailed));
+      host.onComposerWarning?.call(tr(LocaleKeys.aiChatSessionOpenFailed));
       return null;
     }
     var createdByThisCall = false;
@@ -1140,7 +1120,7 @@ class ChatSessionController {
         error: error,
         stackTrace: stackTrace,
       );
-      host.onComposerWarning?.call(tr(LocaleKeys.aiRequestFailed));
+      host.onComposerWarning?.call(tr(LocaleKeys.aiChatSessionCreateFailed));
       return null;
     }
   }
@@ -1230,6 +1210,11 @@ class ChatSessionController {
           error: error,
           stackTrace: stackTrace,
         );
+        if (host.isMounted()) {
+          host.onComposerWarning?.call(
+            tr(LocaleKeys.aiChatModelSwitchSaveFailed),
+          );
+        }
         return null;
       }
     }
@@ -1327,12 +1312,13 @@ class ChatSessionController {
     var notifyOnComplete = false;
     late ChatTurnOutcome outcome;
     try {
-      aiService = await runner.resolveAiService(
+      final resolution = await runner.resolveAiService(
         requestId: requestId,
         sessionId: targetSessionId,
       );
+      aiService = resolution.client;
       if (aiService == null) {
-        _notifySendBlocked(session);
+        _notifySendBlocked(session, resolution.block!);
         return;
       }
 
@@ -1596,59 +1582,36 @@ class ChatSessionController {
     return container.read(aiChatSessionProvider(sessionId));
   }
 
-  String _classifyBlockedFailureCode(AiChatSessionState session) {
-    final providerId = session.providerId;
-    final model = session.model;
-    final config = providerId == null
-        ? null
-        : container.read(aiSettingsProvider).findConfigById(providerId);
-    return classifyChatBlockedFailureCode(
-      providerId: providerId,
-      model: model,
-      config: config,
-    );
-  }
-
   /// 发送被门禁拦住时给用户可见提示（桌面 composer notice / 移动端 snackbar）。
   ///
   /// 仅空会话（尚无历史）在绑定模型失效时自动弹出换模选择器作为便捷入口；
   /// 有历史的会话不自动弹出——用户可随时用 composer 的模型选择器换模，切换会
   /// 随下一次发送清理跨模型不可重放的私有推理状态（见 _applyPendingModelSelection）。
-  void _notifySendBlocked(AiChatSessionState session) {
-    final failureCode = _classifyBlockedFailureCode(session);
+  void _notifySendBlocked(AiChatSessionState session, ChatSendBlock block) {
     if (!host.isMounted()) {
       return;
     }
-    host.onComposerWarning?.call(_blockedSendUserMessage(session, failureCode));
-    final staleBoundModel =
-        failureCode == 'model_unavailable' &&
-        session.providerId != null &&
-        session.model != null;
-    if (staleBoundModel && session.messages.isEmpty) {
+    final hasHistory = session.messages.isNotEmpty;
+    final messageKey = switch (block) {
+      ChatSendBlock.session_unavailable => LocaleKeys.aiChatSessionUnavailable,
+      ChatSendBlock.model_not_selected => LocaleKeys.aiChatModelNotSelected,
+      ChatSendBlock.provider_missing => LocaleKeys.aiChatProviderMissing,
+      ChatSendBlock.provider_disabled => LocaleKeys.aiChatProviderDisabled,
+      ChatSendBlock.provider_unsupported =>
+        LocaleKeys.aiChatProviderUnsupported,
+      ChatSendBlock.provider_unavailable =>
+        LocaleKeys.aiChatProviderUnavailable,
+      ChatSendBlock.api_key_missing => LocaleKeys.aiApiKeyMissing,
+      ChatSendBlock.base_url_missing => LocaleKeys.aiChatProviderBaseUrlMissing,
+      ChatSendBlock.model_unavailable =>
+        hasHistory
+            ? LocaleKeys.aiModelUnavailable
+            : LocaleKeys.aiModelUnavailableReselect,
+    };
+    host.onComposerWarning?.call(tr(messageKey));
+    if (block == ChatSendBlock.model_unavailable && !hasHistory) {
       host.openModelSelector();
     }
-  }
-
-  String _blockedSendUserMessage(
-    AiChatSessionState session,
-    String failureCode,
-  ) {
-    return switch (failureCode) {
-      'api_key_missing' => tr(LocaleKeys.aiApiKeyMissing),
-      'model_unavailable' => _modelUnavailableUserMessage(session),
-      _ => tr(LocaleKeys.aiPleaseConfigure),
-    };
-  }
-
-  String _modelUnavailableUserMessage(AiChatSessionState session) {
-    if (session.providerId == null || session.model == null) {
-      return tr(LocaleKeys.aiPleaseConfigure);
-    }
-    // 有历史：引导新建会话，避免跨模型续聊。
-    if (session.messages.isNotEmpty) {
-      return tr(LocaleKeys.aiModelUnavailable);
-    }
-    return tr(LocaleKeys.aiModelUnavailableReselect);
   }
 
   /// 取消待发送队列，并取消已 stage 的 `queued_chat`。

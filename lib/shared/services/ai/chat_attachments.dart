@@ -5,6 +5,9 @@
 //   lib/shared/services/ai/files/session_files.dart
 //   lib/shared/services/ai/image_reference_compression.dart
 //   lib/shared/utils/text_file_decoder.dart
+//   lib/shared/localization/locale_keys.dart
+//   assets/translations/en/ai.json
+//   assets/translations/zh-CN/ai.json
 import 'dart:convert';
 import 'dart:isolate';
 import 'dart:io';
@@ -15,6 +18,7 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
 import '../../agent/message.dart';
+import '../../localization/locale_keys.dart';
 import '../../logger/app_logger.dart';
 import '../../models/ai_message_block.dart';
 import '../../utils/random_id.dart';
@@ -30,11 +34,41 @@ const chatTextMaxCharacters = 100000;
 const chatFileExtensions = ['png', 'jpg', 'jpeg', 'webp', 'txt', 'md', 'csv'];
 final _log = AppLogger.forModule('ChatAttachments');
 
+enum ChatAttachmentFailure {
+  unsupported,
+  too_large,
+  too_many_attachments,
+  too_many_images,
+  text_limit,
+  empty,
+  invalid_image,
+  read_failed,
+  save_failed,
+  clipboard_unavailable,
+}
+
 class ChatAttachmentException implements Exception {
   const ChatAttachmentException(this.reason);
-  final String reason;
+  final ChatAttachmentFailure reason;
+
+  String get messageKey => switch (reason) {
+    ChatAttachmentFailure.unsupported => LocaleKeys.aiAttachmentUnsupported,
+    ChatAttachmentFailure.too_large => LocaleKeys.aiAttachmentTooLarge,
+    ChatAttachmentFailure.too_many_attachments =>
+      LocaleKeys.aiAttachmentTooMany,
+    ChatAttachmentFailure.too_many_images =>
+      LocaleKeys.aiAttachmentTooManyImages,
+    ChatAttachmentFailure.text_limit => LocaleKeys.aiAttachmentTextLimit,
+    ChatAttachmentFailure.empty => LocaleKeys.aiAttachmentEmpty,
+    ChatAttachmentFailure.invalid_image => LocaleKeys.aiAttachmentInvalidImage,
+    ChatAttachmentFailure.read_failed => LocaleKeys.aiAttachmentReadFailed,
+    ChatAttachmentFailure.save_failed => LocaleKeys.aiAttachmentSaveFailed,
+    ChatAttachmentFailure.clipboard_unavailable =>
+      LocaleKeys.aiClipboardUnavailable,
+  };
+
   @override
-  String toString() => 'ChatAttachmentException($reason)';
+  String toString() => 'ChatAttachmentException(${reason.name})';
 }
 
 Object _safeFileError(Object error) => error is FileSystemException
@@ -101,6 +135,7 @@ class ChatAttachmentOrchestrator {
       }
     }
 
+    var ioFailure = ChatAttachmentFailure.read_failed;
     try {
       for (final rune in draft.text.runes) {
         final token = String.fromCharCode(rune);
@@ -112,21 +147,25 @@ class ChatAttachmentOrchestrator {
         flushText();
         final extension = p.extension(attachment.name).toLowerCase();
         if (!chatFileExtensions.contains(extension.replaceFirst('.', ''))) {
-          throw const ChatAttachmentException('unsupported');
+          throw const ChatAttachmentException(
+            ChatAttachmentFailure.unsupported,
+          );
         }
         final sizeLimit = attachment.isImage ? 32 * 1024 * 1024 : 400003;
         if (await attachment.file.length() > sizeLimit) {
-          throw const ChatAttachmentException('too_large');
+          throw const ChatAttachmentException(ChatAttachmentFailure.too_large);
         }
         var bytes = await attachment.file.readAsBytes();
         if (bytes.length > sizeLimit) {
-          throw const ChatAttachmentException('too_large');
+          throw const ChatAttachmentException(ChatAttachmentFailure.too_large);
         }
         var outputExtension = extension;
         var mime = 'text/plain';
         if (attachment.isImage) {
           if (++imageCount > chatImageMaxCount) {
-            throw const ChatAttachmentException('too_many');
+            throw const ChatAttachmentException(
+              ChatAttachmentFailure.too_many_images,
+            );
           }
           final result = await Isolate.run(
             () => prepareChatImage(bytes, extension),
@@ -140,16 +179,20 @@ class ChatAttachmentOrchestrator {
         } else {
           final text = decodeImportedTextBytes(bytes);
           if (text.trim().isEmpty) {
-            throw const ChatAttachmentException('empty');
+            throw const ChatAttachmentException(ChatAttachmentFailure.empty);
           }
           textCharacters += text.runes.length;
           if (textCharacters > chatTextMaxCharacters) {
-            throw const ChatAttachmentException('too_large');
+            throw const ChatAttachmentException(
+              ChatAttachmentFailure.text_limit,
+            );
           }
           bytes = Uint8List.fromList(utf8.encode(text));
         }
+        ioFailure = ChatAttachmentFailure.save_failed;
         final target = await files.allocate(sessionId, outputExtension);
         await target.writeAsBytes(bytes, flush: true);
+        ioFailure = ChatAttachmentFailure.read_failed;
         blocks.add(
           AiAttachmentBlock(
             id: buildRandomId('attachment'),
@@ -177,7 +220,7 @@ class ChatAttachmentOrchestrator {
       if (error is ChatAttachmentException) {
         rethrow;
       }
-      throw const ChatAttachmentException('read_failed');
+      throw ChatAttachmentException(ioFailure);
     }
   }
 }
@@ -195,23 +238,23 @@ ImageReferenceCompressionResult prepareChatImage(
     if (decoder is! img.PngDecoder &&
         decoder is! img.JpegDecoder &&
         decoder is! img.WebPDecoder) {
-      throw const ChatAttachmentException('invalid_image');
+      throw const ChatAttachmentException(ChatAttachmentFailure.invalid_image);
     }
     final info = decoder?.startDecode(bytes);
     if (info == null) {
-      throw const ChatAttachmentException('invalid_image');
+      throw const ChatAttachmentException(ChatAttachmentFailure.invalid_image);
     }
     if (info.width * info.height > 64000000) {
-      throw const ChatAttachmentException('too_large');
+      throw const ChatAttachmentException(ChatAttachmentFailure.too_large);
     }
     decoded = decoder!.decodeFrame(0);
     if (decoded == null) {
-      throw const ChatAttachmentException('invalid_image');
+      throw const ChatAttachmentException(ChatAttachmentFailure.invalid_image);
     }
   } on ChatAttachmentException {
     rethrow;
   } catch (_) {
-    throw const ChatAttachmentException('invalid_image');
+    throw const ChatAttachmentException(ChatAttachmentFailure.invalid_image);
   }
   var working = img.bakeOrientation(decoded);
   if (working.width > chatImageMaxDimension ||
@@ -231,7 +274,7 @@ ImageReferenceCompressionResult prepareChatImage(
   }
   final encoded = img.encodeJpg(working, quality: chatImageJpegQuality);
   if (encoded.length > chatImageMaxBytes) {
-    throw const ChatAttachmentException('too_large');
+    throw const ChatAttachmentException(ChatAttachmentFailure.too_large);
   }
   return ImageReferenceCompressionResult(
     bytes: encoded,
@@ -287,11 +330,11 @@ Future<List<MessageBlock>> hydrateChatBlocks(
         final file = await files.resolve(block.path);
         final limit = block.isImage ? chatImageMaxBytes : 400003;
         if (await file.length() > limit) {
-          throw const FormatException('Attachment exceeds limit');
+          throw const ChatAttachmentException(ChatAttachmentFailure.too_large);
         }
         final bytes = await file.readAsBytes();
         if (bytes.length > limit) {
-          throw const FormatException('Attachment exceeds limit');
+          throw const ChatAttachmentException(ChatAttachmentFailure.too_large);
         }
         result.add(
           block.isImage
@@ -305,7 +348,12 @@ Future<List<MessageBlock>> hydrateChatBlocks(
           stackTrace: stack,
         );
         if (strict) {
-          throw const ChatAttachmentException('read_failed');
+          if (error is ChatAttachmentException) {
+            rethrow;
+          }
+          throw const ChatAttachmentException(
+            ChatAttachmentFailure.read_failed,
+          );
         }
         result.add(TextBlock('File unavailable: ${block.path}'));
       }

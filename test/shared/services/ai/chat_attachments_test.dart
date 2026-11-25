@@ -11,6 +11,7 @@ import 'package:cross_file/cross_file.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:reveric/shared/agent/message.dart';
+import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/services/ai/chat_attachments.dart';
 import 'package:reveric/shared/services/ai/agent_message_mapping.dart';
@@ -140,7 +141,13 @@ void main() {
       ];
       await expectLater(
         hydrateChatBlocks(blocks, root: root.path, strict: true),
-        throwsA(isA<ChatAttachmentException>()),
+        throwsA(
+          isA<ChatAttachmentException>().having(
+            (error) => error.messageKey,
+            'messageKey',
+            LocaleKeys.aiAttachmentReadFailed,
+          ),
+        ),
       );
       final history = await hydrateChatBlocks(blocks, root: root.path);
       expect(history.whereType<ImageBlock>(), isEmpty);
@@ -169,7 +176,13 @@ void main() {
           novelId: 'work',
           root: root.path,
         ),
-        throwsA(isA<ChatAttachmentException>()),
+        throwsA(
+          isA<ChatAttachmentException>().having(
+            (error) => error.messageKey,
+            'messageKey',
+            LocaleKeys.aiAttachmentTooManyImages,
+          ),
+        ),
       );
       final texts = ChatDraft('\ue000\ue001', {
         '\ue000': ChatDraftAttachment(
@@ -192,7 +205,13 @@ void main() {
           novelId: 'work',
           root: root.path,
         ),
-        throwsA(isA<ChatAttachmentException>()),
+        throwsA(
+          isA<ChatAttachmentException>().having(
+            (error) => error.messageKey,
+            'messageKey',
+            LocaleKeys.aiAttachmentTextLimit,
+          ),
+        ),
       );
     },
   );
@@ -211,7 +230,13 @@ void main() {
       expect(corner.b, greaterThan(240));
       expect(
         () => prepareChatImage(Uint8List.fromList([1, 2, 3]), '.png'),
-        throwsA(isA<ChatAttachmentException>()),
+        throwsA(
+          isA<ChatAttachmentException>().having(
+            (error) => error.messageKey,
+            'messageKey',
+            LocaleKeys.aiAttachmentInvalidImage,
+          ),
+        ),
       );
     },
   );
@@ -240,7 +265,13 @@ void main() {
     final bytes = Uint8List.fromList(img.encodePng(image));
     expect(
       () => prepareChatImage(bytes, '.png'),
-      throwsA(isA<ChatAttachmentException>()),
+      throwsA(
+        isA<ChatAttachmentException>().having(
+          (error) => error.messageKey,
+          'messageKey',
+          LocaleKeys.aiAttachmentTooLarge,
+        ),
+      ),
     );
   });
 }

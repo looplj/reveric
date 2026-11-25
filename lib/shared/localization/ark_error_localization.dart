@@ -98,10 +98,10 @@ const _codes = <String, String>{
   'accountratelimitexceeded': LocaleKeys.aiRateLimited,
   'inflightbatchsizeexceeded': LocaleKeys.aiRateLimited,
   'setlimitexceeded': LocaleKeys.aiProviderUsageLimitReached,
-  'internalserviceerror': LocaleKeys.aiRequestFailed,
 };
 
 const _families = <(String, String)>[
+  ('internalserviceerror', LocaleKeys.aiProviderServerError),
   ('sensitivecontentdetected', LocaleKeys.aiContentRejected),
   ('inputtextsensitivecontentdetected', LocaleKeys.aiContentRejected),
   ('inputimagesensitivecontentdetected', LocaleKeys.aiInputImageRejected),

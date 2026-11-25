@@ -18,6 +18,7 @@ import '../services/ai/tool_result_payloads.dart';
 
 import 'message.dart';
 import 'client.dart';
+import 'client/provider_history_preflight.dart';
 import 'agent_config.dart';
 import 'round_assembler.dart';
 import '../utils/random_id.dart';
@@ -1951,6 +1952,14 @@ class Agent {
     if (_cancelled) {
       return LLMErrorAction.abort(
         AiRunFailure.requestFailed(providerId: providerId),
+      );
+    }
+    if (error is ProviderHistoryValidationException) {
+      return LLMErrorAction.abort(
+        AiRunFailure(
+          kind: AiRunFailureKind.invalid_conversation_history,
+          providerId: providerId,
+        ),
       );
     }
     for (final hook in hooks) {

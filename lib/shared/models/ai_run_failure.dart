@@ -14,6 +14,7 @@ enum AiRunFailureKind {
   streamInterrupted,
   contextWindowExhausted,
   incompleteResponse,
+  invalid_conversation_history,
   requestFailed,
 }
 

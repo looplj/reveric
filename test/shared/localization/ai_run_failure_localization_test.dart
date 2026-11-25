@@ -625,16 +625,43 @@ void main() {
     );
   });
 
-  test('unknown and internal failures never expose technical messages', () {
+  test('unknown failures never expose technical messages', () {
     expect(
       localizeAiRunFailure(const AiRunFailure.requestFailed(), identity),
       LocaleKeys.aiRequestFailed,
     );
-    expect(
-      localizeAiRunFailure(const AiRunFailure.http(statusCode: 500), identity),
-      LocaleKeys.aiRequestFailed,
-    );
   });
+
+  test(
+    'server errors and gateway timeouts explain the cause without replacing a provider message',
+    () {
+      for (final (statusCode, messageKey) in [
+        (500, LocaleKeys.aiProviderServerError),
+        (504, LocaleKeys.aiProviderGatewayTimeout),
+      ]) {
+        expect(
+          localizeAiRunFailure(
+            AiRunFailure.http(statusCode: statusCode),
+            identity,
+          ),
+          messageKey,
+        );
+        const providerMessage =
+            'The inference endpoint did not finish loading.';
+        expect(
+          localizeAiRunFailure(
+            AiRunFailure.http(
+              statusCode: statusCode,
+              providerCode: statusCode == 500 ? 'InternalServiceError' : null,
+              providerMessage: providerMessage,
+            ),
+            identity,
+          ),
+          providerMessage,
+        );
+      }
+    },
+  );
 }
 
 class _ProviderError implements Exception {

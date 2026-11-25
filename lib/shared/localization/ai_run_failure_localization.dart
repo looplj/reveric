@@ -41,6 +41,8 @@ String localizeAiRunFailure(
     AiRunFailureKind.contextWindowExhausted =>
       LocaleKeys.aiContextWindowExhausted,
     AiRunFailureKind.incompleteResponse => LocaleKeys.aiIncompleteResponse,
+    AiRunFailureKind.invalid_conversation_history =>
+      LocaleKeys.aiChatHistoryInvalid,
     AiRunFailureKind.requestFailed => LocaleKeys.aiRequestFailed,
   };
   return t(key);
@@ -230,7 +232,9 @@ String _httpFailureLocaleKey(AiRunFailure failure) {
     410 => LocaleKeys.aiResourceGone,
     413 => LocaleKeys.aiRequestTooLarge,
     429 => LocaleKeys.aiRateLimited,
+    500 => LocaleKeys.aiProviderServerError,
     502 || 503 => LocaleKeys.aiServiceOverloaded,
+    504 => LocaleKeys.aiProviderGatewayTimeout,
     _ => LocaleKeys.aiRequestFailed,
   };
 }

@@ -353,7 +353,9 @@ class AiChatPanel extends HookConsumerWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(context.t(LocaleKeys.aiRequestFailed)),
+                      content: Text(
+                        context.t(LocaleKeys.aiChatSessionCreateFailed),
+                      ),
                     ),
                   );
                 }

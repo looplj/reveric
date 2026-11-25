@@ -84,7 +84,7 @@ void main() {
     ('ServerOverloaded', LocaleKeys.aiServiceOverloaded),
     ('SetLimitExceeded', LocaleKeys.aiProviderUsageLimitReached),
     ('QuotaExceeded', LocaleKeys.aiProviderLimitExceeded),
-    ('InternalServiceError', LocaleKeys.aiRequestFailed),
+    ('InternalServiceError', LocaleKeys.aiProviderServerError),
   ];
   for (final (code, expected) in cases) {
     test(

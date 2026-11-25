@@ -106,7 +106,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       for (final key in [
-        LocaleKeys.aiAttachmentFailed,
+        LocaleKeys.aiAttachmentReadFailed,
+        LocaleKeys.aiAttachmentTooManyImages,
         LocaleKeys.aiAttachmentModelUnsupported,
         LocaleKeys.aiAttachmentUnavailable,
       ]) {

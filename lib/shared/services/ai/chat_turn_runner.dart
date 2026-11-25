@@ -117,6 +117,35 @@ import 'tools.dart';
 
 final _log = AppLogger.forModule('ChatTurnRunner');
 
+enum ChatSendBlock {
+  session_unavailable,
+  model_not_selected,
+  provider_missing,
+  provider_disabled,
+  provider_unsupported,
+  provider_unavailable,
+  api_key_missing,
+  base_url_missing,
+  model_unavailable,
+}
+
+@visibleForTesting
+ChatSendBlock classifyChatProviderBlock(AiProvider? provider, String model) {
+  return switch (provider) {
+    null => ChatSendBlock.provider_missing,
+    AiProvider(enabled: false) => ChatSendBlock.provider_disabled,
+    AiProvider()
+        when !provider.isTypeSupported || !provider.isPlatformSupported =>
+      ChatSendBlock.provider_unsupported,
+    AiProvider(hasCredentialConfiguration: false) =>
+      ChatSendBlock.api_key_missing,
+    AiProvider(hasBaseUrl: false) => ChatSendBlock.base_url_missing,
+    AiProvider() when !provider.supportsModel(model) =>
+      ChatSendBlock.model_unavailable,
+    _ => ChatSendBlock.provider_unavailable,
+  };
+}
+
 /// 等待全局 SubAgent 真源完成加载，再生成本轮可执行列表。
 ///
 /// UI 的同步合并 provider 在首次加载期间会暂时返回空列表；turn 执行边界不能
@@ -352,12 +381,15 @@ String _userFriendlyError(
   required String fallback,
   String? providerId,
 }) {
+  if (error is ChatAttachmentException) {
+    return tr(error.messageKey);
+  }
   if (error is AgentProcessException) {
     return localizeAiRunFailure(error.failure.withProviderId(providerId), tr);
   }
   // 本地历史预检失败：请求未发出，当前会话历史已损坏，重试无效，引导新开会话。
   if (error is ProviderHistoryValidationException) {
-    return tr(LocaleKeys.aiBadRequest);
+    return tr(LocaleKeys.aiChatHistoryInvalid);
   }
   if (isContextLengthExceeded(error)) {
     return localizeAiRunFailure(
@@ -984,7 +1016,7 @@ class ChatTurnRunner {
         );
   }
 
-  Future<AiClient?> resolveAiService({
+  Future<({AiClient? client, ChatSendBlock? block})> resolveAiService({
     int? requestId,
     required String? sessionId,
   }) async {
@@ -992,7 +1024,7 @@ class ChatTurnRunner {
       _log.error(
         'resolveAiService rejected non-persisted sessionId=$sessionId',
       );
-      return null;
+      return (client: null, block: ChatSendBlock.session_unavailable);
     }
     final session = container.read(aiChatSessionProvider(sessionId));
     final runtime = container.read(aiChatRuntimeProvider(sessionId).notifier);
@@ -1002,7 +1034,7 @@ class ChatTurnRunner {
         'sessionId=$sessionId provider=${session.providerId} '
         'model=${session.model}',
       );
-      return null;
+      return (client: null, block: ChatSendBlock.model_not_selected);
     }
     final config = container.read(
       currentAiConfigProvider(
@@ -1011,12 +1043,16 @@ class ChatTurnRunner {
       ),
     );
     if (config == null || !config.isValid) {
+      final block = classifyChatProviderBlock(
+        container.read(aiSettingsProvider).findConfigById(session.providerId!),
+        session.model!,
+      );
       _log.warning(
         'resolveAiService null: config invalid sessionId=$sessionId '
         'provider=${session.providerId} model=${session.model} '
-        'hasConfig=${config != null} isValid=${config?.isValid}',
+        'reason=${block.name}',
       );
-      return null;
+      return (client: null, block: block);
     }
     final availableSubAgents = await _availableSubAgents;
 
@@ -1250,7 +1286,7 @@ class ChatTurnRunner {
     if (toolManager != null) {
       _configureChatToolCallbacks(toolManager: toolManager);
     }
-    return service;
+    return (client: service, block: null);
   }
 
   Future<Agent?> getOrCreateChatAgent({required String? sessionId}) async {
