@@ -414,6 +414,109 @@ void main() {
     }
   });
 
+  test(
+    'previews and imports an exported canvas with stale references',
+    () async {
+      final note = await source.addText(canvasId, title: 'Note');
+      final picture = await source.addImage(canvasId);
+      final shot = await source.shots.createVideo('');
+      await source.shots.ensureClipNode(shot.id);
+      final noteInput = ProductionInput.text(note.id);
+      final pictureInput = ProductionInput.node(
+        picture.id,
+        VideoInputRole.reference_image,
+      );
+      final prompt =
+          'See ${StoryboardPrompt.reference(noteInput.id, 'Note')}, '
+          '${StoryboardPrompt.reference(pictureInput.id, 'Deleted image')} and '
+          '${StoryboardPrompt.reference('detached', 'Detached <ref> input')}.';
+      await source.shots.apply(shot.id, {
+        ...source.shots.snapshot(shot),
+        'title': 'Shot',
+        'prompt': prompt,
+      });
+      await source.shots.restoreInputs(shot.id, [
+        noteInput.toJson(),
+        pictureInput.toJson(),
+      ]);
+      await source.removeNode(picture.id);
+
+      final packaged = await const ProductionCanvasPackageOrchestrator()
+          .exportToFile(
+            canvas: source,
+            canvasId: canvasId,
+            title: 'Public',
+            publicGallery: true,
+          );
+      addTearDown(packaged.delete);
+      final manifest = await _manifest(packaged.file);
+      final nodes = (manifest['nodes'] as List).cast<Map>();
+      final exportedClip =
+          nodes.singleWhere(
+                (node) => node['type'] == canvasNodeTypeVideo,
+              )['clip']
+              as Map;
+      expect(exportedClip['prompt'], prompt);
+      expect(exportedClip['inputs'], [
+        noteInput.toJson(),
+        pictureInput.toJson(),
+      ]);
+
+      Future<void> expectRestoredReferences(
+        ProductionCanvasService canvas,
+      ) async {
+        final canvasId = (await canvas.ensureCanvas('')).id;
+        final nodes = (await canvas.content(canvasId)).nodes;
+        final note = nodes.singleWhere(
+          (node) => node.type == canvasNodeTypeText,
+        );
+        final shot = nodes.singleWhere(
+          (node) => node.type == canvasNodeTypeVideo,
+        );
+        final clip = (await canvas.shots.getShot(shot.clipId!))!;
+        final input = clip.inputs.single;
+        expect(input.refId, note.id);
+        expect(input.id, isNot(noteInput.id));
+        expect(
+          clip.prompt,
+          'See ${StoryboardPrompt.reference(input.id, 'Note')}, '
+          'Deleted image and Detached ＜ref> input.',
+        );
+      }
+
+      final cache = Directory(p.join(support.path, 'gallery-cache'));
+      await prepareProductionCanvasPackageCache(
+        packaged.file,
+        cache,
+        media: _ImageMedia(),
+      );
+      final preview = await openProductionCanvasPackageCache(
+        cache,
+        media: _ImageMedia(),
+      );
+      addTearDown(preview.close);
+      await expectRestoredReferences(preview.canvas!);
+
+      final imported = await _import(packaged.file, actions, library);
+      final work = (await appDb.novelDao.get(imported.novelId))!;
+      final importedDb = NovelContentDatabase(work.contentDatabasePath!);
+      opened.add(importedDb);
+      await expectRestoredReferences(
+        ProductionCanvasService(
+          StoryboardService(importedDb, contentKind: contentKindCanvas),
+          library,
+          imported.novelId,
+        ),
+      );
+      final original = (await source.shots.getShot(shot.id))!;
+      expect(original.prompt, prompt);
+      expect(original.inputs.map((input) => input.id), [
+        noteInput.id,
+        pictureInput.id,
+      ]);
+    },
+  );
+
   test('round-trips a custom style and public clip defaults', () async {
     final styles = ProductionStyleService(appDb);
     final original = await styles.save(

@@ -470,13 +470,6 @@ Future<_CanvasPackageStage> _writeStaging(
         throw const ProductionCanvasPackageException('unsupported');
       }
     }
-    final clip = clips[node.id];
-    for (final input in clip?.inputs ?? const <ProductionInput>[]) {
-      if (input.refType == ProductionInputType.node &&
-          !byId.containsKey(input.refId)) {
-        throw const ProductionCanvasPackageException('unsupported');
-      }
-    }
     if (node.type == canvasNodeTypeGroup) {
       if (node.parentId != null ||
           node.width == null ||
@@ -720,15 +713,7 @@ Map<String, Object?> _nodeJson(
   Object? document, {
   required bool publicGallery,
 }) {
-  if (node.isGenerationNode) {
-    if (clip == null) {
-      throw const ProductionCanvasPackageException('unsupported');
-    }
-    _requirePromptRefs(
-      clip.prompt,
-      clip.inputs.map((input) => input.id).toSet(),
-    );
-  } else if (clip != null ||
+  if (node.isGenerationNode != (clip != null) ||
       (node.type == canvasNodeTypeMedia && node.mediaAssetId == null) ||
       (node.type == canvasNodeTypeStaging && document == null) ||
       (node.type == canvasNodeTypeEditing && document == null)) {
@@ -791,20 +776,6 @@ bool _knownNodeType(String type) => {
   canvasNodeTypeStaging,
   canvasNodeTypeEditing,
 }.contains(type);
-
-void _requirePromptRefs(String prompt, Set<String> inputIds) {
-  final StoryboardPrompt parsed;
-  try {
-    parsed = StoryboardPrompt.parse(prompt);
-  } on FormatException {
-    throw const ProductionCanvasPackageException('unsupported');
-  }
-  for (final part in parsed.references) {
-    if (!inputIds.contains(part.inputId)) {
-      throw const ProductionCanvasPackageException('unsupported');
-    }
-  }
-}
 
 Future<Map<String, Object?>> _documents(
   ProductionCanvasService canvas,
@@ -1362,12 +1333,12 @@ Future<({int dropped, Map<String, String> nodeIds})> _writeCanvas(
     final inputs = <Map<String, dynamic>>[];
     final inputIds = <String, String>{};
     for (final input in clip.inputs) {
-      final newId = buildShortEntityId(ShortEntityIdType.productionInput);
-      inputIds[input.id] = newId;
-      final refId = input.refType == ProductionInputType.node.name
-          ? nodeIds[input.refId]
-          : assetIds[input.refId];
+      final isNode = input.refType == ProductionInputType.node.name;
+      final refId = isNode ? nodeIds[input.refId] : assetIds[input.refId];
       if (refId == null) {
+        if (isNode) {
+          continue;
+        }
         throw const ProductionCanvasPackageException('invalid_package');
       }
       final voice = input.voiceAssetId == null
@@ -1376,6 +1347,8 @@ Future<({int dropped, Map<String, String> nodeIds})> _writeCanvas(
       if (input.voiceAssetId != null && voice == null) {
         throw const ProductionCanvasPackageException('invalid_package');
       }
+      final newId = buildShortEntityId(ShortEntityIdType.productionInput);
+      inputIds[input.id] = newId;
       inputs.add({
         'id': newId,
         'ref_type': input.refType,
@@ -1635,10 +1608,13 @@ String _rewritePrompt(String prompt, Map<String, String> inputIds) {
       continue;
     }
     final next = inputIds[part.inputId];
-    if (next == null) {
-      throw const ProductionCanvasPackageException('invalid_package');
-    }
-    buffer.write(StoryboardPrompt.reference(next, part.label!));
+    final label = part.label!;
+    // 引用失效时保留标签文字，避免标签里的尖括号被解析为新引用。
+    buffer.write(
+      next == null
+          ? label.replaceAll('<', '＜')
+          : StoryboardPrompt.reference(next, label),
+    );
   }
   return buffer.toString();
 }
@@ -1828,8 +1804,10 @@ class _Package {
           continue;
         }
         final target = byId[input.refId];
-        if (target == null ||
-            (input.role == 'prompt') != (target.type == canvasNodeTypeText)) {
+        if (target != null &&
+            (target.type == canvasNodeTypeGroup ||
+                (input.role == 'prompt') !=
+                    (target.type == canvasNodeTypeText))) {
           throw const ProductionCanvasPackageException('invalid_package');
         }
       }
