@@ -8,6 +8,8 @@ enum ToolPermissionDecision { allow, ask, deny }
 
 enum ToolPermissionScopeType { global, work, episode, session }
 
+const shellExecutePermission = 'shell.execute';
+
 /// Approval master switch. Off: every capability runs as allowed without rule lookup or approval cards.
 const toolApprovalEnabled = true;
 
@@ -18,6 +20,7 @@ const toolPermissionActions = <String>{
   'media.transcribe',
   'files.read',
   'files.remove',
+  shellExecutePermission,
 };
 
 class ToolPermissionScope {

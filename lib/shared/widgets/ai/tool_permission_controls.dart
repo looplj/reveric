@@ -40,6 +40,7 @@ String toolPermissionActionIcon(String? action) => switch (action) {
   'media.transcribe' => RevericIcons.subtitles,
   'files.read' => RevericIcons.file_text,
   'files.remove' => RevericIcons.delete,
+  shellExecutePermission => RevericIcons.terminal_rounded,
   _ => RevericIcons.shield_check,
 };
 
@@ -51,6 +52,7 @@ String toolPermissionActionLabel(BuildContext context, String action) =>
       'media.transcribe' => LocaleKeys.aiPermissionMediaTranscribe,
       'files.read' => LocaleKeys.aiPermissionFilesRead,
       'files.remove' => LocaleKeys.aiPermissionFilesRemove,
+      shellExecutePermission => LocaleKeys.aiPermissionShellExecute,
       _ => action,
     });
 

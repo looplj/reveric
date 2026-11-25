@@ -362,6 +362,23 @@ Map<String, dynamic> _builtinToolOutputSchema(String name) {
       },
       <String>[],
     ),
+    bashToolName || powerShellToolName => (
+      <String, dynamic>{
+        'run_id': _outputString,
+        'status': _outputString,
+        'result': _outputObject(
+          {
+            'exit_code': _outputInteger,
+            'stdout': _outputString,
+            'stderr': _outputString,
+            'stdout_truncated': _outputBoolean,
+            'stderr_truncated': _outputBoolean,
+          },
+          ['exit_code', 'stdout', 'stderr'],
+        ),
+      },
+      ['run_id', 'status', 'result'],
+    ),
     _ => throw StateError('Missing builtin output schema: $name'),
   };
   return {

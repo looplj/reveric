@@ -6,6 +6,9 @@
 //   lib/desktop/widgets/ai/chat/panel.dart
 //   lib/shared/agent/agent.dart
 
+const bashToolName = 'Bash';
+const powerShellToolName = 'PowerShell';
+
 /// 用户可见 special-mode primary agent（Home → 提示词）。
 /// Chat 主控已收敛为 runtime `orchestrator`，不再对应 AgentProfile。
 const builtinPrimaryAgentSlugs = {
@@ -46,6 +49,8 @@ const builtinExplorerDisabledToolNames = {
   'Replace',
   'Remove',
   'Run',
+  bashToolName,
+  powerShellToolName,
   'TodoWrite',
 };
 const builtinSpecialModeDisabledToolNames = {
@@ -55,6 +60,8 @@ const builtinSpecialModeDisabledToolNames = {
   'Replace',
   'Remove',
   'Run',
+  bashToolName,
+  powerShellToolName,
   'TodoWrite',
   'AgentSkill',
   'SpawnAgent',

@@ -112,6 +112,7 @@ String pathSchema({String kind = contentKindNovel}) =>
     '''路径语法：
 ${_buildPathGrammarReference(kind: kind)}
 
+- 工作区资源保存在数据库中。资源路径是应用内地址，脚本无法通过它直接读取内容，请使用 `Read` 等应用工具访问。
 - 相对路径：以当前作品为起点，如 ${kind == contentKindCanvas
         ? 'production/clips/{clip_id}'
         : kind == contentKindScreenplay

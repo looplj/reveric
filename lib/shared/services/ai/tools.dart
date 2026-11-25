@@ -19,6 +19,7 @@
 import '../../app_config.dart';
 
 import 'tool_operations.dart';
+import 'builtin_agent_tools.dart' show bashToolName, powerShellToolName;
 import 'mcp/run_command_handler.dart';
 import 'files/attachments.dart';
 import 'files/command_paths.dart';
@@ -43,6 +44,7 @@ import '../../models/tool_permission.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' show BytesBuilder;
 // 画布摆位算的是矩形几何，直接用 dart:ui 的 Offset/Rect/Size，避免为几个值类型
 // 另造一套模型。
 import 'dart:ui' show Offset, Rect, Size;
@@ -158,6 +160,7 @@ part 'tools_glob.dart';
 part 'tools_grep.dart';
 part 'tools_image.dart';
 part 'tools_run.dart';
+part 'tools_shell.dart';
 part 'tools_agent_rules.dart';
 part 'tools_create.dart';
 part 'tools_write.dart';
@@ -3747,6 +3750,8 @@ class AiToolDefinition {
 
 const List<AiToolDefinition> aiToolCatalog = [
   AiToolDefinition(name: runToolName, group: AiToolGroup.run),
+  AiToolDefinition(name: bashToolName, group: AiToolGroup.run),
+  AiToolDefinition(name: powerShellToolName, group: AiToolGroup.run),
   AiToolDefinition(name: 'Read', group: AiToolGroup.read),
   AiToolDefinition(name: 'Glob', group: AiToolGroup.search),
   AiToolDefinition(name: 'Grep', group: AiToolGroup.search),
@@ -3791,6 +3796,7 @@ const List<AiToolDefinition> aiToolCatalog = [
 List<String> defaultAgentToolNames() => aiToolCatalog
     .where((item) => item.agentConfigurable)
     .map((item) => item.name)
+    .where(_availableOnPlatform)
     .toList();
 
 List<String> defaultSubAgentToolNames() => aiToolCatalog
@@ -3798,6 +3804,7 @@ List<String> defaultSubAgentToolNames() => aiToolCatalog
     .where((item) => item.name != spawnAgentToolName)
     .where((item) => item.name != forkAgentToolName)
     .map((item) => item.name)
+    .where(_availableOnPlatform)
     .toList();
 
 /// 工具的"无 Genkit 上下文"调用签名,executeTool 直接走它,不走 Genkit auto-exec。
@@ -4122,6 +4129,18 @@ class AiToolManager extends _AiToolManagerBase
         ref: callId,
       ),
     );
+    if (_desktopShell case final shell?) {
+      _registerDispatch(
+        shell.name,
+        AiToolGroup.run,
+        (input, callId) => _runToolObserved(
+          toolName: shell.name,
+          input: input,
+          run: () => _runShell(shell, input, callId),
+          ref: callId,
+        ),
+      );
+    }
 
     _registerDispatch(
       'Read',
@@ -4737,6 +4756,7 @@ class AiToolManager extends _AiToolManagerBase
         description: _runDescription,
         inputSchema: _runInputSchema,
       ),
+      if (_desktopShell case final shell?) shell,
       ToolDef(
         name: 'Read',
         outputSchema: _builtinToolOutputSchema('Read'),

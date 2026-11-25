@@ -30,6 +30,7 @@
   "ai.permission_generation_audio": "Generate audio",
   "ai.permission_files_read": "Read files",
   "ai.permission_files_remove": "Delete files",
+  "ai.permission_shell_execute": "Execute local commands",
   "ai.operation_waiting_approval": "Needs approval",
   "ai.operation_queued": "Queued",
   "ai.operation_running": "Running",
@@ -53,6 +54,7 @@
   "ai.approval_fact_audio": "Audio",
   "ai.approval_fact_references": "References",
   "ai.approval_fact_prompt": "Prompt",
+  "ai.approval_fact_command": "Command",
   "ai.approval_fact_path": "Location",
   "ai.approval_fact_input_file_count": "Files to read",
   "ai.approval_fact_input_directory_count": "Total directories",
@@ -464,5 +466,5 @@
   "ai.feedback_uploading": "Uploading...",
   "ai.feedback_success": "Diagnostic info uploaded. Thank you!",
   "ai.feedback_failed": "Upload failed. Please try again.",
-  "ai.permission_media_transcribe": "Transcribe media (upload asset)"
+  "ai.permission_media_transcribe": "Transcribe media"
 }

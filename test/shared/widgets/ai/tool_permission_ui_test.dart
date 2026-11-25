@@ -239,9 +239,13 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 30));
       });
       await tester.pumpAndSettle();
-      expect(find.byType(ToolPermissionSelector<String>), findsNWidgets(5));
       expect(find.text('Delete files'), findsOneWidget);
-      await tester.tap(find.byType(ToolPermissionSelector<String>).first);
+      expect(find.text('Execute local commands'), findsOneWidget);
+      final shellPermission = find.descendant(
+        of: find.byKey(const ValueKey('global/shell.execute')),
+        matching: find.byType(ToolPermissionSelector<String>),
+      );
+      await tester.tap(shellPermission);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Deny').last);
       await tester.runAsync(() async {
@@ -251,7 +255,7 @@ void main() {
       await tester.runAsync(() async {
         expect(
           (await permissions.resolve(
-            'generation.image',
+            shellExecutePermission,
             const ToolPermissionContext(workId: ''),
           )).decision,
           ToolPermissionDecision.deny,
@@ -259,7 +263,7 @@ void main() {
       });
       expect(find.text('Deny'), findsOneWidget);
       expect(find.text('Default'), findsNothing);
-      await tester.tap(find.byType(ToolPermissionSelector<String>).first);
+      await tester.tap(shellPermission);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Ask each time').hitTestable().last);
       await tester.runAsync(() async {
@@ -273,7 +277,13 @@ void main() {
         );
       });
       expect(find.text('Deny'), findsNothing);
-      expect(find.text('Ask each time'), findsNWidgets(5));
+      expect(
+        find.descendant(
+          of: shellPermission,
+          matching: find.text('Ask each time'),
+        ),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
       container.dispose();

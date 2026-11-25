@@ -176,6 +176,7 @@ mixin _AiToolManagerRunMixin
       codemode: const {
         'list': _RunCodemodeAccess.read(),
         'read': _RunCodemodeAccess.read(),
+        'resolve-path': _RunCodemodeAccess.read(),
         'view-image': _RunCodemodeAccess.denied(
           'Image content must be viewed through a direct Run call.',
         ),
@@ -187,6 +188,7 @@ mixin _AiToolManagerRunMixin
       subcommands: const {
         'list': RunPermission.none(),
         'read': RunPermission.none(),
+        'resolve-path': RunPermission.none(),
         'view-image': RunPermission.none(),
         'certify': RunPermission.none(),
         'transcribe': RunPermission.required('media.transcribe'),
@@ -787,7 +789,9 @@ mixin _AiToolManagerRunMixin
         // These groups have no excluded actions, so their existing usage is safe.
         if (entry.key == 'assets') {
           lines.add(
-            'list options={type?, search?}; read options={id}; certify options={id, provider_id}. Returns asset metadata.',
+            'list options={type?, search?}; read options={id}; '
+            'resolve-path options={asset_id} returns absolute_path; '
+            'certify options={id, provider_id}.',
           );
         } else {
           lines.add(

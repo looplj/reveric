@@ -619,6 +619,7 @@ extension _ProductionTools on _AiToolManagerScreenplayMixin {
 const _assetsHelp =
     'assets list: optional type and search (name substring). '
     'assets read: id required. Returns id, name, type, file_path, specifications and certifications. '
+    'assets resolve-path: asset_id required. Returns absolute_path for an existing local asset file. '
     'assets view-image: id required. Returns the same fields plus viewable image content; '
     'only image assets are accepted. '
     'assets certify: id and provider_id required; image assets only. '
@@ -651,6 +652,7 @@ extension _AssetCommands on _AiToolManagerBase {
     if (!{
       'list',
       'read',
+      'resolve-path',
       'view-image',
       'certify',
       'transcribe',
@@ -662,10 +664,15 @@ extension _AssetCommands on _AiToolManagerBase {
     }
     _productionCommandKeys(options, switch (action) {
       'list' => {'type', 'search'},
+      'resolve-path' => {'asset_id'},
       'certify' => {'id', 'provider_id'},
       _ => {'id'},
     });
-    final id = action == 'list' ? null : _productionCommandText(options, 'id');
+    final id = switch (action) {
+      'list' => null,
+      'resolve-path' => _productionCommandText(options, 'asset_id'),
+      _ => _productionCommandText(options, 'id'),
+    };
     for (final key in ['type', 'search']) {
       if (options.containsKey(key) && options[key] is! String) {
         throw FormatException('$key must be a string.');
@@ -684,6 +691,52 @@ extension _AssetCommands on _AiToolManagerBase {
         'permission_denied',
         'Cross-work asset queries are unavailable.',
       );
+    }
+    if (action == 'resolve-path') {
+      final asset = await host.database.assetDao.getAsset(id!);
+      if (asset == null ||
+          (asset.novelId != null && asset.novelId != host.canvas.novelId)) {
+        throw const ToolOperationException(
+          'not_found',
+          'Asset not found in this work.',
+        );
+      }
+      if (asset.path == null) {
+        throw const ToolOperationException(
+          'not_found',
+          'The asset has no local file.',
+        );
+      }
+      final library = host.canvas.library;
+      final File file;
+      try {
+        file = File(library.resolve(asset)).absolute;
+      } on MediaException {
+        throw const ToolOperationException(
+          'failed_precondition',
+          'The asset has an invalid stored file path.',
+        );
+      }
+      final shared = RevericPaths.fileWorkspaceDirectory(null);
+      final workspace = RevericPaths.fileWorkspaceDirectory(asset.novelId);
+      if (!p.isWithin(
+            p.join(library.root.absolute.path, workspace),
+            file.path,
+          ) &&
+          !p.isWithin(p.join(library.root.absolute.path, shared), file.path)) {
+        throw const ToolPermissionException(
+          'permission_denied',
+          'The asset file is outside its registered work directory.',
+        );
+      }
+      await RevericPaths.requireNoLinks(library.root, file.path);
+      if (!await file.exists()) {
+        throw const ToolOperationException(
+          'not_found',
+          'The asset file does not exist.',
+        );
+      }
+      return {'ok': true, 'asset_id': id, 'absolute_path': file.path};
     }
     if (action == 'transcribe' || action == 'separate-audio') {
       final manager = operationHost?.operations;

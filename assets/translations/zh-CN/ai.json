@@ -30,6 +30,7 @@
   "ai.permission_generation_audio": "生成音频",
   "ai.permission_files_read": "读取文件",
   "ai.permission_files_remove": "删除文件",
+  "ai.permission_shell_execute": "执行本机命令",
   "ai.operation_waiting_approval": "待确认",
   "ai.operation_queued": "排队中",
   "ai.operation_running": "执行中",
@@ -53,6 +54,7 @@
   "ai.approval_fact_audio": "音频",
   "ai.approval_fact_references": "参考",
   "ai.approval_fact_prompt": "提示词",
+  "ai.approval_fact_command": "命令",
   "ai.approval_fact_path": "位置",
   "ai.approval_fact_input_file_count": "读取文件数",
   "ai.approval_fact_input_directory_count": "目录总数",
@@ -464,5 +466,5 @@
   "ai.feedback_uploading": "正在上传...",
   "ai.feedback_success": "诊断信息已上传，感谢反馈！",
   "ai.feedback_failed": "上传失败，请重试。",
-  "ai.permission_media_transcribe": "转录音视频（上传素材）"
+  "ai.permission_media_transcribe": "转录音视频"
 }

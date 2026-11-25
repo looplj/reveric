@@ -326,6 +326,7 @@ abstract final class LocaleKeys {
   static const aiPermissionGenerationAudio = 'ai.permission_generation_audio';
   static const aiPermissionFilesRead = 'ai.permission_files_read';
   static const aiPermissionFilesRemove = 'ai.permission_files_remove';
+  static const aiPermissionShellExecute = 'ai.permission_shell_execute';
   static const aiOperationFileUnavailable = 'ai.operation_file_unavailable';
   static const aiOperationFailedHint = 'ai.operation_failed_hint';
   static const aiOperationWaitingApproval = 'ai.operation_waiting_approval';
@@ -351,6 +352,7 @@ abstract final class LocaleKeys {
   static const aiApprovalFactAudio = 'ai.approval_fact_audio';
   static const aiApprovalFactReferences = 'ai.approval_fact_references';
   static const aiApprovalFactPrompt = 'ai.approval_fact_prompt';
+  static const aiApprovalFactCommand = 'ai.approval_fact_command';
   static const aiApprovalFactPath = 'ai.approval_fact_path';
   static const aiApprovalFactInputFileCount =
       'ai.approval_fact_input_file_count';

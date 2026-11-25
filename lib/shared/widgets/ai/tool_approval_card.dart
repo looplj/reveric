@@ -23,6 +23,7 @@ import '../../components/reveric_icon_button.dart';
 import '../../components/reveric_select.dart';
 import '../../localization/app_localization.dart';
 import '../../localization/locale_keys.dart';
+import '../../models/tool_permission.dart' show shellExecutePermission;
 import '../../providers/ai_providers.dart';
 import '../../theme/theme.dart';
 import 'tools/tool_card_descriptor.dart';
@@ -752,6 +753,10 @@ String _brief(List<_Fact> facts, AiToolApprovalRequest request) => facts
     .map(
       (fact) => switch (fact.value) {
         final String text
+            when fact.key == 'command' &&
+                request.action == shellExecutePermission =>
+          text,
+        final String text
             when text.length <= _briefFactMaxLength &&
                 text != request.targetPath &&
                 text != request.targetLabel =>
@@ -774,6 +779,7 @@ String? _factLabelKey(String key) => switch (key) {
   'audio' => LocaleKeys.aiApprovalFactAudio,
   'references' || 'image' => LocaleKeys.aiApprovalFactReferences,
   'prompt' => LocaleKeys.aiApprovalFactPrompt,
+  'command' => LocaleKeys.aiApprovalFactCommand,
   'path' || 'inputs' => LocaleKeys.aiApprovalFactPath,
   'input_file_count' => LocaleKeys.aiApprovalFactInputFileCount,
   'input_directory_count' => LocaleKeys.aiApprovalFactInputDirectoryCount,

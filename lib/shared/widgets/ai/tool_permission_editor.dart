@@ -128,7 +128,9 @@ class ToolPermissionEditor extends HookConsumerWidget {
           ],
           onChanged: (value) => selection.value = value,
         ),
-        for (final action in toolPermissionActions)
+        for (final action in toolPermissionActions.where(
+          (action) => action != shellExecutePermission,
+        ))
           Padding(
             padding: const EdgeInsets.only(top: RevericSpacing.lg),
             child: Column(

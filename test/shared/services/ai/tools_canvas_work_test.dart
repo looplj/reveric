@@ -189,6 +189,7 @@ void main() {
       db,
       content,
       novelActionsService: NovelActionsService(app),
+      novelId: 'work',
     );
     sessions = EditingSessions();
     operations = ToolOperationManager(
@@ -235,6 +236,84 @@ void main() {
     await app.close();
     await root.delete(recursive: true);
   });
+
+  test(
+    'assets resolve-path returns only visible, existing media files',
+    () async {
+      Future<void> addAsset(String id, String? owner, String path) =>
+          app.assetDao.insertAsset(
+            AssetsCompanion.insert(
+              id: id,
+              type: 'video',
+              purpose: 'production',
+              novelId: Value(owner),
+              path: Value(path),
+              content: const Value(VideoAssetContent(mimeType: 'video/mp4')),
+            ),
+          );
+      const path = 'file_workspaces/work/videos/素材 示例.mp4';
+      const sharedPath = 'file_workspaces/shared/videos/共享 示例.mp4';
+      final media = File(canvas.library.resolvePath(path));
+      await media.parent.create(recursive: true);
+      await media.writeAsBytes([1]);
+      final shared = File(canvas.library.resolvePath(sharedPath));
+      await shared.parent.create(recursive: true);
+      await shared.writeAsBytes([2]);
+      await addAsset('local', 'work', path);
+      await addAsset('shared', null, sharedPath);
+      await addAsset('shared-file-reference', 'work', sharedPath);
+      await addAsset(
+        'foreign',
+        'other',
+        'file_workspaces/other/videos/clip.mp4',
+      );
+      await addAsset(
+        'missing',
+        'work',
+        'file_workspaces/work/videos/missing.mp4',
+      );
+      await addAsset('deleted', 'work', path);
+      await addAsset(
+        'mismatched',
+        'work',
+        'file_workspaces/other/videos/clip.mp4',
+      );
+      final invalidPaths = {
+        'parent-segment': 'file_workspaces/work/videos/../clip.mp4',
+        'outside-storage': '${root.parent.path}/outside.mp4',
+        'wrong-prefix': 'videos/clip.mp4',
+      };
+      for (final MapEntry(:key, :value) in invalidPaths.entries) {
+        await addAsset(key, 'work', value);
+      }
+      await app.assetDao.softDeleteAsset('deleted');
+      Future<Map<String, dynamic>> resolve(String id) =>
+          run('assets', 'resolve-path', {'asset_id': id});
+
+      expect((await resolve('local'))['absolute_path'], media.absolute.path);
+      expect((await resolve('shared'))['absolute_path'], shared.absolute.path);
+      expect(
+        (await resolve('shared-file-reference'))['absolute_path'],
+        shared.absolute.path,
+      );
+      for (final id in ['foreign', 'missing', 'deleted']) {
+        final result = await resolve(id);
+        expect(result['error_code'], 'not_found', reason: '$id: $result');
+        expect(result, isNot(contains('absolute_path')));
+      }
+      expect((await resolve('mismatched'))['error_code'], 'permission_denied');
+      for (final id in invalidPaths.keys) {
+        final result = await resolve(id);
+        expect(result['ok'], false, reason: '$id: $result');
+        expect(
+          result['error_code'],
+          'failed_precondition',
+          reason: '$id: $result',
+        );
+        expect(result, isNot(contains('absolute_path')));
+      }
+    },
+  );
 
   test(
     'clip summary is opt-in and keeps filtering, paging and full prompts',
