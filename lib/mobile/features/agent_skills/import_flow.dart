@@ -9,11 +9,11 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../shared/localization/app_localization.dart';
 import '../../../shared/localization/locale_keys.dart';
 import '../../../shared/logger/app_logger.dart';
-import '../../../shared/models/agent_skill_reference.dart';
 import '../../../shared/models/novel_agent_skill.dart';
 import '../../../shared/providers/novel_agent_skill_providers.dart';
 import '../../../shared/services/agent_skill_transfer.dart';
@@ -33,6 +33,8 @@ Future<void> importMobileAgentSkills(
       ref.read(installedAgentSkillsProvider).value ??
       const <NovelAgentSkillModel>[];
   const transfer = AgentSkillTransferService();
+  AndroidSafSkillDirectory? androidDirectory;
+  var importClosed = false;
   try {
     final candidates = await showMobileSheet<List<AgentSkillImportCandidate>>(
       context: context,
@@ -48,20 +50,38 @@ Future<void> importMobileAgentSkills(
               ? null
               : () async {
                   if (defaultTargetPlatform == TargetPlatform.android) {
-                    final result = await pickAndCopyAndroidDirectory(
-                      extensions: AgentSkillReferences.allowedExtensions,
-                    );
-                    if (result == null) {
+                    await androidDirectory?.close();
+                    final directory = await scanAndroidSkillDirectory();
+                    if (directory == null) {
                       return null;
                     }
-                    try {
-                      return transfer.discoverInDirectory(
-                        dirPath: result.directoryPath,
-                        existing: existing,
-                      );
-                    } finally {
-                      await deleteAndroidDirectoryImport(result.directoryPath);
+                    if (importClosed) {
+                      await directory.close();
+                      return null;
                     }
+                    androidDirectory = directory;
+                    final candidates = <AgentSkillImportCandidate>[];
+                    for (final skill in directory.candidates) {
+                      try {
+                        candidates.add(
+                          transfer.parseSelectedMarkdown(
+                            content: skill.markdown,
+                            fileName: skill.path,
+                            existing: existing,
+                            hasScripts: skill.hasScripts,
+                            materialize: (destination) =>
+                                directory.copyPackage(skill.id, destination),
+                          ),
+                        );
+                      } on FormatException catch (error, stackTrace) {
+                        _log.error(
+                          'Invalid SKILL.md from Android directory',
+                          error: error,
+                          stackTrace: stackTrace,
+                        );
+                      }
+                    }
+                    return candidates;
                   }
                   final path = await getDirectoryPath();
                   return path == null
@@ -117,22 +137,7 @@ Future<void> importMobileAgentSkills(
     if (!context.mounted) {
       return;
     }
-    _showTransferMessage(
-      context,
-      result.failed > 0 || result.skipped > 0
-          ? context.t(
-              LocaleKeys.agentSkillImportPartial,
-              namedArgs: {
-                'imported': '${result.imported}',
-                'skipped': '${result.skipped}',
-                'failed': '${result.failed}',
-              },
-            )
-          : context.t(
-              LocaleKeys.agentSkillImportSuccess,
-              namedArgs: {'imported': '${result.imported}'},
-            ),
-    );
+    _showTransferMessage(context, agentSkillImportFeedback(context, result));
   } catch (error, stackTrace) {
     _log.error(
       'Import installed skills failed',
@@ -143,6 +148,17 @@ Future<void> importMobileAgentSkills(
       _showTransferMessage(
         context,
         context.t(LocaleKeys.agentSkillImportFailed),
+      );
+    }
+  } finally {
+    importClosed = true;
+    try {
+      await androidDirectory?.close();
+    } on PlatformException catch (error, stackTrace) {
+      _log.error(
+        'Could not close Android skill directory',
+        error: error,
+        stackTrace: stackTrace,
       );
     }
   }

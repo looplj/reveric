@@ -176,6 +176,12 @@ void main() {
   });
 
   group('chat system prompt', () {
+    test('includes the current operating system in the tool guidelines', () {
+      final prompt = _chatSystem();
+      final platform = RegExp(r'当前操作系统是 ([^。]+)。').allMatches(prompt).single;
+      expect(platform.group(1)?.toLowerCase(), Platform.operatingSystem);
+    });
+
     test('Codemode guidance follows execution capability and mode', () {
       for (final kind in _contentKinds) {
         for (final mode in AiSessionMode.values) {

@@ -28,8 +28,9 @@ import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
 import 'package:reveric/shared/providers/official_skill_sync_providers.dart';
+import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
+import 'package:reveric/shared/models/novel_agent_skill.dart';
 import 'package:reveric/shared/services/official_skill_sync.dart';
-import 'package:reveric/shared/providers/agent_skill_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
@@ -77,6 +78,9 @@ void main() {
             officialSkillSyncProvider.overrideWith((ref) => syncReady.future),
             appDatabaseProvider.overrideWithValue(database),
             agentSkillAppDatabaseProvider.overrideWithValue(database),
+            installedAgentSkillsProvider.overrideWith(
+              _EmptyInstalledSkills.new,
+            ),
             agentSkillCatalogServiceProvider.overrideWithValue(fakeWithData),
           ],
           child: const Scaffold(
@@ -134,6 +138,9 @@ void main() {
             ),
             appDatabaseProvider.overrideWithValue(database),
             agentSkillAppDatabaseProvider.overrideWithValue(database),
+            installedAgentSkillsProvider.overrideWith(
+              _EmptyInstalledSkills.new,
+            ),
             agentSkillCatalogServiceProvider.overrideWithValue(fakeEmpty),
           ],
           child: const Scaffold(
@@ -193,4 +200,9 @@ Widget _wrap(Widget child) {
       },
     ),
   );
+}
+
+class _EmptyInstalledSkills extends InstalledAgentSkillsNotifier {
+  @override
+  Future<List<NovelAgentSkillModel>> build() async => const [];
 }

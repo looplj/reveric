@@ -4,11 +4,13 @@
 //   lib/shared/services/agent_skill_import_source.dart
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:reveric/shared/services/agent_skill_import_orchestrator.dart';
 import 'package:reveric/shared/services/agent_skill_import_source.dart';
 import 'package:reveric/shared/services/agent_skill_transfer.dart';
@@ -91,12 +93,26 @@ void main() {
   Future<List<AgentSkillImportCandidate>> scan(
     String url, {
     Set<String> existing = const {},
+    Future<Dio> Function()? openPackageClient,
   }) => AgentSkillImportOrchestrator().discover(
     source: AgentSkillImportSource.parse(url),
     existingNames: existing,
     client: client,
     cancelToken: token,
+    openPackageClient: openPackageClient,
   );
+
+  Future<Directory> materialize(AgentSkillImportCandidate candidate) async {
+    final destination = await Directory.systemTemp.createTemp(
+      'skill_repository_',
+    );
+    addTearDown(() => destination.delete(recursive: true));
+    await candidate.materialize!(destination);
+    return destination;
+  }
+
+  Future<String> readPackageFile(Directory package, String path) =>
+      File(p.joinAll([package.path, ...path.split('/')])).readAsString();
 
   test(
     'repository imports nested skills and references, marks conflicts',
@@ -105,6 +121,13 @@ void main() {
         'repo/skills/a/SKILL.md': _skill('a'),
         'repo/skills/a/references/中文.txt': '参考',
         'repo/skills/a/scripts/run.py': 'print(1)',
+        'repo/skills/a/run.sh': 'printf ready',
+        'repo/skills/a/lib/nested/schema.dat': 'schema',
+        'repo/skills/a/references/table.bin': 'binary fixture',
+        'repo/skills/a/lib/.private': 'ignored',
+        'repo/skills/a/scripts/node_modules/ignored.js': 'ignored',
+        'repo/skills/a/scripts/__pycache__/ignored.pyc': 'ignored',
+        'repo/skills/a/assets/__MACOSX/ignored': 'ignored',
         'repo/skills/b/SKILL.md': _skill('b'),
         'repo/.agents/skills/c/SKILL.md': _skill('c'),
         'repo/node_modules/ignored/SKILL.md': _skill('ignored'),
@@ -115,9 +138,32 @@ void main() {
       expect(result.map((c) => c.name), ['c', 'a', 'b']);
       final a = result.singleWhere((c) => c.name == 'a');
       expect(a.nameConflict, isTrue);
-      expect(a.references.single.path, 'references/中文.txt');
-      expect(a.references.single.content, '参考');
       expect(a.hasScripts, isTrue);
+      final package = await materialize(a);
+      expect(await readPackageFile(package, 'references/中文.txt'), '参考');
+      expect(await readPackageFile(package, 'scripts/run.py'), 'print(1)');
+      expect(await readPackageFile(package, 'run.sh'), 'printf ready');
+      expect(await readPackageFile(package, 'lib/nested/schema.dat'), 'schema');
+      expect(
+        await readPackageFile(package, 'references/table.bin'),
+        'binary fixture',
+      );
+      expect(
+        await File(p.join(package.path, 'lib', '.private')).exists(),
+        isFalse,
+      );
+      for (final name in [
+        'scripts/node_modules',
+        'scripts/__pycache__',
+        'assets/__MACOSX',
+      ]) {
+        expect(
+          await Directory(
+            p.joinAll([package.path, ...name.split('/')]),
+          ).exists(),
+          isFalse,
+        );
+      }
       expect(result.singleWhere((c) => c.name == 'b').hasScripts, isFalse);
       expect(a.description, 'useful skill for writing');
       expect(requests.single.path, '/repos/a/b/zipball');
@@ -212,7 +258,13 @@ void main() {
       });
       final result = await scan('https://github.com/a/b/$path');
       expect(result.single.name, 'fight-director');
-      expect(result.single.references.single.content, 'guide');
+      expect(
+        await readPackageFile(
+          await materialize(result.single),
+          'references/guide.md',
+        ),
+        'guide',
+      );
       expect(requests.last.pathSegments.last, _sha);
       expect(requests[requests.length - 2].pathSegments.last, branch);
     });
@@ -286,7 +338,13 @@ void main() {
       final result = await scan('https://gitee.com/a/b', existing: {'gitee'});
       expect(result.single.name, 'gitee');
       expect(result.single.nameConflict, isTrue);
-      expect(result.single.references.single.content, 'guide');
+      expect(
+        requests.where((uri) => uri.path.contains('/git/blobs/')).length,
+        1,
+      );
+      final package = await materialize(result.single);
+      expect(await readPackageFile(package, 'references/guide.md'), 'guide');
+      expect(await readPackageFile(package, 'scripts/run.py'), 'script');
       expect(
         requests
             .singleWhere((uri) => uri.path.contains('/git/trees/'))
@@ -296,7 +354,7 @@ void main() {
       );
       expect(
         requests.where((uri) => uri.path.contains('/git/blobs/')).length,
-        2,
+        3,
       );
     },
   );
@@ -330,7 +388,7 @@ void main() {
       }),
     );
     await expectLater(
-      scan('https://gitee.com/a/b'),
+      materialize((await scan('https://gitee.com/a/b')).single),
       throwsA(isA<AgentSkillImportLimitException>()),
     );
     expect(requests.where((uri) => uri.path.contains('/git/blobs/')).length, 1);
@@ -404,7 +462,13 @@ void main() {
         );
         final result = await scan('https://$host.com/a/b/blob/main/a/SKILL.md');
         expect(result.single.name, 'a');
-        expect(result.single.references.single.content, 'guide');
+        expect(
+          await readPackageFile(
+            await materialize(result.single),
+            'references/guide.md',
+          ),
+          'guide',
+        );
       },
     );
   }
@@ -493,7 +557,7 @@ void main() {
       ),
     );
     await expectLater(
-      scan('a/b'),
+      materialize((await scan('a/b')).single),
       throwsA(isA<AgentSkillImportLimitException>()),
     );
   });
@@ -508,8 +572,39 @@ void main() {
     );
     final candidates = await scan('https://gitee.com/a/b/tree/main/skills/a');
     expect(candidates.single.hasScripts, isTrue);
-    expect(candidates.single.references.single.path, 'references/guide.md');
+    expect(requests.where((uri) => uri.path.contains('/git/blobs/')).length, 1);
   });
+
+  test(
+    'Gitee selected packages can be read after the scan client closes',
+    () async {
+      final resources = {
+        'SKILL.md': _skill('gitee'),
+        'lib/nested/fixture.bin': 'abc' * (60 * 1024),
+      };
+      respond((options) => _giteeResponse(options, resources));
+      final openedClients = <Dio>[];
+      final candidates = await scan(
+        'https://gitee.com/a/b',
+        openPackageClient: () async {
+          final reopened = Dio()
+            ..httpClientAdapter = _Adapter(
+              (options) => _giteeResponse(options, resources),
+            );
+          openedClients.add(reopened);
+          return reopened;
+        },
+      );
+      expect(openedClients, isEmpty);
+      client.close(force: true);
+      final package = await materialize(candidates.single);
+      expect(openedClients, hasLength(1));
+      expect(
+        await readPackageFile(package, 'lib/nested/fixture.bin'),
+        resources['lib/nested/fixture.bin'],
+      );
+    },
+  );
 
   test('HTTP failure preserves status for the caller', () async {
     respond((_) => ResponseBody.fromString('not found', 404));

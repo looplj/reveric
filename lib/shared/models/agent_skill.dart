@@ -7,6 +7,8 @@
 //   lib/shared/models/novel_agent_skill.dart
 //   lib/shared/models/agent_skill_reference.dart
 
+import 'dart:convert';
+
 import 'agent_skill_reference.dart';
 
 /// 从 AgentSkill 工具参数中提取技能名。
@@ -31,6 +33,7 @@ class SkillDefinition {
     required this.prompt,
     this.whenToUse = '',
     this.references = const [],
+    this.skillRoot,
     this.enabled = true,
     this.sortOrder = 0,
     this.createdAt,
@@ -44,6 +47,7 @@ class SkillDefinition {
   final String whenToUse;
   final String description;
   final String prompt;
+  final String? skillRoot;
   final List<AgentSkillReferenceFile> references;
   final bool enabled;
   final int sortOrder;
@@ -57,6 +61,7 @@ class SkillDefinition {
     String? description,
     String? prompt,
     List<AgentSkillReferenceFile>? references,
+    String? skillRoot,
     bool? enabled,
     int? sortOrder,
     DateTime? createdAt,
@@ -69,6 +74,7 @@ class SkillDefinition {
       description: description ?? this.description,
       prompt: prompt ?? this.prompt,
       references: references ?? this.references,
+      skillRoot: skillRoot ?? this.skillRoot,
       enabled: enabled ?? this.enabled,
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
@@ -99,9 +105,11 @@ class AgentSkillLoadResult {
   const AgentSkillLoadResult({
     required this.instructions,
     this.references = const [],
+    this.skillRoot,
   });
 
   final String instructions;
+  final String? skillRoot;
   final List<AgentSkillReferenceDescriptor> references;
 }
 
@@ -115,11 +123,21 @@ class AgentSkillLoadResult {
 String buildAgentSkillBlock(
   String name, {
   required String instructions,
+  String? skillRoot,
   List<AgentSkillReferenceDescriptor> references = const [],
 }) {
   final buffer = StringBuffer();
   buffer.writeln('<agent_skill>');
   buffer.writeln('  <name>$name</name>');
+  if (skillRoot != null) {
+    final path = const HtmlEscape(HtmlEscapeMode.element).convert(skillRoot);
+    buffer.writeln('  <skill_root>$path</skill_root>');
+    buffer.writeln(
+      '  <skill_root_usage>Resolve relative package paths such as scripts/ and assets/ '
+      'against this SKILL ROOT. Use the resulting absolute paths with Bash or PowerShell '
+      'when those tools are available.</skill_root_usage>',
+    );
+  }
   buffer.writeln('  <instructions>');
   buffer.writeln(instructions.trim());
   buffer.writeln('  </instructions>');

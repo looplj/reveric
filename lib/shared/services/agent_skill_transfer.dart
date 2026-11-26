@@ -10,15 +10,20 @@
 //   .agents/rules/error-handling.md
 
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:archive/archive_io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../logger/app_logger.dart';
 import '../models/agent_skill_reference.dart';
 import '../models/novel_agent_skill.dart';
 import '../providers/novel_agent_skill_providers.dart';
+import '../utils/storage_paths.dart';
 import 'agent_skill_import_parser.dart';
+import 'agent_skill_package.dart';
 
 final _log = AppLogger.forModule('AgentSkillTransfer');
 
@@ -28,15 +33,15 @@ class AgentSkillImportCandidate {
     required this.filePath,
     required this.parsed,
     required this.nameConflict,
-    this.references = const [],
     this.hasScripts = false,
+    this.materialize,
   });
 
   final String filePath;
   final AgentSkillImportParseResult parsed;
   final bool nameConflict;
-  final List<AgentSkillReferenceFile> references;
   final bool hasScripts;
+  final Future<void> Function(Directory destination)? materialize;
 
   String get name => parsed.name;
   String get description => parsed.description;
@@ -47,23 +52,16 @@ class AgentSkillImportCandidate {
 bool agentSkillHasScripts(Iterable<String> paths) => paths.any((path) {
   final parts = path.replaceAll('\\', '/').split('/');
   return parts.contains('scripts') ||
-      const {
-        '.py',
-        '.js',
-        '.mjs',
-        '.cjs',
-        '.ts',
-        '.sh',
-        '.bash',
-        '.zsh',
-        '.ps1',
-        '.bat',
-        '.cmd',
-        '.rb',
-        '.pl',
-        '.lua',
-        '.dart',
-      }.contains(p.posix.extension(path).toLowerCase());
+      agentSkillScriptExtensions.contains(
+        p.posix.extension(path).toLowerCase(),
+      );
+});
+
+enum AgentSkillImportFailureReason { too_large, unavailable, invalid, failed }
+
+typedef AgentSkillImportFailure = ({
+  String name,
+  AgentSkillImportFailureReason reason,
 });
 
 /// 批量导入结果。
@@ -74,6 +72,7 @@ class AgentSkillImportResult {
     required this.failed,
     this.skippedNames = const [],
     this.failedFiles = const [],
+    this.failures = const [],
   });
 
   final int imported;
@@ -81,19 +80,26 @@ class AgentSkillImportResult {
   final int failed;
   final List<String> skippedNames;
   final List<String> failedFiles;
+  final List<AgentSkillImportFailure> failures;
 
   int get total => imported + skipped + failed;
 }
 
-/// 单个导出文件的相对路径和文本内容，供本地目录与 Android SAF 共用。
+/// 描述一个待写出的文件。包资源始终从本地文件逐个读取。
 class AgentSkillTransferFile {
   const AgentSkillTransferFile({
     required this.relativePath,
     required this.content,
-  });
+  }) : source = null;
+
+  const AgentSkillTransferFile.resource({
+    required this.relativePath,
+    required this.source,
+  }) : content = '';
 
   final String relativePath;
   final String content;
+  final File? source;
 }
 
 /// AgentSkill 批量导入/导出服务。
@@ -107,9 +113,13 @@ class AgentSkillTransferFile {
 ///       foo.md
 /// ```
 class AgentSkillTransferService {
-  const AgentSkillTransferService();
+  const AgentSkillTransferService({
+    this.temporaryDirectory = getTemporaryDirectory,
+  });
 
-  static const skillMarkdownFileName = 'SKILL.md';
+  final Future<Directory> Function() temporaryDirectory;
+
+  static const skillMarkdownFileName = agentSkillMarkdownName;
   static const referencesDirName = AgentSkillReferences.relativeDir;
 
   /// 读取系统选择器提供的内容，不将移动端 URI 当作普通文件路径。
@@ -117,6 +127,8 @@ class AgentSkillTransferService {
     required String content,
     required String fileName,
     required List<NovelAgentSkillModel> existing,
+    bool hasScripts = false,
+    Future<void> Function(Directory)? materialize,
   }) {
     final parsed = AgentSkillImportParser.parse(content);
     if (parsed == null) {
@@ -125,130 +137,157 @@ class AgentSkillTransferService {
     return AgentSkillImportCandidate(
       filePath: fileName,
       parsed: parsed,
+      hasScripts: hasScripts,
+      materialize: materialize,
       nameConflict: existing.any(
         (entry) => entry.name.trim() == parsed.name.trim(),
       ),
     );
   }
 
-  /// 递归扫描 [dirPath] 下所有 `SKILL.md`，解析 frontmatter。
-  /// 解析失败的文件不进入返回列表（计入日志）；同名已安装技能冲突标记 [nameConflict]。
-  List<AgentSkillImportCandidate> discoverInDirectory({
+  /// Scans candidate markdown only. Resource reads begin on confirmation.
+  Future<List<AgentSkillImportCandidate>> discoverInDirectory({
     required String dirPath,
     required List<NovelAgentSkillModel> existing,
-  }) {
-    final dir = Directory(dirPath);
-    if (!dir.existsSync()) {
-      throw FileSystemException('Directory not found', dirPath);
+  }) async {
+    final root = Directory(await Directory(dirPath).resolveSymbolicLinks());
+    final markdown = <File>[];
+    final directoriesWithScripts = <String>{};
+    var entries = 0;
+    Future<void> visit(Directory parent) async {
+      await for (final entry in parent.list(followLinks: false)) {
+        if (++entries > agentSkillMaxScanEntries) {
+          throw const AgentSkillImportLimitException();
+        }
+        final name = p.basename(entry.path);
+        if (entry is Directory) {
+          final lowerName = name.toLowerCase();
+          if (lowerName == 'scripts') {
+            directoriesWithScripts.add(parent.path);
+          }
+          if (!lowerName.startsWith('.') &&
+              !agentSkillIgnoredDirectories.contains(lowerName) &&
+              !{referencesDirName, 'scripts', 'assets'}.contains(lowerName)) {
+            await visit(entry);
+          }
+        } else if (entry is File && isAgentSkillRootMarkdown(name)) {
+          markdown.add(entry);
+          if (markdown.length > agentSkillMaxCandidates) {
+            throw const AgentSkillImportLimitException();
+          }
+        } else if (entry is File &&
+            isPortableSkillPathSegment(name) &&
+            agentSkillScriptExtensions.contains(
+              p.extension(name).toLowerCase(),
+            )) {
+          directoriesWithScripts.add(parent.path);
+        }
+      }
     }
 
-    return _discoverFromFiles(
-      files: _collectSkillMarkdownFiles(dir),
-      existing: existing,
-    );
-  }
-
-  /// 从用户选中的 `.md` / `SKILL.md` 文件解析候选（iOS 等无文件夹选择器的平台）。
-  List<AgentSkillImportCandidate> discoverFromFiles({
-    required List<String> filePaths,
-    required List<NovelAgentSkillModel> existing,
-  }) {
-    final files = filePaths
-        .map(File.new)
-        .where((f) => f.path.toLowerCase().endsWith('.md'))
-        .toList(growable: false);
-    return _discoverFromFiles(files: files, existing: existing);
-  }
-
-  List<AgentSkillImportCandidate> _discoverFromFiles({
-    required List<File> files,
-    required List<NovelAgentSkillModel> existing,
-  }) {
-    final existingNames = existing.map((e) => e.name.trim()).toSet();
+    await visit(root);
+    markdown.sort((a, b) => a.path.compareTo(b.path));
     final candidates = <AgentSkillImportCandidate>[];
-
-    for (final file in files) {
-      final String raw;
+    var markdownBytes = 0;
+    for (final file in markdown) {
       try {
-        raw = file.readAsStringSync();
-      } catch (error, stackTrace) {
+        await RevericPaths.requireNoLinks(root, file.path);
+        final size = await file.length();
+        if (size > agentSkillMaxMarkdownBytes) {
+          _log.warning(
+            'Skipping oversized SKILL.md during directory discovery',
+          );
+          continue;
+        }
+        markdownBytes += size;
+        if (markdownBytes > agentSkillMaxScanMarkdownBytes) {
+          throw const AgentSkillImportLimitException();
+        }
+        final content = utf8.decode(
+          await file.openRead(0, size).expand((chunk) => chunk).toList(),
+        );
+        candidates.add(
+          parseSelectedMarkdown(
+            content: content,
+            fileName: file.path,
+            existing: existing,
+            hasScripts: directoriesWithScripts.contains(file.parent.path),
+            materialize: (dir) =>
+                AgentSkillPackageWriter(dir).copyFrom(file, sourceRoot: root),
+          ),
+        );
+      } on FormatException catch (error, stackTrace) {
         _log.error(
-          '[Transfer] read failed: ${file.path}',
+          'Invalid skill Markdown during directory discovery',
           error: error,
           stackTrace: stackTrace,
         );
-        continue;
+      } on FileSystemException catch (error, stackTrace) {
+        _log.error(
+          'Could not read a skill candidate during directory discovery',
+          error: error,
+          stackTrace: stackTrace,
+        );
       }
-
-      final parsed = AgentSkillImportParser.parse(raw);
-      if (parsed == null) {
-        _log.error('[Transfer] parse failed: ${file.path}');
-        continue;
-      }
-
-      final name = parsed.name.trim();
-      candidates.add(
-        AgentSkillImportCandidate(
-          filePath: file.path,
-          parsed: parsed,
-          nameConflict: existingNames.contains(name),
-          references: _loadReferencesBesideSkillMarkdown(file),
-          hasScripts:
-              Directory(p.join(file.parent.path, 'scripts')).existsSync() ||
-              agentSkillHasScripts(
-                file.parent
-                    .listSync(followLinks: false)
-                    .whereType<File>()
-                    .map((entry) => p.basename(entry.path)),
-              ),
-        ),
-      );
     }
-
     return candidates;
   }
 
-  /// 递归读取 `SKILL.md` 同级 `references/**` 文本文件。
-  static List<AgentSkillReferenceFile> _loadReferencesBesideSkillMarkdown(
-    File skillMarkdown,
-  ) {
-    final skillDir = skillMarkdown.parent;
-    final refsDir = Directory(p.join(skillDir.path, referencesDirName));
-    if (!refsDir.existsSync()) {
+  Future<List<AgentSkillImportCandidate>> discoverFromFiles({
+    required List<String> filePaths,
+    required List<NovelAgentSkillModel> existing,
+  }) async => [
+    for (final path in filePaths.where(
+      (path) => path.toLowerCase().endsWith('.md'),
+    ))
+      parseSelectedMarkdown(
+        content: await File(path).readAsString(),
+        fileName: path,
+        existing: existing,
+      ),
+  ];
+
+  Future<List<AgentSkillReferenceFile>> _readReferences(
+    Directory package,
+  ) async {
+    final references = await findAgentSkillReferenceDirectory(package);
+    if (references == null) {
       return const [];
     }
-
     final files = <AgentSkillReferenceFile>[];
-    for (final entity in refsDir.listSync(
+    var bytes = 0;
+    await for (final entry in references.list(
       recursive: true,
       followLinks: false,
     )) {
-      if (entity is! File) {
+      if (entry is! File) {
         continue;
       }
-      final relativePath =
-          '$referencesDirName/${p.relative(entity.path, from: refsDir.path).replaceAll('\\', '/')}';
-      if (!AgentSkillReferences.isValidRelativePath(relativePath)) {
+      final path = p
+          .split(p.relative(entry.path, from: package.path))
+          .join('/');
+      if (!isAgentSkillTextReference(path)) {
         continue;
       }
-      try {
-        final content = entity.readAsStringSync();
-        files.add(
-          AgentSkillReferenceFile(path: relativePath, content: content),
-        );
-      } catch (error, stackTrace) {
-        _log.error(
-          '[Transfer] read reference failed: ${entity.path}',
-          error: error,
-          stackTrace: stackTrace,
-        );
+      final size = await entry.length();
+      bytes += size;
+      if (size > AgentSkillReferences.maxContentBytes ||
+          bytes > AgentSkillReferences.maxTotalContentBytes ||
+          files.length >= AgentSkillReferences.maxCount) {
+        throw const AgentSkillImportLimitException();
       }
+      files.add(
+        AgentSkillReferenceFile(
+          path: path,
+          content: await entry.readAsString(),
+        ),
+      );
     }
-    return AgentSkillReferences.sanitize(files);
+    return AgentSkillReferences.normalizeOrThrow(files);
   }
 
   /// 将用户勾选的候选写入应用全局已安装技能。
-  /// 同名冲突先卸载再安装；同一批里的重复名称跳过。写入异常计入 failed。
+  /// 同名覆盖保留原安装 ID；同一批里的重复名称跳过。写入异常计入 failed。
   Future<AgentSkillImportResult> importCandidates({
     required List<AgentSkillImportCandidate> candidates,
     required InstalledAgentSkillsNotifier notifier,
@@ -262,6 +301,7 @@ class AgentSkillTransferService {
     var failed = 0;
     final skippedNames = <String>[];
     final failedFiles = <String>[];
+    final failures = <AgentSkillImportFailure>[];
 
     for (final candidate in candidates) {
       final name = candidate.parsed.name.trim();
@@ -271,17 +311,44 @@ class AgentSkillTransferService {
         continue;
       }
 
-      final input = InstallSkillInput(
-        sourceKind: AgentSkillSourceKind.novelLocal,
-        name: name,
-        description: candidate.parsed.description,
-        prompt: candidate.parsed.body,
-        whenToUse: candidate.parsed.whenToUse,
-        category: candidate.parsed.category,
-        tags: candidate.parsed.tags,
-        references: candidate.references,
-      );
+      Directory? packageDirectory;
       try {
+        var parsed = candidate.parsed;
+        var references = const <AgentSkillReferenceFile>[];
+        final materialize = candidate.materialize;
+        if (materialize != null) {
+          packageDirectory = await (await temporaryDirectory()).createTemp(
+            'reveric_skill_import_',
+          );
+          await materialize(packageDirectory);
+          final markdown = File(
+            p.join(packageDirectory.path, skillMarkdownFileName),
+          );
+          if (await markdown.length() > agentSkillMaxMarkdownBytes) {
+            throw const AgentSkillImportLimitException();
+          }
+          final current = AgentSkillImportParser.parse(
+            await markdown.readAsString(),
+          );
+          if (current == null || current.name.trim() != name) {
+            throw const FormatException(
+              'Skill name or Markdown changed after discovery',
+            );
+          }
+          parsed = current;
+          references = await _readReferences(packageDirectory);
+        }
+        final input = InstallSkillInput(
+          sourceKind: AgentSkillSourceKind.novelLocal,
+          name: name,
+          description: parsed.description,
+          prompt: parsed.body,
+          whenToUse: parsed.whenToUse,
+          category: parsed.category,
+          tags: parsed.tags,
+          references: references,
+          packageDirectory: packageDirectory,
+        );
         if (candidate.nameConflict || existingNames.contains(name)) {
           await notifier.installOverwrite(input);
         } else {
@@ -298,6 +365,30 @@ class AgentSkillTransferService {
         );
         failed++;
         failedFiles.add(candidate.filePath);
+        failures.add((
+          name: name,
+          reason: switch (error) {
+            AgentSkillImportLimitException() =>
+              AgentSkillImportFailureReason.too_large,
+            FileSystemException() => AgentSkillImportFailureReason.unavailable,
+            FormatException() => AgentSkillImportFailureReason.invalid,
+            _ => AgentSkillImportFailureReason.failed,
+          },
+        ));
+      } finally {
+        if (packageDirectory != null) {
+          try {
+            if (await packageDirectory.exists()) {
+              await packageDirectory.delete(recursive: true);
+            }
+          } on FileSystemException catch (error, stackTrace) {
+            _log.error(
+              'Skill import cache cleanup failed',
+              error: error,
+              stackTrace: stackTrace,
+            );
+          }
+        }
       }
     }
 
@@ -307,15 +398,15 @@ class AgentSkillTransferService {
       failed: failed,
       skippedNames: skippedNames,
       failedFiles: failedFiles,
+      failures: failures,
     );
   }
 
   /// 导出为 Agent Skills 目录布局：每个技能一个子目录 + `SKILL.md`。
-  List<AgentSkillTransferFile> buildDirectoryFiles(
+  Stream<AgentSkillTransferFile> _exportFiles(
     List<NovelAgentSkillModel> entries,
-  ) {
+  ) async* {
     final usedDirNames = <String>{};
-    final files = <AgentSkillTransferFile>[];
     for (final entry in entries) {
       final dirName = _uniqueDirName(
         _sanitizeFileName(entry.name),
@@ -330,22 +421,34 @@ class AgentSkillTransferService {
         category: entry.category,
         tags: entry.tags,
       );
-      files.add(
-        AgentSkillTransferFile(
-          relativePath: '$dirName/$skillMarkdownFileName',
-          content: content,
-        ),
+      yield AgentSkillTransferFile(
+        relativePath: '$dirName/$skillMarkdownFileName',
+        content: content,
       );
       for (final reference in AgentSkillReferences.sanitize(entry.references)) {
-        files.add(
-          AgentSkillTransferFile(
-            relativePath: '$dirName/${reference.path}',
-            content: reference.content,
-          ),
+        yield AgentSkillTransferFile(
+          relativePath: '$dirName/${reference.path}',
+          content: reference.content,
         );
       }
+      final skillRoot = entry.skillRoot;
+      if (skillRoot != null) {
+        final directory = Directory(skillRoot);
+        await RevericPaths.requireNoLinks(directory, directory.path);
+        if (!await directory.exists()) {
+          throw const FileSystemException(
+            'Installed skill folder is unavailable',
+          );
+        }
+        await for (final resource in agentSkillPackageFiles(directory)) {
+          await RevericPaths.requireNoLinks(directory, resource.file.path);
+          yield AgentSkillTransferFile.resource(
+            relativePath: '$dirName/${resource.path}',
+            source: resource.file,
+          );
+        }
+      }
     }
-    return files;
   }
 
   /// 导出为 Agent Skills 目录布局：每个技能一个子目录 + `SKILL.md`。
@@ -354,17 +457,22 @@ class AgentSkillTransferService {
     required List<NovelAgentSkillModel> entries,
   }) async {
     final dir = Directory(dirPath);
-    if (!dir.existsSync()) {
-      dir.createSync(recursive: true);
-    }
+    await dir.create(recursive: true);
 
     final paths = <String>[];
-    for (final file in buildDirectoryFiles(entries)) {
+    await for (final file in _exportFiles(entries)) {
       final filePath = p.join(dir.path, file.relativePath);
       final output = File(filePath);
-      output.parent.createSync(recursive: true);
-      output.writeAsStringSync(file.content);
-      if (p.basename(filePath) == skillMarkdownFileName) {
+      await RevericPaths.requireNoLinks(dir, output.path);
+      await output.parent.create(recursive: true);
+      final source = file.source;
+      if (source == null) {
+        await output.writeAsString(file.content);
+      } else {
+        await source.copy(output.path);
+      }
+      final parts = file.relativePath.split('/');
+      if (parts.length == 2 && parts.last == skillMarkdownFileName) {
         paths.add(filePath);
       }
     }
@@ -376,33 +484,34 @@ class AgentSkillTransferService {
   Future<String> exportToZip({
     required String zipPath,
     required List<NovelAgentSkillModel> entries,
-  }) async {
+  }) => compute(_writeZip, (zipPath, entries));
+
+  static Future<String> _writeZip(
+    (String, List<NovelAgentSkillModel>) input,
+  ) async {
+    final (zipPath, entries) = input;
+    const transfer = AgentSkillTransferService();
     final encoder = ZipFileEncoder();
     encoder.create(zipPath);
 
     try {
-      final usedDirNames = <String>{};
-      for (final entry in entries) {
-        final dirName = _uniqueDirName(
-          _sanitizeFileName(entry.name),
-          usedDirNames,
-        );
-        usedDirNames.add(dirName);
-        final content = AgentSkillImportParser.write(
-          name: entry.name,
-          description: entry.description,
-          body: entry.prompt,
-          whenToUse: entry.whenToUse,
-          category: entry.category,
-          tags: entry.tags,
-        );
-        encoder.addArchiveFile(
-          ArchiveFile.string('$dirName/$skillMarkdownFileName', content),
-        );
-        for (final ref in entry.references) {
+      await for (final file in transfer._exportFiles(entries)) {
+        final source = file.source;
+        if (source == null) {
           encoder.addArchiveFile(
-            ArchiveFile.string('$dirName/${ref.path}', ref.content),
+            ArchiveFile.string(file.relativePath, file.content),
           );
+        } else {
+          final input = InputFileStream(source.path);
+          try {
+            // archive 4.x buffers compressed entries. Stored entries stream to disk.
+            encoder.addArchiveFile(
+              ArchiveFile.stream(file.relativePath, input)
+                ..compression = CompressionType.none,
+            );
+          } finally {
+            await input.close();
+          }
         }
       }
     } finally {
@@ -410,24 +519,6 @@ class AgentSkillTransferService {
     }
 
     return zipPath;
-  }
-
-  /// 收集目录下所有 `SKILL.md`（公开便于单测）。
-  static List<File> collectSkillMarkdownFiles(Directory dir) {
-    return _collectSkillMarkdownFiles(dir);
-  }
-
-  static List<File> _collectSkillMarkdownFiles(Directory dir) {
-    return dir
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where(
-          (f) =>
-              p.basename(f.path).toLowerCase() ==
-              skillMarkdownFileName.toLowerCase(),
-        )
-        .toList(growable: false)
-      ..sort((a, b) => a.path.compareTo(b.path));
   }
 
   static String _sanitizeFileName(String name) {

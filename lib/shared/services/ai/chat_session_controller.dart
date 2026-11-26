@@ -32,6 +32,8 @@ import '../../models/ai_chat_models.dart';
 import '../../models/ai_provider.dart';
 import '../../models/agent_skill.dart';
 import '../../models/agent_skill_reference.dart';
+import '../../models/novel_agent_skill.dart';
+import '../../providers/novel_agent_skill_providers.dart';
 import '../../models/content_kind.dart';
 import '../../models/novel_workspace.dart';
 import '../../models/queued_chat_message.dart';
@@ -407,7 +409,6 @@ class ChatSessionController {
     required this.store,
     required this.promptBuilder,
     required this.availableSubAgents,
-    this.availableSkills = const [],
     required this.aiPromptService,
     required AiSessionContext promptContext,
     this.nextActionEnvironment = const ChatNextActionEnvironment(),
@@ -423,8 +424,6 @@ class ChatSessionController {
   final ChatPromptBuilder promptBuilder;
   final List<SubAgent> availableSubAgents;
 
-  /// slash 面板可加载的技能（与菜单同源）。用于把 skill chip 解析成完整指令直接注入。
-  final List<SkillDefinition> availableSkills;
   final AiPromptService aiPromptService;
   final AiSessionContext promptContext;
 
@@ -919,7 +918,10 @@ class ChatSessionController {
           kind: 'slash_subagent_hint',
         );
       }
-      _deliverSlashChipReminds(targetSessionId, refs);
+      await _deliverSlashChipReminds(targetSessionId, refs);
+      if (runtime.cancelledRequestIds.contains(requestId)) {
+        return;
+      }
       logSendTiming('reminds_delivered');
 
       // slash chip（skill / subagent）名写入用户消息 metadata，供聊天记录气泡展示（随消息持久化）。
@@ -2265,10 +2267,10 @@ class ChatSessionController {
   /// 处理由 `/` 命令面板选中生成的 chip：
   /// - subagent chip → 软偏好提示（与手打 `/name` 同款）。
   /// - skill chip → 直接加载：把完整技能指令封入 `<agent_skill>` 块注入本轮。
-  void _deliverSlashChipReminds(
+  Future<void> _deliverSlashChipReminds(
     String? sessionId,
     List<AiContextReference> refs,
-  ) {
+  ) async {
     for (final ref in refs) {
       switch (ref.kind) {
         case AiContextReferenceKind.subagent:
@@ -2284,7 +2286,10 @@ class ChatSessionController {
             );
           }
         case AiContextReferenceKind.skill:
-          final remind = _buildSlashSkillRemind(ref.label);
+          final skill = await container
+              .read(installedAgentSkillsProvider.notifier)
+              .readPackageById(ref.itemId, forExecution: true);
+          final remind = _buildSlashSkillRemind(skill);
           if (remind != null) {
             _deliverSystemRemind(sessionId, remind, kind: 'slash_skill_load');
           }
@@ -2297,16 +2302,9 @@ class ChatSessionController {
     }
   }
 
-  /// 按名称把技能完整指令包成「直接加载」的 system-remind；找不到/未启用则返回 null。
-  ///
-  /// 匹配键是 chip 的 `label`（= SkillDefinition.name，即应用全局唯一的工具名）；
-  /// 注入的 `<agent_skill><name>` 块沿用同一个 name，与 AgentSkill 工具去重规则
-  /// 对齐——避免注入块与工具列表名不一致导致模型重复加载。
-  String? _buildSlashSkillRemind(String skillName) {
-    final skill = availableSkills
-        .where((item) => item.name == skillName && item.enabled)
-        .firstOrNull;
-    if (skill == null) {
+  /// 封装 chip 按安装 ID 加载的指令，与 AgentSkill 共用去重名称。
+  String? _buildSlashSkillRemind(NovelAgentSkillModel? skill) {
+    if (skill == null || !skill.isExecutable) {
       return null;
     }
     final blockName = skill.name;
@@ -2314,6 +2312,7 @@ class ChatSessionController {
     final block = buildAgentSkillBlock(
       blockName,
       instructions: skill.prompt,
+      skillRoot: skill.skillRoot,
       references: [
         for (final ref in skill.references)
           AgentSkillReferenceDescriptor(path: ref.path),

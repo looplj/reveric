@@ -1,7 +1,6 @@
 // 职责: 在应用启动时连接官方技能安装、升级与退役卸载，并持久记录已处理身份。
 // 关联文件:
 //   lib/shared/services/official_skill_sync.dart
-//   lib/shared/providers/agent_skill_providers.dart
 //   lib/shared/providers/agent_skill_catalog_providers.dart
 //   lib/shared/providers/novel_agent_skill_providers.dart
 //   lib/shared/database/daos/app_state_dao.dart
@@ -14,7 +13,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../logger/app_logger.dart';
 import '../services/official_skill_sync.dart';
 import 'agent_skill_catalog_providers.dart';
-import 'agent_skill_providers.dart';
 import 'async_read.dart';
 import 'novel_agent_skill_providers.dart';
 
@@ -73,7 +71,7 @@ final officialSkillSyncProvider = FutureProvider<OfficialSkillSyncResult>((
         await ref.read(installedAgentSkillsProvider.notifier).remove(id);
       } catch (error, stackTrace) {
         _log.error(
-          '[DB] DELETE novel_agent_skills and child rows failed id=$id',
+          'Failed to uninstall retired skill id=$id',
           error: error,
           stackTrace: stackTrace,
         );

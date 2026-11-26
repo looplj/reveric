@@ -28,8 +28,9 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
-import 'package:reveric/shared/providers/agent_skill_providers.dart';
 import 'package:reveric/shared/providers/official_skill_sync_providers.dart';
+import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
+import 'package:reveric/shared/models/novel_agent_skill.dart';
 import 'package:reveric/shared/services/official_skill_sync.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
@@ -65,6 +66,7 @@ void main() {
         officialSkillSyncProvider.overrideWith((ref) => syncReady.future),
         appDatabaseProvider.overrideWithValue(database),
         agentSkillAppDatabaseProvider.overrideWithValue(database),
+        installedAgentSkillsProvider.overrideWith(_EmptyInstalledSkills.new),
         agentSkillCatalogServiceProvider.overrideWithValue(dataFake),
       ],
     );
@@ -120,6 +122,7 @@ void main() {
         ),
         appDatabaseProvider.overrideWithValue(database),
         agentSkillAppDatabaseProvider.overrideWithValue(database),
+        installedAgentSkillsProvider.overrideWith(_EmptyInstalledSkills.new),
         agentSkillCatalogServiceProvider.overrideWithValue(
           _FakeCatalogService(mode: 'empty'),
         ),
@@ -230,4 +233,9 @@ class _FakeCatalogService extends AgentSkillCatalogService {
       ],
     );
   }
+}
+
+class _EmptyInstalledSkills extends InstalledAgentSkillsNotifier {
+  @override
+  Future<List<NovelAgentSkillModel>> build() async => const [];
 }

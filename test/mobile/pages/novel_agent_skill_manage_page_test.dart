@@ -51,6 +51,14 @@ void main() {
         category: 'writing',
         tags: ['draft'],
       );
+      const unreadable = NovelAgentSkillModel(
+        id: 'broken_skill',
+        sourceKind: AgentSkillSourceKind.novelLocal,
+        name: 'Broken Skill',
+        description: '',
+        prompt: '',
+        packageReadFailed: true,
+      );
 
       await tester.pumpWidget(
         ProviderScope(
@@ -59,7 +67,7 @@ void main() {
               TestMarketplaceService(),
             ),
             installedAgentSkillsProvider.overrideWith(
-              () => _FakeInstalledAgentSkillsNotifier([skill]),
+              () => _FakeInstalledAgentSkillsNotifier([skill, unreadable]),
             ),
 
             skillCategoriesProvider.overrideWith((ref) async => const []),
@@ -100,6 +108,23 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text(tr(LocaleKeys.agentSkillTabInstalled)));
       await tester.pumpAndSettle();
+      expect(find.text(tr(LocaleKeys.agentSkillLoadFailed)), findsOneWidget);
+      await tester.drag(find.text('Broken Skill'), const Offset(-300, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(tr(LocaleKeys.commonDelete)));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(
+            FilledButton,
+            tr(LocaleKeys.commonDelete),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Broken Skill'), findsNothing);
+      expect(find.text('Share Skill'), findsOneWidget);
 
       // 导入、导出是技能库迁移后仍需保留的入口，不能因全局化丢失。
       expect(find.text(tr(LocaleKeys.agentSkillImportAction)), findsOneWidget);
@@ -130,6 +155,11 @@ class _FakeInstalledAgentSkillsNotifier extends InstalledAgentSkillsNotifier {
 
   @override
   Future<List<NovelAgentSkillModel>> build() async => _skills;
+
+  @override
+  Future<void> remove(String id) async {
+    state = AsyncValue.data(_skills.where((skill) => skill.id != id).toList());
+  }
 }
 
 Widget _wrap(Widget child) {

@@ -66,6 +66,7 @@ Future<Map<String, dynamic>> handleAgentSkillTool(
     'content': buildAgentSkillBlock(
       name,
       instructions: loaded.instructions,
+      skillRoot: loaded.skillRoot,
       references: loaded.references,
     ),
   };

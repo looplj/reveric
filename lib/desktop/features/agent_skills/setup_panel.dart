@@ -281,25 +281,7 @@ class SkillSetupPanel extends HookConsumerWidget {
         if (!context.mounted) {
           return;
         }
-        if (result.failed > 0 || result.skipped > 0) {
-          await flash(
-            context.t(
-              LocaleKeys.agentSkillImportPartial,
-              namedArgs: {
-                'imported': '${result.imported}',
-                'skipped': '${result.skipped}',
-                'failed': '${result.failed}',
-              },
-            ),
-          );
-        } else {
-          await flash(
-            context.t(
-              LocaleKeys.agentSkillImportSuccess,
-              namedArgs: {'imported': '${result.imported}'},
-            ),
-          );
-        }
+        await flash(agentSkillImportFeedback(context, result));
       } catch (error, stackTrace) {
         _log.error(
           'Import installed skills failed',
@@ -387,7 +369,9 @@ class SkillSetupPanel extends HookConsumerWidget {
     }
 
     Future<void> exportInstalledSkills() async {
-      await exportSkills(installed);
+      await exportSkills(
+        installed.where((skill) => !skill.packageReadFailed).toList(),
+      );
     }
 
     // 全局技能承接了原「技能库」的职责；从条目上传时保留当前内容作为预填。
@@ -816,7 +800,8 @@ class _InstalledRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
-    final blocked = item.executionBlockedReason != null;
+    final unreadable = item.packageReadFailed;
+    final blocked = item.executionBlockedReason != null || unreadable;
     final isLocal = item.sourceKind == AgentSkillSourceKind.novelLocal;
     return Container(
       padding: const EdgeInsets.all(RevericSpacing.x2l),
@@ -832,7 +817,7 @@ class _InstalledRow extends StatelessWidget {
         children: [
           Expanded(
             child: InkWell(
-              onTap: isLocal ? onOpen : onOpenDetail,
+              onTap: unreadable ? null : (isLocal ? onOpen : onOpenDetail),
               borderRadius: BorderRadius.circular(RevericRadius.large),
               child: Padding(
                 padding: const EdgeInsets.only(right: RevericSpacing.sm),
@@ -862,10 +847,12 @@ class _InstalledRow extends StatelessWidget {
                     ),
                     const SizedBox(height: RevericSpacing.sm),
                     Text(
-                      item.description,
+                      unreadable
+                          ? context.t(LocaleKeys.agentSkillLoadFailed)
+                          : item.description,
                       style: typo.uiSmall.copyWith(color: colors.textMuted),
                     ),
-                    if (blocked)
+                    if (blocked && !unreadable)
                       Padding(
                         padding: const EdgeInsets.only(top: RevericSpacing.md),
                         child: _InlineChip(
@@ -897,7 +884,10 @@ class _InstalledRow extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: RevericSpacing.md),
-              RevericSwitch(value: item.enabled, onChanged: (_) => onToggle()),
+              RevericSwitch(
+                value: item.enabled && !unreadable,
+                onChanged: unreadable ? null : (_) => onToggle(),
+              ),
             ],
           ),
         ],

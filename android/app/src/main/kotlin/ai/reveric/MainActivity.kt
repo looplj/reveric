@@ -112,7 +112,21 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickAndCopyDirectory" -> pickAndCopyDirectory(call, result)
-                "pickAndWriteFiles" -> pickAndWriteFiles(call, result)
+                "scanSkillDirectory" -> {
+                    val policy = try {
+                        SkillDirectoryPolicy.from(call)
+                    } catch (error: IllegalArgumentException) {
+                        result.error("directory_import_failed", "Invalid skill directory policy.", null)
+                        return@setMethodCallHandler
+                    }
+                    pickAndCopyDirectory(call, result, policy)
+                }
+                "copySkillPackage" -> copySkillPackage(call, result)
+                "closeSkillDirectory" -> {
+                    if (skillImport?.token == call.argument<String>("token")) skillImport = null
+                    result.success(null)
+                }
+                "exportSkillDirectory" -> pickAndExportSkillDirectory(call, result)
                 else -> result.notImplemented()
             }
         }
@@ -164,7 +178,7 @@ class MainActivity : FlutterActivity() {
                         val buffer = ByteArray(64 * 1024)
                         var total = 0L
                         while (true) {
-                            if (backupImportDestroyed) {
+                            if (activityDestroyed) {
                                 throw java.io.InterruptedIOException("Backup import activity closed.")
                             }
                             val count = input.read(buffer)
@@ -208,9 +222,18 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        backupImportDestroyed = true
+        activityDestroyed = true
         pendingBackupResult?.error("backup_import_closed", "Backup import activity closed.", null)
         pendingBackupResult = null
+        pendingDirectoryImportResult?.error("directory_import_failed", "Directory picker closed.", null)
+        pendingDirectoryImportResult = null
+        pendingDirectoryExportResult?.error("directory_export_failed", "Directory picker closed.", null)
+        pendingDirectoryExportResult = null
+        pendingDirectoryExportSource?.let { source ->
+            Thread { source.deleteRecursively() }.start()
+        }
+        pendingDirectoryExportSource = null
+        skillImport = null
         super.onDestroy()
     }
 
@@ -220,41 +243,50 @@ class MainActivity : FlutterActivity() {
         if (result == null) {
             return
         }
+        val extensions = pendingDirectoryExtensions ?: DEFAULT_IMPORT_EXTENSIONS
+        pendingDirectoryExtensions = null
+        val skillPolicy = pendingSkillPolicy
+        pendingSkillPolicy = null
         if (resultCode != RESULT_OK || data?.data == null) {
-            pendingDirectoryExtensions = null
             result.success(null)
             return
         }
 
         val treeUri = data.data!!
-        copySelectedDirectory(treeUri, result)
+        if (skillPolicy == null) {
+            copySelectedDirectory(treeUri, result, extensions)
+        } else {
+            scanSelectedSkills(treeUri, skillPolicy, result)
+        }
     }
 
     private fun handleDirectoryExportResult(resultCode: Int, data: Intent?) {
         val result = pendingDirectoryExportResult
         pendingDirectoryExportResult = null
-        val files = pendingDirectoryExportFiles
-        pendingDirectoryExportFiles = null
-        if (result == null || files == null) {
+        val directory = pendingDirectoryExportSource
+        pendingDirectoryExportSource = null
+        if (result == null || directory == null) {
             return
         }
         if (resultCode != RESULT_OK || data?.data == null) {
             result.success(null)
             return
         }
-        writeSelectedFiles(data.data!!, files, result)
+        writeSelectedSkills(data.data!!, directory, result)
     }
 
     private fun pickAndCopyDirectory(
         call: MethodCall,
         result: MethodChannel.Result,
+        skillPolicy: SkillDirectoryPolicy? = null,
     ) {
-        if (pendingDirectoryImportResult != null || pendingDirectoryExportResult != null) {
+        if (pendingDirectoryImportResult != null || pendingDirectoryExportResult != null || skillTransferRunning) {
             result.error("directory_import_busy", "A directory import is already running.", null)
             return
         }
 
         pendingDirectoryImportResult = result
+        pendingSkillPolicy = skillPolicy
         pendingDirectoryExtensions = call.argument<List<String>>("extensions")
             ?.mapNotNull { extension ->
                 extension.trim().lowercase().removePrefix(".").takeIf { it.isNotEmpty() }
@@ -270,11 +302,16 @@ class MainActivity : FlutterActivity() {
         } catch (error: Exception) {
             pendingDirectoryImportResult = null
             pendingDirectoryExtensions = null
+            pendingSkillPolicy = null
             result.error("directory_import_picker_failed", error.message, null)
         }
     }
 
-    private fun copySelectedDirectory(uri: Uri, result: MethodChannel.Result) {
+    private fun copySelectedDirectory(
+        uri: Uri,
+        result: MethodChannel.Result,
+        extensions: Set<String>,
+    ) {
         Thread {
             var destination: File? = null
             try {
@@ -291,13 +328,13 @@ class MainActivity : FlutterActivity() {
                 if (!importDestination.mkdirs()) {
                     throw IllegalStateException("Unable to create import cache directory.")
                 }
-                val extensions = pendingDirectoryExtensions ?: DEFAULT_IMPORT_EXTENSIONS
-                pendingDirectoryExtensions = null
-                val stats = copyDirectory(
+                val stats = CopyStats()
+                copyDirectory(
                     uri,
                     DocumentsContract.getTreeDocumentId(uri),
                     importDestination,
                     extensions,
+                    stats,
                 )
                 postDirectoryImportResult(
                     result,
@@ -315,39 +352,97 @@ class MainActivity : FlutterActivity() {
         }.start()
     }
 
-    private fun pickAndWriteFiles(
-        call: MethodCall,
-        result: MethodChannel.Result,
-    ) {
-        if (pendingDirectoryExportResult != null || pendingDirectoryImportResult != null) {
+    private fun scanSelectedSkills(uri: Uri, policy: SkillDirectoryPolicy, result: MethodChannel.Result) {
+        skillTransferRunning = true
+        skillImport = null
+        Thread {
+            try {
+                val session = SkillDirectoryImport(contentResolver, uri, policy, ::checkSkillTransferActive)
+                val skills = session.scan()
+                Handler(Looper.getMainLooper()).post {
+                    skillTransferRunning = false
+                    if (activityDestroyed) {
+                        result.error("directory_import_failed", "Activity closed.", null)
+                    } else {
+                        skillImport = session
+                        result.success(mapOf("token" to session.token, "skills" to skills))
+                    }
+                }
+            } catch (error: Exception) {
+                postSkillImportError(result, error)
+            }
+        }.start()
+    }
+
+    private fun copySkillPackage(call: MethodCall, result: MethodChannel.Result) {
+        val session = skillImport
+        val id = call.argument<String>("id")
+        val destination = privateSkillCacheDirectory(call.argument<String>("path"), "reveric_skill_import_")
+        if (session == null || session.token != call.argument<String>("token") ||
+            id == null || destination == null || skillTransferRunning) {
+            result.error("skill_package_unavailable", "Skill selection is unavailable.", null)
+            return
+        }
+        skillTransferRunning = true
+        Thread {
+            try {
+                session.copyPackage(id, destination)
+                checkSkillTransferActive()
+                Handler(Looper.getMainLooper()).post {
+                    skillTransferRunning = false
+                    if (activityDestroyed) {
+                        destination.deleteRecursively()
+                        result.error("skill_package_unavailable", "Activity closed.", null)
+                    } else {
+                        result.success(null)
+                    }
+                }
+            } catch (error: Exception) {
+                if (!destination.deleteRecursively()) {
+                    android.util.Log.w("RevericSkillImport", "Unable to remove partial skill copy")
+                }
+                postSkillImportError(result, error)
+            }
+        }.start()
+    }
+
+    private fun postSkillImportError(result: MethodChannel.Result, error: Exception) {
+        android.util.Log.w("RevericSkillImport", "Skill directory operation failed", error)
+        Handler(Looper.getMainLooper()).post {
+            skillTransferRunning = false
+            val code = if (error is SkillImportLimit) "skill_package_too_large" else "skill_package_unavailable"
+            result.error(code, error.message, null)
+        }
+    }
+
+    private fun checkSkillTransferActive() {
+        if (activityDestroyed) throw java.io.InterruptedIOException("Activity closed.")
+    }
+
+    private fun privateSkillCacheDirectory(path: String?, prefix: String): File? {
+        if (path == null) return null
+        return try {
+            val directory = File(path).canonicalFile
+            directory.takeIf {
+                it.parentFile == cacheDir.canonicalFile && it.name.startsWith(prefix) && it.isDirectory
+            }
+        } catch (_: java.io.IOException) {
+            null
+        }
+    }
+
+    private fun pickAndExportSkillDirectory(call: MethodCall, result: MethodChannel.Result) {
+        if (pendingDirectoryExportResult != null || pendingDirectoryImportResult != null || skillTransferRunning) {
             result.error("directory_export_busy", "A directory operation is already running.", null)
             return
         }
-
-        val rawFiles = call.argument<List<Any?>>("files")
-        if (rawFiles == null || rawFiles.isEmpty() || rawFiles.size > MAX_EXPORT_FILES) {
-            result.error("invalid_export_files", "Export files are invalid or too many.", null)
+        val directory = privateSkillCacheDirectory(call.argument<String>("path"), "reveric_skill_export_")
+        if (directory == null) {
+            result.error("invalid_export_files", "Export source is unavailable.", null)
             return
         }
-        val files = rawFiles.mapNotNull { rawFile ->
-            val map = rawFile as? Map<*, *> ?: return@mapNotNull null
-            val path = map["path"] as? String
-            val content = map["content"] as? String
-            if (path.isNullOrBlank() || content == null) {
-                null
-            } else {
-                ExportFile(path, content)
-            }
-        }
-        if (files.size != rawFiles.size ||
-            files.sumOf { it.content.toByteArray(Charsets.UTF_8).size.toLong() } > MAX_EXPORT_BYTES
-        ) {
-            result.error("invalid_export_files", "Export files are invalid or too large.", null)
-            return
-        }
-
         pendingDirectoryExportResult = result
-        pendingDirectoryExportFiles = files
+        pendingDirectoryExportSource = directory
         try {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -357,23 +452,33 @@ class MainActivity : FlutterActivity() {
             startActivityForResult(intent, DIRECTORY_EXPORT_REQUEST_CODE)
         } catch (error: Exception) {
             pendingDirectoryExportResult = null
-            pendingDirectoryExportFiles = null
+            pendingDirectoryExportSource = null
             result.error("directory_export_picker_failed", error.message, null)
         }
     }
 
-    private fun writeSelectedFiles(
-        treeUri: Uri,
-        files: List<ExportFile>,
-        result: MethodChannel.Result,
-    ) {
+    private fun writeSelectedSkills(treeUri: Uri, source: File, result: MethodChannel.Result) {
+        skillTransferRunning = true
         Thread {
             try {
                 var written = 0
-                for (file in files) {
-                    writeExportFile(treeUri, file)
-                    written++
+                fun visit(directory: File, target: Uri) {
+                    val entries = directory.listFiles() ?: throw java.io.IOException("Unable to list staged skills.")
+                    for (file in entries) {
+                        checkSkillTransferActive()
+                        val absolute = file.absoluteFile
+                        if (!isPortableSkillSegment(file.name) || file.canonicalFile != absolute) {
+                            throw java.io.IOException("Invalid staged skill path.")
+                        }
+                        if (file.isDirectory) {
+                            visit(file, findOrCreateDirectory(treeUri, target, file.name))
+                        } else if (file.isFile) {
+                            writeSkillFile(treeUri, target, file)
+                            written++
+                        }
+                    }
                 }
+                visit(source, treeUri)
                 postDirectoryExportResult(
                     result,
                     mapOf(
@@ -383,32 +488,32 @@ class MainActivity : FlutterActivity() {
                 )
             } catch (error: Exception) {
                 postDirectoryExportError(result, error)
+            } finally {
+                if (activityDestroyed) source.deleteRecursively()
             }
         }.start()
     }
 
-    private fun writeExportFile(treeUri: Uri, file: ExportFile) {
-        val segments = file.relativePath.replace('\\', '/').split('/')
-        if (segments.size < 2 || segments.any { sanitizeEntryName(it) == null }) {
-            throw IllegalArgumentException("Invalid export file path.")
-        }
-        var parentUri = treeUri
-        for (directoryName in segments.dropLast(1)) {
-            parentUri = findOrCreateDirectory(treeUri, parentUri, directoryName)
-        }
-        val fileName = sanitizeEntryName(segments.last())
-            ?: throw IllegalArgumentException("Invalid export file name.")
-        val documentUri = findChildDocument(treeUri, parentUri, fileName, false)
+    private fun writeSkillFile(treeUri: Uri, parent: Uri, file: File) {
+        val documentUri = findChildDocument(treeUri, parent, file.name, false)
             ?: DocumentsContract.createDocument(
                 contentResolver,
-                parentUri,
-                "text/plain",
-                fileName,
+                parent,
+                "application/octet-stream",
+                file.name,
             )
-            ?: throw IllegalStateException("Unable to create export file.")
+            ?: throw java.io.IOException("Unable to create export file.")
         contentResolver.openOutputStream(documentUri, "wt")?.use { output ->
-            output.write(file.content.toByteArray(Charsets.UTF_8))
-        } ?: throw IllegalStateException("Unable to write export file.")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    checkSkillTransferActive()
+                    val count = input.read(buffer)
+                    if (count == -1) break
+                    output.write(buffer, 0, count)
+                }
+            }
+        } ?: throw java.io.IOException("Unable to write export file.")
     }
 
     private fun findOrCreateDirectory(
@@ -469,17 +574,6 @@ class MainActivity : FlutterActivity() {
         documentId: String,
         destination: File,
         extensions: Set<String>,
-    ): CopyStats {
-        val stats = CopyStats()
-        copyDirectory(treeUri, documentId, destination, extensions, stats)
-        return stats
-    }
-
-    private fun copyDirectory(
-        treeUri: Uri,
-        documentId: String,
-        destination: File,
-        extensions: Set<String>,
         stats: CopyStats,
     ) {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
@@ -502,16 +596,28 @@ class MainActivity : FlutterActivity() {
                     if (!childDestination.mkdirs() && !childDestination.isDirectory) {
                         throw IllegalStateException("Unable to create import subdirectory.")
                     }
-                    copyDirectory(treeUri, childId, childDestination, extensions, stats)
+                    copyDirectory(
+                        treeUri,
+                        childId,
+                        childDestination,
+                        extensions,
+                        stats,
+                    )
                     stats.directoryCount += 1
                 } else if (isSupportedTextFile(name, extensions)) {
                     val target = File(destination, name)
                     contentResolver.openInputStream(childUri)?.use { input ->
                         FileOutputStream(target).use { output ->
-                            val copiedBytes = input.copyTo(output)
                             stats.fileCount += 1
-                            stats.byteCount += copiedBytes
                             enforceImportLimits(stats)
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count == -1) break
+                                stats.byteCount += count
+                                enforceImportLimits(stats)
+                                output.write(buffer, 0, count)
+                            }
                         }
                     } ?: throw IllegalStateException("Unable to read selected document.")
                 }
@@ -532,7 +638,7 @@ class MainActivity : FlutterActivity() {
 
     private fun enforceImportLimits(stats: CopyStats) {
         if (stats.fileCount > MAX_IMPORT_FILES) {
-            throw IllegalStateException("Selected directory contains too many text files.")
+            throw IllegalStateException("Selected directory contains too many files.")
         }
         if (stats.byteCount > MAX_IMPORT_BYTES) {
             throw IllegalStateException("Selected directory is too large to import.")
@@ -569,11 +675,15 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun postDirectoryExportResult(result: MethodChannel.Result, value: Map<String, Any>) {
-        Handler(Looper.getMainLooper()).post { result.success(value) }
+        Handler(Looper.getMainLooper()).post {
+            skillTransferRunning = false
+            result.success(value)
+        }
     }
 
     private fun postDirectoryExportError(result: MethodChannel.Result, error: Exception) {
         Handler(Looper.getMainLooper()).post {
+            skillTransferRunning = false
             result.error("directory_export_failed", error.message, null)
         }
     }
@@ -589,7 +699,6 @@ class MainActivity : FlutterActivity() {
         var byteCount: Long = 0,
     )
 
-    private data class ExportFile(val relativePath: String, val content: String)
 
     private fun setFullscreen(enabled: Boolean) {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
@@ -634,16 +743,17 @@ class MainActivity : FlutterActivity() {
         private const val BACKUP_IMPORT_REQUEST_CODE = 226
         private const val MAX_IMPORT_FILES = 4096
         private const val MAX_IMPORT_BYTES = 64L * 1024L * 1024L
-        private const val MAX_EXPORT_FILES = 8192
-        private const val MAX_EXPORT_BYTES = 64L * 1024L * 1024L
         private val DEFAULT_IMPORT_EXTENSIONS = setOf("txt", "md", "csv")
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
     }
 
     private var pendingDirectoryImportResult: MethodChannel.Result? = null
     private var pendingBackupResult: MethodChannel.Result? = null
-    @Volatile private var backupImportDestroyed = false
+    @Volatile private var activityDestroyed = false
     private var pendingDirectoryExtensions: Set<String>? = null
+    private var pendingSkillPolicy: SkillDirectoryPolicy? = null
+    private var skillImport: SkillDirectoryImport? = null
+    private var skillTransferRunning = false
     private var pendingDirectoryExportResult: MethodChannel.Result? = null
-    private var pendingDirectoryExportFiles: List<ExportFile>? = null
+    private var pendingDirectoryExportSource: File? = null
 }

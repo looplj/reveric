@@ -28,6 +28,26 @@ void main() {
     },
   );
 
+  test(
+    'installed skill load exposes the escaped absolute package root',
+    () async {
+      final result = await handleAgentSkillTool(
+        {'name': 'local'},
+        (_) async => const AgentSkillLoadResult(
+          instructions: 'Run scripts/tool.py',
+          skillRoot: '/support & cache/agent_skills/local/pkg1',
+        ),
+      );
+      expect(
+        result['content'],
+        contains(
+          '<skill_root>/support &amp; cache/agent_skills/local/pkg1</skill_root>',
+        ),
+      );
+      expect(result['content'], contains('Run scripts/tool.py'));
+    },
+  );
+
   test('AgentSkill keeps name as the primary field', () async {
     String? loadedName;
     await handleAgentSkillTool(

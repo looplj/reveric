@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'production/backup_media.dart';
+import 'agent_skill_file_store.dart';
 import 'backup_zip.dart';
 import 'plugins/host.dart';
 import 'plugins/runtime.dart';
@@ -29,6 +30,8 @@ import '../utils/storage_paths.dart';
 import '../utils/windows_safe_path.dart';
 
 final _log = AppLogger.forModule('Backup');
+const _skillIndexBackupPath =
+    '${AgentSkillFileStore.directoryName}/${AgentSkillFileStore.indexName}';
 
 /// 是否支持把备份写入用户自选目录，同时决定是否支持自动备份。
 ///
@@ -164,6 +167,7 @@ const _backupEntries = [
   'novel_workspaces',
   'avatars',
   'agent_avatars',
+  AgentSkillFileStore.directoryName,
   'file_workspaces',
   'plugins',
   'plugin_data',
@@ -177,17 +181,27 @@ class BackupService {
   /// 备份所有数据到 zip 包
   ///
   /// 使用 SQLite backup API 生成数据库快照，并打包小说封面、AI 图片、Agent 头像。
-  Future<BackupResult> backupToZip({String? outputDirectory}) async {
-    final host = pluginHost;
-    if (host == null) {
-      return _backupToZip(outputDirectory: outputDirectory);
-    }
-    return host.withPackageSnapshot(
-      () => _backupToZip(outputDirectory: outputDirectory),
+  Future<BackupResult> backupToZip({String? outputDirectory}) =>
+      _backupWithSnapshot(outputDirectory: outputDirectory);
+
+  Future<BackupResult> _backupWithSnapshot({
+    required String? outputDirectory,
+    bool forRestore = false,
+  }) {
+    Future<BackupResult> snapshot() => AgentSkillFileStore.withSnapshot(
+      () => _backupToZip(
+        outputDirectory: outputDirectory,
+        forRestore: forRestore,
+      ),
     );
+    final host = pluginHost;
+    return host == null ? snapshot() : host.withPackageSnapshot(snapshot);
   }
 
-  Future<BackupResult> _backupToZip({String? outputDirectory}) async {
+  Future<BackupResult> _backupToZip({
+    required String? outputDirectory,
+    required bool forRestore,
+  }) async {
     _log.info('backupToZip started, outputDirectory=$outputDirectory');
     final warnings = <BackupWarning>[];
     try {
@@ -234,11 +248,20 @@ class BackupService {
           pluginHost,
         );
 
+        const skillStore = AgentSkillFileStore.directoryName;
+        await _copyIndexedSkillPackages(
+          Directory(p.join(appSupportDir.path, skillStore)),
+          p.join(tempDir.path, skillStore),
+          mainSnapshot,
+          missingIndexWarnings: forRestore ? warnings : null,
+        );
+
         // 媒体文件集合只取决于目录，不查询资产或业务引用。
         for (final directory in _backupEntries.where(
           (entry) =>
               entry != 'reveric.sqlite' &&
               entry != 'novel_workspaces' &&
+              entry != skillStore &&
               entry != 'plugin_data',
         )) {
           await _copyDirIfExists(
@@ -480,9 +503,12 @@ class BackupService {
       }
 
       if (mode == RestoreMode.fullReplacement) {
-        await _replaceAllBackupEntries(
-          sourceDir: extractDir,
-          appSupportDir: appSupportDir,
+        final source = extractDir;
+        await AgentSkillFileStore.withSnapshot(
+          () => _replaceAllBackupEntries(
+            sourceDir: source,
+            appSupportDir: appSupportDir,
+          ),
         );
       } else {
         await _replaceSelectedNovels(
@@ -553,9 +579,15 @@ class BackupService {
       p.join(appSupportDir.path, 'restore_backups'),
     );
     await safetyDirectory.create(recursive: true);
-    final result = await backupToZip(outputDirectory: safetyDirectory.path);
+    final result = await _backupWithSnapshot(
+      outputDirectory: safetyDirectory.path,
+      forRestore: true,
+    );
     final sourcePath = result.backupPath;
-    if (!result.success || result.hasWarnings || sourcePath == null) {
+    final otherWarnings = result.warnings.any(
+      (warning) => warning.path != _skillIndexBackupPath,
+    );
+    if (!result.success || otherWarnings || sourcePath == null) {
       _log.error(
         'Restore safety backup failed success=${result.success} warnings=${result.warnings.length}',
       );
@@ -806,11 +838,20 @@ Future<void> _replaceAllBackupEntries({
 
     for (final entryName in _backupEntries) {
       final source = _entityForPath(p.join(sourceDir.path, entryName));
-      if (await source.exists()) {
-        await _copyBackupEntry(
-          source,
-          RevericPaths.resolveRelative(entryName, support: appSupportDir.path),
+      final destination = RevericPaths.resolveRelative(
+        entryName,
+        support: appSupportDir.path,
+      );
+      if (entryName == AgentSkillFileStore.directoryName) {
+        await _copyIndexedSkillPackages(
+          Directory(source.path),
+          destination,
+          File(p.join(sourceDir.path, 'reveric.sqlite')),
         );
+        continue;
+      }
+      if (await source.exists()) {
+        await _copyBackupEntry(source, destination);
       }
     }
     _disableRestoredMcpServers(p.join(appSupportDir.path, 'reveric.sqlite'));
@@ -1154,6 +1195,67 @@ Future<void> _copyBackupEntry(
   } else if (source is File) {
     await Directory(p.dirname(destinationPath)).create(recursive: true);
     await source.copy(destinationPath);
+  }
+}
+
+Future<void> _copyIndexedSkillPackages(
+  Directory source,
+  String destinationPath,
+  File databaseSnapshot, {
+  List<BackupWarning>? missingIndexWarnings,
+}) async {
+  final packages = await AgentSkillFileStore.indexedPackageDirectories(source);
+  if (packages == null) {
+    if (!await AgentSkillFileStore.hasMigrationMarker(source) &&
+        !_hasCompletedSkillMigration(databaseSnapshot)) {
+      return;
+    }
+    const reason = 'Installed skill index is missing from the snapshot.';
+    if (missingIndexWarnings == null) {
+      throw StateError(reason);
+    }
+    missingIndexWarnings.add(
+      const BackupWarning(path: _skillIndexBackupPath, reason: reason),
+    );
+  } else {
+    await Directory(destinationPath).create(recursive: true);
+    final index = AgentSkillFileStore.indexName;
+    await File(p.join(source.path, index)).copy(p.join(destinationPath, index));
+    for (final package in packages) {
+      final relative = p.relative(package.path, from: source.path);
+      await _copyDirContents(
+        package,
+        Directory(p.join(destinationPath, relative)),
+        isSkillStore: true,
+      );
+    }
+  }
+  await File(
+    p.join(destinationPath, AgentSkillFileStore.migrationMarkerName),
+  ).create(recursive: true);
+}
+
+bool _hasCompletedSkillMigration(File databaseSnapshot) {
+  if (!databaseSnapshot.existsSync()) {
+    return false;
+  }
+  final db = sqlite3.open(
+    toWindowsSafePath(databaseSnapshot.path),
+    mode: OpenMode.readOnly,
+  );
+  try {
+    if (db
+        .select(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_states'",
+        )
+        .isEmpty) {
+      return false;
+    }
+    return db.select('SELECT 1 FROM app_states WHERE key = ?', [
+      AgentSkillFileStore.migrationCompletedKey,
+    ]).isNotEmpty;
+  } finally {
+    db.close();
   }
 }
 
@@ -1560,6 +1662,7 @@ Future<void> _copyDirIfExists(
   String source,
   String dest, {
   List<BackupWarning>? warnings,
+  bool isSkillStore = false,
 }) async {
   final sourceDir = Directory(source);
   if (await FileSystemEntity.type(source, followLinks: false) ==
@@ -1569,13 +1672,19 @@ Future<void> _copyDirIfExists(
   if (!await sourceDir.exists()) {
     return;
   }
-  await _copyDirContents(sourceDir, Directory(dest), warnings: warnings);
+  await _copyDirContents(
+    sourceDir,
+    Directory(dest),
+    warnings: warnings,
+    isSkillStore: isSkillStore,
+  );
 }
 
 Future<void> _copyDirContents(
   Directory source,
   Directory target, {
   List<BackupWarning>? warnings,
+  bool isSkillStore = false,
 }) async {
   if (!await target.exists()) {
     await target.create(recursive: true);
@@ -1594,7 +1703,10 @@ Future<void> _copyDirContents(
     if (entity is Link) {
       throw const FormatException('Symbolic links are not allowed in backups');
     }
-    if (_uncommittedBackupPath(entity.path, root: source)) {
+    final uncommitted = isSkillStore
+        ? p.basename(entity.path).startsWith(AgentSkillFileStore.stagingPrefix)
+        : _uncommittedBackupPath(entity.path, root: source);
+    if (uncommitted) {
       continue;
     }
     if (entity is File) {
@@ -1602,7 +1714,12 @@ Future<void> _copyDirContents(
       await _copyFileWithOptionalWarning(entity, destPath, warnings);
     } else if (entity is Directory) {
       final destDir = Directory(p.join(target.path, p.basename(entity.path)));
-      await _copyDirContents(entity, destDir, warnings: warnings);
+      await _copyDirContents(
+        entity,
+        destDir,
+        warnings: warnings,
+        isSkillStore: isSkillStore,
+      );
     }
   }
 }

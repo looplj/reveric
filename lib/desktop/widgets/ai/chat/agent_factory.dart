@@ -120,11 +120,6 @@ extension _AiChatPanelAgentFactory on AiChatPanel {
       store: _PanelComposerStore(state, activeSessionId),
       promptBuilder: promptBuilder,
       availableSubAgents: availableSubAgents,
-      // 面板已 watch 同一 provider（slash 菜单用），此处 read 命中缓存，
-      // 供 skill chip 直接加载解析完整指令。
-      availableSkills:
-          container.read(chatSlashSkillsProvider).asData?.value ??
-          const <SkillDefinition>[],
       aiPromptService: aiPromptService,
       promptContext: promptContext,
 

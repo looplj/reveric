@@ -1111,7 +1111,6 @@ class _MobileNovelChatBody extends HookConsumerWidget {
         store: composerStore,
         promptBuilder: promptBuilder,
         availableSubAgents: availableSubAgents,
-        availableSkills: slashSkills,
         aiPromptService: aiPromptService,
         promptContext: promptContext,
 

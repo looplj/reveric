@@ -4,6 +4,8 @@
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/models/ai_chat_models.dart
 
+import 'dart:io' show Platform;
+
 import '../../../models/agent_skill.dart';
 import '../../../models/ai_chat_models.dart';
 import '../../../models/subagent.dart';
@@ -72,7 +74,14 @@ abstract final class PromptFragments {
   }
 
   static String toolUseGuidelines({bool codemodeAvailable = false}) {
-    final buffer = StringBuffer();
+    final operatingSystem = switch (Platform.operatingSystem) {
+      'windows' => 'Windows',
+      'macos' => 'macOS',
+      'linux' => 'Linux',
+      'android' => 'Android',
+      final name => name,
+    };
+    final buffer = StringBuffer('当前操作系统是 $operatingSystem。\n');
     buffer.writeln(
       '需补查以往对话时，使用 Run sessions，用法见 Run help sessions。按需读取相关内容；来源不明确时再询问，查不到时如实说明。',
     );

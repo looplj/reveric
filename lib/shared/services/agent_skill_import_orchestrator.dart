@@ -1,4 +1,4 @@
-// 职责: 下载公开仓库并在内存中扫描技能及 references，返回待确认的导入候选。
+// 职责: 扫描公开仓库的技能清单，按需读取选中的技能包。
 // 关联文件:
 //   lib/shared/services/agent_skill_import_source.dart
 //   lib/shared/services/agent_skill_transfer.dart
@@ -10,24 +10,23 @@
 //   .agents/rules/service-naming.md
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../logger/app_logger.dart';
-import '../models/agent_skill_reference.dart';
 import 'agent_skill_import_parser.dart';
 import 'agent_skill_import_source.dart';
+import 'agent_skill_package.dart';
 import 'agent_skill_transfer.dart';
 
-final _log = AppLogger.forModule('AgentSkillImport');
+export 'agent_skill_package.dart' show AgentSkillImportLimitException;
 
-class AgentSkillImportLimitException implements Exception {
-  const AgentSkillImportLimitException();
-}
+final _log = AppLogger.forModule('AgentSkillImport');
 
 class AgentSkillImportUnavailableException implements Exception {
   const AgentSkillImportUnavailableException();
@@ -36,13 +35,14 @@ class AgentSkillImportUnavailableException implements Exception {
 class AgentSkillImportOrchestrator {
   static const maxDownloadBytes = 32 * 1024 * 1024;
   static const maxExpandedBytes = 128 * 1024 * 1024;
-  static const maxSkillBytes = 1024 * 1024;
+  static const maxSkillBytes = agentSkillMaxMarkdownBytes;
 
   Future<List<AgentSkillImportCandidate>> discover({
     required AgentSkillImportSource source,
     required Set<String> existingNames,
     required Dio client,
     required CancelToken cancelToken,
+    Future<Dio> Function()? openPackageClient,
   }) async {
     _log.info('repository scan start host=${source.host}');
     try {
@@ -114,6 +114,7 @@ class AgentSkillImportOrchestrator {
           existingNames: existingNames,
           client: client,
           cancelToken: cancelToken,
+          openPackageClient: openPackageClient,
         );
         _log.info(
           'repository file scan complete candidates=${candidates.length}',
@@ -150,8 +151,9 @@ class AgentSkillImportOrchestrator {
       if (cancelToken.isCancelled) {
         throw cancelToken.cancelError!;
       }
+      final compressed = bytes.takeBytes();
       final result = await compute(_scanArchive, (
-        bytes.takeBytes(),
+        compressed,
         subpath,
         source.singleFile,
         existingNames,
@@ -160,7 +162,20 @@ class AgentSkillImportOrchestrator {
         throw cancelToken.cancelError!;
       }
       _log.info('repository scan complete candidates=${result.length}');
-      return result;
+      return [
+        for (final skill in result)
+          AgentSkillImportCandidate(
+            filePath: skill.filePath,
+            parsed: skill.parsed,
+            nameConflict: skill.nameConflict,
+            hasScripts: skill.hasScripts,
+            materialize: (destination) => compute(_copyArchivePackage, (
+              compressed,
+              skill.filePath,
+              destination.path,
+            )),
+          ),
+      ];
     } on DioException catch (error, stackTrace) {
       _log.error(
         'repository request failed host=${source.host} '
@@ -187,14 +202,16 @@ class AgentSkillImportOrchestrator {
     required Set<String> existingNames,
     required Dio client,
     required CancelToken cancelToken,
+    required Future<Dio> Function()? openPackageClient,
   }) async {
     final (revision, subpath) = target;
-    Future<Object?> getJson(Uri uri) async => (await client.get<Object?>(
-      uri.toString(),
-      cancelToken: cancelToken,
-      options: Options(receiveTimeout: const Duration(seconds: 20)),
-    )).data;
-    final data = await getJson(source.treeUri(revision));
+    Future<Object?> getJson(Uri uri, Dio client, CancelToken token) async =>
+        (await client.get<Object?>(
+          uri.toString(),
+          cancelToken: token,
+          options: Options(receiveTimeout: const Duration(seconds: 20)),
+        )).data;
+    final data = await getJson(source.treeUri(revision), client, cancelToken);
     if (data is! Map || data['tree'] is! List) {
       throw const FormatException('Invalid repository tree response');
     }
@@ -224,82 +241,189 @@ class AgentSkillImportOrchestrator {
       }
     }
     final skillPaths = _skillPaths(files.keys, subpath, source.singleFile);
-    var totalBytes = 0;
-    Future<String> read(String path, int limit) async {
+    Future<String> readEncoded(
+      String path,
+      int limit,
+      Dio client,
+      CancelToken token,
+    ) async {
       final (sha, size) = files[path]!;
-      if (size > limit || totalBytes + size > maxDownloadBytes) {
+      if (size > limit || size > maxDownloadBytes) {
         throw const AgentSkillImportLimitException();
       }
-      final blob = await getJson(source.blobUri(sha));
+      final blob = await getJson(source.blobUri(sha), client, token);
       if (blob is! Map ||
           blob['encoding'] != 'base64' ||
           blob['content'] is! String) {
         throw const FormatException('Invalid repository blob response');
       }
-      final encoded = (blob['content'] as String).replaceAll(RegExp(r'\s'), '');
-      if (encoded.length > ((limit + 2) ~/ 3) * 4) {
-        throw const AgentSkillImportLimitException();
-      }
-      final bytes = base64.decode(encoded);
-      totalBytes += bytes.length;
-      if (bytes.length > limit || totalBytes > maxDownloadBytes) {
-        throw const AgentSkillImportLimitException();
-      }
-      return utf8.decode(bytes);
+      return blob['content'] as String;
     }
 
+    final whitespace = RegExp(r'\s');
+    Iterable<String> encodedChunks(String encoded) sync* {
+      const chunkSize = 64 * 1024;
+      for (var offset = 0; offset < encoded.length; offset += chunkSize) {
+        final end = (offset + chunkSize).clamp(0, encoded.length);
+        yield encoded.substring(offset, end).replaceAll(whitespace, '');
+      }
+    }
+
+    var previewBytes = 0;
     final candidates = <AgentSkillImportCandidate>[];
     for (final path in skillPaths) {
-      final parent = p.posix.dirname(path);
-      final prefix = parent == '.' ? '' : '$parent/';
-      final referencePaths =
-          files.keys
-              .where(
-                (key) =>
-                    key.startsWith('${prefix}references/') &&
-                    AgentSkillReferences.isValidRelativePath(
-                      key.substring(prefix.length),
-                    ),
-              )
-              .toList()
-            ..sort();
-      final referenceBytes = referencePaths.fold<int>(
-        0,
-        (sum, key) => sum + files[key]!.$2,
-      );
-      if (referencePaths.length > AgentSkillReferences.maxCount ||
-          referenceBytes > AgentSkillReferences.maxTotalContentBytes) {
+      if (files[path]!.$2 > maxSkillBytes) {
+        _log.warning('Skipping oversized SKILL.md in repository tree');
+        continue;
+      }
+      previewBytes += files[path]!.$2;
+      if (previewBytes > agentSkillMaxScanMarkdownBytes) {
         throw const AgentSkillImportLimitException();
       }
-      final raw = await read(path, maxSkillBytes);
-      final references = <AgentSkillReferenceFile>[
-        for (final referencePath in referencePaths)
-          AgentSkillReferenceFile(
-            path: referencePath.substring(prefix.length),
-            content: await read(
-              referencePath,
-              AgentSkillReferences.maxContentBytes,
-            ),
-          ),
-      ];
-      candidates.add(
-        _candidate(
+      final packagePaths = _packagePaths(files.keys, path).toList();
+      try {
+        final size = files[path]!.$2;
+        final encoded = (await readEncoded(
           path,
-          raw,
-          references,
-          existingNames,
-          hasScripts: agentSkillHasScripts(
-            files.keys
-                .where((key) => key.startsWith(prefix))
-                .map((key) => key.substring(prefix.length)),
+          maxSkillBytes,
+          client,
+          cancelToken,
+        )).replaceAll(whitespace, '');
+        if (encoded.length > ((size + 2) ~/ 3) * 4) {
+          throw const AgentSkillImportLimitException();
+        }
+        final markdown = base64.decode(encoded);
+        if (markdown.length != size) {
+          throw const FormatException(
+            'Repository file size does not match its tree entry',
+          );
+        }
+        candidates.add(
+          _candidate(
+            path,
+            utf8.decode(markdown),
+            existingNames,
+            hasScripts: agentSkillHasScripts(
+              packagePaths.map((entry) => entry.relative),
+            ),
+            materialize: (destination) async {
+              final packageClient = openPackageClient == null
+                  ? client
+                  : await openPackageClient();
+              final token = CancelToken();
+              final writer = AgentSkillPackageWriter(destination);
+              try {
+                await writer.addStream(
+                  agentSkillMarkdownName,
+                  Stream.value(markdown),
+                  size: markdown.length,
+                );
+                for (final entry in packagePaths) {
+                  final expectedSize = files[entry.source]!.$2;
+                  Stream<List<int>> readBytes() async* {
+                    final encoded = await readEncoded(
+                      entry.source,
+                      expectedSize,
+                      packageClient,
+                      token,
+                    );
+                    yield* base64.decoder.bind(
+                      Stream.fromIterable(encodedChunks(encoded)),
+                    );
+                  }
+
+                  await writer.addStream(
+                    entry.relative,
+                    readBytes(),
+                    size: expectedSize,
+                  );
+                }
+              } finally {
+                if (openPackageClient != null) {
+                  packageClient.close(force: true);
+                }
+              }
+            },
           ),
-        ),
-      );
+        );
+      } on FormatException catch (error, stackTrace) {
+        _log.error(
+          'Invalid SKILL.md in repository tree',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
     }
     if (cancelToken.isCancelled) {
       throw cancelToken.cancelError!;
     }
+    if (candidates.isEmpty && skillPaths.isNotEmpty) {
+      throw const FormatException(
+        'No readable SKILL.md in the repository tree',
+      );
+    }
     return candidates;
+  }
+}
+
+Map<String, ZipFile> _archiveFiles(Uint8List bytes) {
+  if (bytes.length < 22 ||
+      bytes[0] != 0x50 ||
+      bytes[1] != 0x4b ||
+      !((bytes[2] == 3 && bytes[3] == 4) || (bytes[2] == 5 && bytes[3] == 6))) {
+    throw const FormatException('Response is not a ZIP archive');
+  }
+  final directory = ZipDirectory()..read(InputMemoryStream(bytes));
+  if (directory.fileHeaders.length > agentSkillMaxScanEntries) {
+    throw const AgentSkillImportLimitException();
+  }
+  final files = <String, ZipFile>{};
+  var expandedBytes = 0;
+  for (final header in directory.fileHeaders) {
+    final file = header.file!;
+    expandedBytes += file.uncompressedSize;
+    if (file.uncompressedSize < 0 ||
+        expandedBytes > AgentSkillImportOrchestrator.maxExpandedBytes) {
+      throw const AgentSkillImportLimitException();
+    }
+    final unixMode = (header.externalFileAttributes >> 16) & 0xf000;
+    if (unixMode != 0 && unixMode != 0x8000) {
+      continue;
+    }
+    final segments = file.filename.split('/');
+    if (segments.length < 2 ||
+        segments.first.isEmpty ||
+        segments.first == '.' ||
+        segments.first == '..' ||
+        agentSkillIgnoredDirectories.contains(segments.first.toLowerCase()) ||
+        segments.first.contains('\\')) {
+      continue;
+    }
+    final path = segments.skip(1).join('/');
+    if (_safeRepositoryPath(path)) {
+      if (files.containsKey(path)) {
+        throw const FormatException('Duplicate ZIP file path');
+      }
+      files[path] = file;
+    }
+  }
+  return files;
+}
+
+Iterable<({String source, String relative})> _packagePaths(
+  Iterable<String> files,
+  String markdown,
+) sync* {
+  final parent = p.posix.dirname(markdown);
+  final prefix = parent == '.' ? '' : '$parent/';
+  for (final path in files) {
+    if (path != markdown && path.startsWith(prefix)) {
+      final relative = path.substring(prefix.length);
+      if (!isAgentSkillRootMarkdown(relative) &&
+          isAgentSkillImportFile(relative)) {
+        yield (source: path, relative: relative);
+      }
+    }
   }
 }
 
@@ -307,87 +431,117 @@ List<AgentSkillImportCandidate> _scanArchive(
   (Uint8List, String, bool, Set<String>) input,
 ) {
   final (bytes, subpath, singleFile, existingNames) = input;
-  if (bytes.length < 22 ||
-      bytes[0] != 0x50 ||
-      bytes[1] != 0x4b ||
-      !((bytes[2] == 3 && bytes[3] == 4) || (bytes[2] == 5 && bytes[3] == 6))) {
-    throw const FormatException('Response is not a ZIP archive');
-  }
-  // 在解压前检查目录，包括会被 ZIP decoder 提前读取的符号链接。
-  final directory = ZipDirectory()..read(InputMemoryStream(bytes));
-  var expandedBytes = 0;
-  if (directory.fileHeaders.length > 20000) {
-    throw const AgentSkillImportLimitException();
-  }
-  for (final header in directory.fileHeaders) {
-    expandedBytes += header.uncompressedSize;
-    if (expandedBytes > AgentSkillImportOrchestrator.maxExpandedBytes ||
-        header.uncompressedSize >
-            AgentSkillImportOrchestrator.maxExpandedBytes) {
+  final files = _archiveFiles(bytes);
+  final candidates = <AgentSkillImportCandidate>[];
+  final skillPaths = _skillPaths(files.keys, subpath, singleFile);
+  var previewBytes = 0;
+  for (final path in skillPaths) {
+    final file = files[path]!;
+    if (file.uncompressedSize > agentSkillMaxMarkdownBytes) {
+      _log.warning('Skipping oversized SKILL.md in repository ZIP');
+      continue;
+    }
+    previewBytes += file.uncompressedSize;
+    if (previewBytes > agentSkillMaxScanMarkdownBytes) {
       throw const AgentSkillImportLimitException();
     }
-  }
-  final archive = ZipDecoder().decodeBytes(bytes);
-  try {
-    final files = <String, ArchiveFile>{};
-    for (final file in archive.files) {
-      final segments = file.name.split('/');
-      if (!file.isFile ||
-          file.isSymbolicLink ||
-          segments.length < 2 ||
-          file.name.contains('\\') ||
-          segments.any((s) => s.isEmpty || s == '.' || s == '..') ||
-          segments.skip(1).any((s) => s == '.git' || s == 'node_modules')) {
-        continue;
-      }
-      final path = segments.skip(1).join('/');
-      files[path] = file;
-    }
-    final skillPaths = _skillPaths(files.keys, subpath, singleFile);
-    final candidates = <AgentSkillImportCandidate>[];
-    for (final path in skillPaths) {
-      final file = files[path]!;
-      if (file.size > AgentSkillImportOrchestrator.maxSkillBytes) {
-        throw const AgentSkillImportLimitException();
-      }
-      final parent = p.posix.dirname(path);
-      final prefix = parent == '.' ? '' : '$parent/';
-      final references = <AgentSkillReferenceFile>[];
-      for (final entry in files.entries) {
-        if (!entry.key.startsWith('${prefix}references/')) {
-          continue;
-        }
-        final relativePath = entry.key.substring(prefix.length);
-        if (!AgentSkillReferences.isValidRelativePath(relativePath)) {
-          continue;
-        }
-        if (entry.value.size > AgentSkillReferences.maxContentBytes) {
-          throw const AgentSkillImportLimitException();
-        }
-        references.add(
-          AgentSkillReferenceFile(
-            path: relativePath,
-            content: utf8.decode(entry.value.content),
-          ),
-        );
+    try {
+      final output = OutputMemoryStream();
+      file.decompress(_LimitedZipOutput(output, file.uncompressedSize));
+      if (output.length != file.uncompressedSize) {
+        throw const FormatException('Repository ZIP Markdown size mismatch');
       }
       candidates.add(
         _candidate(
           path,
-          utf8.decode(file.content),
-          references,
+          utf8.decode(output.getBytes()),
           existingNames,
           hasScripts: agentSkillHasScripts(
-            files.keys
-                .where((key) => key.startsWith(prefix))
-                .map((key) => key.substring(prefix.length)),
+            _packagePaths(files.keys, path).map((entry) => entry.relative),
           ),
         ),
       );
+    } on FormatException catch (error, stackTrace) {
+      _log.error(
+        'Invalid SKILL.md in repository ZIP',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
-    return candidates;
-  } finally {
-    archive.clearSync();
+  }
+  if (candidates.isEmpty && skillPaths.isNotEmpty) {
+    throw const FormatException('No readable SKILL.md in the repository ZIP');
+  }
+  return candidates;
+}
+
+Future<void> _copyArchivePackage((Uint8List, String, String) input) async {
+  final (bytes, markdown, destination) = input;
+  final files = _archiveFiles(bytes);
+  final writer = AgentSkillPackageWriter(Directory(destination));
+  for (final entry in [
+    (source: markdown, relative: agentSkillMarkdownName),
+    ..._packagePaths(files.keys, markdown),
+  ]) {
+    final file = files[entry.source]!;
+    await writer.write(entry.relative, (destination, limit) async {
+      final output = OutputFileStream(destination.path);
+      try {
+        file.decompress(_LimitedZipOutput(output, file.uncompressedSize));
+      } finally {
+        output.closeSync();
+      }
+    }, size: file.uncompressedSize);
+  }
+}
+
+/// ZIP entry sizes are untrusted until the decoder finishes writing.
+class _LimitedZipOutput extends OutputStream {
+  _LimitedZipOutput(this.output, this.limit)
+    : super(byteOrder: output.byteOrder);
+  final OutputStream output;
+  final int limit;
+
+  @override
+  int get length => output.length;
+
+  void _check(int count) {
+    if (length + count > limit) {
+      throw const AgentSkillImportLimitException();
+    }
+  }
+
+  @override
+  void clear() => output.clear();
+
+  @override
+  void flush() => output.flush();
+
+  @override
+  Uint8List subset(int start, [int? end]) => output.subset(start, end);
+
+  @override
+  void writeByte(int value) {
+    _check(1);
+    output.writeByte(value);
+  }
+
+  @override
+  void writeBytes(List<int> bytes, {int? length}) {
+    _check(length ?? bytes.length);
+    output.writeBytes(bytes, length: length);
+  }
+
+  @override
+  void writeStream(InputStream stream) {
+    _check(stream.length);
+    output.writeStream(stream);
+  }
+
+  @override
+  void writeBackReference(int distance, int count) {
+    _check(count);
+    output.writeBackReference(distance, count);
   }
 }
 
@@ -407,7 +561,7 @@ List<String> _skillPaths(
           )
           .toList()
         ..sort();
-  if (selected.length > 500) {
+  if (selected.length > agentSkillMaxCandidates) {
     throw const AgentSkillImportLimitException();
   }
   return selected;
@@ -424,15 +578,15 @@ bool _safeRepositoryPath(String path) =>
               s == '.' ||
               s == '..' ||
               s == '.git' ||
-              s == 'node_modules',
+              agentSkillIgnoredDirectories.contains(s.toLowerCase()),
         );
 
 AgentSkillImportCandidate _candidate(
   String path,
   String raw,
-  List<AgentSkillReferenceFile> references,
   Set<String> existingNames, {
-  bool hasScripts = false,
+  required bool hasScripts,
+  Future<void> Function(Directory)? materialize,
 }) {
   final parsed = AgentSkillImportParser.parse(raw);
   if (parsed == null) {
@@ -442,7 +596,7 @@ AgentSkillImportCandidate _candidate(
     filePath: path,
     parsed: parsed,
     nameConflict: existingNames.contains(parsed.name.trim()),
-    references: AgentSkillReferences.normalizeOrThrow(references),
     hasScripts: hasScripts,
+    materialize: materialize,
   );
 }

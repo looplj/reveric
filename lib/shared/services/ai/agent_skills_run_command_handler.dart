@@ -19,7 +19,6 @@ import '../../providers/async_read.dart';
 import '../../localization/locale_keys.dart';
 import '../../logger/app_logger.dart';
 import '../../models/agent_skill_reference.dart';
-import '../../models/agent_skill_revision.dart';
 import '../../models/novel_agent_skill.dart';
 import '../../providers/agent_skill_catalog_providers.dart';
 import '../../providers/novel_agent_skill_providers.dart';
@@ -139,7 +138,9 @@ class AgentSkillsRunCommandHandler {
       );
     }
 
-    final found = await _findInstalledSkill(id);
+    final found = await container
+        .read(installedAgentSkillsProvider.notifier)
+        .readPackageById(id);
     if (found == null) {
       return _failure(
         'agent skill not found: $id',
@@ -179,24 +180,10 @@ class AgentSkillsRunCommandHandler {
       enabled: enabled == null ? existing.enabled : enabled == 'true',
       updatedAt: DateTime.now(),
     );
-    final turnId = _turnId(command);
     try {
       final notifier = container.read(installedAgentSkillsProvider.notifier);
-      if (renamed) {
-        // rename() 校验全局唯一 name，冲突时抛 NovelSkillNameConflictException。
-        await notifier.rename(
-          id,
-          nextName,
-          changeSource: SkillRevisionSource.ai_edit,
-          turnId: turnId,
-        );
-      }
-      await notifier.updateSnapshotFields(
-        updated,
-        changeSource: SkillRevisionSource.ai_edit,
-        turnId: turnId,
-      );
-      return {'ok': true, 'skill': _skillJson(updated), ...?detached};
+      final stored = await notifier.updateSnapshotFields(updated);
+      return {'ok': true, 'skill': _skillJson(stored), ...?detached};
     } on NovelSkillNameConflictException catch (error) {
       return _nameConflict(error.name);
     } catch (error, stackTrace) {
@@ -221,7 +208,7 @@ class AgentSkillsRunCommandHandler {
       );
     }
 
-    final existing = await _findInstalledSkill(id);
+    final existing = await _findInstallation(id);
     if (existing == null) {
       return _failure(
         'agent skill not found: $id',
@@ -317,15 +304,10 @@ class AgentSkillsRunCommandHandler {
     if (_findReference(skill.references, path) != null) {
       return _referencePathConflict(skill.name, path);
     }
-    return _replaceReferences(
-      skill,
-      [
-        ...skill.references,
-        AgentSkillReferenceFile(path: path, content: content),
-      ],
-      operation: 'create',
-      turnId: _turnId(command),
-    );
+    return _replaceReferences(skill, [
+      ...skill.references,
+      AgentSkillReferenceFile(path: path, content: content),
+    ], operation: 'create');
   }
 
   Future<Map<String, dynamic>> _referenceUpdate(
@@ -344,18 +326,13 @@ class AgentSkillsRunCommandHandler {
     if (_findReference(skill.references, path) == null) {
       return _referenceNotFound(skill.name, path);
     }
-    return _replaceReferences(
-      skill,
-      [
-        for (final reference in skill.references)
-          if (reference.path == path)
-            AgentSkillReferenceFile(path: path, content: content)
-          else
-            reference,
-      ],
-      operation: 'update',
-      turnId: _turnId(command),
-    );
+    return _replaceReferences(skill, [
+      for (final reference in skill.references)
+        if (reference.path == path)
+          AgentSkillReferenceFile(path: path, content: content)
+        else
+          reference,
+    ], operation: 'update');
   }
 
   Future<Map<String, dynamic>> _referenceMove(
@@ -378,18 +355,13 @@ class AgentSkillsRunCommandHandler {
     if (path != newPath && _findReference(skill.references, newPath) != null) {
       return _referencePathConflict(skill.name, newPath);
     }
-    return _replaceReferences(
-      skill,
-      [
-        for (final reference in skill.references)
-          if (reference.path == path)
-            AgentSkillReferenceFile(path: newPath, content: reference.content)
-          else
-            reference,
-      ],
-      operation: 'move',
-      turnId: _turnId(command),
-    );
+    return _replaceReferences(skill, [
+      for (final reference in skill.references)
+        if (reference.path == path)
+          AgentSkillReferenceFile(path: newPath, content: reference.content)
+        else
+          reference,
+    ], operation: 'move');
   }
 
   Future<Map<String, dynamic>> _referenceDelete(
@@ -407,15 +379,10 @@ class AgentSkillsRunCommandHandler {
     if (_findReference(skill.references, path) == null) {
       return _referenceNotFound(skill.name, path);
     }
-    return _replaceReferences(
-      skill,
-      [
-        for (final reference in skill.references)
-          if (reference.path != path) reference,
-      ],
-      operation: 'delete',
-      turnId: _turnId(command),
-    );
+    return _replaceReferences(skill, [
+      for (final reference in skill.references)
+        if (reference.path != path) reference,
+    ], operation: 'delete');
   }
 
   /// 搜索 AgentSkill 目录摘要（官方 / 市场，技能库已随全局安装模型移除）。
@@ -628,16 +595,16 @@ class AgentSkillsRunCommandHandler {
   }
 
   Future<Map<String, dynamic>> _catalogSuccess(String id) async {
-    final installed = await _findInstalledSkill(id);
+    final installed = await _findInstallation(id);
     return {
       'ok': true,
       if (installed != null) 'skill': _skillJson(installed) else 'id': id,
     };
   }
 
-  Future<NovelAgentSkillModel?> _findInstalledSkill(String id) async {
-    final skills = await container.read(installedAgentSkillsProvider.future);
-    for (final skill in skills) {
+  Future<NovelAgentSkillModel?> _findInstallation(String id) async {
+    final installed = await container.read(installedAgentSkillsProvider.future);
+    for (final skill in installed) {
       if (skill.id == id) {
         return skill;
       }
@@ -645,15 +612,10 @@ class AgentSkillsRunCommandHandler {
     return null;
   }
 
-  Future<NovelAgentSkillModel?> _findInstalledSkillByName(String name) async {
-    final skills = await container.read(installedAgentSkillsProvider.future);
-    for (final skill in skills) {
-      if (skill.name == name) {
-        return skill;
-      }
-    }
-    return null;
-  }
+  Future<NovelAgentSkillModel?> _findInstalledSkillByName(String name) =>
+      container
+          .read(installedAgentSkillsProvider.notifier)
+          .readPackageByName(name);
 
   Future<BundledControlSkill?> _findBundledControlSkillByName(
     String name,
@@ -708,21 +670,16 @@ class AgentSkillsRunCommandHandler {
     NovelAgentSkillModel skill,
     Iterable<AgentSkillReferenceFile> references, {
     required String operation,
-    String? turnId,
   }) async {
     try {
       final detached = (await _detachRemoteSource(skill)).notice;
       final updated = await container
           .read(installedAgentSkillsProvider.notifier)
-          .replaceReferencesByName(
-            name: skill.name,
-            references: references,
-            changeSource: SkillRevisionSource.ai_edit,
-            turnId: turnId,
-          );
+          .replaceReferencesByName(name: skill.name, references: references);
       return {
         'ok': true,
         'name': updated.name,
+        if (updated.skillRoot != null) 'skill_root': updated.skillRoot,
         'operation': operation,
         'references': [
           for (final reference in updated.references) {'path': reference.path},
@@ -745,10 +702,6 @@ class AgentSkillsRunCommandHandler {
   }
 
   /// 一轮 AI 任务内的多次技能写入共用同一个 turn id，历史里只留一条。
-  String? _turnId(Map<String, dynamic> command) {
-    final value = command['_turn_id']?.toString().trim() ?? '';
-    return value.isEmpty ? null : value;
-  }
 
   Map<String, dynamic> _referenceSkillNotFound(String name) {
     return _failure(
@@ -842,6 +795,7 @@ class AgentSkillsRunCommandHandler {
       'source_kind': skill.sourceKind.dbValue,
       'enabled': skill.enabled,
       'sort_order': skill.sortOrder,
+      if (skill.skillRoot != null) 'skill_root': skill.skillRoot,
       if (skill.executionBlockedReason != null)
         'execution_blocked_reason': skill.executionBlockedReason,
     };

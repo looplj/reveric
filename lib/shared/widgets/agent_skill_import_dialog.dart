@@ -50,6 +50,35 @@ bool agentSkillSupportsDirectoryImport() {
 
 /// 弹出导入勾选对话框。取消返回 `null`；确认返回勾选的候选。
 /// 同名冲突默认不勾选，勾选后由导入流程先卸载再安装。
+String agentSkillImportFeedback(
+  BuildContext context,
+  AgentSkillImportResult result,
+) {
+  if (result.failed == 0 && result.skipped == 0) {
+    return context.t(
+      LocaleKeys.agentSkillImportSuccess,
+      namedArgs: {'imported': '${result.imported}'},
+    );
+  }
+  return [
+    context.t(
+      LocaleKeys.agentSkillImportPartial,
+      namedArgs: {
+        'imported': '${result.imported}',
+        'skipped': '${result.skipped}',
+        'failed': '${result.failed}',
+      },
+    ),
+    for (final failure in result.failures)
+      '${failure.name} · ${context.t(switch (failure.reason) {
+        AgentSkillImportFailureReason.too_large => LocaleKeys.agentSkillImportPackageTooLarge,
+        AgentSkillImportFailureReason.unavailable => LocaleKeys.agentSkillImportSourceUnavailable,
+        AgentSkillImportFailureReason.invalid => LocaleKeys.agentSkillImportPackageInvalid,
+        AgentSkillImportFailureReason.failed => LocaleKeys.agentSkillImportFailed,
+      })}',
+  ].join('\n');
+}
+
 Future<List<AgentSkillImportCandidate>?> showAgentSkillImportDialog(
   BuildContext context, {
   required List<AgentSkillImportCandidate> candidates,
@@ -210,15 +239,6 @@ class _AgentSkillImportDialogState extends State<_AgentSkillImportDialog> {
                       ),
                     ],
                   ),
-                  if (widget.candidates.any(
-                    (candidate) => candidate.hasScripts,
-                  )) ...[
-                    const SizedBox(height: RevericSpacing.sm),
-                    Text(
-                      context.t(LocaleKeys.agentSkillImportScriptsWarning),
-                      style: typo.uiSmall.copyWith(color: colors.warningText),
-                    ),
-                  ],
                   const SizedBox(height: RevericSpacing.md),
                   DecoratedBox(
                     decoration: BoxDecoration(

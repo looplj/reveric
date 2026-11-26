@@ -128,16 +128,26 @@ Body instructions.
         File(p.join(proseDir.path, 'beats.md')).writeAsStringSync('# Beats');
 
         final service = const AgentSkillTransferService();
-        final candidates = service.discoverInDirectory(
+        final candidates = await service.discoverInDirectory(
           dirPath: temp.path,
           existing: const [],
         );
         expect(candidates, hasLength(1));
-        expect(candidates.single.references, hasLength(2));
-        final forms = candidates.single.references.firstWhere(
-          (ref) => ref.path == 'references/forms.md',
-        );
-        expect(forms.content, '# Forms');
+        final staged = await temp.createTemp('selected_');
+        await candidates.single.materialize!(staged);
+        final imported = [
+          for (final path in [
+            'references/forms.md',
+            'references/prose/beats.md',
+          ])
+            AgentSkillReferenceFile(
+              path: path,
+              content: await File(
+                p.joinAll([staged.path, ...path.split('/')]),
+              ).readAsString(),
+            ),
+        ];
+        expect(imported.first.content, '# Forms');
 
         final exportRoot = Directory(p.join(temp.path, 'out'))..createSync();
         await service.exportToDirectory(
@@ -149,7 +159,7 @@ Body instructions.
               name: 'demo-skill',
               description: 'Demo skill for references',
               prompt: 'Body instructions.',
-              references: candidates.single.references,
+              references: imported,
             ),
           ],
         );

@@ -200,6 +200,14 @@ class _SkillContextSkills extends InstalledAgentSkillsNotifier {
   final List<NovelAgentSkillModel> skills;
   @override
   Future<List<NovelAgentSkillModel>> build() async => skills;
+
+  int fullReads = 0;
+
+  @override
+  Future<List<NovelAgentSkillModel>> readCurrent() {
+    fullReads++;
+    return super.readCurrent();
+  }
 }
 
 void main() {
@@ -298,12 +306,9 @@ void main() {
   test(
     'chat bundled summaries and direct loader use the same work-kind filter',
     () async {
+      final installed = _SkillContextSkills([]);
       final container = buildTestContainer(
-        overrides: [
-          installedAgentSkillsProvider.overrideWith(
-            () => _SkillContextSkills([]),
-          ),
-        ],
+        overrides: [installedAgentSkillsProvider.overrideWith(() => installed)],
       );
       addTearDown(container.dispose);
       for (final kind in [
@@ -328,6 +333,11 @@ void main() {
           );
         }
       }
+      expect(
+        installed.fullReads,
+        0,
+        reason: 'turn setup and loaders reuse the installation list',
+      );
     },
   );
 

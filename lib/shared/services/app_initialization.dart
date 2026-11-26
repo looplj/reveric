@@ -9,10 +9,13 @@
 //   lib/shared/logger/startup_failure_reporter.dart
 import 'dart:async';
 
+import 'package:path_provider/path_provider.dart';
+
 import '../logger/app_logger.dart';
 import '../logger/startup_failure_reporter.dart';
 import '../database/app_database.dart';
 import '../widgets/guide/tour.dart';
+import 'agent_skill_file_store.dart';
 import 'demo_novel.dart';
 import 'initialization/agent_seeds.dart';
 import 'initialization/collection_seeds.dart';
@@ -32,6 +35,10 @@ Future<void>? _initLock;
 
 List<AppInitializationTask> defaultAppInitializationTasks() {
   return const [
+    AppInitializationTask(
+      id: AgentSkillFileStore.migrationTaskId,
+      run: _migrateInstalledAgentSkills,
+    ),
     AppInitializationTask(
       id: 'default_collections_v1',
       run: seedDefaultCollections,
@@ -75,6 +82,11 @@ List<AppInitializationTask> defaultAppInitializationTasks() {
     AppInitializationTask(id: 'demo_works_v1', run: _seedDemoWorks),
   ];
 }
+
+Future<void> _migrateInstalledAgentSkills(AppDatabase database) =>
+    const AgentSkillFileStore(
+      getApplicationSupportDirectory,
+    ).migrateLegacy(database);
 
 /// 示例小说与示例剧本作为一项初始化任务写入；两者各自按标题去重。
 Future<void> _seedDemoWorks(AppDatabase database) async {

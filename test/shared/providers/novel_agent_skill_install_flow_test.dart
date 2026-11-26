@@ -9,16 +9,18 @@
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 //   .agents/rules/error-handling.md
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/models/novel_agent_skill.dart';
 import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
-import 'package:reveric/shared/providers/agent_skill_providers.dart';
 import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
+import 'package:reveric/shared/services/agent_skill_file_store.dart';
 
 void main() {
   group('installFromOfficial', () {
@@ -166,17 +168,23 @@ void main() {
   });
 
   group('overwriteInstall', () {
-    test('preserves id/name/enabled/sortOrder, overwrites snapshot', () async {
+    test('official overwrite replaces the local package', () async {
       final setup = await _setup();
       addTearDown(setup.tearDown);
 
-      // 先安装一个 official v1。
-      final installResult = await setup.notifier.installFromOfficial(
-        source: _officialDto('Weather', version: 1),
+      final original = await setup.notifier.install(
+        const InstallSkillInput(
+          sourceKind: AgentSkillSourceKind.novelLocal,
+          name: 'Weather',
+          description: 'Local skill',
+          prompt: 'Local instructions',
+          packageFiles: {
+            'scripts/old.py': [1],
+            'assets/old.bin': [2],
+          },
+        ),
       );
-      final originalId =
-          (installResult as InstallFromCatalogSuccess).novelAgentSkillId;
-      final original = setup.readState().firstWhere((s) => s.id == originalId);
+      final originalId = original.id;
 
       // 禁用 + 改 sortOrder 验证保留。
       await setup.notifier.toggleEnabled(originalId);
@@ -198,6 +206,7 @@ void main() {
       // 保留字段。
       expect(overwritten.id, original.id);
       expect(overwritten.name, original.name);
+      expect(overwritten.skillRoot, original.skillRoot);
       expect(overwritten.enabled, isFalse); // 保留禁用态
       expect(overwritten.sortOrder, original.sortOrder);
       expect(overwritten.createdAt, original.createdAt);
@@ -208,6 +217,14 @@ void main() {
       expect(overwritten.sourceDisplayName, 'Weather');
       expect(overwritten.prompt, newDto.prompt);
       expect(overwritten.tags, newDto.tags);
+      expect(
+        await File('${original.skillRoot}/scripts/old.py').exists(),
+        isFalse,
+      );
+      expect(
+        await File('${original.skillRoot}/assets/old.bin').exists(),
+        isFalse,
+      );
       // 清空 blocked reason。
       expect(overwritten.executionBlockedReason, isNull);
       // 列表长度不变(没有新增)。
@@ -273,10 +290,14 @@ void main() {
         source: _officialDto('Weather', version: 1, prompt: 'v1 prompt'),
       );
       final id = (installResult as InstallFromCatalogSuccess).novelAgentSkillId;
-      expect(
-        setup.readState().firstWhere((s) => s.id == id).prompt,
-        'v1 prompt',
-      );
+      final original = setup.readState().firstWhere((s) => s.id == id);
+      expect(original.prompt, 'v1 prompt');
+      final oldScript = File('${original.skillRoot}/scripts/old.py');
+      await oldScript.create(recursive: true);
+      await oldScript.writeAsString('old script');
+      final oldAsset = File('${original.skillRoot}/assets/old.bin');
+      await oldAsset.create(recursive: true);
+      await oldAsset.writeAsBytes([1, 2, 3]);
 
       final result = await setup.notifier.upgradeNovelAgentSkill(
         novelAgentSkillId: id,
@@ -293,6 +314,9 @@ void main() {
       expect(upgraded.references, hasLength(1));
       expect(upgraded.references.single.path, 'references/v2.md');
       expect(upgraded.references.single.content, 'v2 ref');
+      expect(upgraded.skillRoot, original.skillRoot);
+      expect(await oldScript.exists(), isFalse);
+      expect(await oldAsset.exists(), isFalse);
       // 保留字段。
       expect(upgraded.name, 'Weather');
       expect(upgraded.enabled, isTrue);
@@ -582,10 +606,15 @@ class _TestSetup {
 
 Future<_TestSetup> _setup({_FakeCatalogService? catalogService}) async {
   final db = AppDatabase.forTest(NativeDatabase.memory());
+  final support = await Directory.systemTemp.createTemp('reveric_install_');
+  addTearDown(() => support.delete(recursive: true));
+  final store = AgentSkillFileStore(() async => support);
+  await store.migrateLegacy(db);
   final container = ProviderContainer(
     overrides: [
       appDatabaseProvider.overrideWithValue(db),
       agentSkillAppDatabaseProvider.overrideWithValue(db),
+      agentSkillFileStoreProvider.overrideWithValue(store),
       if (catalogService != null)
         agentSkillCatalogServiceProvider.overrideWithValue(catalogService),
     ],

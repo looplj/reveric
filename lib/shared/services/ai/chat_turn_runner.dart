@@ -860,20 +860,21 @@ class ChatTurnRunner {
 
     Future<AgentSkillLoadResult?> loader(String name) async {
       // NovelAgentSkill 命中（含 disabled/blocked）优先级高于 bundled。
-      final current = await container.read(installedAgentSkillsProvider.future);
-      for (final skill in current) {
-        if (skill.name == name) {
-          if (!skill.isExecutable) {
-            return null;
-          }
-          return AgentSkillLoadResult(
-            instructions: skill.prompt,
-            references: [
-              for (final ref in skill.references)
-                AgentSkillReferenceDescriptor(path: ref.path),
-            ],
-          );
+      final skill = await container
+          .read(installedAgentSkillsProvider.notifier)
+          .readPackageByName(name, forExecution: true);
+      if (skill != null) {
+        if (!skill.isExecutable) {
+          return null;
         }
+        return AgentSkillLoadResult(
+          instructions: skill.prompt,
+          skillRoot: skill.skillRoot,
+          references: [
+            for (final ref in skill.references)
+              AgentSkillReferenceDescriptor(path: ref.path),
+          ],
+        );
       }
       // Bundled Control Skills fallback：仅对 bundledControlCallNames 中的固定
       // call_name 生效。

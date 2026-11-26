@@ -2,7 +2,6 @@
 // 关联文件:
 //   lib/desktop/features/agent_skills/setup_panel.dart
 //   lib/desktop/features/agent_skills/agent_skill_reference_file_tree.dart
-//   lib/desktop/features/agent_skills/skill_revision_history_dialog.dart
 //   lib/shared/models/novel_agent_skill.dart
 //   lib/shared/components/reveric_text_field.dart
 //   lib/shared/components/reveric_select.dart
@@ -139,14 +138,12 @@ class AgentSkillSetupEditPanel extends HookConsumerWidget {
     this.onRegisterSave,
     this.onRegisterHasChanges,
     this.onRegisterIsBlankCreateDraft,
-    this.onOpenHistory,
   }) : assert(readOnly || onSave != null, 'onSave is required when editing');
 
   final AgentSkillSetupEditDraft draft;
   final String createTitleKey;
 
   /// 打开版本历史。为空时不显示入口（新建草稿尚无历史）。
-  final VoidCallback? onOpenHistory;
 
   /// intro 副标题 locale key;只读详情可传官方/市场来源文案。
   final String subtitleKey;
@@ -541,7 +538,6 @@ class AgentSkillSetupEditPanel extends HookConsumerWidget {
             enabled: enabled.value,
             showEnabled: !readOnly,
             showSave: !readOnly,
-            onOpenHistory: onOpenHistory,
             hasChanges: currentHasEdits,
             isSaving: isSaving.value,
             onBack: onBack,
@@ -892,7 +888,6 @@ class _EditorHeader extends StatelessWidget {
     required this.leadingInset,
     required this.trailingInset,
     required this.gestureExclusionKey,
-    this.onOpenHistory,
   });
 
   final String title;
@@ -904,7 +899,6 @@ class _EditorHeader extends StatelessWidget {
   final VoidCallback onBack;
   final ValueChanged<bool> onToggleEnabled;
   final VoidCallback onSave;
-  final VoidCallback? onOpenHistory;
   final double leadingInset;
   final double trailingInset;
   final GlobalKey? gestureExclusionKey;
@@ -943,17 +937,6 @@ class _EditorHeader extends StatelessWidget {
               ),
               const SizedBox(width: RevericSpacing.xs),
               RevericSwitch(value: enabled, onChanged: onToggleEnabled),
-              const SizedBox(width: RevericSpacing.md),
-            ],
-            if (onOpenHistory != null) ...[
-              TextButton.icon(
-                onPressed: onOpenHistory,
-                icon: const RevericIcon(
-                  RevericIcons.history_outlined,
-                  size: 16,
-                ),
-                label: Text(context.t(LocaleKeys.agentSkillHistory)),
-              ),
               const SizedBox(width: RevericSpacing.md),
             ],
             if (showSave)

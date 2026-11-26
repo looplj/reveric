@@ -9,55 +9,32 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../database/app_database.dart';
 import '../models/agent_skill.dart';
+import '../models/novel_agent_skill.dart';
+import 'novel_agent_skill_providers.dart';
 
-final agentSkillAppDatabaseProvider = Provider<AppDatabase>((ref) {
-  final db = AppDatabase();
-  ref.onDispose(db.close);
-  return db;
-});
+export 'novel_agent_skill_providers.dart' show agentSkillAppDatabaseProvider;
 
 // ── Chat Slash Skills ────────────────────────────────────────────────────────
 
-/// 查询 chat slash 面板可选的应用全局已安装技能。
-///
-/// 仅返回可执行的 NovelAgentSkill；packaged bundled skills 仍由
-/// `ChatTurnRunner._loadCurrentSkillContext` 提供给 AI 运行时，但不暴露在 slash 面板。
-Future<List<SkillDefinition>> loadChatSlashSkills({
-  required AppDatabase db,
-}) async {
-  final installed = await db.novelAgentSkillDao.getAll();
-  final referencesBySkillId = await db.novelAgentSkillDao
-      .getReferencesBySkillIds(installed.map((row) => row.id));
-  final executable = installed
-      .where((row) => row.enabled && row.executionBlockedReason == null)
-      .toList(growable: false);
+/// Slash 只列出已安装且可执行的技能，随安装状态更新。
+final chatSlashSkillsProvider = Provider<AsyncValue<List<SkillDefinition>>>(
+  (ref) => ref.watch(installedAgentSkillsProvider).whenData(chatSlashSkills),
+);
 
-  return <SkillDefinition>[
-    for (final row in executable)
+List<SkillDefinition> chatSlashSkills(List<NovelAgentSkillModel> installed) => [
+  for (final skill in installed)
+    if (skill.isExecutable)
       SkillDefinition(
-        id: row.id,
-        name: row.name,
-        whenToUse: row.whenToUse,
-        description: row.description,
-        prompt: row.prompt,
-        references: referencesBySkillId[row.id] ?? const [],
-        enabled: true,
-        sortOrder: row.sortOrder,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
+        id: skill.id,
+        name: skill.name,
+        whenToUse: skill.whenToUse,
+        description: skill.description,
+        prompt: skill.prompt,
+        references: skill.references,
+        skillRoot: skill.skillRoot,
+        sortOrder: skill.sortOrder,
+        createdAt: skill.createdAt,
+        updatedAt: skill.updatedAt,
       ),
-  ];
-}
-
-/// slash 面板数据源。订阅全局已安装技能表，确保导入、启停、
-/// 重命名或 AI 工具写入后候选立即刷新。
-final chatSlashSkillsProvider = StreamProvider<List<SkillDefinition>>((
-  ref,
-) async* {
-  final db = ref.watch(agentSkillAppDatabaseProvider);
-  await for (final _ in db.novelAgentSkillDao.watchAll()) {
-    yield await loadChatSlashSkills(db: db);
-  }
-});
+];

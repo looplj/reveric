@@ -23,6 +23,8 @@ import 'package:archive/archive_io.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reveric/shared/models/novel_agent_skill.dart';
+import 'package:reveric/shared/services/agent_skill_file_store.dart';
 import 'package:reveric/shared/services/backup_service.dart';
 import 'package:reveric/shared/models/mcp/config.dart';
 import 'package:reveric/shared/utils/storage_paths.dart';
@@ -99,6 +101,97 @@ void main() {
       await tempRoot.delete(recursive: true);
     }
   });
+
+  test(
+    'full backup restores the active skill files and relative index',
+    () async {
+      _writeLibrary(appSupportDir, {'work': (title: 'Work', marker: 'backup')});
+      final store = AgentSkillFileStore(() async => appSupportDir);
+      final db = AppDatabase.forTest(NativeDatabase.memory());
+      addTearDown(db.close);
+      await store.migrateLegacy(db);
+      final skill = await store.save(
+        const NovelAgentSkillModel(
+          id: 'local',
+          sourceKind: AgentSkillSourceKind.novelLocal,
+          name: 'Local skill',
+          description: 'description',
+          prompt: 'backup skill',
+        ),
+        files: {
+          'lib/data.part': [0, 255],
+        },
+      );
+      final installDir = p.dirname(skill.skillRoot!);
+      final root = p.dirname(installDir);
+      for (final parent in [installDir, p.join(root, 'removed')]) {
+        final obsolete = File(
+          p.join(parent, 'pkg_0123456789ABCDEF', 'obsolete.txt'),
+        );
+        await obsolete.create(recursive: true);
+        await obsolete.writeAsString('removed package');
+      }
+      final service = BackupService();
+      final backup = await service.backupToZip(outputDirectory: outputDir.path);
+      expect(backup.success, isTrue, reason: backup.errorMessage);
+      final archive = ZipDecoder().decodeBytes(
+        await File(backup.backupPath!).readAsBytes(),
+      );
+      expect(
+        archive.files.map((entry) => entry.name),
+        isNot(contains(endsWith('/obsolete.txt'))),
+      );
+      expect(
+        archive.findFile(
+          'agent_skills/${AgentSkillFileStore.migrationMarkerName}',
+        ),
+        isNotNull,
+      );
+      await store.remove(skill.id);
+      expect(await store.readCurrent(), isEmpty);
+      await File(
+        p.join(root, AgentSkillFileStore.indexName),
+      ).rename(p.join(tempRoot.path, 'missing-index-simulation.json'));
+      final incomplete = await service.backupToZip(
+        outputDirectory: outputDir.path,
+      );
+      expect(incomplete.success, isFalse);
+      expect(incomplete.backupPath, isNull);
+
+      // Older backups included unindexed packages alongside the live index.
+      archive.addFile(
+        ArchiveFile.string(
+          'agent_skills/removed/pkg_0123456789ABCDEF/obsolete.txt',
+          'removed package',
+        ),
+      );
+      final legacyBackup = await File(
+        p.join(outputDir.path, 'legacy-skill-backup.zip'),
+      ).writeAsBytes(ZipEncoder().encode(archive));
+      final restored = await service.restoreFromZip(
+        legacyBackup.path,
+        mode: RestoreMode.fullReplacement,
+      );
+      expect(restored.success, isTrue, reason: restored.failureReason?.name);
+      expect(restored.safetyBackupPath, isNotNull);
+      final safetyArchive = ZipDecoder().decodeBytes(
+        await File(restored.safetyBackupPath!).readAsBytes(),
+      );
+      expect(
+        utf8.decode(safetyArchive.findFile('manifest.json')!.content),
+        contains('agent_skills/index.json'),
+      );
+      expect(await Directory(p.join(root, 'removed')).exists(), isFalse);
+      final restoredSkill = (await store.readCurrent()).single;
+      expect(restoredSkill.prompt, 'backup skill');
+      expect(
+        await File(
+          p.join(restoredSkill.skillRoot!, 'lib', 'data.part'),
+        ).readAsBytes(),
+        [0, 255],
+      );
+    },
+  );
 
   test(
     'corrupt deflate logs failing entry and original error before rejecting restore',

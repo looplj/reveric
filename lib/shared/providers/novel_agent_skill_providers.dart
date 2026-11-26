@@ -1,87 +1,37 @@
-// 职责: AgentSkill 应用全局安装快照的 Riverpod Provider —— 全局可执行技能列表，
-//   管理本地快照，并从打包官方目录安装、覆盖与升级技能。
+// 职责: 管理应用全局技能文件及官方目录安装、覆盖与升级。
 // 关联文件:
-//   lib/shared/database/daos/novel_agent_skill_dao.dart
-//   lib/shared/database/daos/novel_agent_skill_revision_dao.dart
+//   lib/shared/services/agent_skill_file_store.dart
+//   lib/shared/services/app_initialization.dart
 //   lib/shared/models/novel_agent_skill.dart
-//   lib/shared/models/agent_skill_revision.dart
-//   lib/shared/providers/agent_skill_providers.dart (复用 agentSkillAppDatabaseProvider)
 //   lib/shared/providers/agent_skill_catalog_providers.dart
-//   lib/shared/models/official_agent_skill.dart
-//   lib/shared/services/agent_skill_catalog_service.dart
-//   lib/shared/services/ai/chat_turn_runner.dart
-//   lib/desktop/features/agent_skills/setup_panel.dart
+//   lib/shared/providers/agent_skill_providers.dart
 // 遵循的 Rules:
 //   .agents/rules/state-management.md
 //   .agents/rules/error-handling.md
-import 'package:drift/drift.dart' show Value;
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'async_read.dart';
 import '../database/app_database.dart';
-import '../logger/app_logger.dart';
 import '../models/agent_skill_reference.dart';
-import '../models/agent_skill_revision.dart';
 import '../models/catalog_skill_installation_state.dart';
 import '../models/novel_agent_skill.dart';
 import '../models/official_agent_skill.dart';
+import '../services/agent_skill_file_store.dart';
 import '../utils/random_id.dart';
 import 'agent_skill_catalog_providers.dart';
-import 'agent_skill_providers.dart' show agentSkillAppDatabaseProvider;
 
-final _log = AppLogger.forModule('NovelAgentSkillProviders');
+final agentSkillAppDatabaseProvider = Provider<AppDatabase>((ref) {
+  final db = AppDatabase();
+  ref.onDispose(db.close);
+  return db;
+});
 
-// ── 行 ↔ 领域模型映射 ────────────────────────────────────────────────────────
-
-NovelAgentSkillModel _mapNovelAgentSkill(
-  NovelAgentSkill row,
-  List<AgentSkillReferenceFile> references,
-) {
-  return NovelAgentSkillModel(
-    id: row.id,
-    sourceKind: AgentSkillSourceKind.fromDbValue(row.sourceKind),
-    sourceListingPublicId: row.sourceListingPublicId,
-    sourceVersion: row.sourceVersion,
-    sourceDisplayName: row.sourceDisplayName,
-    name: row.name,
-    whenToUse: row.whenToUse,
-    description: row.description,
-    prompt: row.prompt,
-    agentScopes: row.agentScopes,
-    category: row.category,
-    tags: row.tags,
-    references: references,
-    enabled: row.enabled,
-    sortOrder: row.sortOrder,
-    executionBlockedReason: row.executionBlockedReason,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  );
-}
-
-NovelAgentSkillsCompanion _novelAgentSkillToCompanion(
-  NovelAgentSkillModel model,
-) {
-  return NovelAgentSkillsCompanion(
-    id: Value(model.id),
-    sourceKind: Value(model.sourceKind.dbValue),
-    sourceListingPublicId: Value(model.sourceListingPublicId),
-    sourceVersion: Value(model.sourceVersion),
-    sourceDisplayName: Value(model.sourceDisplayName),
-    name: Value(model.name),
-    whenToUse: Value(model.whenToUse),
-    description: Value(model.description),
-    prompt: Value(model.prompt),
-    agentScopes: Value(model.agentScopes),
-    category: Value(model.category),
-    tags: Value(model.tags),
-    enabled: Value(model.enabled),
-    sortOrder: Value(model.sortOrder),
-    executionBlockedReason: Value(model.executionBlockedReason),
-    createdAt: Value(model.createdAt ?? DateTime.now()),
-    updatedAt: Value(model.updatedAt ?? DateTime.now()),
-  );
-}
+final agentSkillFileStoreProvider = Provider<AgentSkillFileStore>((ref) {
+  return const AgentSkillFileStore(getApplicationSupportDirectory);
+});
 
 // ── 异常 ─────────────────────────────────────────────────────────────────────
 
@@ -110,6 +60,8 @@ class InstallSkillInput {
     this.category = '',
     this.tags = const [],
     this.references = const [],
+    this.packageFiles = const {},
+    this.packageDirectory,
     this.enabled = true,
   });
 
@@ -127,72 +79,127 @@ class InstallSkillInput {
   final String category;
   final List<String> tags;
   final List<AgentSkillReferenceFile> references;
+  final Map<String, List<int>> packageFiles;
+  final Directory? packageDirectory;
   final bool enabled;
 }
 
 class InstalledAgentSkillsNotifier
     extends AsyncNotifier<List<NovelAgentSkillModel>> {
+  AgentSkillFileStore? _store;
+  Future<void> _pendingMutation = Future.value();
+
   @override
-  Future<List<NovelAgentSkillModel>> build() async {
-    final db = ref.watch(agentSkillAppDatabaseProvider);
-    final rows = await db.novelAgentSkillDao.getAll();
-    final refs = await db.novelAgentSkillDao.getReferencesBySkillIds(
-      rows.map((row) => row.id),
+  Future<List<NovelAgentSkillModel>> build() {
+    final store = ref.watch(agentSkillFileStoreProvider);
+    _store = store;
+    return store.open();
+  }
+
+  Future<List<NovelAgentSkillModel>> readCurrent() async {
+    final cached = state.value ?? await future;
+    return await _store?.readCurrent() ?? cached;
+  }
+
+  Future<NovelAgentSkillModel?> readPackageById(
+    String id, {
+    bool forExecution = false,
+  }) => _readInstalledPackage(
+    (skills) => _findById(skills, id),
+    forExecution: forExecution,
+  );
+
+  Future<NovelAgentSkillModel?> readPackageByName(
+    String name, {
+    bool forExecution = false,
+  }) => _readInstalledPackage(
+    (skills) => _findByName(skills, name),
+    forExecution: forExecution,
+  );
+
+  Future<NovelAgentSkillModel?> _readInstalledPackage(
+    NovelAgentSkillModel? Function(List<NovelAgentSkillModel>) select, {
+    required bool forExecution,
+  }) => _mutate(() async {
+    // Wait for preceding writes to publish their new package and provider state.
+    final skills = state.value ?? await future;
+    final installed = select(skills);
+    if (installed == null ||
+        installed.packageReadFailed ||
+        (forExecution && !installed.isExecutable)) {
+      return installed;
+    }
+    final loaded = await _store?.readPackage(installed) ?? installed;
+    if (loaded.name != installed.name &&
+        skills.any(
+          (entry) => entry.id != installed.id && entry.name == loaded.name,
+        )) {
+      return installed.copyWith(
+        prompt: '',
+        references: const [],
+        packageReadFailed: true,
+      );
+    }
+    return loaded;
+  });
+
+  Future<T> _mutate<T>(Future<T> Function() action) {
+    final result = _pendingMutation.then((_) => action());
+    _pendingMutation = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
     );
-    return [
-      for (final row in rows)
-        _mapNovelAgentSkill(row, refs[row.id] ?? const []),
-    ];
+    return result;
   }
 
   /// 安装技能。name 冲突时抛 [NovelSkillNameConflictException],
   /// 由 UI 决定覆盖或重命名后再次调用 [installOverwrite] / [installRename]。
-  Future<NovelAgentSkillModel> install(InstallSkillInput input) async {
-    final current = state.value ?? await future;
-    final name = input.name.trim();
-    final conflict = _findByName(current, name);
-    if (conflict != null) {
-      throw NovelSkillNameConflictException(name);
-    }
-    return _persistInstall(input, name, current);
-  }
+  Future<NovelAgentSkillModel> install(InstallSkillInput input) =>
+      _mutate(() async {
+        final current = await readCurrent();
+        final name = input.name.trim();
+        final conflict = _findByName(current, name);
+        if (conflict != null) {
+          throw NovelSkillNameConflictException(name);
+        }
+        return _persistInstall(input, name, current);
+      });
 
-  /// 覆盖现有同名安装:替换目标记录,旧来源关联消失。
-  Future<NovelAgentSkillModel> installOverwrite(InstallSkillInput input) async {
-    final current = state.value ?? await future;
-    final name = input.name.trim();
-    final conflict = _findByName(current, name);
-    final db = ref.read(agentSkillAppDatabaseProvider);
-    if (conflict != null) {
-      await db.novelAgentSkillDao.hardDelete(conflict.id);
-    }
-    final withoutConflict = conflict == null
-        ? current
-        : current.where((item) => item.id != conflict.id).toList();
-    return _persistInstall(input, name, withoutConflict);
-  }
+  /// 用新包覆盖同名安装，保留安装身份和用户设置。
+  Future<NovelAgentSkillModel> installOverwrite(InstallSkillInput input) =>
+      _mutate(() async {
+        final current = await readCurrent();
+        final name = input.name.trim();
+        return _persistInstall(
+          input,
+          name,
+          current,
+          existing: _findByName(current, name),
+        );
+      });
 
   /// 以新名称安装:保留两条独立安装,不破坏新来源的升级关联。
   Future<NovelAgentSkillModel> installRename(
     InstallSkillInput input,
     String name,
-  ) async {
-    final current = state.value ?? await future;
+  ) => _mutate(() async {
+    final current = await readCurrent();
     final trimmed = name.trim();
     if (_findByName(current, trimmed) != null) {
       throw NovelSkillNameConflictException(trimmed);
     }
     return _persistInstall(input, trimmed, current);
-  }
+  });
 
   Future<NovelAgentSkillModel> _persistInstall(
     InstallSkillInput input,
     String name,
-    List<NovelAgentSkillModel> current,
-  ) async {
+    List<NovelAgentSkillModel> current, {
+    NovelAgentSkillModel? existing,
+  }) async {
     final now = DateTime.now();
     final model = NovelAgentSkillModel(
-      id: buildRandomId('nas'),
+      id: existing?.id ?? buildRandomId('nas'),
       sourceKind: input.sourceKind,
       sourceListingPublicId: input.sourceListingPublicId,
       sourceVersion: input.sourceVersion,
@@ -205,31 +212,29 @@ class InstalledAgentSkillsNotifier
       category: input.category,
       tags: input.tags,
       references: AgentSkillReferences.sanitize(input.references),
-      enabled: input.enabled,
-      sortOrder: current.length,
-      createdAt: now,
+      enabled: existing?.enabled ?? input.enabled,
+      sortOrder:
+          existing?.sortOrder ??
+          (current.fold(
+                -1,
+                (maxOrder, skill) =>
+                    skill.sortOrder > maxOrder ? skill.sortOrder : maxOrder,
+              ) +
+              1),
+      createdAt: existing == null ? now : existing.createdAt,
       updatedAt: now,
     );
-    try {
-      await _writeUpdate(
-        model,
-        previous: null,
-        changeSource: SkillRevisionSource.install,
-        changeNote: input.sourceVersion,
-      );
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB] INSERT novel_agent_skills failed id=${model.id}',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      rethrow;
+    final stored = await _store!.save(
+      model,
+      files: input.packageFiles,
+      packageDirectory: input.packageDirectory,
+    );
+    if (existing != null) {
+      _replaceInState(current, stored);
+    } else if (ref.mounted) {
+      state = AsyncValue.data([...current, stored]);
     }
-    if (!ref.mounted) {
-      return model;
-    }
-    state = AsyncValue.data([...current, model]);
-    return model;
+    return stored;
   }
 
   /// 直接创建本地技能(source_kind=novel_local)。
@@ -237,8 +242,8 @@ class InstalledAgentSkillsNotifier
     return install(input.copyWith(sourceKind: AgentSkillSourceKind.novelLocal));
   }
 
-  Future<void> toggleEnabled(String id) async {
-    final current = state.value ?? await future;
+  Future<void> toggleEnabled(String id) => _mutate(() async {
+    final current = await readCurrent();
     final target = _findById(current, id);
     if (target == null) {
       return;
@@ -247,17 +252,11 @@ class InstalledAgentSkillsNotifier
       enabled: !target.enabled,
       updatedAt: DateTime.now(),
     );
-    await _writeUpdate(updated, previous: target);
-    _replaceInState(current, updated);
-  }
+    await _writeUpdate(current, updated, previous: target);
+  });
 
-  Future<void> rename(
-    String id,
-    String name, {
-    SkillRevisionSource changeSource = SkillRevisionSource.user_edit,
-    String? turnId,
-  }) async {
-    final current = state.value ?? await future;
+  Future<void> rename(String id, String name) => _mutate(() async {
+    final current = await readCurrent();
     final trimmed = name.trim();
     if (_findByName(current, trimmed)?.id == id) {
       return; // 未变化。
@@ -270,40 +269,28 @@ class InstalledAgentSkillsNotifier
       return;
     }
     final updated = target.copyWith(name: trimmed, updatedAt: DateTime.now());
-    await _writeUpdate(
-      updated,
-      previous: target,
-      changeSource: changeSource,
-      turnId: turnId,
-    );
-    _replaceInState(current, updated);
-  }
+    await _writeUpdate(current, updated, previous: target);
+  });
 
-  Future<void> updateSnapshotFields(
-    NovelAgentSkillModel updated, {
-    SkillRevisionSource changeSource = SkillRevisionSource.user_edit,
-    String? turnId,
-    String? changeNote,
-  }) async {
-    final current = state.value ?? await future;
+  Future<NovelAgentSkillModel> updateSnapshotFields(
+    NovelAgentSkillModel updated,
+  ) => _mutate(() async {
+    final current = await readCurrent();
     final name = updated.name.trim();
     final conflict = _findByName(current, name);
     if (conflict != null && conflict.id != updated.id) {
       throw NovelSkillNameConflictException(name);
     }
+    final previous = _findById(current, updated.id);
+    if (previous == null) {
+      throw StateError('Installed skill no longer exists: ${updated.id}');
+    }
     final withTimestamp = updated.copyWith(
       name: name,
       updatedAt: DateTime.now(),
     );
-    await _writeUpdate(
-      withTimestamp,
-      previous: _findById(current, updated.id),
-      changeSource: changeSource,
-      turnId: turnId,
-      changeNote: changeNote,
-    );
-    _replaceInState(current, withTimestamp);
-  }
+    return _writeUpdate(current, withTimestamp, previous: previous);
+  });
 
   /// 替换指定 Skill 的全部 references；调用方负责以语义化操作构造目标列表。
   ///
@@ -311,10 +298,8 @@ class InstalledAgentSkillsNotifier
   Future<NovelAgentSkillModel> replaceReferencesByName({
     required String name,
     required Iterable<AgentSkillReferenceFile> references,
-    SkillRevisionSource changeSource = SkillRevisionSource.user_edit,
-    String? turnId,
-  }) async {
-    final current = state.value ?? await future;
+  }) => _mutate(() async {
+    final current = await readCurrent();
     final target = _findByName(current, name);
     if (target == null) {
       throw StateError('NovelAgentSkill not found: ${name.trim()}');
@@ -324,15 +309,8 @@ class InstalledAgentSkillsNotifier
       references: normalized,
       updatedAt: DateTime.now(),
     );
-    await _writeUpdate(
-      updated,
-      previous: target,
-      changeSource: changeSource,
-      turnId: turnId,
-    );
-    _replaceInState(current, updated);
-    return updated;
-  }
+    return _writeUpdate(current, updated, previous: target);
+  });
 
   /// 显式升级:覆盖来源追溯与快照内容,保留 id/name/enabled/sortOrder。
   Future<NovelAgentSkillModel> upgradeSnapshot({
@@ -345,8 +323,8 @@ class InstalledAgentSkillsNotifier
     required List<String> agentScopes,
     required String category,
     required List<String> tags,
-  }) async {
-    final current = state.value ?? await future;
+  }) => _mutate(() async {
+    final current = await readCurrent();
     final target = _findById(current, id);
     if (target == null) {
       throw StateError('NovelAgentSkill not found: $id');
@@ -362,94 +340,62 @@ class InstalledAgentSkillsNotifier
       tags: tags,
       updatedAt: DateTime.now(),
     );
-    await _writeUpdate(
-      upgraded,
-      previous: target,
-      changeSource: SkillRevisionSource.upgrade,
-      changeNote: sourceVersion,
-    );
-    _replaceInState(current, upgraded);
-    return upgraded;
-  }
+    return _writeUpdate(current, upgraded, previous: target);
+  });
 
   /// 设置/清除运行时阻止原因(用于紧急撤销)。null 表示清除阻止。
-  Future<void> setExecutionBlockedReason(String id, String? reason) async {
-    final current = state.value ?? await future;
-    final target = _findById(current, id);
-    if (target == null) {
-      return;
-    }
-    final updated = target.copyWith(
-      executionBlockedReason: reason,
-      updatedAt: DateTime.now(),
-    );
-    await _writeUpdate(updated, previous: target);
-    _replaceInState(current, updated);
-  }
+  Future<void> setExecutionBlockedReason(String id, String? reason) =>
+      _mutate(() async {
+        final current = await readCurrent();
+        final target = _findById(current, id);
+        if (target == null) {
+          return;
+        }
+        final updated = target.copyWith(
+          executionBlockedReason: reason,
+          updatedAt: DateTime.now(),
+        );
+        await _writeUpdate(current, updated, previous: target);
+      });
 
-  Future<void> remove(String id) async {
-    final current = state.value ?? await future;
-    final db = ref.read(agentSkillAppDatabaseProvider);
-    // hardDelete 已在同一事务里清掉 references 与历史版本；这里只回收
-    // 因此产生的孤儿附件正文。GC 失败不该阻断删除，只记日志。
-    await db.novelAgentSkillDao.hardDelete(id);
-    try {
-      await db.novelAgentSkillRevisionDao.gcBlobs();
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB] gc novel_agent_skill_blobs failed id=$id',
-        error: error,
-        stackTrace: stackTrace,
-      );
+  Future<void> remove(String id) => _mutate(() async {
+    final store = _store!;
+    await store.remove(id);
+    final remaining = await store.readCurrent();
+    if (ref.mounted) {
+      state = AsyncValue.data(remaining);
     }
-    if (!ref.mounted) {
-      return;
-    }
-    state = AsyncValue.data([
-      for (final item in current)
-        if (item.id != id) item,
-    ]);
-  }
+  });
 
-  Future<void> reorder(List<String> ids) async {
-    final current = state.value ?? await future;
-    final db = ref.read(agentSkillAppDatabaseProvider);
-    await db.novelAgentSkillDao.reorder(ids);
-    if (!ref.mounted) {
-      return;
-    }
+  Future<void> reorder(List<String> ids) => _mutate(() async {
+    final current = await readCurrent();
     final byId = {for (final item in current) item.id: item};
-    state = AsyncValue.data([
-      for (final id in ids)
-        if (byId[id] != null) byId[id]!.copyWith(sortOrder: ids.indexOf(id)),
-    ]);
-  }
+    final orderedIds = {...ids, ...byId.keys};
+    final ordered = [for (final id in orderedIds) ?byId[id]];
+    final updated = [
+      for (var i = 0; i < ordered.length; i++)
+        ordered[i].copyWith(sortOrder: i),
+    ];
+    await _store!.reorder(updated);
+    if (ref.mounted) {
+      state = AsyncValue.data(updated);
+    }
+  });
 
   /// 将已安装的官方/市场技能断开来源关联,保留当前快照为本地技能。
-  Future<NovelAgentSkillModel> convertToNovelLocal(String id) async {
-    final current = state.value ?? await future;
-    final target = _findById(current, id);
-    if (target == null) {
-      throw StateError('NovelAgentSkill not found: $id');
-    }
-    if (target.sourceKind == AgentSkillSourceKind.novelLocal) {
-      return target;
-    }
-    final converted = _asNovelLocal(target, DateTime.now());
-    try {
-      await _writeUpdate(converted, previous: target);
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB] UPDATE novel_agent_skills failed op=convertToNovelLocal '
-        'id=${target.id}',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      rethrow;
-    }
-    _replaceInState(current, converted);
-    return converted;
-  }
+  Future<NovelAgentSkillModel> convertToNovelLocal(String id) =>
+      _mutate(() async {
+        final current = await readCurrent();
+        final target = _findById(current, id);
+        if (target == null) {
+          throw StateError('NovelAgentSkill not found: $id');
+        }
+        if (target.sourceKind == AgentSkillSourceKind.novelLocal) {
+          return target;
+        }
+        final converted = _asNovelLocal(target, DateTime.now());
+        return _writeUpdate(current, converted, previous: target);
+      });
 
   // ── 目录安装/覆盖/升级 ─────────────────────────────────
 
@@ -458,8 +404,8 @@ class InstalledAgentSkillsNotifier
   Future<InstallFromCatalogResult> installFromOfficial({
     required OfficialAgentSkill source,
     String? overrideName,
-  }) async {
-    final current = state.value ?? await future;
+  }) => _mutate(() async {
+    final current = await readCurrent();
     final name = (overrideName ?? source.name).trim();
     final conflict = _findByName(current, name);
     if (conflict != null) {
@@ -481,7 +427,7 @@ class InstalledAgentSkillsNotifier
     );
     final installed = await _persistInstall(input, name, current);
     return InstallFromCatalogSuccess(installed.id);
-  }
+  });
 
   /// 覆盖安装:用新来源的快照替换 existing 记录,保留 id/name/enabled/
   /// sort_order/created_at,清空 execution_blocked_reason。
@@ -489,8 +435,8 @@ class InstalledAgentSkillsNotifier
   Future<String> overwriteInstall({
     required String existingNovelAgentSkillId,
     required InstallFromCatalogSource source,
-  }) async {
-    final current = state.value ?? await future;
+  }) => _mutate(() async {
+    final current = await readCurrent();
     final target = _findById(current, existingNovelAgentSkillId);
     if (target == null) {
       throw StateError('NovelAgentSkill not found: $existingNovelAgentSkillId');
@@ -512,83 +458,94 @@ class InstalledAgentSkillsNotifier
         updatedAt: now,
       ),
     };
-    await _writeUpdate(
+    final stored = await _writeUpdate(
+      current,
       updated,
       previous: target,
-      changeSource: SkillRevisionSource.install,
-      changeNote: updated.sourceVersion,
+      packageFiles: const {},
     );
-    _replaceInState(current, updated);
-    return updated.id;
-  }
+    return stored.id;
+  });
 
   /// 更新 source_version/source_display_name,保留 id/name/enabled/sort_order。
   Future<UpgradeResult> upgradeNovelAgentSkill({
     required String novelAgentSkillId,
   }) async {
-    final current = state.value ?? await future;
-    final target = _findById(current, novelAgentSkillId);
-    if (target == null) {
+    final installed = await readPackageById(novelAgentSkillId);
+    if (!ref.mounted) {
+      return const UpgradeNotTraceable();
+    }
+    if (installed == null) {
       throw StateError('NovelAgentSkill not found: $novelAgentSkillId');
     }
-    final currentVersion = int.tryParse(target.sourceVersion ?? '');
-    switch (target.sourceKind) {
-      case AgentSkillSourceKind.official:
-        final officialList = await ref.readFuture(
-          officialAgentSkillsProvider(agentSkillCatalogFilter()).future,
-        );
-        if (!ref.mounted) {
-          return const UpgradeNotTraceable();
-        }
-        final match = _findOfficialByName(
-          officialList.agentSkills,
-          officialSkillCatalogName(target),
-        );
-        if (match == null) {
-          return const UpgradeNotTraceable();
-        }
-        if (currentVersion != null && match.version <= currentVersion) {
-          return AlreadyLatestVersion(currentVersion);
-        }
-        final detail = await ref.readFuture(
-          officialAgentSkillDetailProvider(match.listingId).future,
-        );
-        if (!ref.mounted) {
-          return const UpgradeNotTraceable();
-        }
-        final upgraded = target.withUpgradedSnapshot(
-          sourceListingPublicId: detail.listingId,
-          sourceVersion: detail.version.toString(),
-          sourceDisplayName: detail.name,
-          whenToUse: detail.whenToUse,
-          description: detail.description,
-          prompt: detail.prompt,
-          // 目录详情不包含 agent_scopes，升级时保留本地已有值。
-          agentScopes: target.agentScopes,
-          category: detail.category,
-          tags: detail.tags,
-          references: _sanitizeCatalogReferences(detail.references),
-          updatedAt: DateTime.now(),
-        );
-        await _writeUpdate(
-          upgraded,
-          previous: target,
-          changeSource: SkillRevisionSource.upgrade,
-          changeNote: 'v${currentVersion ?? 0} -> v${detail.version}',
-        );
-        _replaceInState(current, upgraded);
-        return UpgradeSuccess(currentVersion ?? 0, detail.version);
-      case AgentSkillSourceKind.marketplace:
-      case AgentSkillSourceKind.novelLocal:
-        return const UpgradeNotTraceable();
+    if (installed.sourceKind != AgentSkillSourceKind.official) {
+      return const UpgradeNotTraceable();
     }
+
+    final catalogName = officialSkillCatalogName(installed);
+    final officialList = await ref.readFuture(
+      officialAgentSkillCatalogProvider.future,
+    );
+    if (!ref.mounted) {
+      return const UpgradeNotTraceable();
+    }
+    final match = _findOfficialByName(officialList.agentSkills, catalogName);
+    if (match == null) {
+      return const UpgradeNotTraceable();
+    }
+    final installedVersion = int.tryParse(installed.sourceVersion ?? '');
+    if (installedVersion != null && match.version <= installedVersion) {
+      return AlreadyLatestVersion(installedVersion);
+    }
+    final detail = await ref.readFuture(
+      officialAgentSkillDetailProvider(match.listingId).future,
+    );
+
+    return _mutate(() async {
+      if (!ref.mounted) {
+        return const UpgradeNotTraceable();
+      }
+      final current = await readCurrent();
+      final target = _findById(current, novelAgentSkillId);
+      if (!ref.mounted ||
+          target == null ||
+          target.sourceKind != AgentSkillSourceKind.official ||
+          officialSkillCatalogName(target) != catalogName) {
+        return const UpgradeNotTraceable();
+      }
+      final currentVersion = int.tryParse(target.sourceVersion ?? '');
+      if (currentVersion != null && detail.version <= currentVersion) {
+        return AlreadyLatestVersion(currentVersion);
+      }
+      final upgraded = target.withUpgradedSnapshot(
+        sourceListingPublicId: detail.listingId,
+        sourceVersion: detail.version.toString(),
+        sourceDisplayName: detail.name,
+        whenToUse: detail.whenToUse,
+        description: detail.description,
+        prompt: detail.prompt,
+        // 目录详情不包含 agent_scopes，升级时保留本地已有值。
+        agentScopes: target.agentScopes,
+        category: detail.category,
+        tags: detail.tags,
+        references: _sanitizeCatalogReferences(detail.references),
+        updatedAt: DateTime.now(),
+      );
+      await _writeUpdate(
+        current,
+        upgraded,
+        previous: target,
+        packageFiles: const {},
+      );
+      return UpgradeSuccess(currentVersion ?? 0, detail.version);
+    });
   }
 
   /// 检测可升级(供 UI 显示「有新版本」标记)。不写入,仅返回结果。
   Future<UpgradeAvailability> checkUpgradeAvailable({
     required String novelAgentSkillId,
   }) async {
-    final current = state.value ?? await future;
+    final current = await readCurrent();
     final target = _findById(current, novelAgentSkillId);
     if (target == null) {
       throw StateError('NovelAgentSkill not found: $novelAgentSkillId');
@@ -624,6 +581,7 @@ class InstalledAgentSkillsNotifier
   ) {
     return NovelAgentSkillModel(
       id: target.id,
+      skillRoot: target.skillRoot,
       sourceKind: AgentSkillSourceKind.novelLocal,
       sourceListingPublicId: null,
       sourceVersion: null,
@@ -644,70 +602,20 @@ class InstalledAgentSkillsNotifier
     );
   }
 
-  Future<void> _writeUpdate(
+  // 普通编辑沿用现有包的资源。替换来源时，传入新来源的资源清单，可为空。
+  Future<NovelAgentSkillModel> _writeUpdate(
+    List<NovelAgentSkillModel> current,
     NovelAgentSkillModel model, {
-    required NovelAgentSkillModel? previous,
-    SkillRevisionSource changeSource = SkillRevisionSource.user_edit,
-    String? turnId,
-    String? changeNote,
+    required NovelAgentSkillModel previous,
+    Map<String, List<int>>? packageFiles,
   }) async {
-    final db = ref.read(agentSkillAppDatabaseProvider);
-    final revisionDao = db.novelAgentSkillRevisionDao;
-    try {
-      await db.transaction(() async {
-        // 懒回填：v29 之前安装的技能没有基线版本，首次编辑时先把「改之前」
-        // 补记一条，否则历史里只剩改之后、看不到对比。
-        if (previous != null && !await revisionDao.hasAnyRevision(model.id)) {
-          await revisionDao.appendRevision(
-            content: previous,
-            changeSource: SkillRevisionSource.baseline,
-          );
-        }
-        await db.novelAgentSkillDao.upsertWithReferences(
-          skill: _novelAgentSkillToCompanion(model),
-          references: model.references,
-        );
-        final latestHash = await revisionDao.latestContentHash(model.id);
-        if (latestHash != model.contentHash) {
-          await revisionDao.appendRevision(
-            content: model,
-            changeSource: changeSource,
-            turnId: turnId,
-            changeNote: changeNote,
-          );
-        }
-      });
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB] UPSERT novel_agent_skills failed id=${model.id}',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      rethrow;
-    }
-    await _pruneRevisions(model.id);
-  }
-
-  /// 裁剪超限历史并回收孤儿附件。
-  ///
-  /// 放在写入事务之外：裁剪失败不该让用户的这次编辑回滚，而 GC 是幂等扫描，
-  /// 下一次写入会自动补上。
-  Future<void> _pruneRevisions(String skillId) async {
-    final db = ref.read(agentSkillAppDatabaseProvider);
-    try {
-      final pruned = await db.novelAgentSkillRevisionDao.pruneRevisions(
-        skillId,
-      );
-      if (pruned > 0) {
-        await db.novelAgentSkillRevisionDao.gcBlobs();
-      }
-    } catch (error, stackTrace) {
-      _log.error(
-        '[DB] prune novel_agent_skill_revisions failed id=$skillId',
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
+    final stored = await _store!.save(
+      model.copyWith(skillRoot: previous.skillRoot),
+      previous: previous,
+      files: packageFiles,
+    );
+    _replaceInState(current, stored);
+    return stored;
   }
 
   void _replaceInState(
@@ -781,6 +689,8 @@ extension InstallSkillInputCopy on InstallSkillInput {
     List<String>? tags,
     List<AgentSkillReferenceFile>? references,
     bool? enabled,
+    Map<String, List<int>>? packageFiles,
+    Directory? packageDirectory,
   }) {
     return InstallSkillInput(
       sourceKind: sourceKind ?? this.sourceKind,
@@ -797,6 +707,8 @@ extension InstallSkillInputCopy on InstallSkillInput {
       tags: tags ?? this.tags,
       references: references ?? this.references,
       enabled: enabled ?? this.enabled,
+      packageFiles: packageFiles ?? this.packageFiles,
+      packageDirectory: packageDirectory ?? this.packageDirectory,
     );
   }
 }
@@ -874,24 +786,3 @@ List<AgentSkillReferenceFile> _sanitizeCatalogReferences(
 ) {
   return AgentSkillReferences.sanitize(refs);
 }
-
-// ── 历史版本读取 ─────────────────────────────────────────────────────────────
-
-/// 某个技能的历史版本列表（只含摘要，不含 prompt 与附件正文）。
-///
-/// 用 autoDispose family：只有历史面板打开时才需要，关闭即释放，
-/// 避免每个访问过的 skillId 常驻内存。
-final skillRevisionsProvider = FutureProvider.autoDispose
-    .family<List<AgentSkillRevisionSummary>, String>((ref, skillId) async {
-      // 依赖已安装列表：任何一次写入都会刷新 state，历史列表随之重查。
-      await ref.watch(installedAgentSkillsProvider.future);
-      final db = ref.watch(agentSkillAppDatabaseProvider);
-      return db.novelAgentSkillRevisionDao.listRevisions(skillId);
-    });
-
-/// 单个历史版本的全量快照，供 diff 与复制使用。
-final skillRevisionDetailProvider = FutureProvider.autoDispose
-    .family<AgentSkillRevisionDetail?, String>((ref, revisionId) async {
-      final db = ref.watch(agentSkillAppDatabaseProvider);
-      return db.novelAgentSkillRevisionDao.getRevision(revisionId);
-    });

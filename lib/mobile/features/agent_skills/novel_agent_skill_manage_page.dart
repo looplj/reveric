@@ -1,6 +1,5 @@
 // 职责: 移动端全局 AgentSkill 内容体 — 列表、编辑、启停、上传、删除与参考文档子页编辑。
 // 关联文件:
-//   lib/mobile/features/agent_skills/skill_revision_history_page.dart
 //   lib/mobile/widgets/agent_edit_scaffold.dart
 //   lib/mobile/widgets/section_scaffold.dart
 //   lib/shared/models/agent_skill_reference.dart
@@ -52,7 +51,6 @@ import '../../services/android_saf_directory_import.dart';
 import '../../widgets/agent_edit_scaffold.dart';
 import '../../widgets/section_scaffold.dart';
 import 'installed_skill_detail_page.dart';
-import 'skill_revision_history_page.dart';
 
 final _log = AppLogger.forModule('MobileNovelAgentSkill');
 
@@ -65,6 +63,10 @@ class NovelInstalledSkillsView extends ConsumerWidget {
     WidgetRef ref, {
     NovelAgentSkillModel? skill,
   }) async {
+    if (skill?.packageReadFailed ?? false) {
+      _showTransferMessage(context, context.t(LocaleKeys.agentSkillLoadFailed));
+      return;
+    }
     if (skill == null || skill.sourceKind == AgentSkillSourceKind.novelLocal) {
       if (!context.mounted) {
         return;
@@ -153,16 +155,22 @@ class NovelInstalledSkillsView extends ConsumerWidget {
       if (request.mode == AgentSkillExportMode.folder) {
         final transfer = const AgentSkillTransferService();
         if (defaultTargetPlatform == TargetPlatform.android) {
-          final files = transfer
-              .buildDirectoryFiles(request.entries)
-              .map(
-                (file) => AndroidSafExportFile(
-                  relativePath: file.relativePath,
-                  content: file.content,
-                ),
-              )
-              .toList(growable: false);
-          final result = await writeFilesToAndroidDirectory(files: files);
+          final stage = await (await getTemporaryDirectory()).createTemp(
+            'reveric_skill_export_',
+          );
+          final AndroidSafDirectoryExportResult? result;
+          try {
+            await transfer.exportToDirectory(
+              dirPath: stage.path,
+              entries: request.entries,
+            );
+            if (!context.mounted) {
+              return;
+            }
+            result = await exportAndroidSkillDirectory(stage);
+          } finally {
+            await deleteAndroidDirectoryImport(stage.path);
+          }
           if (!context.mounted || result == null) {
             return;
           }
@@ -258,7 +266,12 @@ class NovelInstalledSkillsView extends ConsumerWidget {
           onImport: skillsAsync.isLoading
               ? null
               : () => unawaited(importMobileAgentSkills(context, ref)),
-          onExport: () => unawaited(_exportSkills(context, skills)),
+          onExport: () => unawaited(
+            _exportSkills(
+              context,
+              skills.where((skill) => !skill.packageReadFailed).toList(),
+            ),
+          ),
         ),
       ],
     );
@@ -386,7 +399,9 @@ class _NovelSkillsSection extends StatelessWidget {
                           ),
                           const SizedBox(height: RevericSpacing.xs),
                           MobileSectionPreviewText(
-                            preview: skill.description,
+                            preview: skill.packageReadFailed
+                                ? context.t(LocaleKeys.agentSkillLoadFailed)
+                                : skill.description,
                             emptyPlaceholder: context.t(
                               LocaleKeys.agentSkillDescription,
                             ),
@@ -395,9 +410,11 @@ class _NovelSkillsSection extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: RevericSpacing.sm),
-                    _SkillEnableChip(enabled: skill.enabled),
-                    const SizedBox(width: RevericSpacing.sm),
-                    const MobileSectionTrailingChevron(),
+                    if (!skill.packageReadFailed) ...[
+                      _SkillEnableChip(enabled: skill.enabled),
+                      const SizedBox(width: RevericSpacing.sm),
+                      const MobileSectionTrailingChevron(),
+                    ],
                   ],
                 ),
               );
@@ -673,19 +690,6 @@ class _NovelAgentSkillEditPage extends HookConsumerWidget {
           },
         ),
         const SizedBox(height: RevericSpacing.x2l),
-        // 新建草稿还没有任何版本，保存后才出现历史入口。
-        if (existing != null) ...[
-          _HistoryEntryRow(
-            onTap: () {
-              Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => SkillRevisionHistoryPage(skill: existing),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: RevericSpacing.x2l),
-        ],
         HookedForm(
           form: form,
           child: Column(
@@ -1036,53 +1040,6 @@ class _SkillReferenceEditPage extends HookWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// 编辑页里的版本历史入口行（图标 + 标题 + chevron）。
-class _HistoryEntryRow extends StatelessWidget {
-  const _HistoryEntryRow({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = RevericTheme.colorsOf(context);
-    final typo = RevericTheme.typographyOf(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(RevericRadius.large),
-      child: Container(
-        height: RevericSizes.fieldHeight,
-        padding: const EdgeInsets.symmetric(horizontal: RevericSpacing.lg),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(RevericRadius.large),
-          border: Border.all(color: colors.borderInput),
-        ),
-        child: Row(
-          children: [
-            RevericIcon(
-              RevericIcons.history_outlined,
-              size: 17,
-              color: colors.accent,
-            ),
-            const SizedBox(width: RevericSpacing.sm),
-            Expanded(
-              child: Text(
-                context.t(LocaleKeys.agentSkillHistory),
-                style: typo.uiSmall.copyWith(color: colors.textPrimary),
-              ),
-            ),
-            RevericIcon(
-              RevericIcons.chevron_right,
-              size: 18,
-              color: colors.textSubtle,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

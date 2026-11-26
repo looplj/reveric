@@ -989,8 +989,6 @@ abstract final class LocaleKeys {
   static const agentSkillMarketEmpty = 'agent_skill.market_empty';
   static const agentSkillMarketNoResults = 'agent_skill.market_no_results';
   static const agentSkillImportHasScripts = 'agent_skill.import_has_scripts';
-  static const agentSkillImportScriptsWarning =
-      'agent_skill.import_scripts_warning';
   static const agentSkillCreateAndInstall = 'agent_skill.create_and_install';
   static const agentSkillInstall = 'agent_skill.install';
   static const agentSkillDownloaded = 'agent_skill.downloaded';
@@ -1098,27 +1096,6 @@ abstract final class LocaleKeys {
   static const agentSkillVersionLabel = 'agent_skill.version_label';
   static const agentSkillSortOrder = 'agent_skill.sort_order';
   // ── 版本历史 ────────────────────────────────────────────────────────────
-  static const agentSkillHistory = 'agent_skill.history';
-  static const agentSkillHistoryEmpty = 'agent_skill.history_empty';
-  static const agentSkillHistoryCurrent = 'agent_skill.history_current';
-  static const agentSkillHistoryFileCount = 'agent_skill.history_file_count';
-  static const agentSkillHistoryDiffTitle = 'agent_skill.history_diff_title';
-  static const agentSkillHistoryNoPromptChange =
-      'agent_skill.history_no_prompt_change';
-  static const agentSkillHistoryFiles = 'agent_skill.history_files';
-  static const agentSkillHistoryCopyPrompt = 'agent_skill.history_copy_prompt';
-  static const agentSkillHistoryCopyFile = 'agent_skill.history_copy_file';
-  static const agentSkillHistoryCopied = 'agent_skill.history_copied';
-  static const agentSkillHistorySourceBaseline =
-      'agent_skill.history_source_baseline';
-  static const agentSkillHistorySourceInstall =
-      'agent_skill.history_source_install';
-  static const agentSkillHistorySourceUserEdit =
-      'agent_skill.history_source_user_edit';
-  static const agentSkillHistorySourceAiEdit =
-      'agent_skill.history_source_ai_edit';
-  static const agentSkillHistorySourceUpgrade =
-      'agent_skill.history_source_upgrade';
   // ── 官方/市场技能转本地 ──────────────────────────────────────────────────
   static const agentSkillConvertedToLocal = 'agent_skill.converted_to_local';
   // ── Legacy Skill 迁移通知 ──────────────────────────────────────────────
@@ -1160,6 +1137,12 @@ abstract final class LocaleKeys {
   static const agentSkillImportExists = 'agent_skill.import_exists';
   static const agentSkillImportEmpty = 'agent_skill.import_empty';
   static const agentSkillImportSuccess = 'agent_skill.import_success';
+  static const agentSkillImportPackageTooLarge =
+      'agent_skill.import_package_too_large';
+  static const agentSkillImportSourceUnavailable =
+      'agent_skill.import_source_unavailable';
+  static const agentSkillImportPackageInvalid =
+      'agent_skill.import_package_invalid';
   static const agentSkillImportPartial = 'agent_skill.import_partial';
   static const agentSkillImportFailed = 'agent_skill.import_failed';
   static const agentSkillExport = 'agent_skill.export';

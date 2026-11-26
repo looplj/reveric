@@ -14,15 +14,20 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/database/novel_content_database.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
+import 'package:reveric/shared/models/novel_agent_skill.dart';
+import 'package:reveric/shared/models/novel_workspace.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/ai_session_mode.dart';
 import 'package:reveric/shared/models/subagent.dart';
 import 'package:reveric/shared/providers/ai_mode_processing.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
+import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
 import 'package:reveric/shared/providers/subagent_providers.dart';
 import 'package:reveric/shared/providers/trace_providers.dart';
+import 'package:reveric/shared/services/agent_skill_file_store.dart';
+import 'package:reveric/shared/services/agent_skill_transfer.dart';
 import 'package:reveric/shared/services/ai/chat_prompt_builder.dart';
 import 'package:reveric/shared/services/ai/chat_session_controller.dart';
 import 'package:reveric/shared/services/ai/handoff_service.dart';
@@ -77,6 +82,7 @@ void main() {
   late ProviderContainer container;
   late String databasePath;
   late DefaultChatComposerStore store;
+  late _ObservedSkillStore skillStore;
   late String activeId;
   late FakeProviderClient client;
   late Agent agent;
@@ -99,9 +105,13 @@ void main() {
       getEnabled: () => false,
       autoFlush: false,
     );
+    skillStore = _ObservedSkillStore(() async => tempDir);
+    await skillStore.migrateLegacy(appDb);
     container = ProviderContainer(
       overrides: [
         appDatabaseProvider.overrideWithValue(appDb),
+        agentSkillAppDatabaseProvider.overrideWithValue(appDb),
+        agentSkillFileStoreProvider.overrideWithValue(skillStore),
         novelActionsProvider.overrideWithValue(NovelActionsService(appDb)),
 
         // fake provider 是自定义 provider，Pro 门禁会在 AiClient.initialize 兜底拦下。
@@ -263,6 +273,89 @@ void main() {
     },
   );
   test(
+    'slash selection injects the current local skill root and instructions',
+    () async {
+      final notifier = container.read(installedAgentSkillsProvider.notifier);
+      final entry = await notifier.install(
+        const InstallSkillInput(
+          sourceKind: AgentSkillSourceKind.novelLocal,
+          name: 'chapter-notes',
+          description: 'Notes',
+          prompt: 'old instructions',
+        ),
+      );
+      store.attachedReferences = [
+        AiContextReference(
+          kind: AiContextReferenceKind.skill,
+          section: NovelWorkspaceSection.overview,
+          itemId: entry.id,
+          label: entry.name,
+        ),
+      ];
+      await File('${entry.skillRoot}/SKILL.md').writeAsString(
+        '---\nname: chapter-notes\ndescription: Notes\n---\nUse current disk instructions',
+      );
+      skillStore.fullReads = 0;
+      await controller().send(composer);
+      final input = client.capturedStreamRequests
+          .expand((r) => r.messages)
+          .map((m) => m.content)
+          .join('\n');
+      expect(input, contains('<skill_root>${entry.skillRoot}</skill_root>'));
+      expect(input, contains('Use current disk instructions'));
+      expect(
+        skillStore.fullReads,
+        0,
+        reason: 'slash loads only its selected package',
+      );
+      expect(skillStore.packagesRead, [entry.id]);
+    },
+  );
+
+  test('a selected skill loads the package from an overwrite import', () async {
+    final notifier = container.read(installedAgentSkillsProvider.notifier);
+    final original = await notifier.install(
+      const InstallSkillInput(
+        sourceKind: AgentSkillSourceKind.novelLocal,
+        name: 'chapter-notes',
+        description: 'Notes',
+        prompt: 'Old package instructions',
+      ),
+    );
+    store.attachedReferences = [
+      AiContextReference(
+        kind: AiContextReferenceKind.skill,
+        section: NovelWorkspaceSection.overview,
+        itemId: original.id,
+        label: original.name,
+      ),
+    ];
+    const transfer = AgentSkillTransferService();
+    final candidate = transfer.parseSelectedMarkdown(
+      content:
+          '---\nname: chapter-notes\ndescription: Notes\n---\nImported replacement instructions',
+      fileName: 'SKILL.md',
+      existing: [original],
+    );
+    final result = await transfer.importCandidates(
+      candidates: [candidate],
+      notifier: notifier,
+      existing: [original],
+    );
+    expect(result.imported, 1);
+    final current = (await notifier.readCurrent()).single;
+
+    await controller().send(composer);
+    final input = client.capturedStreamRequests
+        .expand((r) => r.messages)
+        .map((m) => m.content)
+        .join('\n');
+    expect(input, contains('Imported replacement instructions'));
+    expect(input, contains('<skill_root>${current.skillRoot}</skill_root>'));
+    expect(current.id, original.id);
+  });
+
+  test(
     'failed adoption retains draft and retry adopts the already materialized B',
     () async {
       rejectAdoption = true;
@@ -363,6 +456,25 @@ void main() {
       expect(store.pendingHandoff, isNull);
     },
   );
+}
+
+class _ObservedSkillStore extends AgentSkillFileStore {
+  _ObservedSkillStore(super.supportDirectory);
+
+  int fullReads = 0;
+  final packagesRead = <String>[];
+
+  @override
+  Future<List<NovelAgentSkillModel>> readCurrent() {
+    fullReads++;
+    return super.readCurrent();
+  }
+
+  @override
+  Future<NovelAgentSkillModel> readPackage(NovelAgentSkillModel installed) {
+    packagesRead.add(installed.id);
+    return super.readPackage(installed);
+  }
 }
 
 const _materializationModel = 'fake-chat';

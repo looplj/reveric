@@ -14,6 +14,8 @@ import 'package:crypto/crypto.dart';
 
 import 'agent_skill_reference.dart';
 
+const _unchanged = Object();
+
 /// AgentSkill 安装来源类型。状态/分类枚举用 snake_case(见 enum-naming 规则)。
 enum AgentSkillSourceKind {
   novelLocal,
@@ -51,6 +53,7 @@ class NovelAgentSkillModel {
     required this.name,
     required this.description,
     required this.prompt,
+    this.skillRoot,
     this.sourceListingPublicId,
     this.sourceVersion,
     this.sourceDisplayName,
@@ -62,11 +65,13 @@ class NovelAgentSkillModel {
     this.enabled = true,
     this.sortOrder = 0,
     this.executionBlockedReason,
+    this.packageReadFailed = false,
     this.createdAt,
     this.updatedAt,
   });
 
   final String id;
+  final String? skillRoot;
   final AgentSkillSourceKind sourceKind;
 
   /// 目录来源追溯。本地重命名不修改这些字段。
@@ -93,15 +98,18 @@ class NovelAgentSkillModel {
 
   /// 非 null 时运行时跳过执行,即使 enabled=true(用于紧急撤销)。
   final String? executionBlockedReason;
+  final bool packageReadFailed;
 
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
   /// 运行时可执行:启用且未被撤销阻止。
-  bool get isExecutable => enabled && executionBlockedReason == null;
+  bool get isExecutable =>
+      enabled && executionBlockedReason == null && !packageReadFailed;
 
   NovelAgentSkillModel copyWith({
     String? id,
+    String? skillRoot,
     AgentSkillSourceKind? sourceKind,
     String? sourceListingPublicId,
     String? sourceVersion,
@@ -116,12 +124,14 @@ class NovelAgentSkillModel {
     List<AgentSkillReferenceFile>? references,
     bool? enabled,
     int? sortOrder,
-    String? executionBlockedReason,
+    Object? executionBlockedReason = _unchanged,
+    bool? packageReadFailed,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
     return NovelAgentSkillModel(
       id: id ?? this.id,
+      skillRoot: skillRoot ?? this.skillRoot,
       sourceKind: sourceKind ?? this.sourceKind,
       sourceListingPublicId:
           sourceListingPublicId ?? this.sourceListingPublicId,
@@ -137,7 +147,10 @@ class NovelAgentSkillModel {
       references: references ?? this.references,
       enabled: enabled ?? this.enabled,
       sortOrder: sortOrder ?? this.sortOrder,
-      executionBlockedReason: executionBlockedReason,
+      executionBlockedReason: identical(executionBlockedReason, _unchanged)
+          ? this.executionBlockedReason
+          : executionBlockedReason as String?,
+      packageReadFailed: packageReadFailed ?? this.packageReadFailed,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

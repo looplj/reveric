@@ -20,10 +20,11 @@ import 'package:reveric/shared/database/app_database.dart';
 import 'package:reveric/shared/localization/locale_keys.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
-import 'package:reveric/shared/providers/agent_skill_providers.dart';
 import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/models/marketplace_agent_skill.dart';
+import 'package:reveric/shared/models/novel_agent_skill.dart';
+import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
 import 'package:reveric/shared/widgets/agent_skill_import_source_form.dart';
 import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,7 +87,7 @@ void main() {
     );
   }
 
-  testWidgets('removing an installed skill requires confirmation', (
+  testWidgets('removing an unreadable installed skill requires confirmation', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1600, 1200);
@@ -94,21 +95,23 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await db.novelAgentSkillDao.upsert(
-      NovelAgentSkillsCompanion.insert(
+    final installed = _InstalledSkills(const [
+      NovelAgentSkillModel(
         id: 'skill_remove_guard',
-        sourceKind: agentSkillSourceKindNovelLocal,
+        sourceKind: AgentSkillSourceKind.novelLocal,
         name: 'Remove guard',
-        description: 'This installed skill should be removable.',
-        prompt: 'Remove this skill through the overflow menu.',
+        description: '',
+        prompt: '',
+        packageReadFailed: true,
       ),
-    );
-
-    await _pumpPanel(tester, db);
+    ]);
+    await _pumpPanel(tester, db, installed: installed);
 
     expect(find.text(tr(LocaleKeys.agentSkillTabInstalled)), findsOneWidget);
     expect(find.text(tr(LocaleKeys.agentSkillTabOfficial)), findsOneWidget);
     expect(find.text(tr(LocaleKeys.agentSkillTabMarket)), findsOneWidget);
+    expect(find.text(tr(LocaleKeys.agentSkillLoadFailed)), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
 
     // 删除与上传都收在卡片右上的溢出菜单里，不再是常驻按钮。
     await _openRowMenu(tester);
@@ -134,10 +137,7 @@ void main() {
     // 取消不删除。
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    expect(
-      await db.novelAgentSkillDao.getById('skill_remove_guard'),
-      isNotNull,
-    );
+    expect(installed.removedIds, isEmpty);
 
     await _openRowMenu(tester);
     await tester.tap(find.text(tr(LocaleKeys.agentSkillRemove)));
@@ -150,7 +150,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(await db.novelAgentSkillDao.getById('skill_remove_guard'), isNull);
+    expect(installed.removedIds, ['skill_remove_guard']);
     expect(find.text('Remove guard'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -172,12 +172,16 @@ Future<void> _pumpPanel(
   WidgetTester tester,
   AppDatabase db, {
   AgentSkillCatalogService? catalog,
+  _InstalledSkills? installed,
   bool home = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         agentSkillAppDatabaseProvider.overrideWithValue(db),
+        installedAgentSkillsProvider.overrideWith(
+          () => installed ?? _InstalledSkills(const []),
+        ),
         // Tab 角标会 watch 目录 provider,测试里用空目录隔离技能资源加载。
         agentSkillCatalogServiceProvider.overrideWithValue(
           catalog ?? _EmptyCatalogService(),
@@ -213,6 +217,22 @@ Future<void> _pumpPanel(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+class _InstalledSkills extends InstalledAgentSkillsNotifier {
+  _InstalledSkills(this.skills);
+
+  final List<NovelAgentSkillModel> skills;
+  final removedIds = <String>[];
+
+  @override
+  Future<List<NovelAgentSkillModel>> build() async => skills;
+
+  @override
+  Future<void> remove(String id) async {
+    removedIds.add(id);
+    state = AsyncValue.data(skills.where((skill) => skill.id != id).toList());
+  }
 }
 
 class _EmptyCatalogService extends AgentSkillCatalogService {

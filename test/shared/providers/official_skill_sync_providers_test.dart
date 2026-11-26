@@ -1,4 +1,4 @@
-// 职责: 验证启动同步安装、升级与卸载官方技能，维护附件历史并尊重本地技能和删除选择。
+// 职责: 验证启动同步安装、升级与卸载官方技能，保留当前附件并尊重本地技能和删除选择。
 // 关联文件:
 //   lib/shared/providers/official_skill_sync_providers.dart
 //   lib/shared/services/official_skill_sync.dart
@@ -8,13 +8,13 @@
 //   .agents/rules/state-management.md
 //   .agents/rules/testing.md
 import 'dart:async';
+import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reveric/shared/database/app_database.dart';
-import 'package:reveric/shared/models/agent_skill_revision.dart';
 import 'package:reveric/shared/models/novel_agent_skill.dart';
 import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
 import 'package:reveric/shared/providers/agent_skill_providers.dart';
@@ -22,6 +22,7 @@ import 'package:reveric/shared/providers/official_skill_sync_providers.dart';
 import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
 import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
+import 'package:reveric/shared/services/agent_skill_file_store.dart';
 import 'package:reveric/shared/services/app_initialization.dart';
 import 'package:reveric/shared/services/bundled_official_skills.dart';
 import 'package:reveric/shared/services/official_skill_sync.dart';
@@ -33,7 +34,7 @@ void main() {
   test(
     'packaged catalog installs all official skills with full references',
     () async {
-      final setup = _TestSetup(
+      final setup = await _TestSetup.create(
         AppDatabase.forTest(NativeDatabase.memory()),
         _BundledCatalogService(),
       );
@@ -60,9 +61,9 @@ void main() {
   );
 
   test(
-    'merged catalog removes legacy installations and their child rows',
+    'merged catalog uninstalls retired skills and upgrades the successor',
     () async {
-      final setup = _TestSetup(
+      final setup = await _TestSetup.create(
         AppDatabase.forTest(NativeDatabase.memory()),
         _BundledCatalogService(),
       );
@@ -120,12 +121,6 @@ void main() {
           enabled: false,
         ),
       );
-      final retiredRevisionIds = <String>[];
-      for (final skill in retired) {
-        final revisions = await setup.database.novelAgentSkillRevisionDao
-            .listRevisions(skill.id);
-        retiredRevisionIds.addAll(revisions.map((revision) => revision.id));
-      }
       setup.restart();
       final result = await setup.sync();
       expect(result.uninstalled, 5);
@@ -134,46 +129,22 @@ void main() {
       final after = await setup.skills();
       for (final skill in retired) {
         expect(after.map((s) => s.id), isNot(contains(skill.id)));
-        expect(
-          await setup.database.novelAgentSkillDao.getById(skill.id),
-          isNull,
-        );
-        expect(
-          await setup.database.novelAgentSkillRevisionDao.listRevisions(
-            skill.id,
-          ),
-          isEmpty,
-        );
       }
-      expect(
-        await setup.database.novelAgentSkillDao.getReferencesBySkillIds(
-          retired.map((skill) => skill.id),
-        ),
-        isEmpty,
-      );
-      final files = setup.database.novelAgentSkillRevisionFiles;
-      expect(
-        await (setup.database.select(
-          files,
-        )..where((row) => row.revisionId.isIn(retiredRevisionIds))).get(),
-        isEmpty,
-      );
       final keptLocal = after.singleWhere((skill) => skill.id == local.id);
       expect(keptLocal.sourceKind, AgentSkillSourceKind.novelLocal);
       expect(keptLocal.prompt, local.prompt);
       expect(keptLocal.references, local.references);
-      final localHistory = await setup.database.novelAgentSkillRevisionDao
-          .listRevisions(local.id);
-      final localRevision = await setup.database.novelAgentSkillRevisionDao
-          .getRevision(localHistory.first.id);
-      expect(localRevision!.references, local.references);
       final upgraded = after.singleWhere((skill) => skill.id == writing.id);
       expect(upgraded.name, writing.name);
       expect(upgraded.enabled, isFalse);
       expect(upgraded.sortOrder, writing.sortOrder);
-      expect(upgraded.sourceVersion, '2');
-      expect(upgraded.references, hasLength(6));
-      final slashSkills = await loadChatSlashSkills(db: setup.database);
+      final latest = await const BundledOfficialSkillsLoader().get(
+        rootBundle,
+        '剧本写作',
+      );
+      expect(upgraded.sourceVersion, '${latest.version}');
+      expect(upgraded.references, latest.references);
+      final slashSkills = chatSlashSkills(after);
       expect(
         slashSkills
             .map((skill) => skill.id)
@@ -197,7 +168,7 @@ void main() {
     'two startup readers share slow installation without a page listener',
     () async {
       final detailReady = Completer<void>();
-      final setup = _setup(detailReady: detailReady.future);
+      final setup = await _setup(detailReady: detailReady.future);
       addTearDown(setup.dispose);
       final first = setup.sync();
       final second = setup.sync();
@@ -216,53 +187,135 @@ void main() {
     },
   );
 
+  test('existing users receive skill files and references once', () async {
+    final setup = await _setup();
+    addTearDown(setup.dispose);
+    await markOnboardingCompleted(setup.database);
+    await setup.database.appStateDao.set(
+      key: 'app_initialization.screenplay_official_skills_v1',
+      value: 'completed',
+    );
+    expect((await setup.sync()).installed, setup.catalog.names.length);
+    final installed = await setup.skills();
+    expect(
+      installed.map((skill) => skill.sourceKind),
+      everyElement(AgentSkillSourceKind.official),
+    );
+    expect(setup.catalog.requestedIds, setup.catalog.listingIds);
+    for (final skill in installed) {
+      expect(skill.enabled, isTrue);
+      expect(skill.references, const [
+        AgentSkillReferenceFile(
+          path: 'references/design.md',
+          content: 'reference v1',
+        ),
+      ]);
+      expect(await File('${skill.skillRoot}/SKILL.md').exists(), isTrue);
+      expect(
+        await setup.database.novelAgentSkillRevisionDao.listRevisions(skill.id),
+        isEmpty,
+      );
+    }
+    setup.restart();
+    expect((await setup.sync()).installed, 0);
+    expect((await setup.skills()).map((s) => s.id), installed.map((s) => s.id));
+    expect(setup.catalog.requestedIds, setup.catalog.listingIds);
+  });
+
   test(
-    'existing users receive snapshots, references and install history once',
+    'slow startup upgrade allows loading and renaming installed skills',
     () async {
-      final setup = _setup();
+      final detailReady = Completer<void>();
+      final setup = await _setup(detailReady: detailReady.future);
       addTearDown(setup.dispose);
-      await markOnboardingCompleted(setup.database);
-      await setup.database.appStateDao.set(
-        key: 'app_initialization.screenplay_official_skills_v1',
-        value: 'completed',
+      final notifier = setup.container.read(
+        installedAgentSkillsProvider.notifier,
       );
-      expect((await setup.sync()).installed, setup.catalog.names.length);
-      final installed = await setup.skills();
-      expect(
-        installed.map((skill) => skill.sourceKind),
-        everyElement(AgentSkillSourceKind.official),
+      final name = setup.catalog.names.first;
+      final installed = await notifier.install(
+        InstallSkillInput(
+          sourceKind: AgentSkillSourceKind.official,
+          sourceDisplayName: name,
+          sourceVersion: '1',
+          name: name,
+          description: 'Old official skill',
+          prompt: 'Original instructions',
+        ),
       );
-      expect(setup.catalog.requestedIds, setup.catalog.listingIds);
-      for (final skill in installed) {
-        expect(skill.enabled, isTrue);
-        expect(skill.references, const [
-          AgentSkillReferenceFile(
-            path: 'references/design.md',
-            content: 'reference v1',
-          ),
-        ]);
-        final revisions = await setup.database.novelAgentSkillRevisionDao
-            .listRevisions(skill.id);
-        expect(revisions, hasLength(1));
-        expect(revisions.single.changeSource, SkillRevisionSource.install);
-        final revision = await setup.database.novelAgentSkillRevisionDao
-            .getRevision(revisions.single.id);
-        expect(revision!.references, skill.references);
+      setup.catalog.version = 2;
+      const deadline = Duration(seconds: 5);
+      final sync = setup.sync();
+      try {
+        await setup.catalog.firstDetailRequested.future.timeout(deadline);
+        final loaded = await notifier
+            .readPackageByName(name, forExecution: true)
+            .timeout(deadline);
+        expect(loaded?.prompt, installed.prompt);
+        await notifier.rename(installed.id, 'Renamed skill').timeout(deadline);
+        final renamed = await notifier
+            .readPackageById(installed.id)
+            .timeout(deadline);
+        expect(renamed?.name, 'Renamed skill');
+        expect(renamed?.sourceVersion, '1');
+      } finally {
+        detailReady.complete();
+        await sync;
       }
-      setup.restart();
-      expect((await setup.sync()).installed, 0);
-      expect(
-        (await setup.skills()).map((s) => s.id),
-        installed.map((s) => s.id),
+
+      expect((await sync).upgraded, 1);
+      final upgraded = await notifier.readPackageById(installed.id);
+      expect(upgraded?.sourceVersion, '2');
+      expect(upgraded?.name, 'Renamed skill');
+    },
+  );
+
+  test(
+    'pending official upgrade respects conversion to a local skill',
+    () async {
+      final detailReady = Completer<void>();
+      final setup = await _setup(detailReady: detailReady.future);
+      addTearDown(setup.dispose);
+      final notifier = setup.container.read(
+        installedAgentSkillsProvider.notifier,
       );
-      expect(setup.catalog.requestedIds, setup.catalog.listingIds);
+      final installed = await notifier.install(
+        InstallSkillInput(
+          sourceKind: AgentSkillSourceKind.official,
+          sourceVersion: '1',
+          name: setup.catalog.names.first,
+          description: 'Old official skill',
+          prompt: 'Original instructions',
+        ),
+      );
+      setup.catalog.version = 2;
+      const deadline = Duration(seconds: 5);
+      final upgrade = notifier.upgradeNovelAgentSkill(
+        novelAgentSkillId: installed.id,
+      );
+      try {
+        await setup.catalog.firstDetailRequested.future.timeout(deadline);
+        final local = await notifier
+            .convertToNovelLocal(installed.id)
+            .timeout(deadline);
+        await notifier
+            .updateSnapshotFields(local.copyWith(prompt: 'Local instructions'))
+            .timeout(deadline);
+      } finally {
+        detailReady.complete();
+        await upgrade;
+      }
+
+      expect(await upgrade, isA<UpgradeNotTraceable>());
+      final saved = await notifier.readPackageById(installed.id);
+      expect(saved?.sourceKind, AgentSkillSourceKind.novelLocal);
+      expect(saved?.prompt, 'Local instructions');
     },
   );
 
   test(
     'deleted skills stay removed after restart while new catalog entries install',
     () async {
-      final setup = _setup();
+      final setup = await _setup();
       addTearDown(setup.dispose);
       await setup.sync();
       final removed = (await setup.skills()).first;
@@ -283,7 +336,7 @@ void main() {
   test(
     'renamed disabled official skills upgrade without duplicate installation',
     () async {
-      final setup = _setup();
+      final setup = await _setup();
       addTearDown(setup.dispose);
       await setup.sync();
       final original = (await setup.skills()).first;
@@ -310,7 +363,7 @@ void main() {
   test(
     'local conversion plus rename is not replaced or installed again',
     () async {
-      final setup = _setup();
+      final setup = await _setup();
       addTearDown(setup.dispose);
       await setup.sync();
       final original = (await setup.skills()).first;
@@ -336,7 +389,7 @@ void main() {
   test(
     'pre-existing local name is preserved and recorded as handled',
     () async {
-      final setup = _setup();
+      final setup = await _setup();
       addTearDown(setup.dispose);
       final local = await setup.container
           .read(installedAgentSkillsProvider.notifier)
@@ -364,7 +417,7 @@ void main() {
   test(
     'failed detail retries next startup without duplicate successful installs',
     () async {
-      final setup = _setup(failOnceListingId: 'debug-listing-1');
+      final setup = await _setup(failOnceListingId: 'debug-listing-1');
       addTearDown(setup.dispose);
       final first = await setup.sync();
       expect(first.installed, setup.catalog.names.length - 1);
@@ -382,7 +435,7 @@ void main() {
           await setup.database.novelAgentSkillRevisionDao.listRevisions(
             skill.id,
           ),
-          hasLength(1),
+          isEmpty,
         );
       }
     },
@@ -393,7 +446,20 @@ class _TestSetup {
   _TestSetup(this.database, this.catalog) {
     container = _container();
   }
+  static Future<_TestSetup> create(
+    AppDatabase database,
+    _FakeCatalogService catalog,
+  ) async {
+    final setup = _TestSetup(database, catalog);
+    await setup.store.migrateLegacy(database);
+    return setup;
+  }
+
   final AppDatabase database;
+  final Directory support = Directory.systemTemp.createTempSync(
+    'reveric_sync_',
+  );
+  late final store = AgentSkillFileStore(() async => support);
   final _FakeCatalogService catalog;
   late ProviderContainer container;
 
@@ -401,6 +467,7 @@ class _TestSetup {
     overrides: [
       appDatabaseProvider.overrideWithValue(database),
       agentSkillAppDatabaseProvider.overrideWithValue(database),
+      agentSkillFileStoreProvider.overrideWithValue(store),
       agentSkillCatalogServiceProvider.overrideWithValue(catalog),
     ],
   );
@@ -416,17 +483,20 @@ class _TestSetup {
   Future<void> dispose() async {
     container.dispose();
     await database.close();
+    await support.delete(recursive: true);
   }
 }
 
-_TestSetup _setup({String? failOnceListingId, Future<void>? detailReady}) =>
-    _TestSetup(
-      AppDatabase.forTest(NativeDatabase.memory()),
-      _FakeCatalogService(
-        failOnceListingId: failOnceListingId,
-        detailReady: detailReady,
-      ),
-    );
+Future<_TestSetup> _setup({
+  String? failOnceListingId,
+  Future<void>? detailReady,
+}) => _TestSetup.create(
+  AppDatabase.forTest(NativeDatabase.memory()),
+  _FakeCatalogService(
+    failOnceListingId: failOnceListingId,
+    detailReady: detailReady,
+  ),
+);
 
 class _FakeCatalogService extends AgentSkillCatalogService {
   _FakeCatalogService({this.failOnceListingId, this.detailReady});

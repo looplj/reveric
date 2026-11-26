@@ -1,4 +1,4 @@
-// 职责: 验证脚本提示在确认导入前可见，并允许继续导入文本部分。
+// 职责: 验证导入确认页的脚本标签和同名覆盖选择。
 // 关联文件:
 //   lib/shared/widgets/agent_skill_import_dialog.dart
 //   lib/shared/services/agent_skill_transfer.dart
@@ -23,7 +23,7 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
   for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
-    testWidgets('$platform warns about scripts without blocking text import', (
+    testWidgets('$platform shows the script label and confirms import', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(390, 800));
@@ -57,10 +57,6 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Open import'));
       await tester.pumpAndSettle();
-      expect(
-        find.text(tr(LocaleKeys.agentSkillImportScriptsWarning)),
-        findsOneWidget,
-      );
       expect(
         find.text(tr(LocaleKeys.agentSkillImportHasScripts)),
         findsOneWidget,

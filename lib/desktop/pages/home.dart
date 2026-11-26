@@ -80,7 +80,6 @@ import '../widgets/agent_management/mcp_page.dart';
 import '../widgets/agent_management/expert_team_page.dart';
 import '../features/agent_skills/setup_panel.dart';
 import '../features/agent_skills/setup_edit_panel.dart';
-import '../features/agent_skills/skill_revision_history_dialog.dart';
 import '../widgets/desktop_window_frame.dart';
 import '../widgets/desktop_save_shortcut.dart';
 import '../widgets/novel_create_submitter.dart';
@@ -229,9 +228,6 @@ Widget _buildGlobalSkillEditor({
     headerTrailingInset: DesktopWindowFrame.trailingInset,
     onBack: onBack,
     // 新建草稿还没有任何版本，保存后才出现历史入口。
-    onOpenHistory: activeSkill == null
-        ? null
-        : () => showSkillRevisionHistoryDialog(context, skill: activeSkill!),
     onHasChangesChanged: onHasChangesChanged,
     onRegisterSave: onRegisterSave,
     onRegisterHasChanges: onRegisterHasChanges,

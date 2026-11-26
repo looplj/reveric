@@ -48,7 +48,10 @@ class AgentSkillImportParser {
   /// If `when_to_use` is missing or empty, it falls back to `description`.
   ///
   /// Returns `null` if no valid frontmatter is found.
-  static AgentSkillImportParseResult? parse(String content) {
+  static AgentSkillImportParseResult? parse(
+    String content, {
+    bool installed = false,
+  }) {
     final trimmed = content.trimLeft();
     if (!trimmed.startsWith('---\n') && !trimmed.startsWith('---\r\n')) {
       return null;
@@ -81,10 +84,11 @@ class AgentSkillImportParser {
     if (data is! YamlMap) {
       return null;
     }
-    String text(Object? value) => value is String ? value.trim() : '';
-    final name = text(data['name']);
+    String text(Object? value) =>
+        value is String ? (installed ? value : value.trim()) : '';
+    final name = text(data['name']).trim();
     final description = text(data['description']);
-    if (name.isEmpty || description.isEmpty) {
+    if (name.isEmpty || (!installed && description.isEmpty)) {
       return null;
     }
     final whenToUse = text(data['when_to_use']);
@@ -93,17 +97,19 @@ class AgentSkillImportParser {
     final tags = metadata is YamlMap ? metadata['tags'] : null;
     return AgentSkillImportParseResult(
       name: name,
-      whenToUse: whenToUse.isEmpty ? description : whenToUse,
+      whenToUse: !installed && whenToUse.isEmpty ? description : whenToUse,
       category: category,
       tags: tags is YamlList
           ? tags
                 .whereType<String>()
-                .map((tag) => tag.trim())
+                .map((tag) => installed ? tag : tag.trim())
                 .where((tag) => tag.isNotEmpty)
                 .toList()
           : _parseStringList(text(tags)),
       description: description,
-      body: body.trimLeft(),
+      body: installed && body.startsWith('\n')
+          ? body.substring(1)
+          : (installed ? body : body.trimLeft()),
     );
   }
 
@@ -117,6 +123,7 @@ class AgentSkillImportParser {
     String whenToUse = '',
     String category = '',
     List<String> tags = const [],
+    bool installed = false,
   }) {
     final lines = <String>['---', 'name: ${_escapeScalar(name)}'];
     if (whenToUse.isNotEmpty) {
@@ -129,8 +136,10 @@ class AgentSkillImportParser {
         lines.add('  category: ${_escapeScalar(category)}');
       }
       if (tags.isNotEmpty) {
-        // Spec: metadata values are strings (not YAML lists).
-        lines.add('  tags: ${_escapeScalar(tags.join(', '))}');
+        final serialized = installed
+            ? jsonEncode(tags)
+            : _escapeScalar(tags.join(', '));
+        lines.add('  tags: $serialized');
       }
     }
     lines.add('---');

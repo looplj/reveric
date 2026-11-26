@@ -139,7 +139,8 @@ class AgentSkillImportSourceForm extends HookConsumerWidget {
       request.value = token;
       unawaited(
         scan(() async {
-          final acquired = await ref.read(skillHttpClientFactoryProvider)();
+          final openClient = ref.read(skillHttpClientFactoryProvider);
+          final acquired = await openClient();
           if (!context.mounted || token.isCancelled) {
             acquired.close(force: true);
             return null;
@@ -152,6 +153,7 @@ class AgentSkillImportSourceForm extends HookConsumerWidget {
                   existingNames: existingNames,
                   client: acquired,
                   cancelToken: token,
+                  openPackageClient: openClient,
                 )
                 .timeout(
                   const Duration(minutes: 2),

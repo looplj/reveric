@@ -12,6 +12,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/ai_chat_models.dart';
 import 'package:reveric/shared/models/asset_purpose.dart';
+import 'package:reveric/shared/models/novel_agent_skill.dart';
+import 'package:reveric/shared/services/agent_skill_file_store.dart';
 import 'package:reveric/shared/providers/ai_providers.dart';
 import 'package:reveric/shared/providers/async_read.dart';
 import 'package:reveric/shared/providers/novel_providers.dart';
@@ -143,189 +145,241 @@ void main() {
           input: {'command': 'debug', 'subcommand': 'log', 'options': options},
         );
 
-    test('desktop shell waits for approval before reading or writing files', () async {
-      final root = await Directory.systemTemp.createTemp('shell-permission-');
-      await initializeFileRoot(root);
-      addTearDown(() => root.delete(recursive: true));
-      final workdir = Directory('${root.path}/file_workspaces/work');
-      await workdir.create(recursive: true);
-      await File('${workdir.path}/素材 示例.txt').writeAsString('source material');
-      final marker = File('${workdir.path}/ran.txt');
-      await appDb
-          .into(appDb.novels)
-          .insert(
-            NovelsCompanion.insert(id: 'work', title: 'Work', description: ''),
-          );
-      await appDb
-          .into(appDb.aiChatSessions)
-          .insert(AiChatSessionsCompanion.insert(id: 'owner', novelId: 'work'));
-      final broker = AiToolApprovalController();
-      final permissions = ToolPermissionService(
-        appDb,
-        episodeExists: (_, _) async => false,
-      );
-      final registry = ToolOperationRegistry();
-      final operations = ToolOperationManager(
-        ownerSessionId: 'owner',
-        registry: registry,
-        gate: () => ToolPermissionGate(permissions, broker),
-        onChanged: (_) {},
-        onRecord: (_) {},
-      );
-      addTearDown(() {
-        operations.dispose();
-        registry.dispose();
-        broker.dispose();
-      });
-      final manager = AiToolManager(
-        NovelContentService(db),
-        workingOverlayService: toolManager.workingOverlayService,
-        workId: 'work',
-        sessionId: 'owner',
-        operationHost: ToolOperationHost(operations, media: false),
-      )..registerAllTools();
-      addTearDown(manager.dispose);
-      final tool = Platform.isWindows ? 'PowerShell' : 'Bash';
-      final otherTool = Platform.isWindows ? 'Bash' : 'PowerShell';
-      expect(manager.allToolNames(), contains(tool));
-      expect(manager.allToolNames(), isNot(contains(otherTool)));
-      final command = Platform.isWindows
-          ? "Get-Content -Raw -Encoding UTF8 -LiteralPath '素材 示例.txt'; [Console]::Error.Write('diagnostic'); Set-Content -LiteralPath 'ran.txt' -Value 'ran'"
-          : "cat -- '素材 示例.txt'; printf diagnostic >&2; printf ran > ran.txt";
-      Future<Map<String, dynamic>> execute(
-        String command,
-        String callId, {
-        String? cwd,
-        int? timeout,
-        AgentCancellationToken? cancellation,
-      }) => manager.executeTool(
-        name: tool,
-        callId: callId,
-        context: ToolExecutionContext(
+    test(
+      'desktop shell waits for approval before reading or writing files',
+      () async {
+        final root = await Directory.systemTemp.createTemp('shell-permission-');
+        await initializeFileRoot(root);
+        addTearDown(() => root.delete(recursive: true));
+        final workdir = Directory('${root.path}/file_workspaces/work');
+        await workdir.create(recursive: true);
+        await File(
+          '${workdir.path}/素材 示例.txt',
+        ).writeAsString('source material');
+        final marker = File('${workdir.path}/ran.txt');
+        await appDb
+            .into(appDb.novels)
+            .insert(
+              NovelsCompanion.insert(
+                id: 'work',
+                title: 'Work',
+                description: '',
+              ),
+            );
+        await appDb
+            .into(appDb.aiChatSessions)
+            .insert(
+              AiChatSessionsCompanion.insert(id: 'owner', novelId: 'work'),
+            );
+        final broker = AiToolApprovalController();
+        final permissions = ToolPermissionService(
+          appDb,
+          episodeExists: (_, _) async => false,
+        );
+        final registry = ToolOperationRegistry();
+        final operations = ToolOperationManager(
+          ownerSessionId: 'owner',
+          registry: registry,
+          gate: () => ToolPermissionGate(permissions, broker),
+          onChanged: (_) {},
+          onRecord: (_) {},
+        );
+        addTearDown(() {
+          operations.dispose();
+          registry.dispose();
+          broker.dispose();
+        });
+        final manager = AiToolManager(
+          NovelContentService(db),
+          workingOverlayService: toolManager.workingOverlayService,
+          workId: 'work',
           sessionId: 'owner',
-          sourceSessionId: 'owner',
-          sourceTurnId: 'turn',
-          cancellationToken: cancellation,
-        ),
-        input: {'command': command, 'workdir': ?cwd, 'timeout': ?timeout},
-      );
+          operationHost: ToolOperationHost(operations, media: false),
+        )..registerAllTools();
+        addTearDown(manager.dispose);
+        final tool = Platform.isWindows ? 'PowerShell' : 'Bash';
+        final otherTool = Platform.isWindows ? 'Bash' : 'PowerShell';
+        expect(manager.allToolNames(), contains(tool));
+        expect(manager.allToolNames(), isNot(contains(otherTool)));
+        final command = Platform.isWindows
+            ? "Get-Content -Raw -Encoding UTF8 -LiteralPath '素材 示例.txt'; [Console]::Error.Write('diagnostic'); Set-Content -LiteralPath 'ran.txt' -Value 'ran'"
+            : "cat -- '素材 示例.txt'; printf diagnostic >&2; printf ran > ran.txt";
+        Future<Map<String, dynamic>> execute(
+          String command,
+          String callId, {
+          String? cwd,
+          int? timeout,
+          AgentCancellationToken? cancellation,
+        }) => manager.executeTool(
+          name: tool,
+          callId: callId,
+          context: ToolExecutionContext(
+            sessionId: 'owner',
+            sourceSessionId: 'owner',
+            sourceTurnId: 'turn',
+            cancellationToken: cancellation,
+          ),
+          input: {'command': command, 'workdir': ?cwd, 'timeout': ?timeout},
+        );
 
-      final rejectedRequest = broker.stream.firstWhere(
-        (rows) => rows.isNotEmpty,
-      );
-      final rejected = execute(command, 'rejected');
-      final request = (await rejectedRequest).single;
-      expect(request.action, shellExecutePermission);
-      expect(request.targetPath, await workdir.resolveSymbolicLinks());
-      expect(request.arguments['command'], command);
-      expect(await marker.exists(), false);
-      await broker.resolve(request, allow: false);
-      expect((await rejected)['error_code'], 'permission_denied');
-      expect(await marker.exists(), false);
-
-      final allowedRequest = broker.stream.firstWhere(
-        (rows) => rows.isNotEmpty,
-      );
-      final allowed = execute(command, 'allowed');
-      await broker.resolve((await allowedRequest).single, allow: true);
-      final response = await allowed;
-      expect(response['status'], 'completed', reason: '$response');
-      final result = response['result'] as Map;
-      expect(result['exit_code'], 0);
-      expect((result['stdout'] as String).trim(), 'source material');
-      expect(result['stderr'], 'diagnostic');
-      expect(await marker.exists(), true);
-
-      if (Platform.isMacOS || Platform.isLinux) {
-        final outside = await Directory('${root.path}/outside').create();
-        final other = await Directory('${root.path}/other').create();
-        final link = await Link('${workdir.path}/linked').create(outside.path);
-        final resolved = await outside.resolveSymbolicLinks();
-
-        final linkedRequest = broker.stream.firstWhere(
+        final rejectedRequest = broker.stream.firstWhere(
           (rows) => rows.isNotEmpty,
         );
-        final linked = execute('pwd -P', 'linked-cwd', cwd: 'linked');
-        final linkedApproval = (await linkedRequest).single;
-        await broker.resolve(linkedApproval, allow: true);
-        final linkedResult = await linked;
-        expect(linkedResult['status'], 'completed', reason: '$linkedResult');
+        final rejected = execute(command, 'rejected');
+        final request = (await rejectedRequest).single;
+        expect(request.action, shellExecutePermission);
+        expect(request.targetPath, await workdir.resolveSymbolicLinks());
+        expect(request.arguments['command'], command);
+        expect(await marker.exists(), false);
+        await broker.resolve(request, allow: false);
+        expect((await rejected)['error_code'], 'permission_denied');
+        expect(await marker.exists(), false);
+
+        final allowedRequest = broker.stream.firstWhere(
+          (rows) => rows.isNotEmpty,
+        );
+        final allowed = execute(command, 'allowed');
+        await broker.resolve((await allowedRequest).single, allow: true);
+        final response = await allowed;
+        expect(response['status'], 'completed', reason: '$response');
+        final result = response['result'] as Map;
+        expect(result['exit_code'], 0);
+        expect((result['stdout'] as String).trim(), 'source material');
+        expect(result['stderr'], 'diagnostic');
+        expect(await marker.exists(), true);
+
+        final skills = AgentSkillFileStore(() async => root);
+        await skills.migrateLegacy(appDb);
+        final installed = await skills.save(
+          const NovelAgentSkillModel(
+            id: 'shell_skill',
+            sourceKind: AgentSkillSourceKind.novelLocal,
+            name: 'shell-skill',
+            description: 'read an asset',
+            prompt: 'Run the script in scripts/',
+          ),
+          files: {
+            'assets/value.txt': utf8.encode('from a skill asset'),
+            if (Platform.isWindows)
+              'scripts/read.cmd': utf8.encode(r'@type assets\value.txt')
+            else
+              'scripts/read.sh': utf8.encode("cat -- assets/value.txt"),
+          },
+        );
+        final skillRequest = broker.stream.firstWhere(
+          (rows) => rows.isNotEmpty,
+        );
+        final skillProcess = execute(
+          Platform.isWindows
+              ? r'cmd.exe /d /c scripts\read.cmd'
+              : 'bash scripts/read.sh',
+          'installed-skill',
+          cwd: installed.skillRoot!,
+        );
+        final skillApproval = (await skillRequest).single;
         expect(
-          ((linkedResult['result'] as Map)['stdout'] as String).trim(),
-          resolved,
+          skillApproval.targetPath,
+          await Directory(installed.skillRoot!).resolveSymbolicLinks(),
         );
-        expect(linkedApproval.targetPath, resolved);
+        await broker.resolve(skillApproval, allow: true);
+        final skillResult = (await skillProcess)['result'] as Map;
+        expect(skillResult['exit_code'], 0);
+        expect((skillResult['stdout'] as String).trim(), 'from a skill asset');
 
-        final changedRequest = broker.stream.firstWhere(
-          (rows) => rows.isNotEmpty,
+        if (Platform.isMacOS || Platform.isLinux) {
+          final outside = await Directory('${root.path}/outside').create();
+          final other = await Directory('${root.path}/other').create();
+          final link = await Link(
+            '${workdir.path}/linked',
+          ).create(outside.path);
+          final resolved = await outside.resolveSymbolicLinks();
+
+          final linkedRequest = broker.stream.firstWhere(
+            (rows) => rows.isNotEmpty,
+          );
+          final linked = execute('pwd -P', 'linked-cwd', cwd: 'linked');
+          final linkedApproval = (await linkedRequest).single;
+          await broker.resolve(linkedApproval, allow: true);
+          final linkedResult = await linked;
+          expect(linkedResult['status'], 'completed', reason: '$linkedResult');
+          expect(
+            ((linkedResult['result'] as Map)['stdout'] as String).trim(),
+            resolved,
+          );
+          expect(linkedApproval.targetPath, resolved);
+
+          final changedRequest = broker.stream.firstWhere(
+            (rows) => rows.isNotEmpty,
+          );
+          final changed = execute(
+            'printf ran > changed-cwd.txt',
+            'changed-cwd',
+            cwd: link.path,
+          );
+          final changedApproval = (await changedRequest).single;
+          expect(changedApproval.targetPath, resolved);
+          await link.update(other.path);
+          await broker.resolve(changedApproval, allow: true);
+          expect((await changed)['error_code'], 'conflict');
+          expect(await File('${outside.path}/changed-cwd.txt').exists(), false);
+          expect(await File('${other.path}/changed-cwd.txt').exists(), false);
+        }
+
+        await permissions.setRule(
+          shellExecutePermission,
+          const ToolPermissionScope.global(),
+          ToolPermissionDecision.allow,
         );
-        final changed = execute(
-          'printf ran > changed-cwd.txt',
-          'changed-cwd',
-          cwd: link.path,
+        final noMatch = await execute(
+          Platform.isWindows
+              ? "Write-Output 'checked'; [Console]::Error.Write('diagnostic'); exit 1"
+              : "printf checked; printf diagnostic >&2; grep -q -- 'never matches' '素材 示例.txt'",
+          'nonzero-exit',
         );
-        final changedApproval = (await changedRequest).single;
-        expect(changedApproval.targetPath, resolved);
-        await link.update(other.path);
-        await broker.resolve(changedApproval, allow: true);
-        expect((await changed)['error_code'], 'conflict');
-        expect(await File('${outside.path}/changed-cwd.txt').exists(), false);
-        expect(await File('${other.path}/changed-cwd.txt').exists(), false);
-      }
+        expect(noMatch['ok'], true, reason: '$noMatch');
+        expect(noMatch['status'], 'completed');
+        final noMatchResult = noMatch['result'] as Map;
+        expect(noMatchResult['ok'], true);
+        expect(noMatchResult['exit_code'], 1);
+        expect((noMatchResult['stdout'] as String).trim(), 'checked');
+        expect(noMatchResult['stderr'], 'diagnostic');
+        for (final result in [noMatch, noMatchResult]) {
+          expect(result, isNot(contains('error')));
+          expect(result, isNot(contains('error_code')));
+        }
 
-      await permissions.setRule(
-        shellExecutePermission,
-        const ToolPermissionScope.global(),
-        ToolPermissionDecision.allow,
-      );
-      final noMatch = await execute(
-        Platform.isWindows
-            ? "Write-Output 'checked'; [Console]::Error.Write('diagnostic'); exit 1"
-            : "printf checked; printf diagnostic >&2; grep -q -- 'never matches' '素材 示例.txt'",
-        'nonzero-exit',
-      );
-      expect(noMatch['ok'], true, reason: '$noMatch');
-      expect(noMatch['status'], 'completed');
-      final noMatchResult = noMatch['result'] as Map;
-      expect(noMatchResult['ok'], true);
-      expect(noMatchResult['exit_code'], 1);
-      expect((noMatchResult['stdout'] as String).trim(), 'checked');
-      expect(noMatchResult['stderr'], 'diagnostic');
-      for (final result in [noMatch, noMatchResult]) {
-        expect(result, isNot(contains('error')));
-        expect(result, isNot(contains('error_code')));
-      }
+        final timedOut = await execute(
+          Platform.isWindows ? 'Start-Sleep -Seconds 10' : 'sleep 10',
+          'timed-out',
+          timeout: 500,
+        );
+        expect(timedOut['ok'], false, reason: '$timedOut');
+        expect(timedOut['status'], 'failed');
+        expect(timedOut['error_code'], 'deadline_exceeded');
+        expect((timedOut['result'] as Map)['timed_out'], true);
 
-      final timedOut = await execute(
-        Platform.isWindows ? 'Start-Sleep -Seconds 10' : 'sleep 10',
-        'timed-out',
-        timeout: 500,
-      );
-      expect(timedOut['ok'], false, reason: '$timedOut');
-      expect(timedOut['status'], 'failed');
-      expect(timedOut['error_code'], 'deadline_exceeded');
-      expect((timedOut['result'] as Map)['timed_out'], true);
-
-      final cancellation = AgentCancellationController();
-      final running = execute(
-        Platform.isWindows
-            ? "Set-Content -LiteralPath 'started.txt' -Value 'started'; Start-Sleep -Seconds 20"
-            : 'printf started > started.txt; sleep 20; :',
-        'cancelled',
-        cancellation: cancellation.token,
-      );
-      final started = File('${workdir.path}/started.txt');
-      final deadline = DateTime.now().add(const Duration(seconds: 8));
-      while (!await started.exists() && DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      cancellation.cancel();
-      expect(await started.exists(), true);
-      final cancelled = await running.timeout(const Duration(seconds: 5));
-      expect(cancelled['ok'], false);
-      expect(cancelled['status'], 'cancelled');
-      expect(cancelled['error_code'], 'cancelled');
-    }, skip: !(Platform.isMacOS || Platform.isLinux || Platform.isWindows));
+        final cancellation = AgentCancellationController();
+        final running = execute(
+          Platform.isWindows
+              ? "Set-Content -LiteralPath 'started.txt' -Value 'started'; Start-Sleep -Seconds 20"
+              : 'printf started > started.txt; sleep 20; :',
+          'cancelled',
+          cancellation: cancellation.token,
+        );
+        final started = File('${workdir.path}/started.txt');
+        final deadline = DateTime.now().add(const Duration(seconds: 8));
+        while (!await started.exists() && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        cancellation.cancel();
+        expect(await started.exists(), true);
+        final cancelled = await running.timeout(const Duration(seconds: 5));
+        expect(cancelled['ok'], false);
+        expect(cancelled['status'], 'cancelled');
+        expect(cancelled['error_code'], 'cancelled');
+      },
+      skip: !(Platform.isMacOS || Platform.isLinux || Platform.isWindows),
+    );
 
     test(
       'ffmpeg frames validates input and obeys files.read permission',

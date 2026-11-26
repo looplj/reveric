@@ -19,15 +19,13 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:reveric/shared/database/app_database.dart';
-import 'package:reveric/shared/providers/agent_skill_providers.dart'
-    show agentSkillAppDatabaseProvider;
-import 'package:reveric/shared/models/agent_skill_revision.dart';
 import 'package:reveric/shared/models/novel_agent_skill.dart';
 import 'package:reveric/shared/providers/agent_skill_catalog_providers.dart';
 import 'package:reveric/shared/providers/novel_agent_skill_providers.dart';
 import 'package:reveric/shared/providers/novel_providers.dart'
     show appDatabaseProvider;
 import 'package:reveric/shared/services/agent_skill_catalog_service.dart';
+import 'package:reveric/shared/services/agent_skill_file_store.dart';
 import 'package:reveric/shared/services/ai/agent_skills_run_command_handler.dart';
 
 class _FileAssetBundle extends AssetBundle {
@@ -40,20 +38,143 @@ class _FileAssetBundle extends AssetBundle {
 
 /// officialAgentSkillsProvider 读本地打包目录，测试仍 override catalog service；
 /// 测试内统一覆盖为内存库,避免命中真实 path_provider/sqlite。
-ProviderContainer _buildContainer({required List<Override> overrides}) {
+Future<ProviderContainer> _buildContainer({
+  required List<Override> overrides,
+}) async {
   final database = AppDatabase.forTest(NativeDatabase.memory());
+  final support = Directory.systemTemp.createTempSync('reveric_tools_skills_');
+  addTearDown(() => support.delete(recursive: true));
   addTearDown(database.close);
+  final store = _ObservedSkillStore(() async => support);
+  await store.migrateLegacy(database);
   return ProviderContainer(
     overrides: [
       appDatabaseProvider.overrideWithValue(database),
       agentSkillAppDatabaseProvider.overrideWithValue(database),
+      agentSkillFileStoreProvider.overrideWithValue(store),
       ...overrides,
     ],
   );
 }
 
+class _ObservedSkillStore extends AgentSkillFileStore {
+  _ObservedSkillStore(super.supportDirectory);
+
+  int fullReads = 0;
+  final packagesRead = <String>[];
+
+  @override
+  Future<List<NovelAgentSkillModel>> readCurrent() {
+    fullReads++;
+    return super.readCurrent();
+  }
+
+  @override
+  Future<NovelAgentSkillModel> readPackage(NovelAgentSkillModel installed) {
+    packagesRead.add(installed.id);
+    return super.readPackage(installed);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'skill updates preserve the loaded package path and return it',
+    () async {
+      final container = await _buildContainer(overrides: const []);
+      addTearDown(container.dispose);
+      final handler = AgentSkillsRunCommandHandler(container: container);
+      final notifier = container.read(installedAgentSkillsProvider.notifier);
+      final installed = await notifier.install(
+        InstallSkillInput(
+          sourceKind: AgentSkillSourceKind.novelLocal,
+          name: 'Notes',
+          description: 'Notes',
+          prompt: 'Original instructions',
+          packageFiles: {
+            'scripts/render.py': [1, 2, 3],
+          },
+        ),
+      );
+      final loaded = (await notifier.readPackageByName('Notes'))!;
+      final root = loaded.skillRoot!;
+      final script = File('$root/scripts/render.py');
+
+      final updated = await handler.run({
+        'action': 'update',
+        'id': installed.id,
+        'prompt': 'Updated instructions',
+      });
+      expect(updated['ok'], isTrue, reason: '$updated');
+      expect(await script.readAsBytes(), [1, 2, 3]);
+      expect((updated['skill'] as Map)['skill_root'], root);
+
+      final reference = await handler.run({
+        'action': 'reference-create',
+        'name': 'Notes',
+        'path': 'references/guide.md',
+        'content': 'New guide',
+      });
+      expect(reference['ok'], isTrue, reason: '$reference');
+      expect(reference['skill_root'], root);
+      expect(await script.readAsBytes(), [1, 2, 3]);
+      expect(
+        await File('$root/references/guide.md').readAsString(),
+        'New guide',
+      );
+      expect(
+        (await notifier.readPackageByName('Notes'))!.prompt,
+        'Updated instructions',
+      );
+    },
+  );
+
+  test(
+    'list uses cached metadata and reference-get reads only the selected package',
+    () async {
+      final container = await _buildContainer(overrides: const []);
+      addTearDown(container.dispose);
+      final handler = AgentSkillsRunCommandHandler(container: container);
+      final notifier = container.read(installedAgentSkillsProvider.notifier);
+      const input = InstallSkillInput(
+        sourceKind: AgentSkillSourceKind.novelLocal,
+        name: 'Notes',
+        description: 'Notes',
+        prompt: 'Instructions',
+        references: [
+          AgentSkillReferenceFile(
+            path: 'references/guide.md',
+            content: 'Original body',
+          ),
+        ],
+      );
+      final selected = await notifier.install(input);
+      await notifier.install(input.copyWith(name: 'Unrelated'));
+      final store =
+          container.read(agentSkillFileStoreProvider) as _ObservedSkillStore;
+      await File(
+        '${selected.skillRoot}/references/guide.md',
+      ).writeAsString('Body updated on disk');
+      store.fullReads = 0;
+
+      final listed = await handler.run({'action': 'list'});
+      expect(listed['entries'], hasLength(2));
+      expect(store.packagesRead, isEmpty);
+
+      final read = await handler.run({
+        'action': 'reference-get',
+        'name': selected.name,
+        'path': 'references/guide.md',
+      });
+      expect(read['reference'], {
+        'path': 'references/guide.md',
+        'content': 'Body updated on disk',
+      });
+      expect(store.fullReads, 0);
+      expect(store.packagesRead, [selected.id]);
+    },
+  );
 
   test('search returns compact official catalog entries', () async {
     final fake = _FakeAgentSkillCatalogService(
@@ -71,7 +192,7 @@ void main() {
         ],
       ),
     );
-    final container = _buildContainer(
+    final container = await _buildContainer(
       overrides: [agentSkillCatalogServiceProvider.overrideWithValue(fake)],
     );
     addTearDown(container.dispose);
@@ -136,7 +257,7 @@ void main() {
         ],
       ),
     );
-    final container = _buildContainer(
+    final container = await _buildContainer(
       overrides: [agentSkillCatalogServiceProvider.overrideWithValue(fake)],
     );
     addTearDown(container.dispose);
@@ -195,8 +316,8 @@ void main() {
     },
   );
 
-  test('同一 turn 内的多次写入聚合成一条历史版本', () async {
-    final container = _buildContainer(overrides: const []);
+  test('单轮的多次附件写入更新当前 Skill 文件', () async {
+    final container = await _buildContainer(overrides: const []);
     addTearDown(container.dispose);
     final handler = AgentSkillsRunCommandHandler(container: container);
     final database = container.read(agentSkillAppDatabaseProvider);
@@ -222,14 +343,15 @@ void main() {
     final revisions = await database.novelAgentSkillRevisionDao.listRevisions(
       skillId,
     );
-    // install 基线 + 本轮聚合出的一条。
-    expect(revisions, hasLength(2));
-    expect(revisions.first.changeSource, SkillRevisionSource.ai_edit);
-    expect(revisions.first.fileCount, 3);
+    expect(revisions, isEmpty);
+    final listed = await container
+        .read(installedAgentSkillsProvider.notifier)
+        .readCurrent();
+    expect(listed.single.references, hasLength(3));
   });
 
   test('AI 改写官方技能会先脱离来源转为本地', () async {
-    final container = _buildContainer(overrides: const []);
+    final container = await _buildContainer(overrides: const []);
     addTearDown(container.dispose);
     final handler = AgentSkillsRunCommandHandler(container: container);
     final notifier = container.read(installedAgentSkillsProvider.notifier);
@@ -267,7 +389,7 @@ void main() {
   });
 
   test('AI 改写本地技能不产生脱离来源说明', () async {
-    final container = _buildContainer(overrides: const []);
+    final container = await _buildContainer(overrides: const []);
     addTearDown(container.dispose);
     final handler = AgentSkillsRunCommandHandler(container: container);
 
@@ -289,7 +411,7 @@ void main() {
   });
 
   test('AI 改写官方技能的附件同样会脱离来源', () async {
-    final container = _buildContainer(overrides: const []);
+    final container = await _buildContainer(overrides: const []);
     addTearDown(container.dispose);
     final handler = AgentSkillsRunCommandHandler(container: container);
     final notifier = container.read(installedAgentSkillsProvider.notifier);
@@ -325,7 +447,7 @@ void main() {
   });
 
   test('Reference CRUD persists nested files by Skill name', () async {
-    final container = _buildContainer(overrides: const []);
+    final container = await _buildContainer(overrides: const []);
     addTearDown(container.dispose);
     final handler = AgentSkillsRunCommandHandler(container: container);
 
@@ -414,7 +536,7 @@ void main() {
   test(
     'canvas cannot bypass bundled filtering through reference commands',
     () async {
-      final container = _buildContainer(overrides: const []);
+      final container = await _buildContainer(overrides: const []);
       addTearDown(container.dispose);
       final handler = AgentSkillsRunCommandHandler(
         container: container,
@@ -452,7 +574,7 @@ void main() {
   );
 
   test('continuity references load independently for each task', () async {
-    final container = _buildContainer(overrides: const []);
+    final container = await _buildContainer(overrides: const []);
     addTearDown(container.dispose);
     final handler = AgentSkillsRunCommandHandler(
       container: container,
@@ -495,7 +617,7 @@ void main() {
   });
 
   test('canvas reference access follows the feature switch', () async {
-    final container = _buildContainer(overrides: const []);
+    final container = await _buildContainer(overrides: const []);
     addTearDown(container.dispose);
     final handler = AgentSkillsRunCommandHandler(
       container: container,
@@ -518,7 +640,7 @@ void main() {
   test(
     'bundled skill references are readable but cannot be modified',
     () async {
-      final container = _buildContainer(overrides: const []);
+      final container = await _buildContainer(overrides: const []);
       addTearDown(container.dispose);
       final handler = AgentSkillsRunCommandHandler(
         container: container,
@@ -562,7 +684,7 @@ void main() {
   test(
     'management guides are fetched individually and remain read-only',
     () async {
-      final container = _buildContainer(overrides: const []);
+      final container = await _buildContainer(overrides: const []);
       addTearDown(container.dispose);
       final handler = AgentSkillsRunCommandHandler(
         container: container,
