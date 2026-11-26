@@ -341,6 +341,47 @@ void main() {
     ).validateParameters(request, []);
   });
 
+  test('OpenRouter enables multimodal references only for declared models', () {
+    const multimodal = {
+      'bytedance/seedance-2.5',
+      'bytedance/seedance-2.5-flash',
+      'bytedance/seedance-2.0',
+      'bytedance/seedance-2.0-fast',
+      'bytedance/seedance-2.0-mini',
+      'alibaba/wan-3.0',
+      'minimax/hailuo-3',
+      'heygen/heygen-video-1',
+    };
+    const roles = [
+      VideoInputRole.reference_image,
+      VideoInputRole.reference_video,
+      VideoInputRole.reference_audio,
+    ];
+    const providerType = 'openrouter';
+    const validator = VideoCapabilities(providerType);
+    for (final id in approvedOpenRouterModels) {
+      final channel = lookupVideoChannelModel(providerType, id)!;
+      if (!multimodal.contains(id)) {
+        expect(channel.capabilities.references.keys, [
+          VideoMediaKind.image,
+        ], reason: id);
+        continue;
+      }
+      validator.validateParameters(
+        VideoRequest(
+          modelId: id,
+          prompt: 'Generate a clip using the three references.',
+          mode: VideoMode.reference,
+          resolution: channel.resolutions.first,
+          ratio: channel.ratios.first,
+          durationSeconds: channel.minDurationSeconds,
+          audio: channel.requestDefaults.audio,
+        ),
+        roles,
+      );
+    }
+  });
+
   test('Ark lists Seedance 2.5 Flash with its own generation limits', () {
     const id = 'doubao-seedance-2-5-flash-261115';
     expect(videoModelsForProvider('volcengine'), contains(id));
@@ -387,7 +428,10 @@ void main() {
     );
     expect(gateway.capabilities.supportsAudioOnlyReference, isFalse);
     expect(gateway.capabilities.framesRequireAdaptiveRatio, isTrue);
-    expect(router.capabilities.references.keys, [VideoMediaKind.image]);
+    expect(
+      router.capabilities.references.keys,
+      unorderedEquals(VideoMediaKind.values),
+    );
     expect(router.capabilities.maxReferences, 10);
     expect(router.ratios, isNot(contains('adaptive')));
     expect(router.capabilities.framesRequireAdaptiveRatio, isFalse);

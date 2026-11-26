@@ -48,38 +48,46 @@ class OpenRouterVideoClient extends VideoClient {
   Map<String, dynamic> encode(
     VideoRequest request,
     List<VideoReference> references,
-  ) => {
-    'model': request.modelId,
-    'prompt': request.prompt,
-    'duration': request.durationSeconds,
-    'resolution': request.resolution,
-    'aspect_ratio': request.ratio,
-    if (request.audio != null) 'generate_audio': request.audio,
-    if (references.any(
-      (r) =>
-          r.role == VideoInputRole.first_frame ||
-          r.role == VideoInputRole.last_frame,
-    ))
-      'frame_images': [
-        for (final r in references)
-          if (r.role == VideoInputRole.first_frame ||
-              r.role == VideoInputRole.last_frame)
-            {
-              'type': 'image_url',
-              'image_url': {'url': r.url},
-              'frame_type': r.role.name,
-            },
-      ],
-    if (references.any((r) => r.role == VideoInputRole.reference_image))
-      'input_references': [
-        for (final r in references)
-          if (r.role == VideoInputRole.reference_image)
-            {
-              'type': 'image_url',
-              'image_url': {'url': r.url},
-            },
-      ],
-  };
+  ) {
+    const referenceTypes = {
+      VideoInputRole.reference_image: 'image_url',
+      VideoInputRole.reference_video: 'video_url',
+      VideoInputRole.reference_audio: 'audio_url',
+    };
+    final inputReferences = [
+      for (final reference in references)
+        if (referenceTypes[reference.role] case final type?)
+          {
+            'type': type,
+            type: {'url': reference.url},
+          },
+    ];
+    return {
+      'model': request.modelId,
+      'prompt': request.prompt,
+      'duration': request.durationSeconds,
+      'resolution': request.resolution,
+      'aspect_ratio': request.ratio,
+      if (request.audio != null) 'generate_audio': request.audio,
+      if (references.any(
+        (r) =>
+            r.role == VideoInputRole.first_frame ||
+            r.role == VideoInputRole.last_frame,
+      ))
+        'frame_images': [
+          for (final r in references)
+            if (r.role == VideoInputRole.first_frame ||
+                r.role == VideoInputRole.last_frame)
+              {
+                'type': 'image_url',
+                'image_url': {'url': r.url},
+                'frame_type': r.role.name,
+              },
+        ],
+      if (inputReferences.isNotEmpty) 'input_references': inputReferences,
+    };
+  }
+
   @override
   String submissionId(Map<String, dynamic> json) => json['id'] as String;
   @override

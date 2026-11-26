@@ -411,6 +411,87 @@ void main() {
     },
   );
 
+  test('Wan 3.0 submits image, video and audio references in order', () async {
+    const request = VideoRequest(
+      modelId: 'alibaba/wan-3.0',
+      prompt: 'Use the voice from audio 1 for the character in image 1.',
+      mode: VideoMode.reference,
+      resolution: '720p',
+      ratio: '16:9',
+      audio: true,
+    );
+    const image = VideoReference(
+      role: VideoInputRole.reference_image,
+      url: 'https://cdn.test/character.png',
+      mimeType: 'image/png',
+      fileSize: 42,
+      mediaInfo: VideoMediaInfo(width: 720, height: 720),
+    );
+    const video = VideoReference(
+      role: VideoInputRole.reference_video,
+      url: 'https://cdn.test/motion.mp4',
+      mimeType: 'video/mp4',
+      fileSize: 42,
+      mediaInfo: VideoMediaInfo(
+        width: 720,
+        height: 720,
+        durationMs: 3000,
+        frameRate: 24,
+      ),
+    );
+    const audioUrls = [
+      'https://cdn.test/voice.mp3',
+      'data:audio/mpeg;base64,YWJj',
+    ];
+    final submittedAudioUrls = <String>[];
+    final transport = MockClient((r) async {
+      expect(r.method, 'POST');
+      expect(r.url.path, '/api/v1/videos');
+      final body = jsonDecode(r.body) as Map<String, dynamic>;
+      expect(body['model'], request.modelId);
+      expect(body['generate_audio'], isTrue);
+      expect(body, isNot(contains('frame_images')));
+      final references = body['input_references'] as List<dynamic>;
+      expect(references, hasLength(3));
+      expect(references.first, {
+        'type': 'image_url',
+        'image_url': {'url': image.url},
+      });
+      expect(references[1], {
+        'type': 'video_url',
+        'video_url': {'url': video.url},
+      });
+      final audioUrl = audioUrls[submittedAudioUrls.length];
+      expect(references.last, {
+        'type': 'audio_url',
+        'audio_url': {'url': audioUrl},
+      });
+      submittedAudioUrls.add(audioUrl);
+      return http.Response('{"id":"job","status":"pending"}', 202);
+    });
+    addTearDown(transport.close);
+    final client = OpenRouterVideoClient(
+      apiKey: 'key',
+      httpClient: transport,
+      providerType: 'openrouter',
+    );
+
+    for (final audioUrl in audioUrls) {
+      await client.submitNative(request, [
+        image,
+        video,
+        VideoReference(
+          role: VideoInputRole.reference_audio,
+          url: audioUrl,
+          mimeType: 'audio/mpeg',
+          fileSize: 3,
+          mediaInfo: const VideoMediaInfo(durationMs: 3000),
+        ),
+      ]);
+    }
+    expect(submittedAudioUrls, audioUrls);
+  });
+
   test(
     'video download authenticates canonical endpoint and drops key on redirects',
     () async {
