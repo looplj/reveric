@@ -1,9 +1,10 @@
-// 职责: 执行制作画布、剧本制作设置与视觉风格和素材查询工具，保留事务与变更历史。
+// 职责: 执行制作画布、剧本制作设置、视觉风格和素材工具，保留事务与变更历史。
 // 关联文件:
 //   lib/shared/services/ai/tools.dart
 //   lib/shared/services/ai/tools_production_schema.dart
 //   lib/shared/services/storyboard/service.dart
 //   lib/shared/services/production/canvas_service.dart
+//   lib/shared/services/production/share_asset_orchestrator.dart
 part of 'tools.dart';
 
 extension _ProductionStyleAccess on _AiToolManagerBase {
@@ -622,6 +623,8 @@ const _assetsHelp =
     'assets resolve-path: asset_id required. Returns absolute_path for an existing local asset file. '
     'assets view-image: id required. Returns the same fields plus viewable image content; '
     'only image assets are accepted. '
+    'assets share: id required. Makes an asset in a work\'s asset library '
+    'available to all works, keeping its id and references. '
     'assets certify: id and provider_id required; image assets only. '
     'Registers the asset into the provider\'s private asset library; '
     'the provider must have asset_certification=true. '
@@ -633,7 +636,9 @@ const _assetsHelp =
     'transcription model. Returns a run_id and delivers a transcript JSON file. '
     'assets separate-audio: id required; video with an audio track. Returns a run_id '
     'and delivers an independent M4A asset. '
-    'Includes this work’s assets and shared assets, whether or not they are in the asset library. '
+    'list accepts an optional work_id from Read /works and lists assets from '
+    'that work plus shared assets. The default is the current work. '
+    'Queries include assets whether or not they are in the asset library. '
     'in_library is true only for assets the user added to the asset library; '
     'pickers in the app list only those, while references by asset id work either way.';
 
@@ -655,6 +660,7 @@ extension _AssetCommands on _AiToolManagerBase {
       'resolve-path',
       'view-image',
       'certify',
+      'share',
       'transcribe',
       'separate-audio',
     }.contains(action)) {
@@ -663,7 +669,7 @@ extension _AssetCommands on _AiToolManagerBase {
       );
     }
     _productionCommandKeys(options, switch (action) {
-      'list' => {'type', 'search'},
+      'list' => {'type', 'search', 'work_id'},
       'resolve-path' => {'asset_id'},
       'certify' => {'id', 'provider_id'},
       _ => {'id'},
@@ -673,6 +679,9 @@ extension _AssetCommands on _AiToolManagerBase {
       'resolve-path' => _productionCommandText(options, 'asset_id'),
       _ => _productionCommandText(options, 'id'),
     };
+    final listWorkId = options.containsKey('work_id')
+        ? _productionCommandText(options, 'work_id').trim()
+        : null;
     for (final key in ['type', 'search']) {
       if (options.containsKey(key) && options[key] is! String) {
         throw FormatException('$key must be a string.');
@@ -689,8 +698,20 @@ extension _AssetCommands on _AiToolManagerBase {
     if (!identical(host.canvas.db, _contentService.database)) {
       throw const ToolOperationException(
         'permission_denied',
-        'Cross-work asset queries are unavailable.',
+        'The asset host does not match the active work session.',
       );
+    }
+    if (listWorkId != null &&
+        listWorkId != host.canvas.novelId &&
+        await host.database.novelDao.get(listWorkId) == null) {
+      throw ToolOperationException(
+        'not_found',
+        'Work not found: $listWorkId.',
+        hint: 'Use Read /works to find the source work_id.',
+      );
+    }
+    if (action == 'share') {
+      return _shareAsset(host, id!);
     }
     if (action == 'resolve-path') {
       final asset = await host.database.assetDao.getAsset(id!);
@@ -754,7 +775,7 @@ extension _AssetCommands on _AiToolManagerBase {
     }
     final assets = await host.database.assetDao
         .watchAssets(
-          novelId: host.canvas.novelId,
+          novelId: listWorkId ?? host.canvas.novelId,
           type: options['type'] as String?,
         )
         .first;
@@ -825,6 +846,42 @@ extension _AssetCommands on _AiToolManagerBase {
       ...commandFileResult(await _viewAssetFile(stored), files),
       ...entry,
     };
+  }
+
+  Future<Map<String, dynamic>> _shareAsset(
+    ProductionToolHost host,
+    String id,
+  ) async {
+    final asset = await host.database.assetDao.getAsset(id);
+    if (asset == null) {
+      throw const ToolOperationException('not_found', 'Asset not found.');
+    }
+    final canvas = host.canvas;
+    try {
+      final shared = await ShareAssetOrchestrator().run(
+        library: canvas.library,
+        assetId: asset.id,
+        sourceNovelId: asset.novelId ?? canvas.novelId,
+      );
+      return {
+        'ok': true,
+        'id': shared.id,
+        'name': shared.name,
+        'shared': true,
+        'file_path': shared.path,
+      };
+    } on MediaException catch (error) {
+      throw ToolOperationException(
+        'failed_precondition',
+        'Sharing requires an asset in the asset library with a valid local '
+            'media file. ${error.message ?? error.reason.name}',
+      );
+    } on FileSystemException catch (error) {
+      throw ToolOperationException(
+        'failed_precondition',
+        'Could not move the asset file to shared storage: $error',
+      );
+    }
   }
 
   Future<Map<String, dynamic>> _certifyAsset(

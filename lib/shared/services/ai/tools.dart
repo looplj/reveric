@@ -69,6 +69,7 @@ import '../../models/map_agent.dart';
 import '../../models/screenplay.dart';
 import '../../models/production/settings.dart';
 import '../production/canvas_service.dart';
+import '../production/share_asset_orchestrator.dart';
 import '../production/voices.dart';
 import '../../models/production/media.dart';
 import '../../models/screenplay_element.dart';

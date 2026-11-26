@@ -181,6 +181,7 @@ mixin _AiToolManagerRunMixin
           'Image content must be viewed through a direct Run call.',
         ),
         'certify': _RunCodemodeAccess.write(),
+        'share': _RunCodemodeAccess.write(),
         'transcribe': _RunCodemodeAccess.write(),
         'separate-audio': _RunCodemodeAccess.write(),
       },
@@ -191,6 +192,7 @@ mixin _AiToolManagerRunMixin
         'resolve-path': RunPermission.none(),
         'view-image': RunPermission.none(),
         'certify': RunPermission.none(),
+        'share': RunPermission.none(),
         'transcribe': RunPermission.required('media.transcribe'),
         'separate-audio': RunPermission.none(),
       },
@@ -789,9 +791,9 @@ mixin _AiToolManagerRunMixin
         // These groups have no excluded actions, so their existing usage is safe.
         if (entry.key == 'assets') {
           lines.add(
-            'list options={type?, search?}; read options={id}; '
+            'list options={type?, search?, work_id?}; read options={id}; '
             'resolve-path options={asset_id} returns absolute_path; '
-            'certify options={id, provider_id}.',
+            'certify options={id, provider_id}; share options={id}.',
           );
         } else {
           lines.add(

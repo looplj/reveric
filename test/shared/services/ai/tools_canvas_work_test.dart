@@ -316,6 +316,103 @@ void main() {
   );
 
   test(
+    'assets list selects a work and sharing uses the asset ID alone',
+    () async {
+      await app.novelDao.create(
+        id: 'other',
+        title: 'Other',
+        description: '',
+        contentDatabasePath: db.filePath,
+      );
+      Future<File> addAsset(
+        String id,
+        String owner, {
+        bool inLibrary = true,
+      }) async {
+        final path = 'file_workspaces/$owner/videos/$id.mp4';
+        final file = File(canvas.library.resolvePath(path));
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes([1, 2, 3]);
+        await app.assetDao.insertAsset(
+          AssetsCompanion.insert(
+            id: id,
+            type: 'video',
+            purpose: 'production',
+            novelId: Value(owner),
+            inLibrary: Value(inLibrary),
+            path: Value(path),
+            content: const Value(VideoAssetContent(mimeType: 'video/mp4')),
+          ),
+        );
+        return file;
+      }
+
+      final source = await addAsset('local', 'work');
+      final foreign = await addAsset('foreign', 'other');
+      final unlisted = await addAsset('unlisted', 'work', inLibrary: false);
+      final board = await canvas.ensureCanvas('');
+      final node = await canvas.addMedia(board.id, 'local');
+      Future<Map<String, dynamic>> share(String id) =>
+          run('assets', 'share', {'id': id});
+      Future<List<dynamic>> listedIds([String? workId]) async {
+        final result = await run('assets', 'list', {'work_id': ?workId});
+        expect(result['ok'], true, reason: '$result');
+        return [for (final entry in result['entries'] as List) entry['id']];
+      }
+
+      final help = await run('help', 'assets', {});
+      expect(help['output'], contains('assets share: id required'));
+      expect(help['output'], contains('list accepts an optional work_id'));
+      expect(await listedIds(), unorderedEquals(['local', 'unlisted']));
+      expect(await listedIds('other'), ['foreign']);
+      expect(
+        (await run('assets', 'list', {'work_id': 'missing'}))['error_code'],
+        'not_found',
+      );
+      expect(
+        (await run('assets', 'share', {
+          'id': 'foreign',
+          'work_id': 'other',
+        }))['error_code'],
+        'invalid_argument',
+      );
+      expect((await share('unlisted'))['error_code'], 'failed_precondition');
+      expect(await foreign.exists(), isTrue);
+      expect(await unlisted.exists(), isTrue);
+
+      final promoted = await share('foreign');
+      expect(promoted['ok'], true, reason: '$promoted');
+      expect(promoted['id'], 'foreign');
+      expect(await foreign.exists(), isFalse);
+      expect((await canvas.requireAsset('foreign')).novelId, isNull);
+      expect(
+        await listedIds(),
+        unorderedEquals(['local', 'foreign', 'unlisted']),
+      );
+      expect(await listedIds('other'), ['foreign']);
+      expect(await share('foreign'), promoted);
+
+      final result = await share('local');
+      expect(result['ok'], true, reason: '$result');
+      expect(result['id'], 'local');
+      expect(result['shared'], true);
+      expect(result['file_path'], startsWith('file_workspaces/shared/videos/'));
+      expect(await source.exists(), isFalse);
+      final asset = await canvas.requireAsset(node.mediaAssetId!);
+      expect(asset.id, 'local');
+      expect(asset.novelId, isNull);
+      expect(asset.inLibrary, isTrue);
+      expect(asset.path, result['file_path']);
+      expect(await File(canvas.library.resolve(asset)).readAsBytes(), [
+        1,
+        2,
+        3,
+      ]);
+      expect(await share('local'), result);
+    },
+  );
+
+  test(
     'clip summary is opt-in and keeps filtering, paging and full prompts',
     () async {
       final prompt = List.filled(3000, 'Saved prompt.').join();
