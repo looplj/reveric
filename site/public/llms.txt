@@ -1,0 +1,26 @@
+# 幻界 Reveric
+
+> Agent Native 的 AI 创作工作台。小说、剧本、画布、导演台、剪辑，都是智能体的工具。一句话，从原著走到成片。免费下载，完全开源，支持 macOS、Windows、Android（以及 Linux）。
+
+## Core Pages
+
+- [首页](https://reveric.app/): 幻界 Reveric 产品介绍、画布画廊试映、六步自动化流程、本地优先模型接入与客户端下载入口。
+- [GitHub 仓库](https://github.com/looplj/reveric): 源码、Release 更新日志与社区贡献入口。
+
+## 核心模块与工作流
+
+- **小说编辑器**: 章节管理、设定库、人物关系图谱，支持智能体按需检索与续写。
+- **剧本编辑器**: 对照原著改编，拆分剧集与场次，编写对白与动作描写。
+- **无限画布**: 分镜节点、提示词编排、角色定妆、参考图与视频片段生成。
+- **3D 导演台**: 3D 布景、机位与运镜预演。
+- **多轨剪辑台**: 6 轨时间线，素材上轨、分割修剪、字幕与配乐合成，直接导出成片。
+- **Agent Native 架构**: 所有模块对智能体以工具形式开放，任务列表、执行过程与改动记录全程可见，支持回滚、Skill 与 MCP 扩展。
+- **Local First 与模型自选**: 作品数据本地保存，自带 API Key（BYOK），兼容 OpenAI 与 Anthropic 协议，可直连官方接口、NewAPI 等聚合网关或自建模型服务。
+
+## 下载与开源
+
+- 官网下载页: https://reveric.app/#download
+- macOS (Apple Silicon `.dmg`), Windows (64 位 `.exe`), Android (`arm64 .apk`)
+- 开源仓库: https://github.com/looplj/reveric
+- QQ 交流群: 924148054 (https://qm.qq.com/q/Ap8pfOWHDO)
+- 商业授权联系: bababaa261@gmail.com

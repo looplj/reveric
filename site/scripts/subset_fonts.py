@@ -7,8 +7,8 @@
     python3 site/scripts/subset_fonts.py /path/to/NotoSerifSC[wght].ttf
 
 源字体取自 https://github.com/google/fonts/tree/main/ofl/notoserifsc（SIL OFL 1.1）。
-输出 designs/website/fonts/NotoSerifSC-subset.woff2，以及记录已收录字符的
-NotoSerifSC-subset.chars.txt；site/build.mjs 用后者检查是否有新字未收录。
+输出 site/public/fonts/NotoSerifSC-subset.woff2，以及记录已收录字符的
+NotoSerifSC-subset.chars.txt；构建脚本在打包后检查是否有新字未收录。
 """
 
 import re
@@ -20,20 +20,23 @@ from fontTools.ttLib import TTFont
 from fontTools.varLib import instancer
 
 ROOT = Path(__file__).resolve().parents[2]
-WEBSITE = ROOT / "designs" / "website"
-OUT_DIR = WEBSITE / "fonts"
+SITE_SRC = ROOT / "site" / "src"
+OUT_DIR = ROOT / "site" / "public" / "fonts"
 OUT_FONT = OUT_DIR / "NotoSerifSC-subset.woff2"
 OUT_CHARS = OUT_DIR / "NotoSerifSC-subset.chars.txt"
 
 # 页面里用到的字重范围：500（英文副标题）到 900（大标题）
 WEIGHT_RANGE = (500, 900)
+SCAN_EXTENSIONS = {".astro", ".ts", ".tsx", ".js", ".md", ".mdx"}
 
 
 def page_chars() -> str:
-    html = (WEBSITE / "index.html").read_text(encoding="utf-8")
-    text = re.sub(r"<[^>]+>", " ", html)
+    chunks = []
+    for path in sorted(SITE_SRC.rglob("*")):
+        if path.is_file() and path.suffix in SCAN_EXTENSIONS:
+            chunks.append(path.read_text(encoding="utf-8"))
     ascii_printable = "".join(chr(c) for c in range(0x20, 0x7F))
-    chars = set(text) | set(ascii_printable) | set("，。、；：？！“”‘’（）《》—…·")
+    chars = set("".join(chunks)) | set(ascii_printable) | set("，。、；：？！“”‘’（）《》—…·")
     return "".join(sorted(c for c in chars if c.isprintable()))
 
 

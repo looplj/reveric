@@ -287,7 +287,7 @@ site-fonts: $(SITE_VENV) $(SITE_FONT_SRC) ## 按官网用字重新裁剪字体�
 	$(SITE_VENV)/bin/python site/scripts/subset_fonts.py $(SITE_FONT_SRC)
 
 site-build: site-fonts ## 构建官网到 site/dist（版本取最新正式 tag）
-	node site/build.mjs
+	cd site && npm ci && npm run build
 
 site-deploy: site-build ## 构建并部署官网到 Cloudflare Pages
 	npx wrangler pages deploy site/dist --project-name=reveric-site --branch=unstable --commit-dirty=true

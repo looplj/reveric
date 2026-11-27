@@ -5,7 +5,7 @@
 /* 标题字体：按页面用字裁剪的子集，由 site/scripts/subset_fonts.py 生成 */
 @font-face {
   font-family: "Noto Serif SC";
-  src: url("fonts/NotoSerifSC-subset.woff2") format("woff2");
+  src: url("/fonts/NotoSerifSC-subset.woff2") format("woff2");
   font-weight: 500 900;
   font-display: swap;
 }

@@ -657,10 +657,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: site/package-lock.json
+      - name: Install website dependencies
+        working-directory: site
+        run: npm ci
       - name: Build website
+        working-directory: site
         env:
-          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-        run: node site/build.mjs --version "$TAG_NAME"
+          SITE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: npm run build
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -1,0 +1,113 @@
+---
+import 'cineview/cineview.css';
+import '../styles/landing.css';
+import Topbar from '../components/Topbar.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  ogImage?: string;
+  ogType?: 'website' | 'article';
+  useCineview?: boolean;
+  noindex?: boolean;
+  structuredData?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const siteUrl = (Astro.site ?? new URL('https://reveric.app')).toString().replace(/\/$/, '');
+
+const {
+  title,
+  description,
+  canonicalPath = '/',
+  ogImage = `${siteUrl}/assets/still_kick.webp`,
+  ogType = 'website',
+  useCineview = true,
+  noindex = false,
+  structuredData,
+} = Astro.props;
+
+const canonicalUrl = new URL(canonicalPath, `${siteUrl}/`).toString();
+const robotsContent = noindex
+  ? 'noindex, nofollow'
+  : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+
+const baseSchemas: Record<string, unknown>[] = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': `${siteUrl}/#organization`,
+    name: '幻界 Reveric',
+    alternateName: 'Reveric',
+    url: siteUrl,
+    logo: `${siteUrl}/assets/icon-180.png`,
+    email: 'bababaa261@gmail.com',
+    sameAs: ['https://github.com/looplj/reveric'],
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    '@id': `${siteUrl}/#website`,
+    name: '幻界 Reveric',
+    url: siteUrl,
+    inLanguage: 'zh-CN',
+    publisher: {
+      '@id': `${siteUrl}/#organization`,
+    },
+  },
+];
+
+const extraSchemas = structuredData
+  ? Array.isArray(structuredData)
+    ? structuredData
+    : [structuredData]
+  : [];
+
+const allSchemas = noindex ? [] : [...baseSchemas, ...extraSchemas];
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content={robotsContent} />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap-index.xml" />
+    <link rel="alternate" type="text/plain" title="LLMs.txt" href="/llms.txt" />
+    <link rel="icon" href="/assets/icon-32.png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/assets/icon-180.png" />
+    <meta name="theme-color" content="#0A0B0E" />
+    <meta property="og:site_name" content="幻界 Reveric" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    {useCineview && (
+      <script is:inline>
+        (function (s) {
+          if (s && s('selector(:has(*))') && s('width:1lh') && s('color:color-mix(in srgb,red,red)')) {
+            document.documentElement.classList.add('cv-js');
+          }
+        })(window.CSS && CSS.supports);
+      </script>
+    )}
+    <link rel="preload" href="/fonts/NotoSerifSC-subset.woff2" as="font" type="font/woff2" crossorigin />
+    {allSchemas.map((schema) => (
+      <script type="application/ld+json" set:html={JSON.stringify(schema)} />
+    ))}
+    <slot name="head" />
+  </head>
+  <body>
+    <Topbar />
+    <slot />
+  </body>
+</html>

@@ -1,0 +1,13 @@
+# Cloudflare Pages 响应头。Astro 编译产物在 /_astro/ 下带内容 hash，可长缓存；字体按子集版本更新，缓存一个月
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=86400
+
+/fonts/*
+  Cache-Control: public, max-age=2592000
