@@ -264,15 +264,7 @@ class _ModelEffortSheetState extends State<_ModelEffortSheet> {
                   ),
                   child: Row(
                     children: [
-                      SizedBox(
-                        width: 30,
-                        child: Center(
-                          child: ReasoningEffortBars(
-                            total: efforts.length,
-                            level: index,
-                          ),
-                        ),
-                      ),
+                      ReasoningEffortBars(total: efforts.length, level: index),
                       const SizedBox(width: RevericSpacing.md),
                       Expanded(
                         child: Column(

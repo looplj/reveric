@@ -2578,7 +2578,7 @@ Future<PendingChatModelSelection?> _showModelSelector(
       pendingSelection = PendingChatModelSelection(
         providerId: option.providerId,
         model: option.model,
-        reasoningEffort: defaultReasoningEffortFor(option.reasoningEfforts),
+        reasoningEffort: option.defaultReasoningEffort,
       );
     },
     onSelectEffort: (option, effort) {

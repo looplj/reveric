@@ -138,7 +138,7 @@ class PluginAiService implements PluginAiApi {
         'model': option.model,
         'modelName': option.displayModelName,
         'isDefault': option.isDefault,
-        'reasoningEfforts': option.reasoningEfforts,
+        'reasoningEfforts': option.catalogReasoningEfforts,
       },
   ];
 
@@ -180,7 +180,7 @@ class PluginAiService implements PluginAiApi {
         'Chat model ${option.providerId}/${option.model} is unavailable',
       );
     }
-    final efforts = option.reasoningEfforts;
+    final efforts = option.catalogReasoningEfforts;
     final requestedEffort = request.reasoningEffort;
     if (requestedEffort != null &&
         !(efforts?.contains(requestedEffort) ?? false)) {

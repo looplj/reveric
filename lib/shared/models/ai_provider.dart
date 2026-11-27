@@ -998,6 +998,16 @@ AiModelOption? resolveSelectableModelOption({
   return options.first;
 }
 
+const _unverifiedReasoningEfforts = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
+
 class AiModelOption {
   bool get supportsImageInput => lookupCatalogImageInput(model);
   final String providerId;
@@ -1007,8 +1017,9 @@ class AiModelOption {
   final AiModelKind kind;
   final bool isDefault;
 
-  /// 该模型支持的 reasoning effort 级别（low→high 顺序）；null 表示非推理模型。
-  final List<String>? reasoningEfforts;
+  /// 目录声明的 reasoning effort 级别（按强度升序）。
+  final List<String>? catalogReasoningEfforts;
+  final bool _offerUnverifiedReasoningEfforts;
 
   const AiModelOption({
     required this.providerId,
@@ -1017,10 +1028,21 @@ class AiModelOption {
     required this.kind,
     this.modelDisplayName,
     this.isDefault = false,
-    this.reasoningEfforts,
-  });
+    List<String>? reasoningEfforts,
+    this._offerUnverifiedReasoningEfforts = false,
+  }) : catalogReasoningEfforts = reasoningEfforts;
 
   String get id => '$providerId::$model';
+
+  /// 未知型号允许用户尝试各档位。
+  List<String>? get reasoningEfforts => _offerUnverifiedReasoningEfforts
+      ? _unverifiedReasoningEfforts
+      : catalogReasoningEfforts;
+
+  /// 未知型号默认使用 `none`，让请求省略推理档位。
+  String? get defaultReasoningEffort => _offerUnverifiedReasoningEfforts
+      ? 'none'
+      : defaultReasoningEffortFor(catalogReasoningEfforts);
 
   /// 有配置的模型展示名时使用展示名，
   /// 否则沿用模型 id。
@@ -1042,7 +1064,7 @@ String? defaultReasoningEffortFor(List<String>? efforts) {
 ///
 /// [persistedEffort] 来自 `ai_chat_sessions.metadata.reasoning_effort`；
 /// 缺失时，全局聊天默认模型优先使用其预设 effort；无效时回落到
-/// [defaultReasoningEffortFor]。
+/// 模型选项的默认档位。
 String? resolveSessionReasoningEffort({
   required String? providerId,
   required String? model,
@@ -1077,7 +1099,7 @@ String? reasoningEffortForOption(
   if (selectedEffort != null && efforts.contains(selectedEffort)) {
     return selectedEffort;
   }
-  return defaultReasoningEffortFor(efforts);
+  return option?.defaultReasoningEffort;
 }
 
 // ==================== AiSettings ====================
@@ -1272,9 +1294,14 @@ class AiSettings {
         if (config.isPluginProvider && pluginModel == null) {
           continue;
         }
-        final efforts = config.isPluginProvider
+        final catalogEfforts = config.isPluginProvider
             ? null
             : normalizeReasoningEfforts(lookupCatalogReasoningEfforts(model));
+        final offerUnverifiedEfforts =
+            kind == AiModelKind.chat &&
+            !config.isPluginProvider &&
+            catalogEfforts == null &&
+            hasUnknownCatalogReasoningEfforts(model);
         options.add(
           AiModelOption(
             providerId: config.id,
@@ -1285,7 +1312,8 @@ class AiSettings {
             ),
             kind: kind,
             isDefault: '${config.id}::$model' == selectedDefaultId,
-            reasoningEfforts: efforts,
+            reasoningEfforts: catalogEfforts,
+            offerUnverifiedReasoningEfforts: offerUnverifiedEfforts,
           ),
         );
       }

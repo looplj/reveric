@@ -1540,9 +1540,7 @@ class AiChatPanel extends HookConsumerWidget {
                     final selection = PendingChatModelSelection(
                       providerId: option.providerId,
                       model: option.model,
-                      reasoningEffort: defaultReasoningEffortFor(
-                        option.reasoningEfforts,
-                      ),
+                      reasoningEffort: option.defaultReasoningEffort,
                     );
                     s.pendingModelSelection.value =
                         selection.hasSameModelAs(current) &&

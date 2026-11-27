@@ -1499,6 +1499,7 @@ abstract final class LocaleKeys {
   static const aiReasoningEffort = 'ai.reasoning_effort';
   static const aiReasoningEffortNone = 'ai.reasoning_effort_none';
   static const aiReasoningEffortOn = 'ai.reasoning_effort_on';
+  static const aiReasoningEffortMinimal = 'ai.reasoning_effort_minimal';
   static const aiReasoningEffortLow = 'ai.reasoning_effort_low';
   static const aiReasoningEffortMedium = 'ai.reasoning_effort_medium';
   static const aiReasoningEffortHigh = 'ai.reasoning_effort_high';
@@ -1506,6 +1507,8 @@ abstract final class LocaleKeys {
   static const aiReasoningEffortMax = 'ai.reasoning_effort_max';
   static const aiReasoningEffortHintNone = 'ai.reasoning_effort_hint_none';
   static const aiReasoningEffortHintOn = 'ai.reasoning_effort_hint_on';
+  static const aiReasoningEffortHintMinimal =
+      'ai.reasoning_effort_hint_minimal';
   static const aiReasoningEffortHintLow = 'ai.reasoning_effort_hint_low';
   static const aiReasoningEffortHintMedium = 'ai.reasoning_effort_hint_medium';
   static const aiReasoningEffortHintHigh = 'ai.reasoning_effort_hint_high';

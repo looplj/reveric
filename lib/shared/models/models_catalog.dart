@@ -38,9 +38,12 @@ class ModelCatalogEntry {
   /// 基础 ID 之外的匹配项：精确别名或含一个 `*` 的通配模式。
   final List<String> matches;
 
-  /// 支持的 reasoning effort 级别（low→high 顺序）；null 表示非推理模型。
+  /// 支持的 reasoning effort 级别（按强度升序）；null 或空列表表示未声明档位。
   /// `['none']` 表示仅支持 toggle 开关（on/off），无 effort 分级。
   final List<String>? reasoningEfforts;
+
+  /// 家族条目只描述通用能力，各型号的推理档位仍未知。
+  final bool reasoningEffortsUnknown;
 
   /// 仅支持 budget_tokens 的模型，将 effort 级别映射到 token 预算值。
   /// key 为 effort 级别，value 为 budget_tokens 整数。
@@ -70,6 +73,7 @@ class ModelCatalogEntry {
   const ModelCatalogEntry({
     this.matches = const [],
     this.reasoningEfforts,
+    this.reasoningEffortsUnknown = false,
     this.budgetTokenMap,
     this.useThinkingField = false,
     this.useThinkingLevel = false,
@@ -148,6 +152,7 @@ const _384k = 384000;
 const _500k = 500000;
 const _560k = 560000;
 const _1m = 1000000;
+const _1050k = 1050000;
 
 const _gptLargeContextLimit = ModelCatalogLimit(context: _560k, output: _128k);
 const _gemini4Limit = ModelCatalogLimit(context: _1m, output: _64k);
@@ -164,7 +169,15 @@ const _geminiInputModalities = ModelCatalogModalities(
 /// 推理参数、长度限制和输入模态共用这份目录。
 const Map<String, ModelCatalogEntry> modelsCatalog = {
   // ── OpenAI / GPT ──────────────────────────────────────────────────────────
-  // GPT-5.6 与 GPT-6 及以上使用 560K 上下文；旧 GPT-5 使用 256K。
+  // GPT-5.6 与 GPT-6 系列默认使用 560K 上下文；旧 GPT-5 使用 256K。
+  // https://developers.openai.com/api/docs/models/gpt-6.2-sol
+  'gpt-6.2-sol': ModelCatalogEntry(
+    matches: ['gpt-6.2-sol-*'],
+    temperatureSupport: ModelTemperatureSupport.fixed,
+    modalities: ModelCatalogModalities(input: ['text', 'image']),
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    limit: ModelCatalogLimit(context: _1050k, output: _128k),
+  ),
   // https://developers.openai.com/api/docs/models/gpt-6-astra
   // https://developers.openai.com/api/docs/guides/latest-model
   'gpt-6-astra': ModelCatalogEntry(
@@ -205,7 +218,8 @@ const Map<String, ModelCatalogEntry> modelsCatalog = {
     limit: ModelCatalogLimit(context: _256k, output: _128k),
   ),
   'gpt-6': ModelCatalogEntry(
-    matches: ['gpt-6-*'],
+    matches: ['gpt-6-*', 'gpt-6.*'],
+    reasoningEffortsUnknown: true,
     temperatureSupport: ModelTemperatureSupport.fixed,
     modalities: ModelCatalogModalities(input: ['text', 'image']),
     limit: _gptLargeContextLimit,
@@ -893,6 +907,9 @@ List<String>? lookupCatalogReasoningEfforts(String modelId) {
   final entry = _catalogEntry(modelId);
   return entry?.reasoningEfforts;
 }
+
+bool hasUnknownCatalogReasoningEfforts(String modelId) =>
+    _catalogEntry(modelId)?.reasoningEffortsUnknown ?? true;
 
 /// 从本地目录解析上下文/输出限制，未知模型返回 null。
 ModelCatalogLimit? lookupCatalogLimit(String modelId) =>

@@ -74,6 +74,7 @@ String reasoningEffortLabelOf(BuildContext context, String? effort) {
   return switch (effort) {
     'none' => context.t(LocaleKeys.aiReasoningEffortNone),
     'on' => context.t(LocaleKeys.aiReasoningEffortOn),
+    'minimal' => context.t(LocaleKeys.aiReasoningEffortMinimal),
     'low' => context.t(LocaleKeys.aiReasoningEffortLow),
     'medium' => context.t(LocaleKeys.aiReasoningEffortMedium),
     'high' => context.t(LocaleKeys.aiReasoningEffortHigh),
@@ -88,6 +89,7 @@ String reasoningEffortHintOf(BuildContext context, String? effort) {
   return switch (effort) {
     'none' => context.t(LocaleKeys.aiReasoningEffortHintNone),
     'on' => context.t(LocaleKeys.aiReasoningEffortHintOn),
+    'minimal' => context.t(LocaleKeys.aiReasoningEffortHintMinimal),
     'low' => context.t(LocaleKeys.aiReasoningEffortHintLow),
     'medium' => context.t(LocaleKeys.aiReasoningEffortHintMedium),
     'high' => context.t(LocaleKeys.aiReasoningEffortHintHigh),
@@ -97,7 +99,6 @@ String reasoningEffortHintOf(BuildContext context, String? effort) {
   };
 }
 
-/// 默认 effort：优先 medium，否则取列表中点，否则 null（非推理模型）。
-/// 与 `defaultReasoningEffortFor` 一致，但接受 [AiModelOption]。
+/// 模型选项的默认 effort。
 String? defaultEffortFor(AiModelOption? option) =>
-    defaultReasoningEffortFor(option?.reasoningEfforts);
+    option?.defaultReasoningEffort;

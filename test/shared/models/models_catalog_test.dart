@@ -174,6 +174,22 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('GPT-6 家族匹配带小版本的型号，专用配置优先', () {
+      final matcher = ModelCatalogMatcher(modelsCatalog);
+      for (final id in [
+        'gpt-6-next',
+        'gpt-6.2-next',
+        'openai/GPT-6.2-NEXT:free',
+      ]) {
+        expect(matcher.lookup(id), same(modelsCatalog['gpt-6']), reason: id);
+      }
+      expect(
+        matcher.lookup('gpt-6.1-sol-20261125'),
+        same(modelsCatalog['gpt-6-astra']),
+      );
+      expect(matcher.lookup('gpt-60.2-next'), isNull);
+    });
   });
 
   group('图片输入模态', () {
@@ -345,6 +361,79 @@ void main() {
   group('default chat reasoning effort', () {
     const optionId = 'test-provider::deepseek-v4-flash';
 
+    test(
+      'unknown chat models offer all efforts and use the provider default',
+      () {
+        const unknownIds = ['custom-chat', 'openai/GPT-6.2-NEXT:free'];
+        final settings = AiSettings(
+          providers: [
+            _reasoningProvider.copyWith(
+              type: 'openai',
+              models: [
+                ...unknownIds,
+                'gpt-6.2-sol',
+                'grok-4.20-non-reasoning',
+                'deepseek-v4-flash-free',
+                'kimi-k2.5',
+              ],
+              imageModels: ['custom-image'],
+            ),
+          ],
+        );
+        final options = {
+          for (final option in settings.availableModelOptions)
+            option.model: option,
+        };
+
+        for (final id in unknownIds) {
+          final option = options[id]!;
+          expect(option.reasoningEfforts, [
+            'none',
+            'minimal',
+            'low',
+            'medium',
+            'high',
+            'xhigh',
+            'max',
+          ]);
+          final defaultEffort = reasoningEffortForOption(option, null);
+          expect(defaultEffort, 'none');
+          expect(resolveReasoningEffort(defaultEffort, modelId: id), isNull);
+          expect(
+            resolveSessionReasoningEffort(
+              providerId: option.providerId,
+              model: id,
+              persistedEffort: 'minimal',
+              settings: settings,
+            ),
+            'minimal',
+          );
+        }
+
+        expect(options['gpt-6.2-sol']!.reasoningEfforts, [
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+          'max',
+        ]);
+        expect(
+          reasoningEffortForOption(options['gpt-6.2-sol'], null),
+          'medium',
+        );
+        expect(options['grok-4.20-non-reasoning']!.reasoningEfforts, isNull);
+        expect(options['deepseek-v4-flash-free']!.reasoningEfforts, isNull);
+        expect(options['kimi-k2.5']!.reasoningEfforts, ['none', 'on']);
+        expect(
+          settings
+              .availableModelOptionsForKind(AiModelKind.image)
+              .single
+              .reasoningEfforts,
+          isNull,
+        );
+      },
+    );
+
     test('round-trips in AI settings JSON and clears with the chat model', () {
       const settings = AiSettings(
         defaultChatModelId: optionId,
@@ -443,6 +532,12 @@ void main() {
       (
         'gpt-6-astra',
         560000,
+        128000,
+        ['low', 'medium', 'high', 'xhigh', 'max'],
+      ),
+      (
+        'openai/GPT-6.2-SOL-preview:free',
+        1050000,
         128000,
         ['low', 'medium', 'high', 'xhigh', 'max'],
       ),
@@ -548,6 +643,8 @@ void main() {
         'gpt-5',
         'gpt-5-mini',
         'gpt-6-astra',
+        'gpt-6.2-sol',
+        'gpt-6.2-next',
         'gpt-6-next',
         'kimi-k3',
         'kimi-k2.6',
