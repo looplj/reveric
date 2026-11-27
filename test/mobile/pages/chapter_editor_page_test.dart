@@ -83,8 +83,9 @@ void main() {
   /// 返回 (标题 controller, 正文 controller)。编辑器只有这两个 TextField，
   /// 顺序即标题在前、正文在后。
   Future<(TextEditingController, TextEditingController)> pumpEditor(
-    WidgetTester tester,
-  ) async {
+    WidgetTester tester, {
+    required Color Function() highlightBackground,
+  }) async {
     await tester.pumpWidget(
       _wrap(
         ProviderScope(
@@ -104,6 +105,10 @@ void main() {
             editorLetterSpacingProvider.overrideWithValue(0),
             editorLineHeightProvider.overrideWithValue(1.8),
             editorLineNumbersEnabledProvider.overrideWithValue(false),
+            editorDialogueHighlightEnabledProvider.overrideWithValue(true),
+            editorHighlightColorProvider.overrideWith(
+              (ref) => highlightBackground(),
+            ),
             editorLineEnabledProvider.overrideWithValue(false),
             editorLineStyleProvider.overrideWithValue(
               EditorLineStyle.sparseDashed,
@@ -138,7 +143,11 @@ void main() {
   // 「Widget 测试隔离规则」：隔离成本过高时不要靠加补丁迁就测试）。
   // 它们本就是同一份并发编辑契约的连续演进，顺序走一遍也更贴近真实使用。
   testWidgets('编辑器与 AI 外部写入的并发编辑契约', (tester) async {
-    final (title, body) = await pumpEditor(tester);
+    var highlightBackground = const Color(0x6642A5F5);
+    final (title, body) = await pumpEditor(
+      tester,
+      highlightBackground: () => highlightBackground,
+    );
     expect(title.text, '原标题');
     expect(body.text, '旧正文');
     expect(
@@ -199,15 +208,42 @@ void main() {
     );
 
     // 2. AI 落盘的新正文要回灌，且按原偏移保留光标。
+    const aiContent = '她说：“你好。”然后离开。“未写完';
     body.selection = const TextSelection.collapsed(offset: 1);
     await contentService.updateChapterContentPartial(
       chapterId: chapterId,
-      content: 'AI 改写后的正文',
+      content: aiContent,
     );
     await tester.pumpAndSettle();
 
-    expect(body.text, 'AI 改写后的正文', reason: '外部写入必须回灌，否则编辑器下一次保存会把它盖掉');
+    expect(body.text, aiContent, reason: '外部写入必须回灌，否则编辑器下一次保存会把它盖掉');
     expect(body.selection.baseOffset, 1, reason: '外部回灌按原偏移 clamp，不是一律跳到文末');
+    final editableState = tester.state<EditableTextState>(
+      find.descendant(of: bodyField, matching: find.byType(EditableText)),
+    );
+    final span = editableState.renderEditable.text! as TextSpan;
+    expect(span.toPlainText(), aiContent);
+    expect(
+      span.children!
+          .whereType<TextSpan>()
+          .where((child) => child.style?.backgroundColor != null)
+          .map((child) => child.text),
+      ['“你好。”'],
+    );
+    final adoptedValue = body.value;
+    body.value = adoptedValue.copyWith(
+      selection: const TextSelection.collapsed(offset: 6),
+      composing: const TextRange(start: 3, end: 6),
+    );
+    await tester.pump();
+    final composingSpan = editableState.renderEditable.text! as TextSpan;
+    final composingDialogue = composingSpan.children!
+        .whereType<TextSpan>()
+        .singleWhere((child) => child.text == '“你好');
+    expect(composingDialogue.style?.backgroundColor, highlightBackground);
+    expect(composingDialogue.style?.decoration, TextDecoration.underline);
+    expect(bodyFocusNode.hasFocus, isTrue);
+    body.value = adoptedValue;
 
     // 3. 用户正在改标题时 AI 又改正文：两个字段都不能丢。
     await tester.enterText(find.byType(TextField).at(0), '用户改的标题');
@@ -231,6 +267,129 @@ void main() {
       'AI 第二次改写',
       reason: '标题的自动保存不能把回灌前的旧正文写回去，覆盖 AI 已落盘的正文',
     );
+
+    // 直接标记刚写入的选区，无需等自动保存防抖。
+    const highlightedBody = '刚写的标记。';
+    await tester.enterText(bodyField, highlightedBody);
+    const markSelection = TextSelection(baseOffset: 3, extentOffset: 5);
+    void showMarkMenu([TextSelection selection = markSelection]) {
+      body.selection = TextSelection.collapsed(offset: selection.start);
+      editableState.userUpdateTextEditingValue(
+        body.value.copyWith(selection: selection),
+        SelectionChangedCause.longPress,
+      );
+      expect(editableState.showToolbar(), isTrue);
+    }
+
+    showMarkMenu();
+    await tester.pumpAndSettle();
+    expect(find.text('Remove Highlight'), findsOneWidget);
+    await tester.tap(find.text('Highlight'));
+    await tester.pumpAndSettle();
+    final savedMark =
+        (await contentDatabase.select(contentDatabase.chapterHighlights).get())
+            .single;
+    expect(savedMark.quote, '标记');
+    expect(savedMark.colorArgb, isNull);
+    expect(
+      (await contentService.getChapterById(chapterId))?.content,
+      highlightedBody,
+    );
+    Color? markedBackground([String text = '标记']) {
+      final markedSpan = editableState.renderEditable.text! as TextSpan;
+      return markedSpan.children!
+          .whereType<TextSpan>()
+          .where((span) => span.text == text)
+          .firstOrNull
+          ?.style
+          ?.backgroundColor;
+    }
+
+    expect(markedBackground(), highlightBackground);
+
+    showMarkMenu();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Change Color'));
+    await tester.pumpAndSettle();
+    final picker = find.byType(AlertDialog);
+    final colorField = find.descendant(
+      of: picker,
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(colorField, '88EE9944');
+    await tester.pump();
+    await tester.tap(find.descendant(of: picker, matching: find.text('Save')));
+    await tester.pumpAndSettle();
+    const customColor = Color(0x88EE9944);
+    expect(markedBackground(), customColor);
+
+    highlightBackground = const Color(0x5533AA55);
+    ProviderScope.containerOf(
+      editableState.context,
+      listen: false,
+    ).invalidate(editorHighlightColorProvider);
+    await tester.pumpAndSettle();
+    expect(markedBackground(), customColor);
+
+    await tester.showKeyboard(bodyField);
+    showMarkMenu();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use Default Color'));
+    await tester.pumpAndSettle();
+    expect(markedBackground(), highlightBackground);
+    await contentService.setChapterHighlightColor(
+      chapterId: chapterId,
+      highlightId: savedMark.id,
+      colorArgb: customColor.toARGB32(),
+    );
+    await tester.pumpAndSettle();
+
+    const widerSelection = (start: 1, end: 6);
+    const widerText = '写的标记。';
+    await contentService.writeChapterHighlight(
+      chapterId: chapterId,
+      expectedContent: highlightedBody,
+      selection: widerSelection,
+    );
+    await tester.pumpAndSettle();
+    expect(markedBackground(widerText), highlightBackground);
+    final overwrittenMark =
+        (await contentDatabase.select(contentDatabase.chapterHighlights).get())
+            .singleWhere((mark) => mark.id == savedMark.id);
+    expect(overwrittenMark.deletedAt, isNot(notDeletedSentinel));
+
+    showMarkMenu();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove Highlight'));
+    await tester.pumpAndSettle();
+    expect(markedBackground(), isNull);
+    expect(markedBackground('写的'), highlightBackground);
+    expect(markedBackground('。'), highlightBackground);
+
+    List<ChapterHighlight> activeMarks(List<ChapterHighlight> records) =>
+        records.where((mark) => mark.deletedAt == notDeletedSentinel).toList();
+    final marksTable = contentDatabase.select(
+      contentDatabase.chapterHighlights,
+    );
+    expect(
+      activeMarks(await marksTable.get()).map((mark) => mark.quote),
+      unorderedEquals(['写的', '。']),
+    );
+
+    showMarkMenu(
+      TextSelection(baseOffset: 0, extentOffset: highlightedBody.length),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove Highlight'));
+    await tester.pumpAndSettle();
+    expect(activeMarks(await marksTable.get()), isEmpty);
+
+    final countAfterRemoval = (await marksTable.get()).length;
+    showMarkMenu();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove Highlight'));
+    await tester.pumpAndSettle();
+    expect((await marksTable.get()).length, countAfterRemoval);
 
     // 先卸载 widget 树释放 ProviderScope 持有的 Drift 订阅，再由 tearDown 关库。
     await tester.pumpWidget(const SizedBox.shrink());

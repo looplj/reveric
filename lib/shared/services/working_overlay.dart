@@ -1070,6 +1070,7 @@ class WorkingOverlayService {
           outline: row.field == 'outline' ? value : null,
           content: row.field == 'content' ? value : null,
           brief: row.field == 'brief' ? value : null,
+          preserveHighlightSelection: row.source == workingChangeSourceManual,
         );
         return true;
       case 'screenplays':

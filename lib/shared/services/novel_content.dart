@@ -21,6 +21,7 @@ import '../models/chapter_comment.dart';
 import '../models/content_status.dart';
 import '../models/screenplay.dart';
 import '../utils/ai_path_name_check.dart';
+import '../utils/chapter_highlight_anchor.dart';
 import '../utils/short_entity_id.dart';
 import '../utils/short_entity_id_allocator.dart';
 import '../utils/unique_display_name.dart';
@@ -682,18 +683,25 @@ class NovelContentService {
     required String outline,
     required String content,
     String? brief,
+    bool preserveHighlightSelection = false,
   }) async {
-    final existing = await _database.chapterDao.getContentById(chapterId);
-    if (existing == null) {
-      throw Exception('Chapter not found: $chapterId');
-    }
-    await _writeChapterContent(
-      existing: existing,
-      title: title,
-      outline: outline,
-      content: content,
-      brief: brief ?? existing.brief,
-    );
+    await _database.transaction(() async {
+      final baseline = await _database.chapterDao.getContentForWrite(chapterId);
+      if (baseline == null) {
+        throw Exception('Chapter not found: $chapterId');
+      }
+      final (chapter: existing, :hasHighlights) = baseline;
+      await _writeChapterContent(
+        existing: existing,
+        title: title,
+        outline: outline,
+        content: content,
+        brief: brief ?? existing.brief,
+        hasHighlights: hasHighlights,
+        preserveHighlightSelection: preserveHighlightSelection,
+      );
+    });
+    await _syncNovelWordCount();
   }
 
   /// 完整保存与部分保存共用已读取的原表基线，避免部分保存二次查库。
@@ -703,12 +711,22 @@ class NovelContentService {
     required String outline,
     required String content,
     required String brief,
+    required bool hasHighlights,
+    required bool preserveHighlightSelection,
   }) async {
     // 不对 outline/content 做 trim：编辑器把落盘值当作回流基线，任何写入侧的
     // 归一化都会让「自己刚存的内容」在回流时被误判成外部改写并回灌，吃掉用户
     // 正在输入的段末空行。空白的展示与导出由各消费方自行 trim。
     final wordCount = _countWords(content);
     try {
+      if (hasHighlights) {
+        await _database.chapterDao.rebaseHighlights(
+          chapterId: existing.id,
+          before: existing.content,
+          after: content,
+          preserveSelection: preserveHighlightSelection,
+        );
+      }
       await (_database.update(
         _database.chapters,
       )..where((table) => table.id.equals(existing.id))).write(
@@ -729,7 +747,6 @@ class NovelContentService {
       );
       rethrow;
     }
-    await _syncNovelWordCount();
   }
 
   Future<void> updateChapterContentPartial({
@@ -738,18 +755,25 @@ class NovelContentService {
     String? outline,
     String? content,
     String? brief,
+    bool preserveHighlightSelection = false,
   }) async {
-    final existing = await _database.chapterDao.getContentById(chapterId);
-    if (existing == null) {
-      throw Exception('Chapter not found: $chapterId');
-    }
-    await _writeChapterContent(
-      existing: existing,
-      title: title ?? (existing.title ?? ''),
-      outline: outline ?? existing.outline,
-      content: content ?? existing.content,
-      brief: brief ?? existing.brief,
-    );
+    await _database.transaction(() async {
+      final baseline = await _database.chapterDao.getContentForWrite(chapterId);
+      if (baseline == null) {
+        throw Exception('Chapter not found: $chapterId');
+      }
+      final (chapter: existing, :hasHighlights) = baseline;
+      await _writeChapterContent(
+        existing: existing,
+        title: title ?? (existing.title ?? ''),
+        outline: outline ?? existing.outline,
+        content: content ?? existing.content,
+        brief: brief ?? existing.brief,
+        hasHighlights: hasHighlights,
+        preserveHighlightSelection: preserveHighlightSelection,
+      );
+    });
+    await _syncNovelWordCount();
   }
 
   /// 批量排版专用写入：保留已有字数，不同步小说记录。
@@ -758,21 +782,35 @@ class NovelContentService {
     required String content,
   }) async {
     try {
-      final updated =
-          await (_database.update(_database.chapters)..where(
-                (table) =>
-                    table.id.equals(chapterId) &
-                    table.deletedAt.equals(notDeletedSentinel),
-              ))
-              .write(
-                ChaptersCompanion(
-                  content: Value(content),
-                  updatedAt: Value(DateTime.now()),
-                ),
-              );
-      if (updated == 0) {
-        throw StateError('Chapter not found: $chapterId');
-      }
+      await _database.transaction(() async {
+        final baseline = await _database.chapterDao.getBodyForWrite(chapterId);
+        if (baseline == null) {
+          throw StateError('Chapter not found: $chapterId');
+        }
+        if (baseline.hasHighlights) {
+          await _database.chapterDao.rebaseHighlights(
+            chapterId: chapterId,
+            before: baseline.content,
+            after: content,
+            preserveSelection: false,
+          );
+        }
+        final updated =
+            await (_database.update(_database.chapters)..where(
+                  (table) =>
+                      table.id.equals(chapterId) &
+                      table.deletedAt.equals(notDeletedSentinel),
+                ))
+                .write(
+                  ChaptersCompanion(
+                    content: Value(content),
+                    updatedAt: Value(DateTime.now()),
+                  ),
+                );
+        if (updated == 0) {
+          throw StateError('Chapter not found: $chapterId');
+        }
+      });
     } catch (error, stackTrace) {
       _log.error(
         '[DB] chapter_nodes UPDATE formatting failed, id=$chapterId',
@@ -881,6 +919,31 @@ class NovelContentService {
       rethrow;
     }
   }
+
+  Stream<List<ChapterHighlight>> watchChapterHighlights(String chapterId) =>
+      _database.chapterDao.watchHighlights(chapterId);
+
+  Future<void> setChapterHighlightColor({
+    required String chapterId,
+    required String highlightId,
+    required int? colorArgb,
+  }) => _database.chapterDao.setHighlightColor(
+    chapterId: chapterId,
+    id: highlightId,
+    colorArgb: colorArgb,
+  );
+
+  Future<void> writeChapterHighlight({
+    required String chapterId,
+    required String expectedContent,
+    required ChapterHighlightRange selection,
+    bool clear = false,
+  }) => _database.chapterDao.writeHighlight(
+    chapterId: chapterId,
+    expectedContent: expectedContent,
+    selection: selection,
+    clear: clear,
+  );
 
   /// 覆写一章的批注列表。
   ///

@@ -621,6 +621,29 @@ class Chapters extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+@DataClassName('ChapterHighlight')
+class ChapterHighlights extends Table {
+  TextColumn get id => text()();
+  TextColumn get chapterId => text()();
+  IntColumn get startOffset => integer()();
+  IntColumn get endOffset => integer()();
+  TextColumn get quote => text()();
+  TextColumn get prefix => text()();
+  TextColumn get suffix => text()();
+  TextColumn get contentHash => text()();
+
+  /// 空值表示使用编辑器的高亮底色。
+  IntColumn get colorArgb => integer().nullable()();
+
+  /// 章节内的标记顺序，后加的标记覆盖较早的标记。
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get deletedAt =>
+      dateTime().customConstraint('NOT NULL DEFAULT 0')();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class Foreshadowings extends Table {
   TextColumn get id => text()();
 
@@ -1522,6 +1545,7 @@ class ProductionClips extends Table {
     CharacterProfiles,
     Items,
     Chapters,
+    ChapterHighlights,
     Foreshadowings,
     AiChatMessages,
     AiEmbeddingDocuments,
@@ -1635,7 +1659,7 @@ class NovelContentDatabase extends _$NovelContentDatabase {
 
   late final chapterDao = ChapterDao(this);
 
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -1648,6 +1672,10 @@ class NovelContentDatabase extends _$NovelContentDatabase {
           productionClips,
           productionClips.generateAudio,
         );
+      }
+      if (from < 3) {
+        await migrator.createTable(chapterHighlights);
+        await createChapterHighlightsIndex(migrator.database);
       }
     },
     onCreate: (migrator) async {

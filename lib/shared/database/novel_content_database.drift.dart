@@ -3136,6 +3136,669 @@ class ChaptersCompanion extends UpdateCompanion<ChapterData> {
   }
 }
 
+class $ChapterHighlightsTable extends ChapterHighlights
+    with TableInfo<$ChapterHighlightsTable, ChapterHighlight> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ChapterHighlightsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _chapterIdMeta = const VerificationMeta(
+    'chapterId',
+  );
+  @override
+  late final GeneratedColumn<String> chapterId = GeneratedColumn<String>(
+    'chapter_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startOffsetMeta = const VerificationMeta(
+    'startOffset',
+  );
+  @override
+  late final GeneratedColumn<int> startOffset = GeneratedColumn<int>(
+    'start_offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endOffsetMeta = const VerificationMeta(
+    'endOffset',
+  );
+  @override
+  late final GeneratedColumn<int> endOffset = GeneratedColumn<int>(
+    'end_offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _quoteMeta = const VerificationMeta('quote');
+  @override
+  late final GeneratedColumn<String> quote = GeneratedColumn<String>(
+    'quote',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _prefixMeta = const VerificationMeta('prefix');
+  @override
+  late final GeneratedColumn<String> prefix = GeneratedColumn<String>(
+    'prefix',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _suffixMeta = const VerificationMeta('suffix');
+  @override
+  late final GeneratedColumn<String> suffix = GeneratedColumn<String>(
+    'suffix',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentHashMeta = const VerificationMeta(
+    'contentHash',
+  );
+  @override
+  late final GeneratedColumn<String> contentHash = GeneratedColumn<String>(
+    'content_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorArgbMeta = const VerificationMeta(
+    'colorArgb',
+  );
+  @override
+  late final GeneratedColumn<int> colorArgb = GeneratedColumn<int>(
+    'color_argb',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    chapterId,
+    startOffset,
+    endOffset,
+    quote,
+    prefix,
+    suffix,
+    contentHash,
+    colorArgb,
+    sortOrder,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'chapter_highlights';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ChapterHighlight> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('chapter_id')) {
+      context.handle(
+        _chapterIdMeta,
+        chapterId.isAcceptableOrUnknown(data['chapter_id']!, _chapterIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_chapterIdMeta);
+    }
+    if (data.containsKey('start_offset')) {
+      context.handle(
+        _startOffsetMeta,
+        startOffset.isAcceptableOrUnknown(
+          data['start_offset']!,
+          _startOffsetMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_startOffsetMeta);
+    }
+    if (data.containsKey('end_offset')) {
+      context.handle(
+        _endOffsetMeta,
+        endOffset.isAcceptableOrUnknown(data['end_offset']!, _endOffsetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endOffsetMeta);
+    }
+    if (data.containsKey('quote')) {
+      context.handle(
+        _quoteMeta,
+        quote.isAcceptableOrUnknown(data['quote']!, _quoteMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_quoteMeta);
+    }
+    if (data.containsKey('prefix')) {
+      context.handle(
+        _prefixMeta,
+        prefix.isAcceptableOrUnknown(data['prefix']!, _prefixMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_prefixMeta);
+    }
+    if (data.containsKey('suffix')) {
+      context.handle(
+        _suffixMeta,
+        suffix.isAcceptableOrUnknown(data['suffix']!, _suffixMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_suffixMeta);
+    }
+    if (data.containsKey('content_hash')) {
+      context.handle(
+        _contentHashMeta,
+        contentHash.isAcceptableOrUnknown(
+          data['content_hash']!,
+          _contentHashMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentHashMeta);
+    }
+    if (data.containsKey('color_argb')) {
+      context.handle(
+        _colorArgbMeta,
+        colorArgb.isAcceptableOrUnknown(data['color_argb']!, _colorArgbMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ChapterHighlight map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ChapterHighlight(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      chapterId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chapter_id'],
+      )!,
+      startOffset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_offset'],
+      )!,
+      endOffset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_offset'],
+      )!,
+      quote: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}quote'],
+      )!,
+      prefix: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}prefix'],
+      )!,
+      suffix: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}suffix'],
+      )!,
+      contentHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_hash'],
+      )!,
+      colorArgb: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color_argb'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ChapterHighlightsTable createAlias(String alias) {
+    return $ChapterHighlightsTable(attachedDatabase, alias);
+  }
+}
+
+class ChapterHighlight extends DataClass
+    implements Insertable<ChapterHighlight> {
+  final String id;
+  final String chapterId;
+  final int startOffset;
+  final int endOffset;
+  final String quote;
+  final String prefix;
+  final String suffix;
+  final String contentHash;
+
+  /// 空值表示使用编辑器的高亮底色。
+  final int? colorArgb;
+
+  /// 章节内的标记顺序，后加的标记覆盖较早的标记。
+  final int sortOrder;
+  final DateTime deletedAt;
+  const ChapterHighlight({
+    required this.id,
+    required this.chapterId,
+    required this.startOffset,
+    required this.endOffset,
+    required this.quote,
+    required this.prefix,
+    required this.suffix,
+    required this.contentHash,
+    this.colorArgb,
+    required this.sortOrder,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['chapter_id'] = Variable<String>(chapterId);
+    map['start_offset'] = Variable<int>(startOffset);
+    map['end_offset'] = Variable<int>(endOffset);
+    map['quote'] = Variable<String>(quote);
+    map['prefix'] = Variable<String>(prefix);
+    map['suffix'] = Variable<String>(suffix);
+    map['content_hash'] = Variable<String>(contentHash);
+    if (!nullToAbsent || colorArgb != null) {
+      map['color_argb'] = Variable<int>(colorArgb);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  ChapterHighlightsCompanion toCompanion(bool nullToAbsent) {
+    return ChapterHighlightsCompanion(
+      id: Value(id),
+      chapterId: Value(chapterId),
+      startOffset: Value(startOffset),
+      endOffset: Value(endOffset),
+      quote: Value(quote),
+      prefix: Value(prefix),
+      suffix: Value(suffix),
+      contentHash: Value(contentHash),
+      colorArgb: colorArgb == null && nullToAbsent
+          ? const Value.absent()
+          : Value(colorArgb),
+      sortOrder: Value(sortOrder),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory ChapterHighlight.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ChapterHighlight(
+      id: serializer.fromJson<String>(json['id']),
+      chapterId: serializer.fromJson<String>(json['chapterId']),
+      startOffset: serializer.fromJson<int>(json['startOffset']),
+      endOffset: serializer.fromJson<int>(json['endOffset']),
+      quote: serializer.fromJson<String>(json['quote']),
+      prefix: serializer.fromJson<String>(json['prefix']),
+      suffix: serializer.fromJson<String>(json['suffix']),
+      contentHash: serializer.fromJson<String>(json['contentHash']),
+      colorArgb: serializer.fromJson<int?>(json['colorArgb']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'chapterId': serializer.toJson<String>(chapterId),
+      'startOffset': serializer.toJson<int>(startOffset),
+      'endOffset': serializer.toJson<int>(endOffset),
+      'quote': serializer.toJson<String>(quote),
+      'prefix': serializer.toJson<String>(prefix),
+      'suffix': serializer.toJson<String>(suffix),
+      'contentHash': serializer.toJson<String>(contentHash),
+      'colorArgb': serializer.toJson<int?>(colorArgb),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  ChapterHighlight copyWith({
+    String? id,
+    String? chapterId,
+    int? startOffset,
+    int? endOffset,
+    String? quote,
+    String? prefix,
+    String? suffix,
+    String? contentHash,
+    Value<int?> colorArgb = const Value.absent(),
+    int? sortOrder,
+    DateTime? deletedAt,
+  }) => ChapterHighlight(
+    id: id ?? this.id,
+    chapterId: chapterId ?? this.chapterId,
+    startOffset: startOffset ?? this.startOffset,
+    endOffset: endOffset ?? this.endOffset,
+    quote: quote ?? this.quote,
+    prefix: prefix ?? this.prefix,
+    suffix: suffix ?? this.suffix,
+    contentHash: contentHash ?? this.contentHash,
+    colorArgb: colorArgb.present ? colorArgb.value : this.colorArgb,
+    sortOrder: sortOrder ?? this.sortOrder,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  ChapterHighlight copyWithCompanion(ChapterHighlightsCompanion data) {
+    return ChapterHighlight(
+      id: data.id.present ? data.id.value : this.id,
+      chapterId: data.chapterId.present ? data.chapterId.value : this.chapterId,
+      startOffset: data.startOffset.present
+          ? data.startOffset.value
+          : this.startOffset,
+      endOffset: data.endOffset.present ? data.endOffset.value : this.endOffset,
+      quote: data.quote.present ? data.quote.value : this.quote,
+      prefix: data.prefix.present ? data.prefix.value : this.prefix,
+      suffix: data.suffix.present ? data.suffix.value : this.suffix,
+      contentHash: data.contentHash.present
+          ? data.contentHash.value
+          : this.contentHash,
+      colorArgb: data.colorArgb.present ? data.colorArgb.value : this.colorArgb,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChapterHighlight(')
+          ..write('id: $id, ')
+          ..write('chapterId: $chapterId, ')
+          ..write('startOffset: $startOffset, ')
+          ..write('endOffset: $endOffset, ')
+          ..write('quote: $quote, ')
+          ..write('prefix: $prefix, ')
+          ..write('suffix: $suffix, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('colorArgb: $colorArgb, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    chapterId,
+    startOffset,
+    endOffset,
+    quote,
+    prefix,
+    suffix,
+    contentHash,
+    colorArgb,
+    sortOrder,
+    deletedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ChapterHighlight &&
+          other.id == this.id &&
+          other.chapterId == this.chapterId &&
+          other.startOffset == this.startOffset &&
+          other.endOffset == this.endOffset &&
+          other.quote == this.quote &&
+          other.prefix == this.prefix &&
+          other.suffix == this.suffix &&
+          other.contentHash == this.contentHash &&
+          other.colorArgb == this.colorArgb &&
+          other.sortOrder == this.sortOrder &&
+          other.deletedAt == this.deletedAt);
+}
+
+class ChapterHighlightsCompanion extends UpdateCompanion<ChapterHighlight> {
+  final Value<String> id;
+  final Value<String> chapterId;
+  final Value<int> startOffset;
+  final Value<int> endOffset;
+  final Value<String> quote;
+  final Value<String> prefix;
+  final Value<String> suffix;
+  final Value<String> contentHash;
+  final Value<int?> colorArgb;
+  final Value<int> sortOrder;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const ChapterHighlightsCompanion({
+    this.id = const Value.absent(),
+    this.chapterId = const Value.absent(),
+    this.startOffset = const Value.absent(),
+    this.endOffset = const Value.absent(),
+    this.quote = const Value.absent(),
+    this.prefix = const Value.absent(),
+    this.suffix = const Value.absent(),
+    this.contentHash = const Value.absent(),
+    this.colorArgb = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ChapterHighlightsCompanion.insert({
+    required String id,
+    required String chapterId,
+    required int startOffset,
+    required int endOffset,
+    required String quote,
+    required String prefix,
+    required String suffix,
+    required String contentHash,
+    this.colorArgb = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       chapterId = Value(chapterId),
+       startOffset = Value(startOffset),
+       endOffset = Value(endOffset),
+       quote = Value(quote),
+       prefix = Value(prefix),
+       suffix = Value(suffix),
+       contentHash = Value(contentHash);
+  static Insertable<ChapterHighlight> custom({
+    Expression<String>? id,
+    Expression<String>? chapterId,
+    Expression<int>? startOffset,
+    Expression<int>? endOffset,
+    Expression<String>? quote,
+    Expression<String>? prefix,
+    Expression<String>? suffix,
+    Expression<String>? contentHash,
+    Expression<int>? colorArgb,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (chapterId != null) 'chapter_id': chapterId,
+      if (startOffset != null) 'start_offset': startOffset,
+      if (endOffset != null) 'end_offset': endOffset,
+      if (quote != null) 'quote': quote,
+      if (prefix != null) 'prefix': prefix,
+      if (suffix != null) 'suffix': suffix,
+      if (contentHash != null) 'content_hash': contentHash,
+      if (colorArgb != null) 'color_argb': colorArgb,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ChapterHighlightsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? chapterId,
+    Value<int>? startOffset,
+    Value<int>? endOffset,
+    Value<String>? quote,
+    Value<String>? prefix,
+    Value<String>? suffix,
+    Value<String>? contentHash,
+    Value<int?>? colorArgb,
+    Value<int>? sortOrder,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return ChapterHighlightsCompanion(
+      id: id ?? this.id,
+      chapterId: chapterId ?? this.chapterId,
+      startOffset: startOffset ?? this.startOffset,
+      endOffset: endOffset ?? this.endOffset,
+      quote: quote ?? this.quote,
+      prefix: prefix ?? this.prefix,
+      suffix: suffix ?? this.suffix,
+      contentHash: contentHash ?? this.contentHash,
+      colorArgb: colorArgb ?? this.colorArgb,
+      sortOrder: sortOrder ?? this.sortOrder,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (chapterId.present) {
+      map['chapter_id'] = Variable<String>(chapterId.value);
+    }
+    if (startOffset.present) {
+      map['start_offset'] = Variable<int>(startOffset.value);
+    }
+    if (endOffset.present) {
+      map['end_offset'] = Variable<int>(endOffset.value);
+    }
+    if (quote.present) {
+      map['quote'] = Variable<String>(quote.value);
+    }
+    if (prefix.present) {
+      map['prefix'] = Variable<String>(prefix.value);
+    }
+    if (suffix.present) {
+      map['suffix'] = Variable<String>(suffix.value);
+    }
+    if (contentHash.present) {
+      map['content_hash'] = Variable<String>(contentHash.value);
+    }
+    if (colorArgb.present) {
+      map['color_argb'] = Variable<int>(colorArgb.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChapterHighlightsCompanion(')
+          ..write('id: $id, ')
+          ..write('chapterId: $chapterId, ')
+          ..write('startOffset: $startOffset, ')
+          ..write('endOffset: $endOffset, ')
+          ..write('quote: $quote, ')
+          ..write('prefix: $prefix, ')
+          ..write('suffix: $suffix, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('colorArgb: $colorArgb, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ForeshadowingsTable extends Foreshadowings
     with TableInfo<$ForeshadowingsTable, Foreshadowing> {
   @override
@@ -22957,6 +23620,8 @@ abstract class _$NovelContentDatabase extends GeneratedDatabase {
       $CharacterProfilesTable(this);
   late final $ItemsTable items = $ItemsTable(this);
   late final $ChaptersTable chapters = $ChaptersTable(this);
+  late final $ChapterHighlightsTable chapterHighlights =
+      $ChapterHighlightsTable(this);
   late final $ForeshadowingsTable foreshadowings = $ForeshadowingsTable(this);
   late final $AiChatMessagesTable aiChatMessages = $AiChatMessagesTable(this);
   late final $AiEmbeddingDocumentsTable aiEmbeddingDocuments =
@@ -23046,6 +23711,7 @@ abstract class _$NovelContentDatabase extends GeneratedDatabase {
     characterProfiles,
     items,
     chapters,
+    chapterHighlights,
     foreshadowings,
     aiChatMessages,
     aiEmbeddingDocuments,
@@ -24535,6 +25201,346 @@ typedef $$ChaptersTableProcessedTableManager =
         BaseReferences<_$NovelContentDatabase, $ChaptersTable, ChapterData>,
       ),
       ChapterData,
+      PrefetchHooks Function()
+    >;
+typedef $$ChapterHighlightsTableCreateCompanionBuilder =
+    ChapterHighlightsCompanion Function({
+      required String id,
+      required String chapterId,
+      required int startOffset,
+      required int endOffset,
+      required String quote,
+      required String prefix,
+      required String suffix,
+      required String contentHash,
+      Value<int?> colorArgb,
+      Value<int> sortOrder,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$ChapterHighlightsTableUpdateCompanionBuilder =
+    ChapterHighlightsCompanion Function({
+      Value<String> id,
+      Value<String> chapterId,
+      Value<int> startOffset,
+      Value<int> endOffset,
+      Value<String> quote,
+      Value<String> prefix,
+      Value<String> suffix,
+      Value<String> contentHash,
+      Value<int?> colorArgb,
+      Value<int> sortOrder,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$ChapterHighlightsTableFilterComposer
+    extends Composer<_$NovelContentDatabase, $ChapterHighlightsTable> {
+  $$ChapterHighlightsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chapterId => $composableBuilder(
+    column: $table.chapterId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endOffset => $composableBuilder(
+    column: $table.endOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get quote => $composableBuilder(
+    column: $table.quote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get prefix => $composableBuilder(
+    column: $table.prefix,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get suffix => $composableBuilder(
+    column: $table.suffix,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get colorArgb => $composableBuilder(
+    column: $table.colorArgb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ChapterHighlightsTableOrderingComposer
+    extends Composer<_$NovelContentDatabase, $ChapterHighlightsTable> {
+  $$ChapterHighlightsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chapterId => $composableBuilder(
+    column: $table.chapterId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endOffset => $composableBuilder(
+    column: $table.endOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quote => $composableBuilder(
+    column: $table.quote,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get prefix => $composableBuilder(
+    column: $table.prefix,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get suffix => $composableBuilder(
+    column: $table.suffix,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get colorArgb => $composableBuilder(
+    column: $table.colorArgb,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ChapterHighlightsTableAnnotationComposer
+    extends Composer<_$NovelContentDatabase, $ChapterHighlightsTable> {
+  $$ChapterHighlightsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get chapterId =>
+      $composableBuilder(column: $table.chapterId, builder: (column) => column);
+
+  GeneratedColumn<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get endOffset =>
+      $composableBuilder(column: $table.endOffset, builder: (column) => column);
+
+  GeneratedColumn<String> get quote =>
+      $composableBuilder(column: $table.quote, builder: (column) => column);
+
+  GeneratedColumn<String> get prefix =>
+      $composableBuilder(column: $table.prefix, builder: (column) => column);
+
+  GeneratedColumn<String> get suffix =>
+      $composableBuilder(column: $table.suffix, builder: (column) => column);
+
+  GeneratedColumn<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get colorArgb =>
+      $composableBuilder(column: $table.colorArgb, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$ChapterHighlightsTableTableManager
+    extends
+        RootTableManager<
+          _$NovelContentDatabase,
+          $ChapterHighlightsTable,
+          ChapterHighlight,
+          $$ChapterHighlightsTableFilterComposer,
+          $$ChapterHighlightsTableOrderingComposer,
+          $$ChapterHighlightsTableAnnotationComposer,
+          $$ChapterHighlightsTableCreateCompanionBuilder,
+          $$ChapterHighlightsTableUpdateCompanionBuilder,
+          (
+            ChapterHighlight,
+            BaseReferences<
+              _$NovelContentDatabase,
+              $ChapterHighlightsTable,
+              ChapterHighlight
+            >,
+          ),
+          ChapterHighlight,
+          PrefetchHooks Function()
+        > {
+  $$ChapterHighlightsTableTableManager(
+    _$NovelContentDatabase db,
+    $ChapterHighlightsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ChapterHighlightsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChapterHighlightsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChapterHighlightsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> chapterId = const Value.absent(),
+                Value<int> startOffset = const Value.absent(),
+                Value<int> endOffset = const Value.absent(),
+                Value<String> quote = const Value.absent(),
+                Value<String> prefix = const Value.absent(),
+                Value<String> suffix = const Value.absent(),
+                Value<String> contentHash = const Value.absent(),
+                Value<int?> colorArgb = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ChapterHighlightsCompanion(
+                id: id,
+                chapterId: chapterId,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                quote: quote,
+                prefix: prefix,
+                suffix: suffix,
+                contentHash: contentHash,
+                colorArgb: colorArgb,
+                sortOrder: sortOrder,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String chapterId,
+                required int startOffset,
+                required int endOffset,
+                required String quote,
+                required String prefix,
+                required String suffix,
+                required String contentHash,
+                Value<int?> colorArgb = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ChapterHighlightsCompanion.insert(
+                id: id,
+                chapterId: chapterId,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                quote: quote,
+                prefix: prefix,
+                suffix: suffix,
+                contentHash: contentHash,
+                colorArgb: colorArgb,
+                sortOrder: sortOrder,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ChapterHighlightsTable, ChapterHighlight>(table),
+                  BaseReferences<
+                    _$NovelContentDatabase,
+                    $ChapterHighlightsTable,
+                    ChapterHighlight
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ChapterHighlightsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$NovelContentDatabase,
+      $ChapterHighlightsTable,
+      ChapterHighlight,
+      $$ChapterHighlightsTableFilterComposer,
+      $$ChapterHighlightsTableOrderingComposer,
+      $$ChapterHighlightsTableAnnotationComposer,
+      $$ChapterHighlightsTableCreateCompanionBuilder,
+      $$ChapterHighlightsTableUpdateCompanionBuilder,
+      (
+        ChapterHighlight,
+        BaseReferences<
+          _$NovelContentDatabase,
+          $ChapterHighlightsTable,
+          ChapterHighlight
+        >,
+      ),
+      ChapterHighlight,
       PrefetchHooks Function()
     >;
 typedef $$ForeshadowingsTableCreateCompanionBuilder =
@@ -34753,6 +35759,8 @@ class $NovelContentDatabaseManager {
       $$ItemsTableTableManager(_db, _db.items);
   $$ChaptersTableTableManager get chapters =>
       $$ChaptersTableTableManager(_db, _db.chapters);
+  $$ChapterHighlightsTableTableManager get chapterHighlights =>
+      $$ChapterHighlightsTableTableManager(_db, _db.chapterHighlights);
   $$ForeshadowingsTableTableManager get foreshadowings =>
       $$ForeshadowingsTableTableManager(_db, _db.foreshadowings);
   $$AiChatMessagesTableTableManager get aiChatMessages =>

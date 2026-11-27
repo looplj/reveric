@@ -17,6 +17,8 @@ class EditorSettingsData {
     required this.lineHeight,
     required this.minimapEnabled,
     required this.lineNumbersEnabled,
+    required this.dialogueHighlightEnabled,
+    this.highlightColorHex = '',
     required this.lineEnabled,
     required this.lineStyle,
     required this.lineColorHex,
@@ -53,6 +55,8 @@ class EditorSettingsData {
   final double lineHeight;
   final bool minimapEnabled;
   final bool lineNumbersEnabled;
+  final bool dialogueHighlightEnabled;
+  final String highlightColorHex;
   final bool lineEnabled;
   final String lineStyle;
   final String lineColorHex;
@@ -77,6 +81,7 @@ class EditorSettingsData {
       lineHeight: defaultLineHeight,
       minimapEnabled: false,
       lineNumbersEnabled: false,
+      dialogueHighlightEnabled: false,
       lineEnabled: false,
       lineStyle: defaultLineStyle,
       lineColorHex: defaultLineColorHex,
@@ -124,6 +129,14 @@ class EditorSettingsData {
       lineNumbersEnabled: _boolean(
         json['lineNumbersEnabled'],
         fallback.lineNumbersEnabled,
+      ),
+      dialogueHighlightEnabled: _boolean(
+        json['dialogueHighlightEnabled'],
+        fallback.dialogueHighlightEnabled,
+      ),
+      highlightColorHex: _string(
+        json['highlightColorHex'],
+        fallback.highlightColorHex,
       ),
       lineEnabled: _boolean(json['lineEnabled'], fallback.lineEnabled),
       lineStyle:
@@ -178,6 +191,8 @@ class EditorSettingsData {
       'lineHeight': lineHeight,
       'minimapEnabled': minimapEnabled,
       'lineNumbersEnabled': lineNumbersEnabled,
+      'dialogueHighlightEnabled': dialogueHighlightEnabled,
+      'highlightColorHex': highlightColorHex,
       'lineEnabled': lineEnabled,
       'lineStyle': lineStyle,
       'lineColorHex': lineColorHex,

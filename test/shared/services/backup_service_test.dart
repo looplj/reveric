@@ -1031,9 +1031,18 @@ void main() {
 
   for (final mode in RestoreMode.values) {
     for (final main in [true, false]) {
-      for (final delta in [if (!main) -2, -1, 0, 1]) {
+      final supported = main
+          ? AppDatabase.currentSchemaVersion
+          : NovelContentDatabase.currentSchemaVersion;
+      final versions = main
+          ? [supported - 1, supported, supported + 1]
+          : [
+              for (var version = 0; version <= supported + 1; version++)
+                version,
+            ];
+      for (final version in versions) {
         test(
-          '$mode checks ${main ? 'main' : 'content'} schema delta $delta before business data',
+          '$mode checks ${main ? 'main' : 'content'} schema v$version before business data',
           () async {
             final source = Directory(p.join(tempRoot.path, 'source'))
               ..createSync();
@@ -1045,25 +1054,31 @@ void main() {
                 ? 'reveric.sqlite'
                 : 'novel_workspaces/work.sqlite';
             final db = sqlite3.open(p.join(source.path, relative));
-            final supported = main
-                ? AppDatabase.currentSchemaVersion
-                : NovelContentDatabase.currentSchemaVersion;
-            final compatibleContent = !main && delta == -1;
-            final rejected = delta != 0 && !compatibleContent;
+            final compatibleContent =
+                !main && version >= 1 && version < supported;
+            final rejected = version != supported && !compatibleContent;
             if (compatibleContent) {
-              db.execute(
-                'ALTER TABLE production_clips DROP COLUMN generate_audio',
-              );
+              void setLegacyContentSchema(Database database) {
+                if (version < 3) {
+                  database.execute('DROP TABLE chapter_highlights');
+                }
+                if (version < 2) {
+                  database.execute(
+                    'ALTER TABLE production_clips DROP COLUMN generate_audio',
+                  );
+                }
+                database.execute('PRAGMA user_version = $version');
+              }
+
+              setLegacyContentSchema(db);
               final unregistered = _databases.writeContent(
                 p.join(source.path, 'novel_workspaces/unregistered.sqlite'),
               );
-              unregistered.execute(
-                'ALTER TABLE production_clips DROP COLUMN generate_audio',
-              );
-              unregistered.execute('PRAGMA user_version = 1');
+              setLegacyContentSchema(unregistered);
               unregistered.close();
+            } else {
+              db.execute('PRAGMA user_version = $version');
             }
-            db.execute('PRAGMA user_version = ${supported + delta}');
             db.close();
             if (rejected) {
               // A different schema must never reach current JSON/table readers.
@@ -1119,7 +1134,7 @@ void main() {
                 final legacy = sqlite3.open(file.path, mode: OpenMode.readOnly);
                 expect(
                   legacy.select('PRAGMA user_version').single['user_version'],
-                  1,
+                  version,
                 );
                 legacy.close();
 
@@ -1140,6 +1155,10 @@ void main() {
                   expect(
                     columns.map((row) => row.read<String>('name')),
                     contains('generate_audio'),
+                  );
+                  expect(
+                    await content.select(content.chapterHighlights).get(),
+                    isEmpty,
                   );
                   expect(_readContentMarker(appSupportDir, 'work'), 'backup');
                 } finally {

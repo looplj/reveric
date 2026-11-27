@@ -26,6 +26,8 @@ class RevericColors {
   final Color accentWarm;
   final Color accentAmber;
 
+  Color get editorHighlightBackground => accentAmber.withValues(alpha: 0.32);
+
   // States
   final Color selected;
   final Color hover;

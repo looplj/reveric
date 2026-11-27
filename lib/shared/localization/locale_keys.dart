@@ -1803,6 +1803,11 @@ abstract final class LocaleKeys {
   static const chapterPublishChroniclerPrompt =
       'chapter.publish_chronicler_prompt';
   static const chapterRunChronicler = 'chapter.run_chronicler';
+  static const chapterHighlightSelection = 'chapter.highlight_selection';
+  static const chapterRemoveHighlight = 'chapter.remove_highlight';
+  static const chapterChangeHighlightColor = 'chapter.change_highlight_color';
+  static const chapterUseDefaultHighlightColor =
+      'chapter.use_default_highlight_color';
   static const chapterStatDraft = 'chapter.stat_draft';
   static const chapterStatPublished = 'chapter.stat_published';
   static const chapterUnpublish = 'chapter.unpublish';
@@ -4736,6 +4741,13 @@ abstract final class LocaleKeys {
   static const settingsEditorLineNumbers = 'settings.editor_line_numbers';
   static const settingsEditorLineNumbersDescription =
       'settings.editor_line_numbers_description';
+  static const settingsEditorDialogueHighlight =
+      'settings.editor_dialogue_highlight';
+  static const settingsEditorDialogueHighlightDescription =
+      'settings.editor_dialogue_highlight_description';
+  static const settingsEditorHighlightColor = 'settings.editor_highlight_color';
+  static const settingsEditorHighlightColorDescription =
+      'settings.editor_highlight_color_description';
   static const settingsEditorLine = 'settings.editor_line';
   static const settingsEditorLineDescription =
       'settings.editor_line_description';

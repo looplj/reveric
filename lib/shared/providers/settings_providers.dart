@@ -291,6 +291,12 @@ class AppSettings {
   /// 章节正文编辑器是否显示行号，默认关闭。
   final bool editorLineNumbersEnabled;
 
+  /// 章节正文是否高亮中文双引号括起的对白，默认关闭。
+  final bool editorDialogueHighlightEnabled;
+
+  /// 编辑器高亮底色，留空时跟随主题。
+  final String editorHighlightColorHex;
+
   /// 章节树是否按倒序（章节号从大到小）排列，默认正序。
   final bool chapterSortDescending;
 
@@ -467,6 +473,8 @@ class AppSettings {
     this.editorLineHeight = defaultEditorLineHeight,
     this.editorMinimapEnabled = false,
     this.editorLineNumbersEnabled = false,
+    this.editorDialogueHighlightEnabled = false,
+    this.editorHighlightColorHex = '',
     this.chapterSortDescending = false,
     this.editorLineEnabled = false,
     this.editorLineStyle = EditorLineStyle.solid,
@@ -539,6 +547,8 @@ class AppSettings {
     double? editorLineHeight,
     bool? editorMinimapEnabled,
     bool? editorLineNumbersEnabled,
+    bool? editorDialogueHighlightEnabled,
+    String? editorHighlightColorHex,
     bool? chapterSortDescending,
     bool? editorLineEnabled,
     EditorLineStyle? editorLineStyle,
@@ -612,6 +622,10 @@ class AppSettings {
       editorMinimapEnabled: editorMinimapEnabled ?? this.editorMinimapEnabled,
       editorLineNumbersEnabled:
           editorLineNumbersEnabled ?? this.editorLineNumbersEnabled,
+      editorDialogueHighlightEnabled:
+          editorDialogueHighlightEnabled ?? this.editorDialogueHighlightEnabled,
+      editorHighlightColorHex:
+          editorHighlightColorHex ?? this.editorHighlightColorHex,
       chapterSortDescending:
           chapterSortDescending ?? this.chapterSortDescending,
       editorLineEnabled: editorLineEnabled ?? this.editorLineEnabled,
@@ -690,6 +704,8 @@ EditorSettingsData _editorSettingsDataFromAppSettings(AppSettings settings) {
     lineHeight: settings.editorLineHeight,
     minimapEnabled: settings.editorMinimapEnabled,
     lineNumbersEnabled: settings.editorLineNumbersEnabled,
+    dialogueHighlightEnabled: settings.editorDialogueHighlightEnabled,
+    highlightColorHex: settings.editorHighlightColorHex,
     lineEnabled: settings.editorLineEnabled,
     lineStyle: switch (settings.editorLineStyle) {
       EditorLineStyle.solid => 'solid',
@@ -1174,6 +1190,8 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       editorLineHeight: editorSettings.lineHeight,
       editorMinimapEnabled: editorSettings.minimapEnabled,
       editorLineNumbersEnabled: editorSettings.lineNumbersEnabled,
+      editorDialogueHighlightEnabled: editorSettings.dialogueHighlightEnabled,
+      editorHighlightColorHex: editorSettings.highlightColorHex,
       chapterSortDescending: chapterSortDescendingRaw == 'true',
       editorLineEnabled: editorSettings.lineEnabled,
       editorLineStyle: _parseEditorLineStyle(editorSettings.lineStyle),
@@ -2367,14 +2385,10 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
   }
 
   Future<void> setEditorFontColorHex(String value) async {
-    final text = value.trim();
-    final match = RegExp(
-      r'^#?([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$',
-    ).firstMatch(text);
-    if (text.isNotEmpty && match == null) {
-      throw const FormatException('Invalid editor font color');
-    }
-    final normalized = text.isEmpty ? '' : '#${match!.group(1)!.toUpperCase()}';
+    final normalized = _normalizeOptionalEditorColorHex(
+      value,
+      'editor font color',
+    );
     final currentState = await _requireCurrentState('SET_EDITOR_FONT_COLOR');
     if (currentState.editorFontColorHex == normalized) {
       return;
@@ -2428,6 +2442,38 @@ class AppSettingsNotifier extends _$AppSettingsNotifier {
       return;
     }
     final nextState = currentState.copyWith(editorLineNumbersEnabled: value);
+    state = AsyncValue.data(nextState);
+    await _persistPartial(editorSettings: nextState);
+  }
+
+  Future<void> setEditorDialogueHighlightEnabled(bool value) async {
+    final currentState = await _requireCurrentState(
+      'SET_EDITOR_DIALOGUE_HIGHLIGHT_ENABLED',
+    );
+    if (currentState.editorDialogueHighlightEnabled == value) {
+      return;
+    }
+    final nextState = currentState.copyWith(
+      editorDialogueHighlightEnabled: value,
+    );
+    state = AsyncValue.data(nextState);
+    await _persistPartial(editorSettings: nextState);
+  }
+
+  Future<void> setEditorHighlightColorHex(String value) async {
+    final normalized = _normalizeOptionalEditorColorHex(
+      value,
+      'editor highlight color',
+    );
+    final currentState = await _requireCurrentState(
+      'SET_EDITOR_HIGHLIGHT_COLOR',
+    );
+    if (currentState.editorHighlightColorHex == normalized) {
+      return;
+    }
+    final nextState = currentState.copyWith(
+      editorHighlightColorHex: normalized,
+    );
     state = AsyncValue.data(nextState);
     await _persistPartial(editorSettings: nextState);
   }
@@ -2959,13 +3005,28 @@ final editorFontColorHexProvider = Provider<String>((ref) {
 
 /// null 表示由渲染处使用当前主题正文色。
 final editorFontColorProvider = Provider<Color?>((ref) {
-  final hex = ref.watch(editorFontColorHexProvider);
+  return _parseOptionalEditorColor(ref.watch(editorFontColorHexProvider));
+});
+
+Color? _parseOptionalEditorColor(String hex) {
   if (hex.isEmpty) {
     return null;
   }
   final value = hex.replaceFirst('#', '');
   return Color(int.parse(value.length == 6 ? 'FF$value' : value, radix: 16));
-});
+}
+
+String _normalizeOptionalEditorColorHex(String value, String field) {
+  final text = value.trim();
+  if (text.isEmpty) {
+    return '';
+  }
+  final match = RegExp(r'^#?([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$').firstMatch(text);
+  if (match == null) {
+    throw FormatException('Invalid $field');
+  }
+  return '#${match.group(1)!.toUpperCase()}';
+}
 
 final editorLetterSpacingProvider = Provider<double>((ref) {
   final settingsAsync = ref.watch(appSettingsNotifierProvider);
@@ -2997,6 +3058,27 @@ final editorLineNumbersEnabledProvider = Provider<bool>((ref) {
     data: (s) => s.editorLineNumbersEnabled,
     orElse: () => false,
   );
+});
+
+final editorDialogueHighlightEnabledProvider = Provider<bool>((ref) {
+  return ref.watch(
+    appSettingsNotifierProvider.select(
+      (settings) =>
+          settings.asData?.value.editorDialogueHighlightEnabled ?? false,
+    ),
+  );
+});
+
+final editorHighlightColorHexProvider = Provider<String>((ref) {
+  return ref.watch(
+    appSettingsNotifierProvider.select(
+      (settings) => settings.asData?.value.editorHighlightColorHex ?? '',
+    ),
+  );
+});
+
+final editorHighlightColorProvider = Provider<Color?>((ref) {
+  return _parseOptionalEditorColor(ref.watch(editorHighlightColorHexProvider));
 });
 
 final editorLineEnabledProvider = Provider<bool>((ref) {

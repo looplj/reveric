@@ -77,6 +77,9 @@ class _EditorFontsSection extends HookConsumerWidget {
     final currentLetterSpacing = ref.watch(editorLetterSpacingProvider);
     final currentLineHeight = ref.watch(editorLineHeightProvider);
     final minimapEnabled = ref.watch(editorMinimapEnabledProvider);
+    final dialogueHighlightEnabled = ref.watch(
+      editorDialogueHighlightEnabledProvider,
+    );
     final settingsAsync = ref.watch(appSettingsProvider);
     final language = settingsAsync.maybeWhen(
       data: (settings) => settings.language,
@@ -159,6 +162,35 @@ class _EditorFontsSection extends HookConsumerWidget {
                     .read(appSettingsProvider.notifier)
                     .setEditorLineNumbersEnabled,
               ),
+            ),
+          ),
+          const SettingsRowDivider(),
+          SettingsRow(
+            labelKey: LocaleKeys.settingsEditorDialogueHighlight,
+            descriptionKey:
+                LocaleKeys.settingsEditorDialogueHighlightDescription,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: RevericSwitch(
+                value: dialogueHighlightEnabled,
+                onChanged: settingsAsync.asData == null
+                    ? null
+                    : notifier.setEditorDialogueHighlightEnabled,
+              ),
+            ),
+          ),
+          const SettingsRowDivider(),
+          SettingsRow(
+            labelKey: LocaleKeys.settingsEditorHighlightColor,
+            descriptionKey: LocaleKeys.settingsEditorHighlightColorDescription,
+            child: _ColorPickerField(
+              colorHex: ref.watch(editorHighlightColorHexProvider),
+              presets: _presetHighlightColors,
+              enabled: settingsAsync.asData != null,
+              allowEmpty: true,
+              fallbackColor: colors.editorHighlightBackground,
+              hintText: '#AARRGGBB',
+              onChanged: notifier.setEditorHighlightColorHex,
             ),
           ),
           const SettingsRowDivider(),

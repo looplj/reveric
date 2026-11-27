@@ -142,6 +142,63 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('dialogue setting toggles full paired dialogue highlights', (
+    tester,
+  ) async {
+    const content = '”她说：“你好。”“再见。”走远了。“未写完';
+    var dialogueHighlightEnabled = false;
+    var dialogueHighlightColor = const Color(0x55FFD54F);
+    await tester.pumpWidget(
+      _wrapEditor(
+        _editor(content: content),
+        isDialogueHighlightEnabled: () => dialogueHighlightEnabled,
+        dialogueHighlightColor: () => dialogueHighlightColor,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final editableState = tester.state<EditableTextState>(
+      find.descendant(
+        of: find.byKey(const ValueKey('chapter-content-selection-listener')),
+        matching: find.byType(EditableText),
+      ),
+    );
+    Iterable<TextSpan> highlightedSpans() {
+      final span = editableState.renderEditable.text! as TextSpan;
+      expect(span.toPlainText(), content);
+      return span.children!.whereType<TextSpan>().where(
+        (child) => child.style?.backgroundColor != null,
+      );
+    }
+
+    final container = ProviderScope.containerOf(
+      editableState.context,
+      listen: false,
+    );
+    expect(highlightedSpans(), isEmpty);
+    dialogueHighlightEnabled = true;
+    container.invalidate(editorDialogueHighlightEnabledProvider);
+    await tester.pumpAndSettle();
+    expect(highlightedSpans().map((span) => span.text), ['“你好。”', '“再见。”']);
+    expect(highlightedSpans().map((span) => span.style!.backgroundColor), [
+      dialogueHighlightColor,
+      dialogueHighlightColor,
+    ]);
+    dialogueHighlightColor = const Color(0x6642A5F5);
+    container.invalidate(editorHighlightColorProvider);
+    await tester.pumpAndSettle();
+    expect(highlightedSpans().map((span) => span.style!.backgroundColor), [
+      dialogueHighlightColor,
+      dialogueHighlightColor,
+    ]);
+    dialogueHighlightEnabled = false;
+    container.invalidate(editorDialogueHighlightEnabledProvider);
+    await tester.pumpAndSettle();
+    expect(highlightedSpans(), isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('hovering a recognized character shows its entity card', (
     tester,
   ) async {
@@ -543,6 +600,8 @@ Widget _wrapEditor(
   Widget child, {
   bool minimapEnabled = false,
   bool lineNumbersEnabled = false,
+  bool Function()? isDialogueHighlightEnabled,
+  Color Function()? dialogueHighlightColor,
 }) {
   return EasyLocalization(
     key: UniqueKey(),
@@ -563,6 +622,12 @@ Widget _wrapEditor(
             editorMinimapEnabledProvider.overrideWithValue(minimapEnabled),
             editorLineNumbersEnabledProvider.overrideWithValue(
               lineNumbersEnabled,
+            ),
+            editorDialogueHighlightEnabledProvider.overrideWith(
+              (ref) => isDialogueHighlightEnabled?.call() ?? false,
+            ),
+            editorHighlightColorProvider.overrideWith(
+              (ref) => dialogueHighlightColor?.call(),
             ),
             editorLineEnabledProvider.overrideWithValue(true),
             editorLineStyleProvider.overrideWithValue(

@@ -59,7 +59,7 @@ void main() {
         expect(
           (await database.customSelect('PRAGMA user_version').getSingle())
               .read<int>('user_version'),
-          2,
+          NovelContentDatabase.currentSchemaVersion,
         );
         final columns = await database
             .customSelect('PRAGMA table_info(production_clips)')

@@ -8,6 +8,7 @@ import 'package:drift/drift.dart';
 Future<void> createNovelContentDatabaseIndexes(
   GeneratedDatabase database,
 ) async {
+  await createChapterHighlightsIndex(database);
   await database.customStatement(
     'CREATE UNIQUE INDEX IF NOT EXISTS documents_by_type_parent_id_title_u '
     "ON documents (type, COALESCE(parent_id, ''), title) "
@@ -108,5 +109,12 @@ Future<void> createNovelContentDatabaseIndexes(
   );
   await database.customStatement(
     'CREATE INDEX IF NOT EXISTS screenplay_episodes_by_editing_id ON screenplay_episodes (editing_id)',
+  );
+}
+
+Future<void> createChapterHighlightsIndex(GeneratedDatabase database) {
+  return database.customStatement(
+    'CREATE INDEX IF NOT EXISTS chapter_highlights_by_chapter_id_deleted_at '
+    'ON chapter_highlights (chapter_id, deleted_at)',
   );
 }

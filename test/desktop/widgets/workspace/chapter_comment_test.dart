@@ -205,8 +205,25 @@ void main() {
       listener.onPointerUp!(const PointerUpEvent());
       await tester.pumpAndSettle();
 
+      expect(find.widgetWithText(TextButton, '取消高亮'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, '高亮'));
+      await tester.pumpAndSettle();
+      expect(
+        (await database.select(database.chapterHighlights).get()).single.quote,
+        '灯笼',
+      );
+
+      bodyField.controller!.selection = TextSelection(
+        baseOffset: start,
+        extentOffset: start + 2,
+      );
+      listener.onPointerDown!(const PointerDownEvent(buttons: kPrimaryButton));
+      listener.onPointerUp!(const PointerUpEvent());
+      await tester.pumpAndSettle();
       final commentAction = find.widgetWithText(TextButton, '批注');
       expect(commentAction, findsOneWidget);
+      expect(find.widgetWithText(TextButton, '更改颜色'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '取消高亮'), findsOneWidget);
 
       await tester.tap(commentAction);
       await tester.pumpAndSettle();
@@ -340,6 +357,7 @@ Widget _editor({
     contentFocusNode: FocusNode(),
     onCreateChapter: () async {},
     databasePath: _databasePath,
+    onFlushForHighlight: () async => true,
   );
 }
 

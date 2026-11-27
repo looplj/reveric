@@ -77,6 +77,8 @@ import '../../shared/utils/chapter_entity_recognition.dart';
 import '../../shared/utils/chapter_text_formatter.dart';
 import '../../shared/utils/text_input_formatters.dart';
 import '../../shared/utils/text_input_composing.dart';
+import '../../shared/widgets/chapter/dialogue_highlight_controller.dart';
+import '../../shared/widgets/chapter/highlight_selection.dart';
 import '../../shared/widgets/chapter_copy_replace_panel.dart';
 import '../../shared/widgets/entity_card.dart';
 import '../../shared/widgets/confirm_dialog.dart';
@@ -332,7 +334,8 @@ class MobileChapterEditorPage extends HookConsumerWidget {
         : _resolveActiveChapterNumber(activeChapter, chapters);
 
     final titleController = useTextEditingController();
-    final bodyController = useTextEditingController();
+    final bodyController = useMemoized(ChapterDialogueHighlightController.new);
+    useEffect(() => bodyController.dispose, [bodyController]);
     final outlineController = useTextEditingController();
     final session = useMemoized(
       () => _ChapterEditSession(
@@ -388,6 +391,7 @@ class MobileChapterEditorPage extends HookConsumerWidget {
             title: storedTitle,
             outline: outline,
             content: content,
+            preserveHighlightSelection: true,
           );
           if (session.loadedChapterId == id) {
             session.markPersisted(
@@ -471,6 +475,7 @@ class MobileChapterEditorPage extends HookConsumerWidget {
               title: title,
               outline: outline,
               content: content,
+              preserveHighlightSelection: true,
             ),
           ),
         );
@@ -663,6 +668,12 @@ class MobileChapterEditorPage extends HookConsumerWidget {
                   ? const Center(child: CircularProgressIndicator())
                   : _ChapterSurface(
                       activeChapter: activeChapter,
+                      highlightSelection: ChapterHighlightSelection(
+                        path: databasePath,
+                        chapterId: activeChapter.id,
+                        savedBody: activeChapter.content,
+                        flush: flushPendingEdit,
+                      ),
                       chapters: chapters,
                       titleController: titleController,
                       bodyController: bodyController,
@@ -1248,6 +1259,7 @@ class _MobileChapterBodyField extends StatefulWidget {
     required this.editorLineHeight,
     required this.bodyStyle,
     required this.hintStyle,
+    required this.contextMenuBuilder,
   });
 
   final String chapterId;
@@ -1262,6 +1274,7 @@ class _MobileChapterBodyField extends StatefulWidget {
   final double editorLineHeight;
   final TextStyle bodyStyle;
   final TextStyle hintStyle;
+  final EditableTextContextMenuBuilder contextMenuBuilder;
 
   @override
   State<_MobileChapterBodyField> createState() =>
@@ -1342,6 +1355,7 @@ class _MobileChapterBodyFieldState extends State<_MobileChapterBodyField> {
               child: TextField(
                 key: _fieldKey,
                 controller: widget.controller,
+                contextMenuBuilder: widget.contextMenuBuilder,
                 scrollController: _scrollController,
                 onChanged: (_) => widget.onChanged(),
                 inputFormatters: _inputFormatters,
@@ -1404,6 +1418,7 @@ class _MobileChapterBodyFieldState extends State<_MobileChapterBodyField> {
 class _ChapterSurface extends ConsumerWidget {
   const _ChapterSurface({
     required this.activeChapter,
+    required this.highlightSelection,
     required this.chapters,
     required this.titleController,
     required this.bodyController,
@@ -1413,9 +1428,10 @@ class _ChapterSurface extends ConsumerWidget {
   });
 
   final Chapter activeChapter;
+  final ChapterHighlightSelection highlightSelection;
   final List<Chapter> chapters;
   final TextEditingController titleController;
-  final TextEditingController bodyController;
+  final ChapterDialogueHighlightController bodyController;
   final VoidCallback onOpenOutline;
   final List<ChapterEntityMention> entityCatalog;
 
@@ -1436,6 +1452,14 @@ class _ChapterSurface extends ConsumerWidget {
     final lineNumbersEnabled = ref.watch(editorLineNumbersEnabledProvider);
     final lineStyle = ref.watch(editorLineStyleProvider);
     final lineColorHex = ref.watch(editorLineColorHexProvider);
+    bodyController
+      ..dialogueHighlightEnabled = ref.watch(
+        editorDialogueHighlightEnabledProvider,
+      )
+      ..highlightBackground =
+          ref.watch(editorHighlightColorProvider) ??
+          colors.editorHighlightBackground;
+    highlightSelection.configure(ref, bodyController);
 
     final volume = _volumeOf(activeChapter, chapters);
     final chapterNumber = _resolveActiveChapterNumber(activeChapter, chapters);
@@ -1513,6 +1537,25 @@ class _ChapterSurface extends ConsumerWidget {
             child: _MobileChapterBodyField(
               chapterId: activeChapter.id,
               controller: bodyController,
+              contextMenuBuilder: (context, editable) {
+                final highlightItems = highlightSelection.menuItems(
+                  editable.context,
+                  ref,
+                  bodyController,
+                );
+                if (highlightItems.isEmpty) {
+                  return AdaptiveTextSelectionToolbar.editableText(
+                    editableTextState: editable,
+                  );
+                }
+                return AdaptiveTextSelectionToolbar.buttonItems(
+                  anchors: editable.contextMenuAnchors,
+                  buttonItems: [
+                    ...highlightItems,
+                    ...editable.contextMenuButtonItems,
+                  ],
+                );
+              },
               onChanged: () => onChanged(_ChapterEditField.content),
               lineEnabled: lineEnabled,
               lineNumbersEnabled: lineNumbersEnabled,

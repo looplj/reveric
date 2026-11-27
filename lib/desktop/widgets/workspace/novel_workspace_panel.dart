@@ -165,6 +165,7 @@ class NovelWorkspacePanel extends ConsumerWidget {
     required this.onCreateEntry,
     required this.onOutlineChanged,
     required this.onSaveChapter,
+    this.onFlushChapterForHighlight,
     required this.onSaveEntry,
     this.onDiscardCreateDraft,
     required this.onStatusChanged,
@@ -253,6 +254,7 @@ class NovelWorkspacePanel extends ConsumerWidget {
   final Future<void> Function() onCreateEntry;
   final ValueChanged<OutlineDraft> onOutlineChanged;
   final Future<void> Function() onSaveChapter;
+  final Future<bool> Function()? onFlushChapterForHighlight;
   final Future<void> Function() onSaveEntry;
   final VoidCallback? onDiscardCreateDraft;
   final ValueSetter<String> onStatusChanged;
@@ -590,6 +592,7 @@ class NovelWorkspacePanel extends ConsumerWidget {
           outlineFocusNode: chapterOutlineFocusNode,
           contentFocusNode: chapterContentFocusNode,
           onCreateChapter: onCreateEntry,
+          onFlushForHighlight: onFlushChapterForHighlight,
           databasePath: databasePath,
           onAddSelectionToChat: onAddChapterSelectionToChat,
           onNarrateSelection: canNarrateSelection && narrationPath != null

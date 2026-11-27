@@ -19,10 +19,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('writes editor changes only to editor_settings', () async {
     final database = AppDatabase.forTest(NativeDatabase.memory());
+    await database.appSettingsDao.set(
+      key: EditorSettingsData.appSettingsKey,
+      value: '{"version":4,"lineNumbersEnabled":false}',
+    );
     final container = ProviderContainer(
-      overrides: [
-        appSettingsDatabaseProvider.overrideWithValue(database),
-      ],
+      overrides: [appSettingsDatabaseProvider.overrideWithValue(database)],
     );
     addTearDown(() async {
       container.dispose();
@@ -34,11 +36,15 @@ void main() {
     expect(container.read(editorFontColorProvider), isNull);
     expect(initialSettings.editorMinimapEnabled, isFalse);
     expect(initialSettings.editorLineNumbersEnabled, isFalse);
+    expect(container.read(editorDialogueHighlightEnabledProvider), isFalse);
+    expect(container.read(editorHighlightColorProvider), isNull);
     final notifier = container.read(appSettingsProvider.notifier);
     await notifier.setEditorFontSize(22);
     await notifier.setEditorFontColorHex(' a1b2c3 ');
     await notifier.setEditorMinimapEnabled(true);
     await notifier.setEditorLineNumbersEnabled(true);
+    await notifier.setEditorDialogueHighlightEnabled(true);
+    await notifier.setEditorHighlightColorHex(' 6642a5f5 ');
     await notifier.setEditorEntityRecognitionEnabled(false);
     await notifier.setEditorLineStyle(EditorLineStyle.denseDashed);
     await notifier.setEditorFormatIndentCount(5);
@@ -58,6 +64,13 @@ void main() {
     expect(container.read(editorFontColorProvider), const Color(0xFFA1B2C3));
     expect(aggregate.minimapEnabled, isTrue);
     expect(aggregate.lineNumbersEnabled, isTrue);
+    expect(aggregate.dialogueHighlightEnabled, isTrue);
+    expect(aggregate.highlightColorHex, '#6642A5F5');
+    expect(
+      container.read(editorHighlightColorProvider),
+      const Color(0x6642A5F5),
+    );
+    expect(container.read(editorDialogueHighlightEnabledProvider), isTrue);
     expect(aggregate.entityRecognitionEnabled, isFalse);
     expect(aggregate.lineStyle, 'denseDashed');
     expect(aggregate.formatIndentCount, 5);
@@ -107,12 +120,26 @@ void main() {
     expect(reset.editorFontColorHex, isEmpty);
     expect(reset.editorFontSize, AppSettings.defaultEditorFontSize);
     expect(reset.editorLineNumbersEnabled, isTrue);
+    expect(reset.editorDialogueHighlightEnabled, isTrue);
+    expect(reset.editorHighlightColorHex, '#6642A5F5');
+    await notifier.setEditorDialogueHighlightEnabled(false);
+    expect(
+      container.read(editorHighlightColorProvider),
+      const Color(0x6642A5F5),
+    );
+    await expectLater(
+      notifier.setEditorHighlightColorHex('bad-color'),
+      throwsFormatException,
+    );
+    await notifier.setEditorHighlightColorHex('');
     container.invalidate(appSettingsProvider);
     expect(
       (await container.read(appSettingsProvider.future)).editorFontColorHex,
       isEmpty,
     );
     expect(container.read(editorFontColorProvider), isNull);
+    expect(container.read(editorDialogueHighlightEnabledProvider), isFalse);
+    expect(container.read(editorHighlightColorProvider), isNull);
   });
 
   test(
@@ -125,9 +152,7 @@ void main() {
         value: 'false',
       );
       final container = ProviderContainer(
-        overrides: [
-          appSettingsDatabaseProvider.overrideWithValue(database),
-        ],
+        overrides: [appSettingsDatabaseProvider.overrideWithValue(database)],
       );
       addTearDown(() async {
         container.dispose();

@@ -4635,6 +4635,12 @@ class NovelEditorPage extends HookConsumerWidget {
                     scheduleAutoSave();
                   },
                   onSaveChapter: () => saveChapter(showSuccess: true),
+                  onFlushChapterForHighlight: () async {
+                    autoSaveTimer.value?.cancel();
+                    autoSaveTimer.value = null;
+                    await saveChapter();
+                    return true;
+                  },
                   onSaveEntry: () => saveEntry(showSuccess: true),
                   onDiscardCreateDraft: discardCreateDraft,
                   onStatusChanged: (value) {

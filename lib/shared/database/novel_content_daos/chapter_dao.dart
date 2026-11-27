@@ -7,6 +7,8 @@
 import 'package:drift/drift.dart';
 
 import '../../logger/app_logger.dart';
+import '../../utils/chapter_highlight_anchor.dart';
+import '../../utils/random_id.dart';
 import '../novel_content_database.dart';
 
 final _log = AppLogger.forModule('DB');
@@ -24,6 +26,224 @@ class ChapterListStats {
 class ChapterDao {
   ChapterDao(this._db);
   final NovelContentDatabase _db;
+
+  SimpleSelectStatement<$ChapterHighlightsTable, ChapterHighlight>
+  _activeHighlights(String chapterId) =>
+      _db.select(_db.chapterHighlights)..where(
+        (table) =>
+            table.chapterId.equals(chapterId) &
+            table.deletedAt.equals(notDeletedSentinel),
+      );
+
+  Stream<List<ChapterHighlight>> watchHighlights(String chapterId) =>
+      _activeHighlights(chapterId).watch();
+
+  UpdateStatement<$ChapterHighlightsTable, ChapterHighlight> _updateHighlight(
+    String chapterId,
+    String id,
+  ) => _db.update(_db.chapterHighlights)
+    ..where(
+      (table) =>
+          table.id.equals(id) &
+          table.chapterId.equals(chapterId) &
+          table.deletedAt.equals(notDeletedSentinel),
+    );
+
+  Future<void> setHighlightColor({
+    required String chapterId,
+    required String id,
+    required int? colorArgb,
+  }) async {
+    if (colorArgb != null && (colorArgb < 0 || colorArgb > 0xffffffff)) {
+      throw ArgumentError.value(colorArgb, 'colorArgb');
+    }
+    try {
+      final updated = await _updateHighlight(
+        chapterId,
+        id,
+      ).write(ChapterHighlightsCompanion(colorArgb: Value(colorArgb)));
+      if (updated == 0) {
+        throw StateError('Chapter highlight is no longer available');
+      }
+    } catch (error, stackTrace) {
+      _log.error(
+        '[DB] table=chapter_highlights operation=UPDATE id=$id chapterId=$chapterId error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> writeHighlight({
+    required String chapterId,
+    required String expectedContent,
+    required ChapterHighlightRange selection,
+    bool clear = false,
+  }) async {
+    final operation = clear ? 'UPDATE' : 'INSERT';
+    final affectedIds = <String>[];
+    try {
+      await _db.transaction(() async {
+        final body = await getBodyById(chapterId);
+        if (body != expectedContent) {
+          throw StateError('Chapter content changed before saving highlight');
+        }
+        final text = ChapterHighlightText(expectedContent);
+        if (!text.isValidRange(selection) ||
+            (!clear &&
+                expectedContent
+                    .substring(selection.start, selection.end)
+                    .trim()
+                    .isEmpty)) {
+          throw ArgumentError('Invalid chapter highlight selection');
+        }
+        final existing = await _activeHighlights(chapterId).get();
+        var alreadyPainted = false;
+        await _db.batch((batch) {
+          for (final mark in existing) {
+            final range = text.resolve(mark);
+            if (range == null ||
+                range.end <= selection.start ||
+                range.start >= selection.end) {
+              continue;
+            }
+            if (!clear &&
+                !alreadyPainted &&
+                range == selection &&
+                mark.colorArgb == null) {
+              alreadyPainted = true;
+              continue;
+            }
+            affectedIds.add(mark.id);
+            _subtractHighlight(batch, mark, text, range, selection);
+          }
+        });
+        if (clear || alreadyPainted) {
+          return;
+        }
+        final sortOrder = await _nextHighlightSortOrder(chapterId);
+        final id = buildRandomId('highlight');
+        affectedIds.add(id);
+        await _db
+            .into(_db.chapterHighlights)
+            .insert(
+              _highlightValues(text, selection).copyWith(
+                id: Value(id),
+                chapterId: Value(chapterId),
+                sortOrder: Value(sortOrder),
+              ),
+            );
+      });
+    } catch (error, stackTrace) {
+      _log.error(
+        '[DB] table=chapter_highlights operation=$operation chapterId=$chapterId ids=$affectedIds '
+        'selection=${selection.start}:${selection.end} error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  void _subtractHighlight(
+    Batch batch,
+    ChapterHighlight mark,
+    ChapterHighlightText text,
+    ChapterHighlightRange range,
+    ChapterHighlightRange selection,
+  ) {
+    final remaining = [
+      if (range.start < selection.start)
+        (start: range.start, end: selection.start),
+      if (range.end > selection.end) (start: selection.end, end: range.end),
+    ];
+    batch.update(
+      _db.chapterHighlights,
+      remaining.isEmpty
+          ? ChapterHighlightsCompanion(deletedAt: Value(DateTime.now()))
+          : _highlightValues(text, remaining.first),
+      where: (table) => table.id.equals(mark.id),
+    );
+    if (remaining.length == 2) {
+      batch.insert(
+        _db.chapterHighlights,
+        _highlightValues(text, remaining.last).copyWith(
+          id: Value(buildRandomId('highlight')),
+          chapterId: Value(mark.chapterId),
+          sortOrder: Value(mark.sortOrder),
+          colorArgb: Value(mark.colorArgb),
+        ),
+      );
+    }
+  }
+
+  Future<int> _nextHighlightSortOrder(String chapterId) async {
+    final table = _db.chapterHighlights;
+    final latest = table.sortOrder.max();
+    final row =
+        await (_db.selectOnly(table)
+              ..addColumns([latest])
+              ..where(table.chapterId.equals(chapterId)))
+            .getSingle();
+    return (row.read(latest) ?? 0) + 1;
+  }
+
+  /// 与正文写入同事务执行，位置无法确认时保留原锚点。
+  Future<void> rebaseHighlights({
+    required String chapterId,
+    required String before,
+    required String after,
+    required bool preserveSelection,
+  }) async {
+    if (before == after) {
+      return;
+    }
+    final marks = await _activeHighlights(chapterId).get();
+    if (marks.isEmpty) {
+      return;
+    }
+    final oldText = ChapterHighlightText(before);
+    final newText = ChapterHighlightText(after);
+    final edit = preserveSelection ? ChapterHighlightEdit(before, after) : null;
+    try {
+      await _db.batch((batch) {
+        for (final mark in marks) {
+          final oldRange = edit == null ? null : oldText.resolve(mark);
+          final moved = oldRange == null ? null : edit!.move(oldRange);
+          final range = moved ?? newText.resolve(mark);
+          if (range == null || !newText.isValidRange(range)) {
+            continue;
+          }
+          batch.update(
+            _db.chapterHighlights,
+            _highlightValues(newText, range),
+            where: (table) => table.id.equals(mark.id),
+          );
+        }
+      });
+    } catch (error, stackTrace) {
+      _log.error(
+        '[DB] table=chapter_highlights operation=UPDATE chapterId=$chapterId '
+        'ids=${marks.map((mark) => mark.id).join(",")} error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  ChapterHighlightsCompanion _highlightValues(
+    ChapterHighlightText text,
+    ChapterHighlightRange range,
+  ) => ChapterHighlightsCompanion(
+    startOffset: Value(range.start),
+    endOffset: Value(range.end),
+    quote: Value(text.value.substring(range.start, range.end)),
+    prefix: Value(text.prefixAt(range.start)),
+    suffix: Value(text.suffixAt(range.end)),
+    contentHash: Value(text.hash),
+  );
 
   String get _viewQuery => 'SELECT * FROM chapters WHERE 1=1';
 
@@ -58,14 +278,32 @@ class ChapterDao {
 
   /// 单章正文处理不加载大纲、批注等无关字段。
   Future<String?> getBodyById(String id) async {
-    final row = await _db
-        .customSelect(
-          'SELECT content FROM chapter_nodes WHERE id = ? AND deleted_at = 0',
-          variables: [Variable.withString(id)],
-        )
-        .getSingleOrNull();
+    final row = await _getActiveChapterRow(id, 'content');
     return row?.read<String>('content');
   }
+
+  static const _hasHighlights =
+      'EXISTS (SELECT 1 FROM chapter_highlights '
+      'WHERE chapter_id = chapter_nodes.id AND deleted_at = 0) AS has_highlights';
+
+  Future<({String content, bool hasHighlights})?> getBodyForWrite(
+    String id,
+  ) async {
+    final row = await _getActiveChapterRow(id, 'content, $_hasHighlights');
+    return row == null
+        ? null
+        : (
+            content: row.read<String>('content'),
+            hasHighlights: row.read<int>('has_highlights') != 0,
+          );
+  }
+
+  Future<QueryRow?> _getActiveChapterRow(String id, String columns) => _db
+      .customSelect(
+        'SELECT $columns FROM chapter_nodes WHERE id = ? AND deleted_at = 0',
+        variables: [Variable.withString(id)],
+      )
+      .getSingleOrNull();
 
   Stream<List<Chapter>> watchAll() {
     return _db
@@ -102,14 +340,23 @@ class ChapterDao {
   /// 需要展示章号时使用 [getById]；正文保存优先使用本方法，避免每次保存
   /// 都执行章节 VIEW 的窗口计算（详见 [watchContentById]）。
   Future<Chapter?> getContentById(String id) async {
-    final row = await _db
-        .customSelect(
-          'SELECT $_chapterColumns FROM chapter_nodes '
-          'WHERE id = ? AND deleted_at = 0',
-          variables: [Variable.withString(id)],
-        )
-        .getSingleOrNull();
+    final row = await _getActiveChapterRow(id, _chapterColumns);
     return row == null ? null : Chapter.fromViewRow(row.data);
+  }
+
+  Future<({Chapter chapter, bool hasHighlights})?> getContentForWrite(
+    String id,
+  ) async {
+    final row = await _getActiveChapterRow(
+      id,
+      '$_chapterColumns, $_hasHighlights',
+    );
+    return row == null
+        ? null
+        : (
+            chapter: Chapter.fromViewRow(row.data),
+            hasHighlights: row.read<int>('has_highlights') != 0,
+          );
   }
 
   Stream<Chapter?> watchById(String id) {

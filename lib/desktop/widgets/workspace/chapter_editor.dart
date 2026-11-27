@@ -40,6 +40,8 @@ import '../../../shared/theme/theme.dart';
 import '../../../shared/utils/chapter_entity_recognition.dart';
 import '../../../shared/utils/text_input_composing.dart';
 import '../../../shared/utils/text_input_formatters.dart';
+import '../../../shared/widgets/chapter/dialogue_highlight_controller.dart';
+import '../../../shared/widgets/chapter/highlight_selection.dart';
 import '../../../shared/widgets/entity_card.dart';
 import '../../../shared/widgets/editor_line_numbers.dart';
 import '../../../shared/widgets/frame_safe_text_editing_value_builder.dart';
@@ -86,6 +88,7 @@ class ChapterEditor extends HookConsumerWidget {
     this.databasePath,
     this.onAddSelectionToChat,
     this.onNarrateSelection,
+    this.onFlushForHighlight,
   });
 
   final List<Chapter> chapters;
@@ -115,6 +118,7 @@ class ChapterEditor extends HookConsumerWidget {
   /// 把正文选区作为快照引用加入当前 AI 对话。
   final ValueChanged<String>? onAddSelectionToChat;
   final ValueChanged<String>? onNarrateSelection;
+  final Future<bool> Function()? onFlushForHighlight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -133,6 +137,16 @@ class ChapterEditor extends HookConsumerWidget {
         onCreateChapter: onCreateChapter,
       );
     }
+    final path = databasePath;
+    final flushForHighlight = onFlushForHighlight;
+    final highlightSelection = path == null || flushForHighlight == null
+        ? null
+        : ChapterHighlightSelection(
+            path: path,
+            chapterId: chapter.id,
+            savedBody: chapter.content,
+            flush: flushForHighlight,
+          );
 
     final colors = RevericTheme.colorsOf(context);
     final typo = RevericTheme.typographyOf(context);
@@ -268,6 +282,7 @@ class ChapterEditor extends HookConsumerWidget {
                 onAddSelectionToChat: onAddSelectionToChat,
                 onNarrateSelection: onNarrateSelection,
                 commentSession: commentSession,
+                highlightSelection: highlightSelection,
               ),
             ],
           ),
@@ -371,7 +386,7 @@ class _ChapterTitleFieldState extends State<_ChapterTitleField> {
   }
 }
 
-class _ChapterContentField extends StatefulWidget {
+class _ChapterContentField extends ConsumerStatefulWidget {
   const _ChapterContentField({
     required this.controller,
     required this.undoController,
@@ -395,6 +410,7 @@ class _ChapterContentField extends StatefulWidget {
     this.onAddSelectionToChat,
     this.onNarrateSelection,
     required this.commentSession,
+    required this.highlightSelection,
   });
 
   final TextEditingController controller;
@@ -421,9 +437,11 @@ class _ChapterContentField extends StatefulWidget {
 
   /// 批注的状态与行为门面；整簇批注能力都从这一个对象进出。
   final ChapterCommentSession commentSession;
+  final ChapterHighlightSelection? highlightSelection;
 
   @override
-  State<_ChapterContentField> createState() => _ChapterContentFieldState();
+  ConsumerState<_ChapterContentField> createState() =>
+      _ChapterContentFieldState();
 }
 
 /// 章节正文样式控制器：在同一个 [EditableText] 内（重写 [buildTextSpan]）渲染实体高亮，
@@ -433,7 +451,7 @@ class _ChapterContentField extends StatefulWidget {
 /// 按键的同步路径上（正文几千字 × 数十实体）会卡。沿用防抖 + 复用策略：文本/目录变化时
 /// 先用上次结果里位置仍吻合的子集（[_stillValidMatches]，纯文本即时渲染、字照常显示），
 /// 防抖 200ms 后全量重算并 notifyListeners 重排，高亮在停顿后浮现。
-class ChapterContentStyleController extends TextEditingController {
+class ChapterContentStyleController extends ChapterDialogueHighlightController {
   ChapterContentStyleController({super.text});
 
   List<ChapterEntityMention> _catalog = const [];
@@ -554,7 +572,7 @@ class ChapterContentStyleController extends TextEditingController {
       entityStyle: _entityStyle,
     );
     final withFindMatch = applyChapterFindMatchHighlight(
-      spans: spans,
+      spans: applyChapterHighlights(spans),
       activeMatch: _activeFindMatch,
       highlightColor: _findHighlightColor,
     );
@@ -643,7 +661,7 @@ List<TextSpan> applyChapterFindMatchHighlight({
   return highlighted;
 }
 
-class _ChapterContentFieldState extends State<_ChapterContentField> {
+class _ChapterContentFieldState extends ConsumerState<_ChapterContentField> {
   // 内部样式控制器：负责在同一 EditableText 内渲染高亮。外部注入的 widget.controller
   // 仍是 auto-save / history / AI / 字数 / 格式化 / 查找替换的唯一数据源，两者双向镜像。
   late final ChapterContentStyleController _styleController;
@@ -1196,6 +1214,14 @@ class _ChapterContentFieldState extends State<_ChapterContentField> {
         buttonItems.insert(0, emphasizedItem);
       }
     }
+    final highlightItems = widget.highlightSelection?.menuItems(
+      editableState.context,
+      ref,
+      _styleController,
+    );
+    if (highlightItems != null) {
+      buttonItems.insertAll(emphasizedItem == null ? 0 : 1, highlightItems);
+    }
     return _ChapterSelectionToolbar(
       anchors: _contextMenuAnchors(editableState),
       buttonItems: buttonItems,
@@ -1292,6 +1318,14 @@ class _ChapterContentFieldState extends State<_ChapterContentField> {
     ];
 
     // 样式/目录注入内部控制器，其 buildTextSpan 据此在同一 EditableText 内渲染高亮。
+    _styleController
+      ..dialogueHighlightEnabled = ref.watch(
+        editorDialogueHighlightEnabledProvider,
+      )
+      ..highlightBackground =
+          ref.watch(editorHighlightColorProvider) ??
+          colors.editorHighlightBackground;
+    widget.highlightSelection?.configure(ref, _styleController);
     _styleController.updateStyleConfig(
       catalog: widget.entityCatalog,
       baseStyle: baseStyle,
