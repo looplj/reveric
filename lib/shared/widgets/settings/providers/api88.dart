@@ -135,6 +135,7 @@ class _Api88Card extends StatelessWidget {
                     onPressed: () => openProviderChannelUrl(
                       context,
                       providerChannelUrls['api88']!,
+                      providerType: 'api88',
                     ),
                   ),
                 ],

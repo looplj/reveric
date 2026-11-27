@@ -217,6 +217,7 @@ class _MetasoCard extends StatelessWidget {
                     onPressed: () => openProviderChannelUrl(
                       context,
                       providerChannelUrls['metaso']!,
+                      providerType: 'metaso',
                     ),
                   ),
                 ],

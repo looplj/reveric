@@ -1,15 +1,19 @@
-// 职责: 展示供应商能力介绍与渠道入口，并处理外部链接打开反馈。
+// 职责: 展示供应商渠道入口，处理链接打开反馈和匿名点击上报。
 // 关联文件:
 //   lib/shared/models/provider_brand.dart
 //   lib/shared/models/ai_provider.dart
 //   lib/shared/widgets/settings/providers/registry.dart
-//   lib/shared/widgets/settings/provider_config_panel.dart
+//   lib/shared/providers/anonymous_reporting_providers.dart
+//   lib/shared/services/app_activity_reporter.dart
 //   lib/shared/localization/locale_keys.dart
 //   assets/translations/en/settings.json
 //   assets/translations/en/provider.json
 //   assets/translations/zh-CN/settings.json
 //   assets/translations/zh-CN/provider.json
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../components/dialog_feedback.dart';
 import '../../components/reveric_button.dart';
@@ -19,6 +23,8 @@ import '../../localization/locale_keys.dart';
 import '../../logger/app_logger.dart';
 import '../../models/ai_provider.dart';
 import '../../models/provider_brand.dart';
+import '../../providers/anonymous_reporting_providers.dart';
+import '../../services/app_activity_reporter.dart';
 import '../../theme/theme.dart';
 import 'providers/registry.dart';
 
@@ -74,7 +80,8 @@ class ProviderOverview extends StatelessWidget {
           const SizedBox(height: RevericSpacing.lg),
           RevericButton.secondary(
             label: context.t(LocaleKeys.settingsAiGetApiKey),
-            onPressed: () => openProviderChannelUrl(context, url),
+            onPressed: () =>
+                openProviderChannelUrl(context, url, providerType: config.type),
           ),
         ],
         const SizedBox(height: RevericSpacing.lg),
@@ -87,7 +94,12 @@ class ProviderOverview extends StatelessWidget {
   }
 }
 
-Future<void> openProviderChannelUrl(BuildContext context, String url) async {
+Future<void> openProviderChannelUrl(
+  BuildContext context,
+  String url, {
+  required String providerType,
+}) async {
+  unawaited(_reportChannelClick(context, providerType));
   try {
     if (await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication)) {
       return;
@@ -111,4 +123,31 @@ Future<void> openProviderChannelUrl(BuildContext context, String url) async {
       ),
     ),
   );
+}
+
+Future<void> _reportChannelClick(
+  BuildContext context,
+  String providerType,
+) async {
+  final occurredAt = DateTime.now();
+  try {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final consent = await container.read(
+      anonymousReportingConsentProvider.future,
+    );
+    if (!consent) {
+      return;
+    }
+    await reportProviderLinkClick(
+      outbox: container.read(anonymousOutboxServiceProvider),
+      providerType: providerType,
+      occurredAt: occurredAt,
+    );
+  } catch (error, stackTrace) {
+    _log.error(
+      'Failed to queue provider link click: $providerType',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 }

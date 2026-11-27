@@ -109,6 +109,7 @@ class _InfistarCard extends StatelessWidget {
                 onPressed: () => openProviderChannelUrl(
                   context,
                   providerChannelUrls['infistar']!,
+                  providerType: 'infistar',
                 ),
               ),
               RevericButton.secondary(
@@ -116,6 +117,7 @@ class _InfistarCard extends StatelessWidget {
                 onPressed: () => openProviderChannelUrl(
                   context,
                   'https://infistar.cc/pricing?aff=FQHYXMMS&ref_source=link',
+                  providerType: 'infistar',
                 ),
               ),
             ],

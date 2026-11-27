@@ -109,6 +109,7 @@ class _ApikeyCard extends StatelessWidget {
                 onPressed: () => openProviderChannelUrl(
                   context,
                   providerChannelUrls['apikey']!,
+                  providerType: 'apikey',
                 ),
               ),
               RevericButton.secondary(
@@ -116,6 +117,7 @@ class _ApikeyCard extends StatelessWidget {
                 onPressed: () => openProviderChannelUrl(
                   context,
                   'https://apikey.fun/pricing?aff=axonhub',
+                  providerType: 'apikey',
                 ),
               ),
             ],

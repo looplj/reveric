@@ -129,6 +129,7 @@ class _Token91Card extends StatelessWidget {
                     onPressed: () => openProviderChannelUrl(
                       context,
                       providerChannelUrls['token91']!,
+                      providerType: 'token91',
                     ),
                   ),
                 ],

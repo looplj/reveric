@@ -1,7 +1,8 @@
-// 职责: 把应用启动写入匿名活动队列，不携带模型用量。
+// 职责: 把应用启动和供应商链接点击写入匿名活动队列。
 // 关联文件:
 //   lib/shared/services/anonymous_outbox_service.dart
 //   lib/shared/services/device_id_service.dart
+//   lib/shared/widgets/settings/provider_overview.dart
 //   lib/main.dart
 //   lib/shared/app_config.dart
 
@@ -24,22 +25,49 @@ Future<void> reportAppLaunch({
   }
   final occurredAt = (now ?? DateTime.now)().toUtc();
   final deviceId = await deviceIdService.getOrCreate();
-  await outbox.enqueue(
-    AnonymousOutboxEventInput(
-      channel: AnonymousOutboxChannel.activity,
-      endpoint: AnonymousOutboxEndpoint.activity,
-      deviceId: deviceId,
-      occurredAt: occurredAt,
-      payload: {
-        'device_id': deviceId,
-        'event_type': appLaunchEventType,
-        'app_version': appVersion,
-        'platform': _activityPlatform(),
-        'occurred_at': occurredAt.toIso8601String(),
-      },
-    ),
+  await _enqueueActivity(
+    outbox: outbox,
+    eventType: appLaunchEventType,
+    deviceId: deviceId,
+    occurredAt: occurredAt,
   );
 }
+
+Future<void> reportProviderLinkClick({
+  required AnonymousOutboxService outbox,
+  required String providerType,
+  required DateTime occurredAt,
+}) => _enqueueActivity(
+  outbox: outbox,
+  eventType: 'provider_link_click',
+  providerType: providerType,
+  // 协议要求 device_id，供应商点击统一用固定值，避免关联真实设备。
+  deviceId: 'anonymous-provider-link-click',
+  occurredAt: occurredAt.toUtc(),
+);
+
+Future<void> _enqueueActivity({
+  required AnonymousOutboxService outbox,
+  required String eventType,
+  required String deviceId,
+  required DateTime occurredAt,
+  String? providerType,
+}) => outbox.enqueue(
+  AnonymousOutboxEventInput(
+    channel: AnonymousOutboxChannel.activity,
+    endpoint: AnonymousOutboxEndpoint.activity,
+    deviceId: deviceId,
+    occurredAt: occurredAt,
+    payload: {
+      'device_id': deviceId,
+      'event_type': eventType,
+      'provider_type': ?providerType,
+      'app_version': appVersion,
+      'platform': _activityPlatform(),
+      'occurred_at': occurredAt.toIso8601String(),
+    },
+  ),
+);
 
 String _activityPlatform() {
   if (Platform.isMacOS) {

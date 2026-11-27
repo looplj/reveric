@@ -16,7 +16,9 @@ import 'package:reveric/shared/components/reveric_text_field.dart';
 import 'package:reveric/shared/localization/merging_asset_loader.dart';
 import 'package:reveric/shared/models/ai_provider.dart';
 import 'package:reveric/shared/models/provider_brand.dart';
+import 'package:reveric/shared/providers/anonymous_reporting_providers.dart';
 import 'package:reveric/shared/providers/settings_providers.dart';
+import 'package:reveric/shared/services/anonymous_outbox_service.dart';
 import 'package:reveric/shared/theme/theme.dart';
 import 'package:reveric/shared/widgets/guide/trigger.dart';
 import 'package:reveric/shared/widgets/settings/ai_providers_section.dart';
@@ -56,9 +58,28 @@ class _Settings extends AppSettingsNotifier {
   }
 }
 
+class _EnabledReportingConsent extends AnonymousReportingConsent {
+  @override
+  Future<bool> build() async => true;
+}
+
+class _ClickOutbox extends Fake implements AnonymousOutboxService {
+  final events = <(String, String?)>[];
+
+  @override
+  Future<void> enqueue(AnonymousOutboxEventInput input) async {
+    events.add((
+      input.payload['event_type'] as String,
+      input.payload['provider_type'] as String?,
+    ));
+  }
+}
+
 void main() {
   setUpAll(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'anonymous_reporting_consent': false,
+    });
     await EasyLocalization.ensureInitialized();
   });
   setUp(() => rootBundle.clear());
@@ -282,10 +303,15 @@ void main() {
                   .setMockMethodCallHandler(channel, null),
             );
             late AiProvider draft;
+            final outbox = _ClickOutbox();
             await tester.pumpWidget(
               ProviderScope(
                 overrides: [
                   appSettingsProvider.overrideWith(() => _Settings()),
+                  anonymousReportingConsentProvider.overrideWith(
+                    _EnabledReportingConsent.new,
+                  ),
+                  anonymousOutboxServiceProvider.overrideWithValue(outbox),
                 ],
                 child: _wrap(
                   SingleChildScrollView(
@@ -341,6 +367,10 @@ void main() {
                   ? 'https://apikey.fun/pricing?aff=axonhub'
                   : 'https://infistar.cc/pricing?aff=FQHYXMMS&ref_source=link',
             ]);
+            expect(
+              outbox.events,
+              List.filled(2, ('provider_link_click', type)),
+            );
             expect(tester.takeException(), isNull);
             await tester.pumpWidget(const SizedBox.shrink());
             await tester.pumpAndSettle();
@@ -379,9 +409,13 @@ void main() {
                 .setMockMethodCallHandler(channel, null),
           );
           final token91 = aiProviderBuiltinById('token91')!;
+          final outbox = _ClickOutbox();
           await tester.pumpWidget(
             ProviderScope(
-              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              overrides: [
+                appSettingsProvider.overrideWith(() => _Settings()),
+                anonymousOutboxServiceProvider.overrideWithValue(outbox),
+              ],
               child: _wrap(
                 SingleChildScrollView(child: ProviderOverview(config: token91)),
                 locale.languageCode == 'zh',
@@ -410,6 +444,7 @@ void main() {
           await tester.tap(button);
           await tester.pumpAndSettle();
           expect(launched, [providerChannelUrls['token91']]);
+          expect(outbox.events, isEmpty);
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pumpAndSettle();
@@ -447,14 +482,16 @@ void main() {
         );
         late AiProvider draft;
         await tester.pumpWidget(
-          _wrap(
-            Builder(
-              builder: (context) {
-                draft = newProviderDraft(context, 'qwen_token_plan');
-                return ProviderOverview(config: draft);
-              },
+          ProviderScope(
+            child: _wrap(
+              Builder(
+                builder: (context) {
+                  draft = newProviderDraft(context, 'qwen_token_plan');
+                  return ProviderOverview(config: draft);
+                },
+              ),
+              false,
             ),
-            false,
           ),
         );
         await tester.pumpAndSettle();
@@ -813,9 +850,17 @@ void _draftFlowTests() {
           expect(purefox.effectiveBaseUrl, 'https://vip.purefox.org/v1');
           expect(media.effectiveBaseUrl, 'https://img.purefox.org/v1');
           final zh = locale.languageCode == 'zh';
+          final outbox = _ClickOutbox();
+          final overrides = [
+            appSettingsProvider.overrideWith(() => _Settings()),
+            anonymousReportingConsentProvider.overrideWith(
+              _EnabledReportingConsent.new,
+            ),
+            anonymousOutboxServiceProvider.overrideWithValue(outbox),
+          ];
           await tester.pumpWidget(
             ProviderScope(
-              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              overrides: overrides,
               child: _wrap(
                 SingleChildScrollView(
                   child: Column(
@@ -850,7 +895,7 @@ void _draftFlowTests() {
           );
           await tester.pumpWidget(
             ProviderScope(
-              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              overrides: overrides,
               child: _wrap(
                 SizedBox(
                   width: mobile ? 360 : 320,
@@ -890,7 +935,7 @@ void _draftFlowTests() {
           final buttons = find.byType(RevericButton);
           await tester.pumpWidget(
             ProviderScope(
-              overrides: [appSettingsProvider.overrideWith(() => _Settings())],
+              overrides: overrides,
               child: _wrap(
                 SingleChildScrollView(
                   child: Column(
@@ -918,6 +963,10 @@ void _draftFlowTests() {
             providerChannelUrls['purefox_media'],
           ]);
           expect(launched.first, 'https://purefox.org/keys');
+          expect(outbox.events, [
+            ('provider_link_click', 'purefox'),
+            ('provider_link_click', 'purefox_media'),
+          ]);
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pumpAndSettle();
